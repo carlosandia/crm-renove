@@ -5,73 +5,39 @@ import { User } from '../types/User';
 
 const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    // Verificar se há usuário logado (simulação - em produção usar Supabase Auth)
-    const checkAuth = () => {
-      const savedUser = localStorage.getItem('currentUser');
-      if (savedUser) {
-        setUser(JSON.parse(savedUser));
-      }
-      setLoading(false);
-    };
-
-    checkAuth();
-  }, []);
+  const [loading, setLoading] = useState(false);
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    try {
-      // Simulação de login - em produção usar Supabase Auth
-      const mockUsers: User[] = [
-        {
-          id: '1',
-          email: 'superadmin@crm.com',
-          first_name: 'Super',
-          last_name: 'Admin',
-          role: 'super_admin',
-          tenant_id: 'tenant-1',
-          is_active: true,
-          created_at: new Date().toISOString()
-        },
-        {
-          id: '2',
-          email: 'admin@crm.com',
-          first_name: 'Admin',
-          last_name: 'User',
-          role: 'admin',
-          tenant_id: 'tenant-1',
-          is_active: true,
-          created_at: new Date().toISOString()
-        },
-        {
-          id: '3',
-          email: 'member@crm.com',
-          first_name: 'Member',
-          last_name: 'User',
-          role: 'member',
-          tenant_id: 'tenant-1',
-          is_active: true,
-          created_at: new Date().toISOString()
-        }
-      ];
+    setLoading(true);
+    
+    // Simulação de usuários para demonstração
+    const demoUsers = [
+      { id: '1', email: 'superadmin@crm.com', password: '123456', first_name: 'Super', last_name: 'Admin', role: 'super_admin' as const, tenant_id: 'tenant1', is_active: true, created_at: new Date().toISOString() },
+      { id: '2', email: 'admin@crm.com', password: '123456', first_name: 'Admin', last_name: 'User', role: 'admin' as const, tenant_id: 'tenant1', is_active: true, created_at: new Date().toISOString() },
+      { id: '3', email: 'member@crm.com', password: '123456', first_name: 'Member', last_name: 'User', role: 'member' as const, tenant_id: 'tenant1', is_active: true, created_at: new Date().toISOString() }
+    ];
 
-      const foundUser = mockUsers.find(u => u.email === email);
-      if (foundUser && password === '123456') {
-        setUser(foundUser);
-        localStorage.setItem('currentUser', JSON.stringify(foundUser));
+    try {
+      const foundUser = demoUsers.find(u => u.email === email && u.password === password);
+      
+      if (foundUser) {
+        const { password: _, ...userWithoutPassword } = foundUser;
+        setUser(userWithoutPassword);
+        setLoading(false);
         return true;
       }
+      
+      setLoading(false);
       return false;
     } catch (error) {
       console.error('Erro no login:', error);
+      setLoading(false);
       return false;
     }
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('currentUser');
   };
 
   return (
