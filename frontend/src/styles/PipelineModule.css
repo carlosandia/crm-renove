@@ -1,0 +1,609 @@
+/* ============================================
+   MÓDULO PIPELINE - ESTILOS CSS
+   ============================================ */
+
+.pipeline-module {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ============================================
+   CABEÇALHO DO MÓDULO
+   ============================================ */
+
+.module-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.module-header h3 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 1.8rem;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.tab-button {
+  padding: 10px 20px;
+  border: 2px solid #3b82f6;
+  background: white;
+  color: #3b82f6;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.tab-button:hover {
+  background: #eff6ff;
+}
+
+.tab-button.active {
+  background: #3b82f6;
+  color: white;
+}
+
+/* ============================================
+   LISTA DE PIPELINES
+   ============================================ */
+
+.pipelines-list {
+  margin-top: 20px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  background: #f9fafb;
+  border-radius: 12px;
+  border: 2px dashed #d1d5db;
+}
+
+.empty-state p {
+  color: #6b7280;
+  font-size: 1.1rem;
+  margin-bottom: 20px;
+}
+
+.create-button {
+  padding: 12px 24px;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.create-button:hover {
+  background: #059669;
+}
+
+.pipelines-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap: 20px;
+}
+
+/* ============================================
+   CARD DE PIPELINE
+   ============================================ */
+
+.pipeline-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.pipeline-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.pipeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.pipeline-header h4 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 1.3rem;
+}
+
+.pipeline-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-button, .delete-button {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+}
+
+.edit-button {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.edit-button:hover {
+  background: #fde68a;
+}
+
+.delete-button {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.delete-button:hover {
+  background: #fecaca;
+}
+
+.pipeline-description {
+  color: #6b7280;
+  margin-bottom: 15px;
+  font-style: italic;
+}
+
+.pipeline-info {
+  background: #f9fafb;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
+
+.pipeline-info p {
+  margin: 4px 0;
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
+/* ============================================
+   SEÇÃO DE MEMBROS
+   ============================================ */
+
+.pipeline-members {
+  margin-bottom: 20px;
+}
+
+.pipeline-members h5 {
+  margin: 0 0 10px 0;
+  color: #374151;
+  font-size: 1rem;
+}
+
+.members-list {
+  margin-bottom: 10px;
+}
+
+.member-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #eff6ff;
+  border-radius: 6px;
+  margin-bottom: 5px;
+}
+
+.member-item span {
+  color: #1e40af;
+  font-weight: 500;
+}
+
+.remove-member-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 2px;
+  border-radius: 3px;
+  transition: background 0.3s ease;
+}
+
+.remove-member-button:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.add-member-section {
+  margin-top: 10px;
+}
+
+.member-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  color: #374151;
+  cursor: pointer;
+}
+
+.member-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* ============================================
+   SEÇÃO DE ETAPAS
+   ============================================ */
+
+.pipeline-stages-section {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 15px;
+}
+
+.stages-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.stages-header h5 {
+  margin: 0;
+  color: #374151;
+  font-size: 1rem;
+}
+
+.add-stage-button, .add-followup-button {
+  padding: 6px 12px;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.add-stage-button:hover, .add-followup-button:hover {
+  background: #059669;
+}
+
+.add-followup-button {
+  width: 100%;
+  margin-top: 10px;
+  background: #6366f1;
+}
+
+.add-followup-button:hover {
+  background: #4f46e5;
+}
+
+.stages-list {
+  margin-bottom: 15px;
+}
+
+.stage-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  border-left: 4px solid #e5e7eb;
+}
+
+.stage-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.stage-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.stage-details strong {
+  color: #1f2937;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.stage-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.delete-stage-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background 0.3s ease;
+}
+
+.delete-stage-button:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* ============================================
+   FORMULÁRIOS
+   ============================================ */
+
+.create-pipeline-form, .edit-pipeline-form {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 30px;
+  margin-top: 20px;
+}
+
+.create-pipeline-form h4, .edit-pipeline-form h4 {
+  margin: 0 0 25px 0;
+  color: #1f2937;
+  font-size: 1.5rem;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.form-group input, .form-group textarea, .form-group select {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: border-color 0.3s ease;
+}
+
+.form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.members-checkboxes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.checkbox-label:hover {
+  background: #f3f4f6;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
+.form-actions {
+  display: flex;
+  gap: 15px;
+  margin-top: 30px;
+}
+
+.submit-button {
+  padding: 12px 24px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.submit-button:hover {
+  background: #2563eb;
+}
+
+.cancel-button {
+  padding: 12px 24px;
+  background: #6b7280;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.cancel-button:hover {
+  background: #4b5563;
+}
+
+/* ============================================
+   MODAIS
+   ============================================ */
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: white;
+  border-radius: 12px;
+  padding: 0;
+  max-width: 500px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 25px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-header h4 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 1.3rem;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background 0.3s ease;
+}
+
+.close-button:hover {
+  background: #f3f4f6;
+}
+
+.modal form {
+  padding: 25px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 15px;
+  margin-top: 25px;
+  padding-top: 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* ============================================
+   ESTADOS E MENSAGENS
+   ============================================ */
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: #6b7280;
+  font-size: 1.1rem;
+}
+
+.access-denied {
+  text-align: center;
+  padding: 60px 20px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  margin: 20px;
+}
+
+.access-denied h3 {
+  color: #dc2626;
+  margin-bottom: 10px;
+}
+
+.access-denied p {
+  color: #7f1d1d;
+}
+
+/* ============================================
+   RESPONSIVIDADE
+   ============================================ */
+
+@media (max-width: 768px) {
+  .pipeline-module {
+    padding: 15px;
+  }
+  
+  .module-header {
+    flex-direction: column;
+    gap: 15px;
+    align-items: stretch;
+  }
+  
+  .header-actions {
+    justify-content: center;
+  }
+  
+  .pipelines-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .pipeline-header {
+    flex-direction: column;
+    gap: 10px;
+    align-items: stretch;
+  }
+  
+  .pipeline-actions {
+    justify-content: center;
+  }
+  
+  .stage-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .stage-meta {
+    flex-wrap: wrap;
+  }
+  
+  .members-checkboxes {
+    grid-template-columns: 1fr;
+  }
+  
+  .form-actions {
+    flex-direction: column;
+  }
+  
+  .modal {
+    width: 95%;
+    margin: 10px;
+  }
+}

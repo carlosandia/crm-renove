@@ -1,6 +1,6 @@
 
 import express from 'express';
-import { supabaseAdmin } from '../index';
+import { supabase } from '../index';
 
 const router = express.Router();
 
@@ -9,7 +9,7 @@ router.get('/', async (req, res) => {
   try {
     const { role, tenant_id } = req.query;
     
-    let query = supabaseAdmin.from('users').select('*');
+    let query = supabase.from('users').select('*');
     
     if (role) {
       query = query.eq('role', role);
@@ -46,7 +46,7 @@ router.patch('/:userId/toggle-status', async (req, res) => {
 
     console.log('Alterando status do usuário:', { userId, is_active });
 
-    const { data: user, error } = await supabaseAdmin
+    const { data: user, error } = await supabase
       .from('users')
       .update({ is_active })
       .eq('id', userId)

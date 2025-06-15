@@ -58,9 +58,12 @@ const LoginForm: React.FC = () => {
         </form>
         <div className="demo-credentials">
           <h4>Credenciais de Demonstração:</h4>
-          <p><strong>Super Admin:</strong> superadmin@crm.com / 123456</p>
+          <p><strong>Super Admin:</strong> superadmin@crm.com / SuperAdmin123!</p>
           <p><strong>Admin:</strong> admin@crm.com / 123456</p>
           <p><strong>Member:</strong> member@crm.com / 123456</p>
+          <small style={{color: '#666', marginTop: '10px', display: 'block'}}>
+            💡 Admins criados pelo Super Admin podem usar senha padrão: 123456
+          </small>
         </div>
       </div>
     </div>

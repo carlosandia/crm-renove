@@ -1,0 +1,276 @@
+/* ============================================ */
+/* PIPELINE VIEW MODULE - KANBAN PARA MEMBERS */
+/* ============================================ */
+
+.pipeline-view-module {
+  padding: 20px;
+  background: #f8f9fa;
+  min-height: 100vh;
+}
+
+/* ============================================ */
+/* HEADER E SELETOR */
+/* ============================================ */
+
+.module-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.module-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 24px;
+}
+
+.pipeline-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pipeline-selector label {
+  font-weight: 600;
+  color: #555;
+}
+
+.pipeline-select {
+  padding: 8px 12px;
+  border: 2px solid #e1e8ed;
+  border-radius: 8px;
+  font-size: 14px;
+  min-width: 200px;
+  background: white;
+}
+
+.pipeline-select:focus {
+  outline: none;
+  border-color: #4f46e5;
+}
+
+/* ============================================ */
+/* INFORMAÇÕES DA PIPELINE */
+/* ============================================ */
+
+.pipeline-info {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.pipeline-info h4 {
+  margin: 0 0 10px 0;
+  color: #2c3e50;
+  font-size: 20px;
+}
+
+.pipeline-info p {
+  margin: 0;
+  color: #666;
+  font-size: 14px;
+}
+
+/* ============================================ */
+/* KANBAN BOARD */
+/* ============================================ */
+
+.kanban-board {
+  display: flex;
+  gap: 20px;
+  overflow-x: auto;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  min-height: 500px;
+}
+
+.kanban-column {
+  flex: 0 0 300px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 1px solid #e1e8ed;
+  overflow: hidden;
+}
+
+.column-header {
+  padding: 15px;
+  background: white;
+  border-top: 4px solid #4f46e5;
+  border-bottom: 1px solid #e1e8ed;
+}
+
+.stage-info h5 {
+  margin: 0 0 8px 0;
+  color: #2c3e50;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.stage-meta {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 10px;
+}
+
+.temperature, .max-days {
+  font-size: 12px;
+  color: #666;
+  background: #f1f3f4;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.leads-count {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.leads-count .count {
+  font-size: 24px;
+  font-weight: bold;
+  color: #4f46e5;
+}
+
+.leads-count .label {
+  font-size: 12px;
+  color: #666;
+}
+
+/* ============================================ */
+/* CONTEÚDO DAS COLUNAS */
+/* ============================================ */
+
+.column-content {
+  padding: 15px;
+  min-height: 400px;
+}
+
+.empty-column {
+  text-align: center;
+  padding: 40px 20px;
+  color: #666;
+}
+
+.empty-column p {
+  margin-bottom: 15px;
+  font-size: 14px;
+}
+
+.add-lead-button {
+  background: #4f46e5;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.add-lead-button:hover {
+  background: #4338ca;
+}
+
+/* ============================================ */
+/* ESTADOS ESPECIAIS */
+/* ============================================ */
+
+.access-denied, .empty-state, .no-stages {
+  text-align: center;
+  padding: 60px 20px;
+  background: white;
+  border-radius: 12px;
+  margin: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.access-denied h3, .empty-state h3, .no-stages h4 {
+  color: #e74c3c;
+  margin-bottom: 15px;
+}
+
+.empty-state h3 {
+  color: #f39c12;
+}
+
+.no-stages h4 {
+  color: #f39c12;
+}
+
+.access-denied p, .empty-state p, .no-stages p {
+  color: #666;
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.loading {
+  text-align: center;
+  padding: 60px 20px;
+  font-size: 18px;
+  color: #666;
+}
+
+/* ============================================ */
+/* RESPONSIVIDADE */
+/* ============================================ */
+
+@media (max-width: 768px) {
+  .module-header {
+    flex-direction: column;
+    gap: 15px;
+    align-items: stretch;
+  }
+  
+  .pipeline-selector {
+    justify-content: center;
+  }
+  
+  .kanban-board {
+    flex-direction: column;
+    gap: 15px;
+  }
+  
+  .kanban-column {
+    flex: none;
+  }
+}
+
+/* ============================================ */
+/* CORES PERSONALIZADAS PARA ETAPAS */
+/* ============================================ */
+
+.kanban-column[data-color="red"] .column-header {
+  border-top-color: #e74c3c;
+}
+
+.kanban-column[data-color="blue"] .column-header {
+  border-top-color: #3498db;
+}
+
+.kanban-column[data-color="green"] .column-header {
+  border-top-color: #2ecc71;
+}
+
+.kanban-column[data-color="yellow"] .column-header {
+  border-top-color: #f1c40f;
+}
+
+.kanban-column[data-color="purple"] .column-header {
+  border-top-color: #9b59b6;
+}
+
+.kanban-column[data-color="orange"] .column-header {
+  border-top-color: #e67e22;
+}

@@ -2,6 +2,10 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import ClientesModule from './ClientesModule';
+import VendedoresModule from './VendedoresModule';
+import PipelineModule from './PipelineModule';
+import PipelineViewModule from './PipelineViewModule';
+import './PipelineViewModule.css';
 
 const RoleBasedMenu: React.FC = () => {
   const { user } = useAuth();
@@ -30,6 +34,18 @@ const RoleBasedMenu: React.FC = () => {
   const renderContent = () => {
     if (activeMenu === 'Clientes' && user.role === 'super_admin') {
       return <ClientesModule />;
+    }
+
+    if (activeMenu === 'Vendedores' && user.role === 'admin') {
+      return <VendedoresModule />;
+    }
+
+    if (activeMenu === 'Criador de pipeline' && user.role === 'admin') {
+      return <PipelineModule />;
+    }
+
+    if (activeMenu === 'Pipeline' && user.role === 'member') {
+      return <PipelineViewModule />;
     }
 
     return (

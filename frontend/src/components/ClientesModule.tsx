@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { createClient } from '@supabase/supabase-js';
+
+// Configuração do Supabase
+const supabaseUrl = 'https://marajvabdwkpgopytvhh.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hcmFqdmFiZHdrcGdvcHl0dmhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjQwMDksImV4cCI6MjA2NTM0MDAwOX0.C_2W2u8JyApjbhqPJm1q1dFX82KoRSm3auBfE7IpmDU';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 interface Company {
   id: string;
@@ -144,138 +149,39 @@ const ClientesModule: React.FC = () => {
     }
 
     try {
-      console.log('🚀 Iniciando criação de empresa...');
-      console.log('📋 Dados do formulário:', {
+      console.log('🚀 Enviando dados para o backend...');
+      
+      const requestData = {
         companyName: formData.companyName,
-        segment: formData.segment || 'Não informado',
+        segment: formData.segment || null,
         adminName: formData.adminName,
         adminEmail: formData.adminEmail,
-        hasPassword: !!formData.adminPassword
+        adminPassword: formData.adminPassword || '123456'
+      };
+
+      console.log('📋 Dados da requisição:', requestData);
+
+      // Fazer requisição para o backend
+      const response = await fetch('http://localhost:5001/api/companies', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData)
       });
 
-      // Verificar se email já existe
-      console.log('🔍 Verificando se email já existe...');
-      const { data: existingUser, error: checkError } = await supabase
-        .from('users')
-        .select('id, email')
-        .eq('email', formData.adminEmail)
-        .maybeSingle();
+      console.log('📡 Resposta do servidor:', response.status, response.statusText);
 
-      if (checkError) {
-        console.error('❌ Erro ao verificar email:', checkError);
-        throw checkError;
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('❌ Erro do servidor:', errorData);
+        throw new Error(errorData.message || `Erro ${response.status}: ${response.statusText}`);
       }
 
-      if (existingUser) {
-        alert(`Email já está em uso: ${formData.adminEmail}`);
-        return;
-      }
+      const result = await response.json();
+      console.log('✅ Resposta bem-sucedida:', result);
 
-      console.log('✅ Email disponível, prosseguindo...');
-
-      // Gerar senha se não fornecida - USAR SENHA SIMPLES PARA TESTE
-      const adminPassword = formData.adminPassword || '123456';
-      console.log('🔑 Senha definida para admin:', adminPassword);
-
-      // 1. CRIAR EMPRESA PRIMEIRO
-      console.log('🏢 Criando empresa...');
-      const { data: company, error: companyError } = await supabase
-        .from('companies')
-        .insert([{ 
-          name: formData.companyName, 
-          segment: formData.segment || null
-        }])
-        .select()
-        .single();
-
-      if (companyError) {
-        console.error('❌ Erro ao criar empresa:', companyError);
-        throw companyError;
-      }
-
-      console.log('✅ Empresa criada com sucesso:', company);
-
-      // 2. PREPARAR DADOS DO ADMIN
-      const adminNames = formData.adminName.trim().split(' ');
-      const firstName = adminNames[0];
-      const lastName = adminNames.slice(1).join(' ') || '';
-
-      // 3. CRIAR USUÁRIO NO SUPABASE AUTH PRIMEIRO
-      console.log('👤 Criando usuário no Supabase Auth...');
-      
-      const { data: authUser, error: authError } = await supabase.auth.signUp({
-        email: formData.adminEmail,
-        password: adminPassword,
-        options: {
-          data: {
-            first_name: firstName,
-            last_name: lastName,
-            role: 'admin',
-            tenant_id: company.id
-          }
-        }
-      });
-
-      if (authError) {
-        console.error('❌ Erro ao criar usuário no Supabase Auth:', authError);
-        // Rollback: remover empresa criada
-        await supabase.from('companies').delete().eq('id', company.id);
-        throw authError;
-      }
-
-      console.log('✅ Usuário criado no Supabase Auth:', authUser.user?.id);
-
-      // 4. AGUARDAR UM POUCO PARA O SUPABASE PROCESSAR
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // 5. CRIAR USUÁRIO NA TABELA USERS COM O MESMO ID
-      console.log('📝 Criando usuário na tabela users...');
-      const { data: admin, error: adminError } = await supabase
-        .from('users')
-        .insert([{
-          id: authUser.user?.id, // Usar o mesmo ID do auth
-          email: formData.adminEmail,
-          first_name: firstName,
-          last_name: lastName,
-          role: 'admin',
-          tenant_id: company.id,
-          is_active: true
-        }])
-        .select()
-        .single();
-
-      if (adminError) {
-        console.error('❌ Erro ao criar admin na tabela users:', adminError);
-        
-        // Rollback
-        console.log('🔄 Fazendo rollback...');
-        await supabase.from('companies').delete().eq('id', company.id);
-        throw adminError;
-      }
-
-      console.log('✅ Admin criado na tabela users:', admin);
-
-      // 6. CRIAR REGISTRO DE INTEGRAÇÃO (OPCIONAL)
-      try {
-        console.log('🔗 Criando registro de integração...');
-        const { error: integrationError } = await supabase
-          .from('integrations')
-          .insert([{
-            company_id: company.id
-          }]);
-
-        if (integrationError) {
-          console.warn('⚠️ Erro ao criar integração (não crítico):', integrationError.message);
-        } else {
-          console.log('✅ Integração criada com sucesso');
-        }
-      } catch (integrationErr) {
-        console.warn('⚠️ Erro ao criar integração (tabela pode não existir):', integrationErr);
-      }
-
-      // 7. RESET E SUCESSO
-      console.log('🎉 Processo concluído com sucesso!');
-      
+      // Reset do formulário
       setShowForm(false);
       setFormData({
         companyName: '',
@@ -288,22 +194,21 @@ const ClientesModule: React.FC = () => {
       // Recarregar dados
       await loadData();
       
-      alert(`✅ Empresa e gestor criados com sucesso!
+      // Mostrar mensagem de sucesso
+      alert(`✅ ${result.message}
 
 📋 Detalhes:
-• Empresa: ${formData.companyName}
-• Admin: ${formData.adminName}
+• Empresa: ${result.company?.name}
+• Admin: ${result.admin?.first_name} ${result.admin?.last_name}
 
 🔑 Credenciais de acesso:
-• Email: ${formData.adminEmail}
-• Senha: ${adminPassword}
+• Email: ${result.credentials?.email}
+• Senha: ${result.credentials?.password}
 
-✨ O admin já pode fazer login agora!
-
-⚠️ IMPORTANTE: Use exatamente essas credenciais para fazer login!`);
+✨ O admin pode fazer login com essas credenciais!`);
       
     } catch (error) {
-      console.error('💥 Erro completo ao criar empresa:', error);
+      console.error('💥 Erro ao criar empresa:', error);
       
       let errorMessage = 'Erro desconhecido';
       if (error instanceof Error) {

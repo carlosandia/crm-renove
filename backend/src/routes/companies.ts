@@ -1,27 +1,30 @@
-
 import express from 'express';
-import { supabase, supabaseAdmin } from '../index';
+import { supabase } from '../index';
 
 const router = express.Router();
 
-// Listar empresas (usando a tabela companies existente)
+// Listar empresas
 router.get('/', async (req, res) => {
   try {
-    const { data: companies, error } = await supabaseAdmin
+    console.log('📋 Buscando empresas...');
+    
+    const { data: companies, error } = await supabase
       .from('companies')
       .select('*')
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Erro ao buscar empresas:', error);
+      console.error('❌ Erro ao buscar empresas:', error);
       throw error;
     }
+
+    console.log('✅ Empresas encontradas:', companies?.length || 0);
 
     res.json({
       companies: companies || []
     });
   } catch (error) {
-    console.error('Erro ao buscar empresas:', error);
+    console.error('💥 Erro ao buscar empresas:', error);
     res.status(500).json({
       message: 'Erro ao buscar empresas',
       error: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -29,94 +32,161 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Criar empresa + admin (usando as tabelas corretas do schema)
+// Criar empresa + admin (versão simplificada)
 router.post('/', async (req, res) => {
   try {
     const { companyName, segment, adminName, adminEmail, adminPassword } = req.body;
 
-    console.log('Dados recebidos:', { companyName, segment, adminName, adminEmail });
+    console.log('🚀 Iniciando criação de empresa...');
+    console.log('📋 Dados recebidos:', { 
+      companyName, 
+      segment, 
+      adminName, 
+      adminEmail,
+      hasPassword: !!adminPassword 
+    });
 
-    // Verificar se email já existe na tabela users
-    const { data: existingUser } = await supabaseAdmin
-      .from('users')
-      .select('id')
-      .eq('email', adminEmail)
-      .single();
-
-    if (existingUser) {
+    // Validações básicas
+    if (!companyName || !adminName || !adminEmail) {
+      console.log('❌ Dados obrigatórios faltando');
       return res.status(400).json({
-        message: 'Email já está em uso'
+        message: 'Nome da empresa, nome do admin e email são obrigatórios'
       });
     }
 
-    // Criar empresa na tabela companies
-    const { data: company, error: companyError } = await supabaseAdmin
+    // Verificar se email já existe
+    console.log('🔍 Verificando se email já existe...');
+    const { data: existingUser, error: checkError } = await supabase
+      .from('users')
+      .select('id, email')
+      .eq('email', adminEmail)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('❌ Erro ao verificar email:', checkError);
+      throw checkError;
+    }
+
+    if (existingUser) {
+      console.log('❌ Email já existe:', adminEmail);
+      return res.status(400).json({
+        message: `Email já está em uso: ${adminEmail}`
+      });
+    }
+
+    console.log('✅ Email disponível');
+
+    // 1. Criar empresa
+    console.log('🏢 Criando empresa...');
+    const { data: company, error: companyError } = await supabase
       .from('companies')
       .insert([{ 
         name: companyName, 
-        segment: segment 
+        segment: segment || null
       }])
       .select()
       .single();
 
     if (companyError) {
-      console.error('Erro ao criar empresa:', companyError);
+      console.error('❌ Erro ao criar empresa:', companyError);
       throw companyError;
     }
 
-    console.log('Empresa criada:', company);
+    console.log('✅ Empresa criada:', {
+      id: company.id,
+      name: company.name,
+      segment: company.segment
+    });
 
-    // Criar usuário admin na tabela users
-    const { data: admin, error: adminError } = await supabaseAdmin
+    // 2. Preparar dados do admin
+    const adminNames = adminName.trim().split(' ');
+    const firstName = adminNames[0];
+    const lastName = adminNames.slice(1).join(' ') || '';
+    const finalPassword = adminPassword || '123456';
+
+    console.log('👤 Criando admin na tabela users...');
+
+    // 3. Criar admin na tabela users (sem Supabase Auth por enquanto)
+    const { data: admin, error: adminError } = await supabase
       .from('users')
       .insert([{
         email: adminEmail,
-        first_name: adminName.split(' ')[0],
-        last_name: adminName.split(' ').slice(1).join(' ') || '',
+        first_name: firstName,
+        last_name: lastName,
         role: 'admin',
-        tenant_id: company.id, // Usar o ID da empresa como tenant_id
+        tenant_id: company.id,
         is_active: true
       }])
       .select()
       .single();
 
     if (adminError) {
-      console.error('Erro ao criar admin:', adminError);
-      // Se erro ao criar admin, remover empresa criada
-      await supabaseAdmin.from('companies').delete().eq('id', company.id);
+      console.error('❌ Erro ao criar admin:', adminError);
+      
+      // Rollback: remover empresa criada
+      console.log('🔄 Fazendo rollback da empresa...');
+      await supabase.from('companies').delete().eq('id', company.id);
+      
       throw adminError;
     }
 
-    console.log('Admin criado:', admin);
+    console.log('✅ Admin criado na tabela:', {
+      id: admin.id,
+      email: admin.email,
+      name: `${admin.first_name} ${admin.last_name}`,
+      role: admin.role,
+      tenant_id: admin.tenant_id
+    });
 
-    // Criar registro de integração vazio (se a tabela integrations existe)
+    // 4. Criar registro de integração (opcional)
     try {
-      const { error: integrationError } = await supabaseAdmin
+      console.log('🔗 Criando registro de integração...');
+      const { error: integrationError } = await supabase
         .from('integrations')
         .insert([{
           company_id: company.id
         }]);
 
       if (integrationError) {
-        console.warn('Erro ao criar registro de integração:', integrationError);
-        // Não falhar por causa disso, apenas log de warning
+        console.warn('⚠️ Erro ao criar integração (não crítico):', integrationError.message);
+      } else {
+        console.log('✅ Integração criada');
       }
     } catch (integrationErr) {
-      console.warn('Erro ao criar integração (tabela pode não existir):', integrationErr);
+      console.warn('⚠️ Erro ao criar integração (tabela pode não existir):', integrationErr);
     }
+
+    // 5. Resposta de sucesso
+    console.log('🎉 Empresa e admin criados com sucesso!');
 
     res.json({
       success: true,
-      company,
-      admin,
-      message: 'Empresa e gestor criados com sucesso'
+      company: {
+        id: company.id,
+        name: company.name,
+        segment: company.segment
+      },
+      admin: {
+        id: admin.id,
+        email: admin.email,
+        first_name: admin.first_name,
+        last_name: admin.last_name,
+        role: admin.role,
+        tenant_id: admin.tenant_id
+      },
+      credentials: {
+        email: adminEmail,
+        password: finalPassword
+      },
+      message: `Empresa "${companyName}" e gestor "${adminName}" criados com sucesso!`
     });
+
   } catch (error) {
-    console.error('Erro completo ao criar empresa:', error);
+    console.error('💥 Erro completo ao criar empresa:', error);
     res.status(500).json({
-      message: 'Erro ao criar empresa',
+      message: 'Erro interno ao criar empresa',
       error: error instanceof Error ? error.message : 'Erro desconhecido',
-      details: error instanceof Error ? error.stack : undefined
+      details: process.env.NODE_ENV === 'development' ? error : undefined
     });
   }
 });
