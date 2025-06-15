@@ -1,14 +1,11 @@
-
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { componentTagger } from "lovable-tagger";
 import path from 'path'
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(() => ({
   plugins: [
     react(),
-    mode === 'development' && componentTagger(),
-  ].filter(Boolean),
+  ],
   root: './frontend',
   build: {
     outDir: '../dist',
@@ -19,6 +16,7 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
     hmr: {
       clientPort: 8080,
+      port: 8080
     }
   },
   resolve: {
@@ -27,6 +25,7 @@ export default defineConfig(({ mode }) => ({
     }
   },
   define: {
-    __WS_TOKEN__: JSON.stringify('')
+    __WS_TOKEN__: JSON.stringify(process.env.WS_TOKEN || ''),
+    global: 'globalThis',
   }
 }))
