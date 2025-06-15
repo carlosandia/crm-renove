@@ -85,6 +85,21 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     try {
       console.log('🔐 Tentando fazer login com:', email);
       
+      // Primeiro verificar se o usuário existe na nossa tabela
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email)
+        .single();
+
+      if (userError || !userData) {
+        console.log('❌ Usuário não encontrado na tabela users');
+        setLoading(false);
+        return false;
+      }
+
+      console.log('✅ Usuário encontrado na tabela users:', userData.email);
+
       // Tentar fazer login com Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
@@ -92,34 +107,81 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       });
 
       if (authError) {
-        console.error('❌ Erro de autenticação:', authError);
+        console.error('❌ Erro de autenticação no Supabase Auth:', authError.message);
         
-        // Fallback para usuários de demonstração
-        console.log('🔄 Tentando usuários de demonstração...');
-        const demoUsers = [
-          { id: '1', email: 'superadmin@crm.com', password: '123456', first_name: 'Super', last_name: 'Admin', role: 'super_admin' as const, tenant_id: '550e8400-e29b-41d4-a716-446655440000', is_active: true, created_at: new Date().toISOString() },
-          { id: '2', email: 'admin@crm.com', password: '123456', first_name: 'Admin', last_name: 'User', role: 'admin' as const, tenant_id: '550e8400-e29b-41d4-a716-446655440000', is_active: true, created_at: new Date().toISOString() },
-          { id: '3', email: 'member@crm.com', password: '123456', first_name: 'Member', last_name: 'User', role: 'member' as const, tenant_id: '550e8400-e29b-41d4-a716-446655440000', is_active: true, created_at: new Date().toISOString() }
-        ];
+        // Se o erro for "Invalid login credentials", pode ser que o usuário não tenha sido criado no Auth
+        if (authError.message.includes('Invalid login credentials')) {
+          console.log('⚠️ Credenciais inválidas - usuário pode não existir no Supabase Auth');
+          
+          // Tentar criar o usuário no Supabase Auth com a senha padrão
+          console.log('🔄 Tentando criar usuário no Supabase Auth...');
+          
+          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: {
+                first_name: userData.first_name,
+                last_name: userData.last_name,
+                role: userData.role,
+                tenant_id: userData.tenant_id
+              }
+            }
+          });
 
-        const foundUser = demoUsers.find(u => u.email === email && u.password === password);
-        
-        if (foundUser) {
-          console.log('✅ Login com usuário de demonstração:', foundUser.email);
-          const { password: _, ...userWithoutPassword } = foundUser;
-          setUser(userWithoutPassword);
-          setLoading(false);
-          return true;
+          if (signUpError) {
+            console.error('❌ Erro ao criar usuário no Supabase Auth:', signUpError.message);
+            setLoading(false);
+            return false;
+          }
+
+          if (signUpData.user) {
+            console.log('✅ Usuário criado no Supabase Auth:', signUpData.user.email);
+            
+            // Atualizar o ID do auth na nossa tabela
+            await supabase
+              .from('users')
+              .update({ id: signUpData.user.id })
+              .eq('email', email);
+
+            // Tentar fazer login novamente
+            const { data: retryAuthData, error: retryAuthError } = await supabase.auth.signInWithPassword({
+              email,
+              password
+            });
+
+            if (retryAuthError) {
+              console.error('❌ Erro no segundo login:', retryAuthError.message);
+              setLoading(false);
+              return false;
+            }
+
+            if (retryAuthData.user) {
+              console.log('✅ Login bem-sucedido após criação no Auth');
+              await loadUserData(retryAuthData.user.id);
+              setLoading(false);
+              return true;
+            }
+          }
         }
         
-        console.log('❌ Credenciais inválidas');
         setLoading(false);
         return false;
       }
 
       // Se login com Supabase Auth foi bem-sucedido
       if (authData.user) {
-        console.log('✅ Login bem-sucedido com Supabase Auth:', authData.user.email);
+        console.log('✅ Login bem-sucedido:', authData.user.email);
+        
+        // Verificar se o ID bate com nossa tabela, senão atualizar
+        if (userData.id !== authData.user.id) {
+          console.log('🔄 Atualizando ID do usuário na tabela...');
+          await supabase
+            .from('users')
+            .update({ id: authData.user.id })
+            .eq('email', email);
+        }
+        
         await loadUserData(authData.user.id);
       }
       

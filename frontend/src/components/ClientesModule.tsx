@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -91,7 +90,6 @@ const ClientesModule: React.FC = () => {
 
       if (integrationsError) {
         console.error('❌ Erro ao buscar integrações:', integrationsError);
-        // Não falhar por causa das integrações
         console.warn('⚠️ Tabela integrations pode não existir ainda');
         setIntegrations([]);
       } else {
@@ -175,9 +173,9 @@ const ClientesModule: React.FC = () => {
 
       console.log('✅ Email disponível, prosseguindo...');
 
-      // Gerar senha se não fornecida
-      const adminPassword = formData.adminPassword || `Admin${Math.floor(Math.random() * 10000)}!`;
-      console.log('🔑 Senha gerada/fornecida para admin');
+      // Gerar senha se não fornecida - USAR SENHA SIMPLES PARA TESTE
+      const adminPassword = formData.adminPassword || '123456';
+      console.log('🔑 Senha definida para admin:', adminPassword);
 
       // 1. CRIAR EMPRESA PRIMEIRO
       console.log('🏢 Criando empresa...');
@@ -197,13 +195,14 @@ const ClientesModule: React.FC = () => {
 
       console.log('✅ Empresa criada com sucesso:', company);
 
-      // 2. CRIAR USUÁRIO NO SUPABASE AUTH
-      console.log('👤 Criando usuário no Supabase Auth...');
-      
+      // 2. PREPARAR DADOS DO ADMIN
       const adminNames = formData.adminName.trim().split(' ');
       const firstName = adminNames[0];
       const lastName = adminNames.slice(1).join(' ') || '';
 
+      // 3. CRIAR USUÁRIO NO SUPABASE AUTH PRIMEIRO
+      console.log('👤 Criando usuário no Supabase Auth...');
+      
       const { data: authUser, error: authError } = await supabase.auth.signUp({
         email: formData.adminEmail,
         password: adminPassword,
@@ -226,7 +225,10 @@ const ClientesModule: React.FC = () => {
 
       console.log('✅ Usuário criado no Supabase Auth:', authUser.user?.id);
 
-      // 3. CRIAR USUÁRIO NA TABELA USERS
+      // 4. AGUARDAR UM POUCO PARA O SUPABASE PROCESSAR
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 5. CRIAR USUÁRIO NA TABELA USERS COM O MESMO ID
       console.log('📝 Criando usuário na tabela users...');
       const { data: admin, error: adminError } = await supabase
         .from('users')
@@ -245,16 +247,15 @@ const ClientesModule: React.FC = () => {
       if (adminError) {
         console.error('❌ Erro ao criar admin na tabela users:', adminError);
         
-        // Rollback completo
+        // Rollback
         console.log('🔄 Fazendo rollback...');
         await supabase.from('companies').delete().eq('id', company.id);
-        // Nota: não conseguimos deletar do auth via client, mas não é crítico
         throw adminError;
       }
 
       console.log('✅ Admin criado na tabela users:', admin);
 
-      // 4. CRIAR REGISTRO DE INTEGRAÇÃO (OPCIONAL)
+      // 6. CRIAR REGISTRO DE INTEGRAÇÃO (OPCIONAL)
       try {
         console.log('🔗 Criando registro de integração...');
         const { error: integrationError } = await supabase
@@ -272,7 +273,7 @@ const ClientesModule: React.FC = () => {
         console.warn('⚠️ Erro ao criar integração (tabela pode não existir):', integrationErr);
       }
 
-      // 5. RESET E SUCESSO
+      // 7. RESET E SUCESSO
       console.log('🎉 Processo concluído com sucesso!');
       
       setShowForm(false);
@@ -297,7 +298,9 @@ const ClientesModule: React.FC = () => {
 • Email: ${formData.adminEmail}
 • Senha: ${adminPassword}
 
-✨ O admin já pode fazer login agora!`);
+✨ O admin já pode fazer login agora!
+
+⚠️ IMPORTANTE: Use exatamente essas credenciais para fazer login!`);
       
     } catch (error) {
       console.error('💥 Erro completo ao criar empresa:', error);
@@ -422,9 +425,9 @@ const ClientesModule: React.FC = () => {
                 type="password"
                 value={formData.adminPassword}
                 onChange={(e) => setFormData({...formData, adminPassword: e.target.value})}
-                placeholder="Opcional - senha será gerada automaticamente se não fornecida"
+                placeholder="Opcional - senha padrão será 123456 se não informada"
               />
-              <small>💡 Se não informar uma senha, será gerada automaticamente</small>
+              <small>💡 Se não informar uma senha, será usado '123456' como padrão</small>
             </div>
             <button type="submit" className="submit-button">
               🚀 Criar Empresa + Gestor
