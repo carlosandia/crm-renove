@@ -73,10 +73,14 @@ app.get('/api/test-db', async (req, res) => {
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
 import customersRoutes from './routes/customers';
+import companiesRoutes from './routes/companies';
+import integrationsRoutes from './routes/integrations';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/customers', customersRoutes);
+app.use('/api/companies', companiesRoutes);
+app.use('/api/integrations', integrationsRoutes);
 
 // Middleware de tratamento de erros
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -100,4 +104,4 @@ app.listen(PORT, () => {
   console.log(`📱 Ambiente: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 URL: http://localhost:${PORT}`);
   console.log(`💾 Supabase conectado: ${supabaseUrl}`);
-}); 
+});

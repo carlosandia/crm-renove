@@ -9,6 +9,30 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      companies: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+          segment: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+          segment?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+          segment?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       customers: {
         Row: {
           company: string | null
@@ -41,6 +65,44 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      integrations: {
+        Row: {
+          company_id: string | null
+          created_at: string | null
+          google_ads_token: string | null
+          id: string
+          linkedin_ads_token: string | null
+          meta_ads_token: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          company_id?: string | null
+          created_at?: string | null
+          google_ads_token?: string | null
+          id?: string
+          linkedin_ads_token?: string | null
+          meta_ads_token?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          company_id?: string | null
+          created_at?: string | null
+          google_ads_token?: string | null
+          id?: string
+          linkedin_ads_token?: string | null
+          meta_ads_token?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integrations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tenants: {
         Row: {

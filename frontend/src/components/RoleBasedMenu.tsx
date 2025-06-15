@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import ClientesModule from './ClientesModule';
 
 const RoleBasedMenu: React.FC = () => {
   const { user } = useAuth();
@@ -26,6 +27,27 @@ const RoleBasedMenu: React.FC = () => {
 
   const menuItems = getMenuItems();
 
+  const renderContent = () => {
+    if (activeMenu === 'Clientes' && user.role === 'super_admin') {
+      return <ClientesModule />;
+    }
+
+    return (
+      <div className="menu-content">
+        <h4>📄 {activeMenu}</h4>
+        <p>Conteúdo da seção "{activeMenu}" para usuário {user.role}</p>
+        {activeMenu === 'Meu Perfil' && (
+          <div className="profile-info">
+            <p><strong>Nome:</strong> {user.first_name} {user.last_name}</p>
+            <p><strong>Email:</strong> {user.email}</p>
+            <p><strong>Role:</strong> <span className={`role-badge role-${user.role}`}>{user.role}</span></p>
+            <p><strong>Tenant:</strong> {user.tenant_id}</p>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="role-based-menu">
       <div className="menu-header">
@@ -42,18 +64,7 @@ const RoleBasedMenu: React.FC = () => {
           </button>
         ))}
       </div>
-      <div className="menu-content">
-        <h4>📄 {activeMenu}</h4>
-        <p>Conteúdo da seção "{activeMenu}" para usuário {user.role}</p>
-        {activeMenu === 'Meu Perfil' && (
-          <div className="profile-info">
-            <p><strong>Nome:</strong> {user.first_name} {user.last_name}</p>
-            <p><strong>Email:</strong> {user.email}</p>
-            <p><strong>Role:</strong> <span className={`role-badge role-${user.role}`}>{user.role}</span></p>
-            <p><strong>Tenant:</strong> {user.tenant_id}</p>
-          </div>
-        )}
-      </div>
+      {renderContent()}
     </div>
   );
 };
