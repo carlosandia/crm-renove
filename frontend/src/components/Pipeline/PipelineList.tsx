@@ -1,6 +1,8 @@
+
 import React from 'react';
 import { Pipeline } from '../../hooks/usePipelines';
 import { User } from '../../hooks/useMembers';
+import { Plus, Zap } from 'lucide-react';
 import PipelineCard from './PipelineCard';
 
 interface PipelineListProps {
@@ -25,10 +27,14 @@ const PipelineList: React.FC<PipelineListProps> = ({
   if (pipelines.length === 0) {
     return (
       <div className="empty-state">
-        <h4>📋 Nenhuma Pipeline Criada</h4>
-        <p>Você ainda não criou nenhuma pipeline de vendas.</p>
+        <div className="empty-state-icon">
+          <Zap size={48} color="#667eea" />
+        </div>
+        <h4>🚀 Nenhuma Pipeline Criada</h4>
+        <p>Você ainda não criou nenhuma pipeline de vendas. Comece criando sua primeira pipeline para organizar seu processo comercial.</p>
         <button onClick={onCreateNew} className="create-button">
-          ➕ Criar Primeira Pipeline
+          <Plus size={20} />
+          <span>Criar Primeira Pipeline</span>
         </button>
       </div>
     );
@@ -53,4 +59,4 @@ const PipelineList: React.FC<PipelineListProps> = ({
   );
 };
 
-export default PipelineList; 
+export default PipelineList;

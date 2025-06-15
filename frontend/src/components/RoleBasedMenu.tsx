@@ -1,5 +1,22 @@
+
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { 
+  BarChart3, 
+  User, 
+  MessageSquare, 
+  Users, 
+  Settings, 
+  Target, 
+  UsersRound, 
+  GitBranch, 
+  FileText, 
+  TrendingUp, 
+  Eye, 
+  UserPlus, 
+  Calendar, 
+  Link 
+} from 'lucide-react';
 import ClientesModule from './ClientesModule';
 import VendedoresModule from './VendedoresModule';
 import PipelineModule from './PipelineModule';
@@ -28,6 +45,27 @@ const RoleBasedMenu: React.FC = () => {
     return ['Meu Perfil'];
   };
 
+  const getMenuIcon = (item: string) => {
+    const iconMap: { [key: string]: React.ReactNode } = {
+      'Relatório': <BarChart3 size={16} />,
+      'Meu Perfil': <User size={16} />,
+      'Comentários': <MessageSquare size={16} />,
+      'Clientes': <Users size={16} />,
+      'Integrações': <Settings size={16} />,
+      'Meta': <Target size={16} />,
+      'Vendedores': <UsersRound size={16} />,
+      'Criador de pipeline': <GitBranch size={16} />,
+      'Criador de formulários': <FileText size={16} />,
+      'Acompanhamento': <TrendingUp size={16} />,
+      'Leads': <UserPlus size={16} />,
+      'Pipeline': <Eye size={16} />,
+      'Calendário Público': <Calendar size={16} />,
+      'Encurtador de URL': <Link size={16} />
+    };
+    
+    return iconMap[item] || <Settings size={16} />;
+  };
+
   const menuItems = getMenuItems();
 
   const renderContent = () => {
@@ -49,7 +87,7 @@ const RoleBasedMenu: React.FC = () => {
 
     return (
       <div className="menu-content">
-        <h4>📄 {activeMenu}</h4>
+        <h4>{getMenuIcon(activeMenu)} {activeMenu}</h4>
         <p>Conteúdo da seção "{activeMenu}" para usuário {user.role}</p>
         {activeMenu === 'Meu Perfil' && (
           <div className="profile-info">
@@ -75,7 +113,8 @@ const RoleBasedMenu: React.FC = () => {
             onClick={() => setActiveMenu(item)}
             className={`menu-item ${activeMenu === item ? 'active' : ''}`}
           >
-            {item}
+            {getMenuIcon(item)}
+            <span style={{ marginLeft: '8px' }}>{item}</span>
           </button>
         ))}
       </div>
