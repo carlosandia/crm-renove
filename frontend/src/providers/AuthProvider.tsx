@@ -12,9 +12,9 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     
     // Simulação de usuários para demonstração
     const demoUsers = [
-      { id: '1', email: 'superadmin@crm.com', password: '123456', first_name: 'Super', last_name: 'Admin', role: 'super_admin' as const, tenant_id: 'tenant1', is_active: true, created_at: new Date().toISOString() },
-      { id: '2', email: 'admin@crm.com', password: '123456', first_name: 'Admin', last_name: 'User', role: 'admin' as const, tenant_id: 'tenant1', is_active: true, created_at: new Date().toISOString() },
-      { id: '3', email: 'member@crm.com', password: '123456', first_name: 'Member', last_name: 'User', role: 'member' as const, tenant_id: 'tenant1', is_active: true, created_at: new Date().toISOString() }
+      { id: '1', email: 'superadmin@crm.com', password: '123456', first_name: 'Super', last_name: 'Admin', role: 'super_admin' as const, tenant_id: '550e8400-e29b-41d4-a716-446655440000', is_active: true, created_at: new Date().toISOString() },
+      { id: '2', email: 'admin@crm.com', password: '123456', first_name: 'Admin', last_name: 'User', role: 'admin' as const, tenant_id: '550e8400-e29b-41d4-a716-446655440000', is_active: true, created_at: new Date().toISOString() },
+      { id: '3', email: 'member@crm.com', password: '123456', first_name: 'Member', last_name: 'User', role: 'member' as const, tenant_id: '550e8400-e29b-41d4-a716-446655440000', is_active: true, created_at: new Date().toISOString() }
     ];
 
     try {

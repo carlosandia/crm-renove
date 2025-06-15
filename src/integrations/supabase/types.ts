@@ -71,34 +71,37 @@ export type Database = {
       }
       users: {
         Row: {
+          avatar_url: string | null
           created_at: string | null
           email: string
+          first_name: string | null
           id: string
           is_active: boolean | null
-          name: string
+          last_name: string | null
           role: string
-          tenant_id: string
-          updated_at: string | null
+          tenant_id: string | null
         }
         Insert: {
+          avatar_url?: string | null
           created_at?: string | null
           email: string
+          first_name?: string | null
           id?: string
           is_active?: boolean | null
-          name: string
+          last_name?: string | null
           role: string
-          tenant_id: string
-          updated_at?: string | null
+          tenant_id?: string | null
         }
         Update: {
+          avatar_url?: string | null
           created_at?: string | null
           email?: string
+          first_name?: string | null
           id?: string
           is_active?: boolean | null
-          name?: string
+          last_name?: string | null
           role?: string
-          tenant_id?: string
-          updated_at?: string | null
+          tenant_id?: string | null
         }
         Relationships: []
       }

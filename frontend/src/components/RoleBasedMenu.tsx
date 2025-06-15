@@ -9,16 +9,19 @@ const RoleBasedMenu: React.FC = () => {
   if (!user) return null;
 
   const getMenuItems = () => {
-    switch (user.role) {
-      case 'super_admin':
-        return ['Relatório', 'Meu Perfil', 'Comentários', 'Clientes', 'Integrações'];
-      case 'admin':
-        return ['Meta', 'Vendedores', 'Criador de pipeline', 'Criador de formulários', 'Relatório', 'Acompanhamento', 'Leads', 'Meu Perfil'];
-      case 'member':
-        return ['Relatório', 'Pipeline', 'Acompanhamento', 'Leads', 'Meu Perfil', 'Calendário Público', 'Encurtador de URL'];
-      default:
-        return ['Meu Perfil'];
+    if (user.role === 'super_admin') {
+      return ['Relatório', 'Meu Perfil', 'Comentários', 'Clientes', 'Integrações'];
     }
+    
+    if (user.role === 'admin') {
+      return ['Meta', 'Vendedores', 'Criador de pipeline', 'Criador de formulários', 'Relatório', 'Acompanhamento', 'Leads', 'Meu Perfil'];
+    }
+    
+    if (user.role === 'member') {
+      return ['Relatório', 'Pipeline', 'Acompanhamento', 'Leads', 'Meu Perfil', 'Calendário Público', 'Encurtador de URL'];
+    }
+    
+    return ['Meu Perfil'];
   };
 
   const menuItems = getMenuItems();
