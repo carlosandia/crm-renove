@@ -25,6 +25,9 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.3",
-    "@supabase/supabase-js": "^2.50.0"
+    "@supabase/supabase-js": "^2.50.0",
+    "@vitejs/plugin-react": "^4.5.2",
+    "lovable-tagger": "^1.1.8",
+    "vite": "^6.3.5"
   }
 }
