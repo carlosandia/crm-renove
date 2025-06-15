@@ -17,10 +17,16 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    hmr: {
+      clientPort: 8080,
+    }
   },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './frontend/src')
     }
+  },
+  define: {
+    __WS_TOKEN__: JSON.stringify('')
   }
 }))
