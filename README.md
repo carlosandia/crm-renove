@@ -1,6 +1,6 @@
-# 🚀 CRM Sistema - Fullstack
+# 🚀 Supabase GitHub Genesis - CRM Sistema Fullstack
 
-Sistema de Gerenciamento de Relacionamento com Cliente desenvolvido com React, Node.js, TypeScript e Supabase.
+Sistema de Gerenciamento de Relacionamento com Cliente desenvolvido com React, Node.js, TypeScript e Supabase, incluindo servidor MCP integrado.
 
 ## 🛠️ Stack Tecnológica
 
@@ -8,6 +8,7 @@ Sistema de Gerenciamento de Relacionamento com Cliente desenvolvido com React, N
 - **Backend**: Node.js + Express + TypeScript
 - **Banco de Dados**: Supabase (PostgreSQL)
 - **Autenticação**: Supabase Auth
+- **MCP Server**: Servidor MCP integrado ao Supabase
 - **Estilização**: CSS3 com design moderno
 - **Desenvolvimento**: Nodemon, Concurrently
 
@@ -16,6 +17,11 @@ Sistema de Gerenciamento de Relacionamento com Cliente desenvolvido com React, N
 - ✅ Interface moderna e responsiva
 - ✅ Backend API RESTful
 - ✅ Integração com Supabase
+- ✅ Servidor MCP conectado ao Supabase
+- ✅ Tabela única de usuários com role e tenant_id
+- ✅ Renderização condicional baseada em permissões
+- ✅ Redirecionamento único para /app
+- ✅ Multi-tenancy implementado
 - ✅ Gerenciamento de clientes
 - ✅ Sistema de autenticação
 - ✅ Monitoramento de status em tempo real
@@ -64,7 +70,7 @@ docker-compose up --build
 ## 📁 Estrutura do Projeto
 
 ```
-ola-lovable-spark/
+supabase-github-genesis/
 ├── backend/                 # Servidor Node.js
 │   ├── src/
 │   │   ├── index.ts        # Servidor principal
@@ -79,6 +85,7 @@ ola-lovable-spark/
 │   │   ├── App.tsx        # Componente principal
 │   │   └── App.css        # Estilos
 │   └── package.json
+├── supabase-mcp-server.js  # Servidor MCP Supabase
 ├── package.json           # Scripts principais
 ├── docker-compose.yml     # Configuração Docker
 └── README.md             # Documentação
