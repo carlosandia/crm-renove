@@ -50,18 +50,40 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     return () => subscription.unsubscribe();
   }, []);
 
-  const loadUserData = async (userId: string) => {
+  const loadUserData = async (authUserId: string) => {
     try {
-      console.log('🔄 Carregando dados do usuário:', userId);
+      console.log('🔄 Carregando dados do usuário com auth_user_id:', authUserId);
       
       const { data, error } = await supabase
         .from('users')
         .select('*')
-        .eq('id', userId)
+        .eq('auth_user_id', authUserId)
         .single();
 
       if (error) {
-        console.error('❌ Erro ao carregar dados do usuário:', error);
+        console.error('❌ Erro ao carregar dados do usuário por auth_user_id:', error);
+        
+        // Tentar buscar por ID direto como fallback
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', authUserId)
+          .single();
+
+        if (fallbackError) {
+          console.error('❌ Erro no fallback por ID:', fallbackError);
+          return;
+        }
+
+        console.log('✅ Dados do usuário carregados via fallback:', {
+          id: fallbackData.id,
+          email: fallbackData.email,
+          role: fallbackData.role,
+          tenant_id: fallbackData.tenant_id,
+          is_active: fallbackData.is_active
+        });
+        
+        setUser(fallbackData);
         return;
       }
 
@@ -85,7 +107,22 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     try {
       console.log('🔐 Tentando fazer login com:', email);
       
-      // Primeiro verificar se o usuário existe na nossa tabela
+      // Primeiro, tentar login direto no Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (authData.user && !authError) {
+        console.log('✅ Login direto bem-sucedido:', authData.user.email);
+        await loadUserData(authData.user.id);
+        setLoading(false);
+        return true;
+      }
+
+      // Se login falhou, verificar se usuário existe na nossa tabela
+      console.log('⚠️ Login direto falhou, verificando usuário na tabela...');
+      
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('*')
@@ -100,93 +137,81 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
       console.log('✅ Usuário encontrado na tabela users:', userData.email);
 
-      // Tentar fazer login com Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-
-      if (authError) {
-        console.error('❌ Erro de autenticação no Supabase Auth:', authError.message);
+      // Se usuário existe na tabela mas não tem auth_user_id, criar no Supabase Auth
+      if (!userData.auth_user_id) {
+        console.log('🔄 Usuário sem auth_user_id, criando no Supabase Auth...');
         
-        // Se o erro for "Invalid login credentials", pode ser que o usuário não tenha sido criado no Auth
-        if (authError.message.includes('Invalid login credentials')) {
-          console.log('⚠️ Credenciais inválidas - usuário pode não existir no Supabase Auth');
-          
-          // Tentar criar o usuário no Supabase Auth com a senha padrão
-          console.log('🔄 Tentando criar usuário no Supabase Auth...');
-          
-          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-              data: {
-                first_name: userData.first_name,
-                last_name: userData.last_name,
-                role: userData.role,
-                tenant_id: userData.tenant_id
-              }
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/`,
+            data: {
+              first_name: userData.first_name,
+              last_name: userData.last_name,
+              role: userData.role,
+              tenant_id: userData.tenant_id
             }
+          }
+        });
+
+        if (signUpError) {
+          console.error('❌ Erro ao criar usuário no Supabase Auth:', signUpError.message);
+          setLoading(false);
+          return false;
+        }
+
+        if (signUpData.user) {
+          console.log('✅ Usuário criado no Supabase Auth:', signUpData.user.email);
+          
+          // Confirmar email automaticamente para usuários admin/super_admin
+          if (userData.role && ['super_admin', 'admin'].includes(userData.role)) {
+            try {
+              await supabase.auth.admin.updateUserById(signUpData.user.id, {
+                email_confirm: true
+              });
+              console.log('✅ Email confirmado automaticamente para admin');
+            } catch (confirmError) {
+              console.log('⚠️ Não foi possível confirmar email automaticamente, mas continuando...');
+            }
+          }
+          
+          // Atualizar o auth_user_id na nossa tabela
+          await supabase
+            .from('users')
+            .update({ auth_user_id: signUpData.user.id })
+            .eq('email', email);
+
+          console.log('✅ auth_user_id atualizado na tabela users');
+
+          // Tentar fazer login novamente
+          const { data: retryAuthData, error: retryAuthError } = await supabase.auth.signInWithPassword({
+            email,
+            password
           });
 
-          if (signUpError) {
-            console.error('❌ Erro ao criar usuário no Supabase Auth:', signUpError.message);
+          if (retryAuthError) {
+            console.error('❌ Erro no login após criação:', retryAuthError.message);
             setLoading(false);
             return false;
           }
 
-          if (signUpData.user) {
-            console.log('✅ Usuário criado no Supabase Auth:', signUpData.user.email);
-            
-            // Atualizar o ID do auth na nossa tabela
-            await supabase
-              .from('users')
-              .update({ id: signUpData.user.id })
-              .eq('email', email);
-
-            // Tentar fazer login novamente
-            const { data: retryAuthData, error: retryAuthError } = await supabase.auth.signInWithPassword({
-              email,
-              password
-            });
-
-            if (retryAuthError) {
-              console.error('❌ Erro no segundo login:', retryAuthError.message);
-              setLoading(false);
-              return false;
-            }
-
-            if (retryAuthData.user) {
-              console.log('✅ Login bem-sucedido após criação no Auth');
-              await loadUserData(retryAuthData.user.id);
-              setLoading(false);
-              return true;
-            }
+          if (retryAuthData.user) {
+            console.log('✅ Login bem-sucedido após criação no Auth');
+            await loadUserData(retryAuthData.user.id);
+            setLoading(false);
+            return true;
           }
         }
-        
+      } else {
+        // Usuário tem auth_user_id mas login falhou - pode ser problema de senha
+        console.log('❌ Usuário tem auth_user_id mas credenciais inválidas');
         setLoading(false);
         return false;
       }
-
-      // Se login com Supabase Auth foi bem-sucedido
-      if (authData.user) {
-        console.log('✅ Login bem-sucedido:', authData.user.email);
-        
-        // Verificar se o ID bate com nossa tabela, senão atualizar
-        if (userData.id !== authData.user.id) {
-          console.log('🔄 Atualizando ID do usuário na tabela...');
-          await supabase
-            .from('users')
-            .update({ id: authData.user.id })
-            .eq('email', email);
-        }
-        
-        await loadUserData(authData.user.id);
-      }
       
       setLoading(false);
-      return true;
+      return false;
     } catch (error) {
       console.error('💥 Erro no login:', error);
       setLoading(false);
