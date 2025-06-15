@@ -1,13 +1,13 @@
 
 import express from 'express';
-import { supabase } from '../index';
+import { supabase, supabaseAdmin } from '../index';
 
 const router = express.Router();
 
 // Listar empresas
 router.get('/', async (req, res) => {
   try {
-    const { data: companies, error } = await supabase
+    const { data: companies, error } = await supabaseAdmin
       .from('companies')
       .select('*')
       .order('created_at', { ascending: false });
@@ -33,8 +33,10 @@ router.post('/', async (req, res) => {
   try {
     const { companyName, segment, adminName, adminEmail, adminPassword } = req.body;
 
+    console.log('Dados recebidos:', { companyName, segment, adminName, adminEmail });
+
     // Verificar se email já existe
-    const { data: existingUser } = await supabase
+    const { data: existingUser } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('email', adminEmail)
@@ -47,7 +49,7 @@ router.post('/', async (req, res) => {
     }
 
     // Criar empresa
-    const { data: company, error: companyError } = await supabase
+    const { data: company, error: companyError } = await supabaseAdmin
       .from('companies')
       .insert([{ 
         name: companyName, 
@@ -57,11 +59,14 @@ router.post('/', async (req, res) => {
       .single();
 
     if (companyError) {
+      console.error('Erro ao criar empresa:', companyError);
       throw companyError;
     }
 
+    console.log('Empresa criada:', company);
+
     // Criar usuário admin
-    const { data: admin, error: adminError } = await supabase
+    const { data: admin, error: adminError } = await supabaseAdmin
       .from('users')
       .insert([{
         email: adminEmail,
@@ -75,11 +80,14 @@ router.post('/', async (req, res) => {
       .single();
 
     if (adminError) {
+      console.error('Erro ao criar admin:', adminError);
       throw adminError;
     }
 
+    console.log('Admin criado:', admin);
+
     // Criar registro de integração vazio
-    const { error: integrationError } = await supabase
+    const { error: integrationError } = await supabaseAdmin
       .from('integrations')
       .insert([{
         company_id: company.id
