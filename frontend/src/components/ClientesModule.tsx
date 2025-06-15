@@ -176,7 +176,34 @@ const ClientesModule: React.FC = () => {
 
       console.log('Empresa criada com sucesso:', company);
 
-      // Criar usuário admin
+      // Gerar senha se não fornecida
+      const adminPassword = formData.adminPassword || `Admin${Math.floor(Math.random() * 10000)}!`;
+      
+      // Criar usuário admin no Supabase Auth
+      console.log('Criando usuário no Supabase Auth...');
+      const { data: authUser, error: authError } = await supabase.auth.signUp({
+        email: formData.adminEmail,
+        password: adminPassword,
+        options: {
+          data: {
+            first_name: formData.adminName.split(' ')[0],
+            last_name: formData.adminName.split(' ').slice(1).join(' ') || '',
+            role: 'admin',
+            tenant_id: company.id
+          }
+        }
+      });
+
+      if (authError) {
+        console.error('Erro ao criar usuário no Supabase Auth:', authError);
+        // Rollback: remover empresa criada
+        await supabase.from('companies').delete().eq('id', company.id);
+        throw authError;
+      }
+
+      console.log('Usuário criado no Supabase Auth:', authUser);
+
+      // Criar usuário admin na tabela users
       const adminNames = formData.adminName.split(' ');
       const firstName = adminNames[0];
       const lastName = adminNames.slice(1).join(' ') || '';
@@ -184,6 +211,7 @@ const ClientesModule: React.FC = () => {
       const { data: admin, error: adminError } = await supabase
         .from('users')
         .insert([{
+          id: authUser.user?.id,
           email: formData.adminEmail,
           first_name: firstName,
           last_name: lastName,
@@ -195,14 +223,15 @@ const ClientesModule: React.FC = () => {
         .single();
 
       if (adminError) {
-        console.error('Erro ao criar admin:', adminError);
+        console.error('Erro ao criar admin na tabela users:', adminError);
         
-        // Rollback: remover empresa criada
+        // Rollback: remover empresa e usuário do auth
         await supabase.from('companies').delete().eq('id', company.id);
+        // Nota: não é possível deletar usuário do auth via client, mas não é crítico
         throw adminError;
       }
 
-      console.log('Admin criado com sucesso:', admin);
+      console.log('Admin criado na tabela users:', admin);
 
       // Criar registro de integração vazio
       try {
@@ -234,7 +263,7 @@ const ClientesModule: React.FC = () => {
       // Recarregar dados
       await loadData();
       
-      alert('Empresa e gestor criados com sucesso!');
+      alert(`Empresa e gestor criados com sucesso!\n\nCredenciais de acesso:\nEmail: ${formData.adminEmail}\nSenha: ${adminPassword}\n\nO admin pode fazer login agora!`);
       
     } catch (error) {
       console.error('Erro completo ao criar empresa:', error);

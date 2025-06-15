@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import AuthContext from '../contexts/AuthContext';
 import { User } from '../types/User';
@@ -26,6 +27,7 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
     // Escutar mudanças de autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state change:', event, session);
       if (session?.user) {
         await loadUserData(session.user.id);
       } else {
@@ -38,6 +40,8 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
   const loadUserData = async (userId: string) => {
     try {
+      console.log('Carregando dados do usuário:', userId);
+      
       const { data, error } = await supabase
         .from('users')
         .select('*')
@@ -49,6 +53,7 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
         return;
       }
 
+      console.log('Dados do usuário carregados:', data);
       setUser(data);
     } catch (error) {
       console.error('Erro ao carregar usuário:', error);
@@ -59,14 +64,18 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     setLoading(true);
     
     try {
-      // Primeiro, tentar fazer login com Supabase Auth
+      console.log('Tentando fazer login com:', email);
+      
+      // Tentar fazer login com Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
       if (authError) {
-        // Se falhar, usar usuários de demonstração como fallback
+        console.error('Erro de autenticação:', authError);
+        
+        // Se falhar, tentar usuários de demonstração como fallback
         const demoUsers = [
           { id: '1', email: 'superadmin@crm.com', password: '123456', first_name: 'Super', last_name: 'Admin', role: 'super_admin' as const, tenant_id: '550e8400-e29b-41d4-a716-446655440000', is_active: true, created_at: new Date().toISOString() },
           { id: '2', email: 'admin@crm.com', password: '123456', first_name: 'Admin', last_name: 'User', role: 'admin' as const, tenant_id: '550e8400-e29b-41d4-a716-446655440000', is_active: true, created_at: new Date().toISOString() },
@@ -76,18 +85,21 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
         const foundUser = demoUsers.find(u => u.email === email && u.password === password);
         
         if (foundUser) {
+          console.log('Login com usuário de demonstração:', foundUser.email);
           const { password: _, ...userWithoutPassword } = foundUser;
           setUser(userWithoutPassword);
           setLoading(false);
           return true;
         }
         
+        console.log('Credenciais inválidas');
         setLoading(false);
         return false;
       }
 
       // Se login com Supabase Auth foi bem-sucedido, carregar dados do usuário
       if (authData.user) {
+        console.log('Login bem-sucedido com Supabase Auth:', authData.user.email);
         await loadUserData(authData.user.id);
       }
       
@@ -101,6 +113,7 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   };
 
   const logout = async () => {
+    console.log('Fazendo logout...');
     await supabase.auth.signOut();
     setUser(null);
   };
