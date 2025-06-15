@@ -26,10 +26,19 @@ router.post('/login', async (req: Request, res: Response) => {
       });
     }
 
+    // Buscar dados do usuário na tabela única
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', data.user.id)
+      .single();
+
     res.json({
       message: 'Login realizado com sucesso',
       user: data.user,
-      session: data.session
+      session: data.session,
+      userData: userData, // ✅ Dados da tabela única com role e tenant_id
+      redirect: '/app' // ✅ Redirecionamento único para /app
     });
   } catch (error) {
     res.status(500).json({
@@ -39,37 +48,66 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
-// Rota de registro
+// Rota de registro seguindo boas práticas
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name, role = 'user', tenant_id } = req.body;
 
-    if (!email || !password || !name) {
+    if (!email || !password || !name || !tenant_id) {
       return res.status(400).json({
-        error: 'Email, senha e nome são obrigatórios'
+        error: 'Email, senha, nome e tenant_id são obrigatórios'
       });
     }
 
-    const { data, error } = await supabase.auth.signUp({
+    // Validar role
+    if (!['admin', 'manager', 'user'].includes(role)) {
+      return res.status(400).json({
+        error: 'Role deve ser: admin, manager ou user'
+      });
+    }
+
+    // Criar usuário no Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
-          name
+          name,
+          role,
+          tenant_id
         }
       }
     });
 
-    if (error) {
+    if (authError) {
       return res.status(400).json({
         error: 'Erro ao criar usuário',
-        details: error.message
+        details: authError.message
       });
+    }
+
+    // Criar registro na tabela única de usuários
+    if (authData.user) {
+      const { error: dbError } = await supabase
+        .from('users')
+        .insert([{
+          id: authData.user.id,
+          email,
+          name,
+          role,
+          tenant_id,
+          is_active: true
+        }]);
+
+      if (dbError) {
+        console.error('Erro ao inserir usuário na tabela:', dbError);
+      }
     }
 
     res.status(201).json({
       message: 'Usuário criado com sucesso',
-      user: data.user
+      user: authData.user,
+      redirect: '/app' // ✅ Redirecionamento único para /app
     });
   } catch (error) {
     res.status(500).json({

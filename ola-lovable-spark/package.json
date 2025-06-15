@@ -11,10 +11,19 @@
     "build": "cd frontend && npm run build",
     "start": "cd backend && npm start"
   },
-  "keywords": ["crm", "react", "nodejs", "typescript"],
+  "keywords": [
+    "crm",
+    "react",
+    "nodejs",
+    "typescript"
+  ],
   "author": "Carlos Andia",
   "license": "MIT",
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.3",
+    "@supabase/supabase-js": "^2.50.0"
   }
-} 
+}
