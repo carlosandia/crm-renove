@@ -1,5 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Company {
   id: string;
@@ -52,25 +52,40 @@ const ClientesModule: React.FC = () => {
 
   const loadData = async () => {
     try {
-      // Carregar empresas
-      const companiesResponse = await fetch('http://localhost:5001/api/companies');
-      if (companiesResponse.ok) {
-        const companiesData = await companiesResponse.json();
-        setCompanies(companiesData.companies || []);
+      // Carregar empresas usando Supabase
+      const { data: companies, error: companiesError } = await supabase
+        .from('companies')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (companiesError) {
+        console.error('Erro ao buscar empresas:', companiesError);
+      } else {
+        setCompanies(companies || []);
       }
 
-      // Carregar admins
-      const usersResponse = await fetch('http://localhost:5001/api/users?role=admin');
-      if (usersResponse.ok) {
-        const usersData = await usersResponse.json();
-        setAdmins(usersData.users || []);
+      // Carregar admins usando Supabase
+      const { data: users, error: usersError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('role', 'admin')
+        .order('created_at', { ascending: false });
+
+      if (usersError) {
+        console.error('Erro ao buscar usuários:', usersError);
+      } else {
+        setAdmins(users || []);
       }
 
-      // Carregar integrações
-      const integrationsResponse = await fetch('http://localhost:5001/api/integrations');
-      if (integrationsResponse.ok) {
-        const integrationsData = await integrationsResponse.json();
-        setIntegrations(integrationsData.integrations || []);
+      // Carregar integrações usando Supabase
+      const { data: integrations, error: integrationsError } = await supabase
+        .from('integrations')
+        .select('*');
+
+      if (integrationsError) {
+        console.error('Erro ao buscar integrações:', integrationsError);
+      } else {
+        setIntegrations(integrations || []);
       }
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -81,10 +96,16 @@ const ClientesModule: React.FC = () => {
 
   const loadMembers = async (companyId: string) => {
     try {
-      const membersResponse = await fetch(`http://localhost:5001/api/users?tenant_id=${companyId}&role=member`);
-      if (membersResponse.ok) {
-        const membersData = await membersResponse.json();
-        setMembers(membersData.users || []);
+      const { data: members, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('tenant_id', companyId)
+        .eq('role', 'member');
+
+      if (error) {
+        console.error('Erro ao carregar membros:', error);
+      } else {
+        setMembers(members || []);
       }
     } catch (error) {
       console.error('Erro ao carregar membros:', error);
@@ -94,51 +115,94 @@ const ClientesModule: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch('http://localhost:5001/api/companies', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          companyName: formData.companyName,
-          segment: formData.segment,
-          adminName: formData.adminName,
-          adminEmail: formData.adminEmail,
-          adminPassword: formData.adminPassword
-        }),
-      });
+      // Verificar se email já existe
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', formData.adminEmail)
+        .single();
 
-      if (response.ok) {
-        setShowForm(false);
-        setFormData({
-          companyName: '',
-          segment: '',
-          adminName: '',
-          adminEmail: '',
-          adminPassword: ''
-        });
-        loadData(); // Recarregar dados
-      } else {
-        console.error('Erro ao criar empresa');
+      if (existingUser) {
+        alert('Email já está em uso');
+        return;
       }
+
+      // Criar empresa
+      const { data: company, error: companyError } = await supabase
+        .from('companies')
+        .insert([{ 
+          name: formData.companyName, 
+          segment: formData.segment 
+        }])
+        .select()
+        .single();
+
+      if (companyError) {
+        console.error('Erro ao criar empresa:', companyError);
+        throw companyError;
+      }
+
+      // Criar usuário admin
+      const { data: admin, error: adminError } = await supabase
+        .from('users')
+        .insert([{
+          email: formData.adminEmail,
+          first_name: formData.adminName.split(' ')[0],
+          last_name: formData.adminName.split(' ').slice(1).join(' ') || '',
+          role: 'admin',
+          tenant_id: company.id,
+          is_active: true
+        }])
+        .select()
+        .single();
+
+      if (adminError) {
+        console.error('Erro ao criar admin:', adminError);
+        // Remover empresa se erro ao criar admin
+        await supabase.from('companies').delete().eq('id', company.id);
+        throw adminError;
+      }
+
+      // Criar registro de integração vazio
+      try {
+        await supabase
+          .from('integrations')
+          .insert([{
+            company_id: company.id
+          }]);
+      } catch (integrationErr) {
+        console.warn('Erro ao criar integração:', integrationErr);
+      }
+
+      setShowForm(false);
+      setFormData({
+        companyName: '',
+        segment: '',
+        adminName: '',
+        adminEmail: '',
+        adminPassword: ''
+      });
+      loadData(); // Recarregar dados
+      alert('Empresa e gestor criados com sucesso!');
     } catch (error) {
       console.error('Erro ao enviar formulário:', error);
+      alert('Erro ao criar empresa. Verifique os dados e tente novamente.');
     }
   };
 
   const toggleAdminStatus = async (adminId: string, currentStatus: boolean) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/users/${adminId}/toggle-status`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ is_active: !currentStatus }),
-      });
+      const { error } = await supabase
+        .from('users')
+        .update({ is_active: !currentStatus })
+        .eq('id', adminId);
 
-      if (response.ok) {
-        loadData();
+      if (error) {
+        console.error('Erro ao alterar status:', error);
+        throw error;
       }
+
+      loadData();
     } catch (error) {
       console.error('Erro ao alterar status:', error);
     }
