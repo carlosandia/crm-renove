@@ -51,18 +51,18 @@ router.post('/login', async (req: Request, res: Response) => {
 // Rota de registro seguindo boas práticas
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { email, password, name, role = 'user', tenant_id } = req.body;
+    const { email, password, first_name, last_name, role = 'member', tenant_id } = req.body;
 
-    if (!email || !password || !name || !tenant_id) {
+    if (!email || !password || !first_name || !tenant_id) {
       return res.status(400).json({
-        error: 'Email, senha, nome e tenant_id são obrigatórios'
+        error: 'Email, senha, primeiro nome e tenant_id são obrigatórios'
       });
     }
 
     // Validar role
-    if (!['admin', 'manager', 'user'].includes(role)) {
+    if (!['super_admin', 'admin', 'member'].includes(role)) {
       return res.status(400).json({
-        error: 'Role deve ser: admin, manager ou user'
+        error: 'Role deve ser: super_admin, admin ou member'
       });
     }
 
@@ -72,7 +72,8 @@ router.post('/register', async (req: Request, res: Response) => {
       password,
       options: {
         data: {
-          name,
+          first_name,
+          last_name,
           role,
           tenant_id
         }
@@ -93,7 +94,8 @@ router.post('/register', async (req: Request, res: Response) => {
         .insert([{
           id: authData.user.id,
           email,
-          name,
+          first_name,
+          last_name,
           role,
           tenant_id,
           is_active: true

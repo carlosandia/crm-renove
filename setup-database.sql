@@ -9,15 +9,16 @@ DROP TABLE IF EXISTS users CASCADE;
 -- ============================================
 -- TABELA USERS (ÚNICA TABELA DE USUÁRIOS)
 -- ============================================
-CREATE TABLE users (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'manager', 'user')),
-    tenant_id VARCHAR(100) NOT NULL,
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT UNIQUE NOT NULL,
+  first_name TEXT,
+  last_name TEXT,
+  avatar_url TEXT,
+  is_active BOOLEAN DEFAULT TRUE,
+  role TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'member')),
+  tenant_id UUID,
+  created_at TIMESTAMP DEFAULT NOW()
 );
 
 -- ============================================
@@ -69,12 +70,12 @@ CREATE POLICY "customers_policy" ON customers
 -- DADOS DE EXEMPLO
 -- ============================================
 
--- Inserir usuários de exemplo
-INSERT INTO users (email, name, role, tenant_id) VALUES
-('admin@crm.com', 'Admin User', 'admin', 'tenant-1'),
-('manager@crm.com', 'Manager User', 'manager', 'tenant-1'),
-('user@crm.com', 'Regular User', 'user', 'tenant-1'),
-('admin2@crm.com', 'Admin Tenant 2', 'admin', 'tenant-2');
+-- Inserir usuários de exemplo com as novas roles
+INSERT INTO users (email, first_name, last_name, role, tenant_id) VALUES
+('superadmin@crm.com', 'Super', 'Admin', 'super_admin', 'tenant-1'),
+('admin@crm.com', 'Admin', 'User', 'admin', 'tenant-1'),
+('member@crm.com', 'Member', 'User', 'member', 'tenant-1'),
+('admin2@crm.com', 'Admin', 'Tenant2', 'admin', 'tenant-2');
 
 -- Inserir clientes de exemplo
 INSERT INTO customers (name, email, phone, company, tenant_id) VALUES
