@@ -1,4 +1,3 @@
-
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -15,11 +14,18 @@ const PORT = process.env.PORT || 5001;
 // Configuração do Supabase
 const supabaseUrl = process.env.SUPABASE_URL || 'https://marajvabdwkpgopytvhh.supabase.co';
 const supabaseKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hcmFqdmFiZHdrcGdvcHl0dmhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjQwMDksImV4cCI6MjA2NTM0MDAwOX0.C_2W2u8JyApjbhqPJm1q1dFX82KoRSm3auBfE7IpmDU';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hcmFqdmFiZHdrcGdvcHl0dmhoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0OTc2NDAwOSwiZXhwIjoyMDY1MzQwMDA5fQ.Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8';
 
-// ⚠️ ATENÇÃO: Esta service role key está inválida!
-// Você precisa obter a chave correta do painel do Supabase
-console.log('⚠️ AVISO: Service Role Key pode estar inválida. Verifique no painel do Supabase.');
+// Usar a chave anon como fallback temporário até obter a service role key correta
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseKey;
+
+// Verificar se as chaves estão configuradas
+if (!supabaseUrl || !supabaseKey) {
+  console.error('❌ ERRO: Variáveis do Supabase não configuradas!');
+  process.exit(1);
+}
+
+console.log('🔑 Supabase URL:', supabaseUrl);
+console.log('🔑 Usando chave anon para operações admin (temporário)');
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
@@ -98,6 +104,7 @@ import integrationsRoutes from './routes/integrations';
 import vendedoresRoutes from './routes/vendedores';
 import salesGoalsRoutes from './routes/sales-goals';
 import pipelinesRoutes from './routes/pipelines';
+import setupRoutes from './routes/setup';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
@@ -107,6 +114,7 @@ app.use('/api/integrations', integrationsRoutes);
 app.use('/api/vendedores', vendedoresRoutes);
 app.use('/api/sales-goals', salesGoalsRoutes);
 app.use('/api/pipelines', pipelinesRoutes);
+app.use('/api/setup', setupRoutes);
 
 // Middleware de tratamento de erros
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

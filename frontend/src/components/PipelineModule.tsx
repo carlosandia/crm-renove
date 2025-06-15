@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import '../styles/PipelineModule.css';
 
 // ============================================
 // INTERFACES E TIPOS
@@ -48,6 +49,25 @@ interface Pipeline {
   pipeline_stages?: PipelineStage[];
 }
 
+// Novas interfaces para criação completa
+interface CustomFieldForm {
+  field_name: string;
+  field_label: string;
+  field_type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number' | 'date';
+  field_options?: string[];
+  is_required: boolean;
+  field_order: number;
+  placeholder?: string;
+}
+
+interface StageForm {
+  name: string;
+  temperature_score: number;
+  max_days_allowed: number;
+  color: string;
+  order_index: number;
+}
+
 // ============================================
 // COMPONENTE PRINCIPAL
 // ============================================
@@ -61,7 +81,6 @@ const PipelineModule: React.FC = () => {
   const [selectedPipeline, setSelectedPipeline] = useState<Pipeline | null>(null);
   const [showStageModal, setShowStageModal] = useState(false);
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
-  const [selectedStage, setSelectedStage] = useState<PipelineStage | null>(null);
 
   // Estados para formulários
   const [pipelineForm, setPipelineForm] = useState({
@@ -69,6 +88,35 @@ const PipelineModule: React.FC = () => {
     description: '',
     member_ids: [] as string[]
   });
+
+  // Novos estados para criação completa
+  const [stages, setStages] = useState<StageForm[]>([]);
+  const [customFields, setCustomFields] = useState<CustomFieldForm[]>([]);
+  const [showStageForm, setShowStageForm] = useState(false);
+  const [showFieldForm, setShowFieldForm] = useState(false);
+  const [editingStageIndex, setEditingStageIndex] = useState<number | null>(null);
+  const [editingFieldIndex, setEditingFieldIndex] = useState<number | null>(null);
+
+  // Estados para formulários inline
+  const [newStage, setNewStage] = useState<StageForm>({
+    name: '',
+    temperature_score: 50,
+    max_days_allowed: 7,
+    color: '#3B82F6',
+    order_index: 0
+  });
+
+  const [newField, setNewField] = useState<CustomFieldForm>({
+    field_name: '',
+    field_label: '',
+    field_type: 'text',
+    field_options: [],
+    is_required: false,
+    field_order: 0,
+    placeholder: ''
+  });
+
+  const [fieldOptions, setFieldOptions] = useState<string>(''); // Para campos select
 
   const [stageForm, setStageForm] = useState({
     name: '',
@@ -87,22 +135,115 @@ const PipelineModule: React.FC = () => {
   // EFEITOS E CARREGAMENTO DE DADOS
   // ============================================
 
+  // Função de teste para criar pipeline
+  const handleTestCreatePipeline = async () => {
+    try {
+      console.log('🧪 Teste direto de criação de pipeline');
+      console.log('👤 Usuário logado:', {
+        email: user?.email,
+        id: user?.id,
+        role: user?.role,
+        tenant_id: user?.tenant_id
+      });
+
+      const testData = {
+        name: "Pipeline Teste " + new Date().toLocaleTimeString(),
+        description: "Pipeline criada via teste direto",
+        tenant_id: user?.tenant_id,
+        created_by: user?.email,
+        member_ids: [],
+        stages: [
+          {
+            name: "Novo Lead",
+            temperature_score: 50,
+            max_days_allowed: 7,
+            color: "#3B82F6",
+            order_index: 1
+          },
+          {
+            name: "Oportunidade",
+            temperature_score: 75,
+            max_days_allowed: 10,
+            color: "#10B981",
+            order_index: 2
+          }
+        ],
+        custom_fields: [
+          {
+            field_name: "nome",
+            field_label: "Nome",
+            field_type: "text",
+            is_required: true,
+            field_order: 1
+          },
+          {
+            field_name: "email",
+            field_label: "Email",
+            field_type: "email",
+            is_required: true,
+            field_order: 2
+          }
+        ]
+      };
+
+      console.log('📦 Enviando dados:', testData);
+
+      const response = await fetch('http://localhost:5001/api/pipelines/complete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(testData),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Pipeline criada com sucesso:', result);
+        alert('✅ Pipeline de teste criada com sucesso!\nID: ' + result.pipeline.id);
+        loadPipelines(); // Recarregar lista
+      } else {
+        const errorData = await response.json();
+        console.error('❌ Erro na resposta:', errorData);
+        alert('❌ Erro ao criar pipeline: ' + errorData.error);
+      }
+    } catch (error) {
+      console.error('💥 Erro:', error);
+      alert('💥 Erro de conexão');
+    }
+  };
+
   useEffect(() => {
+    console.log('👤 Estado do usuário:', user);
+    console.log('🔑 Role do usuário:', user?.role);
+    console.log('🏢 Tenant ID:', user?.tenant_id);
+    
     if (user && user.role === 'admin') {
+      console.log('✅ Usuário é admin, carregando dados...');
       loadPipelines();
       loadMembers();
+    } else {
+      console.log('❌ Usuário não é admin ou não está logado');
     }
   }, [user]);
 
   const loadPipelines = async () => {
     try {
+      console.log('🔍 Carregando pipelines para tenant:', user?.tenant_id);
       const response = await fetch(`http://localhost:5001/api/pipelines?tenant_id=${user?.tenant_id}`);
+      console.log('📡 Response status:', response.status);
+      
       if (response.ok) {
         const data = await response.json();
+        console.log('📊 Dados recebidos:', data);
+        console.log('📋 Pipelines encontradas:', data.pipelines?.length || 0);
         setPipelines(data.pipelines || []);
+      } else {
+        console.error('❌ Erro na resposta:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('❌ Detalhes do erro:', errorText);
       }
     } catch (error) {
-      console.error('Erro ao carregar pipelines:', error);
+      console.error('💥 Erro ao carregar pipelines:', error);
     } finally {
       setLoading(false);
     }
@@ -121,35 +262,205 @@ const PipelineModule: React.FC = () => {
   };
 
   // ============================================
+  // FUNÇÕES AUXILIARES PARA ETAPAS E CAMPOS
+  // ============================================
+
+  const addStage = () => {
+    if (!newStage.name.trim()) {
+      alert('Nome da etapa é obrigatório');
+      return;
+    }
+
+    const stage: StageForm = {
+      ...newStage,
+      order_index: stages.length
+    };
+
+    if (editingStageIndex !== null) {
+      const updatedStages = [...stages];
+      updatedStages[editingStageIndex] = stage;
+      setStages(updatedStages);
+      setEditingStageIndex(null);
+    } else {
+      setStages([...stages, stage]);
+    }
+
+    setNewStage({
+      name: '',
+      temperature_score: 50,
+      max_days_allowed: 7,
+      color: '#3B82F6',
+      order_index: 0
+    });
+    setShowStageForm(false);
+  };
+
+  const editStage = (index: number) => {
+    setNewStage(stages[index]);
+    setEditingStageIndex(index);
+    setShowStageForm(true);
+  };
+
+  const removeStage = (index: number) => {
+    const updatedStages = stages.filter((_, i) => i !== index);
+    // Reordenar índices
+    const reorderedStages = updatedStages.map((stage, i) => ({
+      ...stage,
+      order_index: i
+    }));
+    setStages(reorderedStages);
+  };
+
+  const moveStage = (index: number, direction: 'up' | 'down') => {
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= stages.length) return;
+
+    const updatedStages = [...stages];
+    [updatedStages[index], updatedStages[newIndex]] = [updatedStages[newIndex], updatedStages[index]];
+    
+    // Atualizar order_index
+    updatedStages.forEach((stage, i) => {
+      stage.order_index = i;
+    });
+
+    setStages(updatedStages);
+  };
+
+  const addCustomField = () => {
+    if (!newField.field_name.trim() || !newField.field_label.trim()) {
+      alert('Nome e rótulo do campo são obrigatórios');
+      return;
+    }
+
+    // Processar opções para campos select
+    let processedOptions: string[] = [];
+    if (newField.field_type === 'select' && fieldOptions.trim()) {
+      processedOptions = fieldOptions.split(',').map(opt => opt.trim()).filter(opt => opt);
+    }
+
+    const field: CustomFieldForm = {
+      ...newField,
+      field_options: processedOptions.length > 0 ? processedOptions : undefined,
+      field_order: customFields.length
+    };
+
+    if (editingFieldIndex !== null) {
+      const updatedFields = [...customFields];
+      updatedFields[editingFieldIndex] = field;
+      setCustomFields(updatedFields);
+      setEditingFieldIndex(null);
+    } else {
+      setCustomFields([...customFields, field]);
+    }
+
+    setNewField({
+      field_name: '',
+      field_label: '',
+      field_type: 'text',
+      field_options: [],
+      is_required: false,
+      field_order: 0,
+      placeholder: ''
+    });
+    setFieldOptions('');
+    setShowFieldForm(false);
+  };
+
+  const editCustomField = (index: number) => {
+    const field = customFields[index];
+    setNewField(field);
+    setFieldOptions(field.field_options?.join(', ') || '');
+    setEditingFieldIndex(index);
+    setShowFieldForm(true);
+  };
+
+  const removeCustomField = (index: number) => {
+    const updatedFields = customFields.filter((_, i) => i !== index);
+    // Reordenar índices
+    const reorderedFields = updatedFields.map((field, i) => ({
+      ...field,
+      field_order: i
+    }));
+    setCustomFields(reorderedFields);
+  };
+
+  const moveCustomField = (index: number, direction: 'up' | 'down') => {
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= customFields.length) return;
+
+    const updatedFields = [...customFields];
+    [updatedFields[index], updatedFields[newIndex]] = [updatedFields[newIndex], updatedFields[index]];
+    
+    // Atualizar field_order
+    updatedFields.forEach((field, i) => {
+      field.field_order = i;
+    });
+
+    setCustomFields(updatedFields);
+  };
+
+  // ============================================
   // FUNÇÕES DE PIPELINE
   // ============================================
 
   const handleCreatePipeline = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Validações
+    if (!pipelineForm.name.trim()) {
+      alert('Nome da pipeline é obrigatório');
+      return;
+    }
+
+    if (stages.length === 0) {
+      alert('É necessário criar pelo menos uma etapa para a pipeline');
+      return;
+    }
+
     try {
-      const response = await fetch('http://localhost:5001/api/pipelines', {
+      console.log('🚀 Criando pipeline completa...');
+      console.log('📝 Dados do formulário:', {
+        pipeline: pipelineForm,
+        stages: stages,
+        customFields: customFields,
+        user: user
+      });
+
+      const response = await fetch('http://localhost:5001/api/pipelines/complete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          ...pipelineForm,
+          name: pipelineForm.name,
+          description: pipelineForm.description,
           tenant_id: user?.tenant_id,
-          created_by: user?.id
+          created_by: user?.email,
+          member_ids: pipelineForm.member_ids,
+          stages: stages,
+          custom_fields: customFields
         }),
       });
 
       if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Pipeline criada:', result);
+        
+        // Resetar formulários
         setPipelineForm({ name: '', description: '', member_ids: [] });
+        setStages([]);
+        setCustomFields([]);
         setActiveTab('list');
         loadPipelines();
-        alert('Pipeline criada com sucesso!');
+        
+        alert(`Pipeline criada com sucesso!\n- ${result.stages_created} etapas criadas\n- ${result.fields_attempted} campos processados`);
       } else {
-        alert('Erro ao criar pipeline');
+        const errorData = await response.json();
+        console.error('❌ Erro na resposta:', errorData);
+        alert(`Erro ao criar pipeline: ${errorData.error || 'Erro desconhecido'}`);
       }
     } catch (error) {
-      console.error('Erro ao criar pipeline:', error);
+      console.error('❌ Erro ao criar pipeline:', error);
       alert('Erro ao criar pipeline');
     }
   };
@@ -361,21 +672,42 @@ const PipelineModule: React.FC = () => {
   };
 
   // ============================================
-  // VERIFICAÇÕES DE ACESSO
+  // RENDERIZAÇÃO PRINCIPAL
   // ============================================
 
-  if (!user || user.role !== 'admin') {
+  if (loading) {
     return (
-      <div className="access-denied">
-        <h3>🚫 Acesso Negado</h3>
-        <p>Apenas administradores podem acessar o Criador de Pipeline.</p>
+      <div className="pipeline-module">
+        <div className="loading-state">
+          <div className="loading-spinner"></div>
+          <p>🔄 Carregando pipelines...</p>
+        </div>
       </div>
     );
   }
 
-  if (loading) {
-    return <div className="loading">Carregando pipelines...</div>;
+  if (!user) {
+    return (
+      <div className="pipeline-module">
+        <div className="error-state">
+          <p>❌ Usuário não encontrado. Faça login novamente.</p>
+        </div>
+      </div>
+    );
   }
+
+  if (user.role !== 'admin') {
+    return (
+      <div className="pipeline-module">
+        <div className="error-state">
+          <p>🚫 Acesso negado. Apenas administradores podem gerenciar pipelines.</p>
+          <p>Seu role atual: <strong>{user.role}</strong></p>
+        </div>
+      </div>
+    );
+  }
+
+  console.log('🎯 Renderizando PipelineModule com', pipelines.length, 'pipelines');
 
   // ============================================
   // RENDERIZAÇÃO
@@ -399,6 +731,37 @@ const PipelineModule: React.FC = () => {
             ➕ Criar Pipeline
           </button>
         </div>
+      </div>
+
+      {/* CAIXA DE TESTE VERDE */}
+      <div style={{
+        backgroundColor: '#10B981',
+        color: 'white',
+        padding: '20px',
+        borderRadius: '8px',
+        margin: '20px 0',
+        textAlign: 'center',
+        border: '2px solid #059669'
+      }}>
+        <h4 style={{ margin: '0 0 10px 0' }}>🧪 TESTE RÁPIDO DE PIPELINE</h4>
+        <p style={{ margin: '0 0 15px 0' }}>
+          Clique no botão abaixo para criar uma pipeline de teste automaticamente
+        </p>
+        <button 
+          onClick={handleTestCreatePipeline}
+          style={{
+            backgroundColor: 'white',
+            color: '#10B981',
+            border: 'none',
+            padding: '12px 24px',
+            borderRadius: '6px',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            cursor: 'pointer'
+          }}
+        >
+          🚀 CRIAR PIPELINE DE TESTE
+        </button>
       </div>
 
       {/* LISTA DE PIPELINES */}
@@ -541,67 +904,413 @@ const PipelineModule: React.FC = () => {
         </div>
       )}
 
-      {/* FORMULÁRIO DE CRIAÇÃO */}
+      {/* FORMULÁRIO DE CRIAÇÃO EXPANDIDO */}
       {activeTab === 'create' && (
         <div className="create-pipeline-form">
           <h4>➕ Criar Nova Pipeline</h4>
           <form onSubmit={handleCreatePipeline}>
-            <div className="form-group">
-              <label>Nome da Pipeline *</label>
-              <input
-                type="text"
-                value={pipelineForm.name}
-                onChange={(e) => setPipelineForm({...pipelineForm, name: e.target.value})}
-                required
-                placeholder="Ex: Pipeline Vendas B2B"
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Descrição</label>
-              <textarea
-                value={pipelineForm.description}
-                onChange={(e) => setPipelineForm({...pipelineForm, description: e.target.value})}
-                placeholder="Descreva o objetivo desta pipeline..."
-                rows={3}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Vendedores</label>
-              <div className="members-checkboxes">
-                {members.map((member) => (
-                  <label key={member.id} className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={pipelineForm.member_ids.includes(member.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setPipelineForm({
-                            ...pipelineForm,
-                            member_ids: [...pipelineForm.member_ids, member.id]
-                          });
-                        } else {
-                          setPipelineForm({
-                            ...pipelineForm,
-                            member_ids: pipelineForm.member_ids.filter(id => id !== member.id)
-                          });
-                        }
-                      }}
-                    />
-                    {member.first_name} {member.last_name}
-                  </label>
-                ))}
+            
+            {/* SEÇÃO BÁSICA */}
+            <div className="form-section">
+              <h5>📋 Informações Básicas</h5>
+              
+              <div className="form-group">
+                <label>Nome da Pipeline *</label>
+                <input
+                  type="text"
+                  value={pipelineForm.name}
+                  onChange={(e) => setPipelineForm({...pipelineForm, name: e.target.value})}
+                  required
+                  placeholder="Ex: Pipeline Vendas B2B"
+                />
               </div>
+
+              <div className="form-group">
+                <label>Descrição</label>
+                <textarea
+                  value={pipelineForm.description}
+                  onChange={(e) => setPipelineForm({...pipelineForm, description: e.target.value})}
+                  placeholder="Descreva o objetivo desta pipeline..."
+                  rows={3}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Vendedores</label>
+                <div className="members-checkboxes">
+                  {members.map((member) => (
+                    <label key={member.id} className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={pipelineForm.member_ids.includes(member.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setPipelineForm({
+                              ...pipelineForm,
+                              member_ids: [...pipelineForm.member_ids, member.id]
+                            });
+                          } else {
+                            setPipelineForm({
+                              ...pipelineForm,
+                              member_ids: pipelineForm.member_ids.filter(id => id !== member.id)
+                            });
+                          }
+                        }}
+                      />
+                      {member.first_name} {member.last_name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* SEÇÃO DE ETAPAS */}
+            <div className="form-section">
+              <div className="section-header">
+                <h5>🎯 Etapas do Funil *</h5>
+                <button 
+                  type="button" 
+                  onClick={() => setShowStageForm(true)}
+                  className="add-button"
+                >
+                  + Adicionar Etapa
+                </button>
+              </div>
+
+              {stages.length === 0 ? (
+                <div className="empty-state">
+                  <p>Nenhuma etapa criada. Adicione pelo menos uma etapa para continuar.</p>
+                </div>
+              ) : (
+                <div className="stages-list">
+                  {stages.map((stage, index) => (
+                    <div key={index} className="stage-item">
+                      <div className="stage-info">
+                        <div 
+                          className="stage-color" 
+                          style={{ backgroundColor: stage.color }}
+                        ></div>
+                        <div className="stage-details">
+                          <strong>{stage.name}</strong>
+                          <div className="stage-meta">
+                            <span>🌡️ {stage.temperature_score}%</span>
+                            <span>⏰ {stage.max_days_allowed} dias</span>
+                            <span>📍 Posição {index + 1}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="stage-actions">
+                        <button 
+                          type="button"
+                          onClick={() => moveStage(index, 'up')}
+                          disabled={index === 0}
+                          className="move-button"
+                          title="Mover para cima"
+                        >
+                          ⬆️
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => moveStage(index, 'down')}
+                          disabled={index === stages.length - 1}
+                          className="move-button"
+                          title="Mover para baixo"
+                        >
+                          ⬇️
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => editStage(index)}
+                          className="edit-button"
+                          title="Editar"
+                        >
+                          ✏️
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => removeStage(index)}
+                          className="delete-button"
+                          title="Remover"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* FORMULÁRIO INLINE DE ETAPA */}
+              {showStageForm && (
+                <div className="inline-form">
+                  <h6>{editingStageIndex !== null ? '✏️ Editar Etapa' : '➕ Nova Etapa'}</h6>
+                  
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Nome da Etapa *</label>
+                      <input
+                        type="text"
+                        value={newStage.name}
+                        onChange={(e) => setNewStage({...newStage, name: e.target.value})}
+                        placeholder="Ex: Contato Inicial"
+                        required
+                      />
+                    </div>
+                    
+                    <div className="form-group">
+                      <label>Temperatura (0-100%)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={newStage.temperature_score}
+                        onChange={(e) => setNewStage({...newStage, temperature_score: parseInt(e.target.value)})}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Máximo de Dias</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={newStage.max_days_allowed}
+                        onChange={(e) => setNewStage({...newStage, max_days_allowed: parseInt(e.target.value)})}
+                      />
+                    </div>
+                    
+                    <div className="form-group">
+                      <label>Cor</label>
+                      <input
+                        type="color"
+                        value={newStage.color}
+                        onChange={(e) => setNewStage({...newStage, color: e.target.value})}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="inline-form-actions">
+                    <button type="button" onClick={addStage} className="save-button">
+                      {editingStageIndex !== null ? 'Salvar' : 'Adicionar'}
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        setShowStageForm(false);
+                        setEditingStageIndex(null);
+                        setNewStage({
+                          name: '',
+                          temperature_score: 50,
+                          max_days_allowed: 7,
+                          color: '#3B82F6',
+                          order_index: 0
+                        });
+                      }}
+                      className="cancel-button"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* SEÇÃO DE CAMPOS CUSTOMIZADOS */}
+            <div className="form-section">
+              <div className="section-header">
+                <h5>📝 Campos Customizados</h5>
+                <button 
+                  type="button" 
+                  onClick={() => setShowFieldForm(true)}
+                  className="add-button"
+                >
+                  + Adicionar Campo
+                </button>
+              </div>
+
+              {customFields.length === 0 ? (
+                <div className="empty-state">
+                  <p>Nenhum campo customizado criado. Os campos aparecerão nos cards do kanban.</p>
+                </div>
+              ) : (
+                <div className="fields-list">
+                  {customFields.map((field, index) => (
+                    <div key={index} className="field-item">
+                      <div className="field-info">
+                        <div className="field-details">
+                          <strong>{field.field_label}</strong>
+                          <div className="field-meta">
+                            <span>🏷️ {field.field_name}</span>
+                            <span>📝 {field.field_type}</span>
+                            {field.is_required && <span>⚠️ Obrigatório</span>}
+                            {field.field_options && <span>📋 {field.field_options.length} opções</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="field-actions">
+                        <button 
+                          type="button"
+                          onClick={() => moveCustomField(index, 'up')}
+                          disabled={index === 0}
+                          className="move-button"
+                          title="Mover para cima"
+                        >
+                          ⬆️
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => moveCustomField(index, 'down')}
+                          disabled={index === customFields.length - 1}
+                          className="move-button"
+                          title="Mover para baixo"
+                        >
+                          ⬇️
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => editCustomField(index)}
+                          className="edit-button"
+                          title="Editar"
+                        >
+                          ✏️
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => removeCustomField(index)}
+                          className="delete-button"
+                          title="Remover"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* FORMULÁRIO INLINE DE CAMPO */}
+              {showFieldForm && (
+                <div className="inline-form">
+                  <h6>{editingFieldIndex !== null ? '✏️ Editar Campo' : '➕ Novo Campo'}</h6>
+                  
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Nome do Campo *</label>
+                      <input
+                        type="text"
+                        value={newField.field_name}
+                        onChange={(e) => setNewField({...newField, field_name: e.target.value})}
+                        placeholder="Ex: nome_cliente"
+                        required
+                      />
+                    </div>
+                    
+                    <div className="form-group">
+                      <label>Rótulo do Campo *</label>
+                      <input
+                        type="text"
+                        value={newField.field_label}
+                        onChange={(e) => setNewField({...newField, field_label: e.target.value})}
+                        placeholder="Ex: Nome do Cliente"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Tipo do Campo</label>
+                      <select
+                        value={newField.field_type}
+                        onChange={(e) => setNewField({...newField, field_type: e.target.value as any})}
+                      >
+                        <option value="text">Texto</option>
+                        <option value="email">E-mail</option>
+                        <option value="phone">Telefone</option>
+                        <option value="textarea">Área de Texto</option>
+                        <option value="select">Seleção</option>
+                        <option value="number">Número</option>
+                        <option value="date">Data</option>
+                      </select>
+                    </div>
+                    
+                    <div className="form-group">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={newField.is_required}
+                          onChange={(e) => setNewField({...newField, is_required: e.target.checked})}
+                        />
+                        Campo Obrigatório
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Placeholder</label>
+                    <input
+                      type="text"
+                      value={newField.placeholder}
+                      onChange={(e) => setNewField({...newField, placeholder: e.target.value})}
+                      placeholder="Ex: Digite o nome completo..."
+                    />
+                  </div>
+
+                  {newField.field_type === 'select' && (
+                    <div className="form-group">
+                      <label>Opções (separadas por vírgula)</label>
+                      <input
+                        type="text"
+                        value={fieldOptions}
+                        onChange={(e) => setFieldOptions(e.target.value)}
+                        placeholder="Ex: Opção 1, Opção 2, Opção 3"
+                      />
+                    </div>
+                  )}
+
+                  <div className="inline-form-actions">
+                    <button type="button" onClick={addCustomField} className="save-button">
+                      {editingFieldIndex !== null ? 'Salvar' : 'Adicionar'}
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        setShowFieldForm(false);
+                        setEditingFieldIndex(null);
+                        setNewField({
+                          field_name: '',
+                          field_label: '',
+                          field_type: 'text',
+                          field_options: [],
+                          is_required: false,
+                          field_order: 0,
+                          placeholder: ''
+                        });
+                        setFieldOptions('');
+                      }}
+                      className="cancel-button"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="form-actions">
               <button type="submit" className="submit-button">
-                Criar Pipeline
+                🚀 Criar Pipeline Completa
               </button>
               <button 
                 type="button" 
-                onClick={() => setActiveTab('list')}
+                onClick={() => {
+                  setActiveTab('list');
+                  // Resetar formulários
+                  setPipelineForm({ name: '', description: '', member_ids: [] });
+                  setStages([]);
+                  setCustomFields([]);
+                }}
                 className="cancel-button"
               >
                 Cancelar

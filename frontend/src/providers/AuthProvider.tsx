@@ -12,7 +12,9 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const DEMO_CREDENTIALS = {
   'superadmin@crm.com': 'SuperAdmin123!',
   'admin@crm.com': '123456',
-  'member@crm.com': '123456'
+  'member@crm.com': '123456',
+  'carlos@renovedigital.com.br': '123456',
+  'felipe@felipe.com': '123456'
 };
 
 // Função para verificar se é uma credencial válida

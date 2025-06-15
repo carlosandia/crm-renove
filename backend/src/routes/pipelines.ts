@@ -1,151 +1,82 @@
 import express from 'express';
-import { supabase } from '../index';
+import { PipelineController } from '../controllers/PipelineController';
+import { CustomFieldController } from '../controllers/customFieldController';
+import { LeadController } from '../controllers/leadController';
+import { supabase, supabaseAdmin } from '../index';
 
 const router = express.Router();
 
 // ============================================
-// ROTAS PARA PIPELINES
+// ROTAS PRINCIPAIS DE PIPELINES
 // ============================================
 
-// GET /api/pipelines - Listar todas as pipelines do tenant
-router.get('/', async (req, res) => {
-  try {
-    const { tenant_id } = req.query;
-
-    if (!tenant_id) {
-      return res.status(400).json({ error: 'tenant_id é obrigatório' });
-    }
-
-    // Buscar pipelines
-    const { data: pipelines, error: pipelinesError } = await supabase
-      .from('pipelines')
-      .select('*')
-      .eq('tenant_id', tenant_id)
-      .order('created_at', { ascending: false });
-
-    if (pipelinesError) {
-      console.error('Erro ao buscar pipelines:', pipelinesError);
-      return res.status(500).json({ error: 'Erro ao buscar pipelines', details: pipelinesError.message });
-    }
-
-    // Para cada pipeline, buscar membros e etapas
-    const pipelinesWithDetails = await Promise.all(
-      (pipelines || []).map(async (pipeline) => {
-        // Buscar membros
-        const { data: pipelineMembers } = await supabase
-          .from('pipeline_members')
-          .select('*')
-          .eq('pipeline_id', pipeline.id);
-
-        // Buscar dados dos usuários membros
-        const membersWithUserData = await Promise.all(
-          (pipelineMembers || []).map(async (pm) => {
-            const { data: userData } = await supabase
-              .from('users')
-              .select('id, first_name, last_name, email')
-              .eq('id', pm.member_id)
-              .single();
-
-            return {
-              ...pm,
-              member: userData
-            };
-          })
-        );
-
-        // Buscar etapas
-        const { data: stages } = await supabase
-          .from('pipeline_stages')
-          .select('*')
-          .eq('pipeline_id', pipeline.id)
-          .order('order_index');
-
-        return {
-          ...pipeline,
-          pipeline_members: membersWithUserData || [],
-          pipeline_stages: stages || []
-        };
-      })
-    );
-
-    res.json({ pipelines: pipelinesWithDetails });
-  } catch (error) {
-    console.error('Erro interno:', error);
-    res.status(500).json({ error: 'Erro interno do servidor', details: error instanceof Error ? error.message : 'Erro desconhecido' });
-  }
-});
+// GET /api/pipelines - Listar pipelines do tenant
+router.get('/', PipelineController.getPipelines);
 
 // GET /api/pipelines/:id - Buscar pipeline específica
-router.get('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const { data: pipeline, error } = await supabase
-      .from('pipelines')
-      .select(`
-        *,
-        created_by_user:users!pipelines_created_by_fkey(first_name, last_name, email),
-        pipeline_members(
-          id,
-          assigned_at,
-          member:users!pipeline_members_member_id_fkey(id, first_name, last_name, email)
-        ),
-        pipeline_stages(
-          *,
-          follow_ups(*)
-        )
-      `)
-      .eq('id', id)
-      .single();
-
-    if (error) {
-      console.error('Erro ao buscar pipeline:', error);
-      return res.status(500).json({ error: 'Erro ao buscar pipeline' });
-    }
-
-    if (!pipeline) {
-      return res.status(404).json({ error: 'Pipeline não encontrada' });
-    }
-
-    res.json({ pipeline });
-  } catch (error) {
-    console.error('Erro interno:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
+router.get('/:id', PipelineController.getPipelineById);
 
 // POST /api/pipelines - Criar nova pipeline
-router.post('/', async (req, res) => {
+router.post('/', PipelineController.createPipeline);
+
+// POST /api/pipelines/complete - Criar pipeline com etapas e campos customizados
+router.post('/complete', async (req, res) => {
   try {
-    const { name, description, tenant_id, created_by, member_ids = [] } = req.body;
+    console.log('🔧 Iniciando criação de pipeline completa...');
+    console.log('📝 Dados recebidos:', JSON.stringify(req.body, null, 2));
+    
+    const { name, description, tenant_id, created_by, member_ids = [], stages = [], custom_fields = [] } = req.body;
 
     if (!name || !tenant_id || !created_by) {
-      return res.status(400).json({ 
-        error: 'Nome, tenant_id e created_by são obrigatórios' 
-      });
+      console.log('❌ Dados obrigatórios faltando:', { name, tenant_id, created_by });
+      return res.status(400).json({ error: 'Nome, tenant_id e created_by são obrigatórios' });
     }
 
-    // Criar a pipeline
+    console.log('✅ Validação inicial passou');
+
+    // Verificar se o usuário existe
+    console.log('🔍 Buscando usuário por email:', created_by);
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('id, email, first_name, last_name, role')
+      .eq('email', created_by)
+      .single();
+
+    console.log('📊 Resultado da busca:', { user, userError });
+
+    if (userError || !user) {
+      console.log('❌ Usuário não encontrado:', created_by, userError);
+      return res.status(400).json({ error: 'Usuário não encontrado', details: userError?.message });
+    }
+
+    console.log('✅ Usuário encontrado:', user);
+
+    // Criar pipeline
+    console.log('🔄 Criando pipeline...');
     const { data: pipeline, error: pipelineError } = await supabase
       .from('pipelines')
       .insert({
         name,
         description,
         tenant_id,
-        created_by
+        created_by: user.id
       })
       .select()
       .single();
 
     if (pipelineError) {
-      console.error('Erro ao criar pipeline:', pipelineError);
-      return res.status(500).json({ error: 'Erro ao criar pipeline' });
+      console.log('❌ Erro ao criar pipeline:', pipelineError);
+      return res.status(500).json({ error: 'Erro ao criar pipeline', details: pipelineError.message });
     }
+
+    console.log('✅ Pipeline criada:', pipeline.id);
+    const pipelineId = pipeline.id;
 
     // Adicionar membros se fornecidos
     if (member_ids.length > 0) {
+      console.log('🔄 Adicionando membros:', member_ids);
       const memberInserts = member_ids.map((member_id: string) => ({
-        pipeline_id: pipeline.id,
+        pipeline_id: pipelineId,
         member_id
       }));
 
@@ -154,146 +85,133 @@ router.post('/', async (req, res) => {
         .insert(memberInserts);
 
       if (membersError) {
-        console.error('Erro ao adicionar membros:', membersError);
-        // Não falha a criação da pipeline por causa dos membros
+        console.log('❌ Erro ao adicionar membros:', membersError);
+      } else {
+        console.log('✅ Membros adicionados com sucesso');
       }
     }
 
+    // Criar etapas se fornecidas
+    if (stages.length > 0) {
+      console.log('🔄 Criando etapas:', stages.length);
+      const stageInserts = stages.map((stage: any, index: number) => ({
+        pipeline_id: pipelineId,
+        name: stage.name,
+        temperature_score: stage.temperature_score || 50,
+        max_days_allowed: stage.max_days_allowed || 7,
+        color: stage.color || '#3B82F6',
+        order_index: stage.order_index !== undefined ? stage.order_index : index + 1
+      }));
+
+      console.log('📝 Dados das etapas:', JSON.stringify(stageInserts, null, 2));
+
+      const { error: stagesError } = await supabase
+        .from('pipeline_stages')
+        .insert(stageInserts);
+
+      if (stagesError) {
+        console.log('❌ Erro ao criar etapas:', stagesError);
+        return res.status(500).json({ error: 'Erro ao criar etapas', details: stagesError.message });
+      } else {
+        console.log('✅ Etapas criadas com sucesso');
+      }
+    }
+
+    // Criar campos customizados se fornecidos
+    let fieldsCreated = false;
+    if (custom_fields.length > 0) {
+      console.log('🔄 Criando campos customizados:', custom_fields.length);
+      const fieldInserts = custom_fields.map((field: any) => ({
+        pipeline_id: pipelineId,
+        field_name: field.field_name,
+        field_label: field.field_label,
+        field_type: field.field_type,
+        field_options: field.field_options,
+        is_required: field.is_required || false,
+        field_order: field.field_order || 1,
+        placeholder: field.placeholder
+      }));
+
+      console.log('📝 Dados dos campos:', JSON.stringify(fieldInserts, null, 2));
+
+      // Tentar primeiro com supabase normal
+      const { error: fieldsError1 } = await supabase
+        .from('pipeline_custom_fields')
+        .insert(fieldInserts);
+
+      if (fieldsError1) {
+        console.log('❌ Erro campos (supabase normal):', fieldsError1.message);
+        
+        // Tentar com supabaseAdmin
+        const { error: fieldsError2 } = await supabaseAdmin
+          .from('pipeline_custom_fields')
+          .insert(fieldInserts);
+
+        if (fieldsError2) {
+          console.log('❌ Erro campos (supabaseAdmin):', fieldsError2.message);
+          
+          // Se falhar por RLS, continuar sem os campos
+          if (fieldsError2.message.includes('row-level security')) {
+            console.log('⚠️ Campos customizados não criados devido ao RLS - pipeline criada sem campos');
+          } else {
+            return res.status(500).json({ error: 'Erro ao criar campos', details: fieldsError2.message });
+          }
+        } else {
+          fieldsCreated = true;
+          console.log('✅ Campos customizados criados com Admin');
+        }
+      } else {
+        fieldsCreated = true;
+        console.log('✅ Campos customizados criados normalmente');
+      }
+    }
+
+    console.log('✅ Pipeline completa criada com sucesso');
+
     res.status(201).json({ 
       message: 'Pipeline criada com sucesso',
-      pipeline 
+      pipeline,
+      stages_created: stages.length,
+      fields_created: fieldsCreated,
+      fields_attempted: custom_fields.length,
+      warning: !fieldsCreated && custom_fields.length > 0 ? 'Campos customizados não foram criados devido a políticas de segurança' : null
     });
+
   } catch (error) {
-    console.error('Erro interno:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    console.log('❌ ERRO COMPLETO ao criar pipeline:', error);
+    console.log('❌ Stack trace:', error instanceof Error ? error.stack : 'Sem stack trace');
+    res.status(500).json({ 
+      error: 'Erro ao criar pipeline completa',
+      details: error instanceof Error ? error.message : 'Erro desconhecido',
+      stack: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.stack : null) : undefined
+    });
   }
 });
 
 // PUT /api/pipelines/:id - Atualizar pipeline
-router.put('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, description } = req.body;
-
-    const { data: pipeline, error } = await supabase
-      .from('pipelines')
-      .update({ name, description })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Erro ao atualizar pipeline:', error);
-      return res.status(500).json({ error: 'Erro ao atualizar pipeline' });
-    }
-
-    res.json({ 
-      message: 'Pipeline atualizada com sucesso',
-      pipeline 
-    });
-  } catch (error) {
-    console.error('Erro interno:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
+router.put('/:id', PipelineController.updatePipeline);
 
 // DELETE /api/pipelines/:id - Excluir pipeline
-router.delete('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const { error } = await supabase
-      .from('pipelines')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      console.error('Erro ao excluir pipeline:', error);
-      return res.status(500).json({ error: 'Erro ao excluir pipeline' });
-    }
-
-    res.json({ message: 'Pipeline excluída com sucesso' });
-  } catch (error) {
-    console.error('Erro interno:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
+router.delete('/:id', PipelineController.deletePipeline);
 
 // ============================================
-// ROTAS PARA MEMBROS DA PIPELINE
+// ROTAS DE MEMBROS
 // ============================================
 
-// POST /api/pipelines/:id/members - Adicionar membro à pipeline
-router.post('/:id/members', async (req, res) => {
-  try {
-    const { id: pipeline_id } = req.params;
-    const { member_id } = req.body;
+// POST /api/pipelines/:id/members - Adicionar membro
+router.post('/:id/members', PipelineController.addMember);
 
-    if (!member_id) {
-      return res.status(400).json({ error: 'member_id é obrigatório' });
-    }
+// DELETE /api/pipelines/:id/members/:member_id - Remover membro
+router.delete('/:id/members/:member_id', PipelineController.removeMember);
 
-    const { data, error } = await supabase
-      .from('pipeline_members')
-      .insert({ pipeline_id, member_id })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Erro ao adicionar membro:', error);
-      return res.status(500).json({ error: 'Erro ao adicionar membro' });
-    }
-
-    // Buscar dados do usuário
-    const { data: userData } = await supabase
-      .from('users')
-      .select('id, first_name, last_name, email')
-      .eq('id', member_id)
-      .single();
-
-    const memberWithUserData = {
-      ...data,
-      member: userData
-    };
-
-    res.status(201).json({ 
-      message: 'Membro adicionado com sucesso',
-      member: memberWithUserData 
-    });
-  } catch (error) {
-    console.error('Erro interno:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
-// DELETE /api/pipelines/:id/members/:member_id - Remover membro da pipeline
-router.delete('/:id/members/:member_id', async (req, res) => {
-  try {
-    const { id: pipeline_id, member_id } = req.params;
-
-    const { error } = await supabase
-      .from('pipeline_members')
-      .delete()
-      .eq('pipeline_id', pipeline_id)
-      .eq('member_id', member_id);
-
-    if (error) {
-      console.error('Erro ao remover membro:', error);
-      return res.status(500).json({ error: 'Erro ao remover membro' });
-    }
-
-    res.json({ message: 'Membro removido com sucesso' });
-  } catch (error) {
-    console.error('Erro interno:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
+// GET /api/pipelines/member/:member_id - Pipelines do membro
+router.get('/member/:member_id', PipelineController.getPipelinesByMember);
 
 // ============================================
-// ROTAS PARA ETAPAS DA PIPELINE
+// ROTAS DE ETAPAS (mantidas temporariamente)
 // ============================================
 
-// GET /api/pipelines/:id/stages - Listar etapas da pipeline
+// GET /api/pipelines/:id/stages - Listar etapas
 router.get('/:id/stages', async (req, res) => {
   try {
     const { id: pipeline_id } = req.params;
@@ -319,7 +237,7 @@ router.get('/:id/stages', async (req, res) => {
   }
 });
 
-// POST /api/pipelines/:id/stages - Criar nova etapa
+// POST /api/pipelines/:id/stages - Criar etapa
 router.post('/:id/stages', async (req, res) => {
   try {
     const { id: pipeline_id } = req.params;
@@ -368,34 +286,6 @@ router.post('/:id/stages', async (req, res) => {
   }
 });
 
-// PUT /api/pipelines/:id/stages/:stage_id - Atualizar etapa
-router.put('/:id/stages/:stage_id', async (req, res) => {
-  try {
-    const { stage_id } = req.params;
-    const { name, temperature_score, max_days_allowed, color } = req.body;
-
-    const { data: stage, error } = await supabase
-      .from('pipeline_stages')
-      .update({ name, temperature_score, max_days_allowed, color })
-      .eq('id', stage_id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Erro ao atualizar etapa:', error);
-      return res.status(500).json({ error: 'Erro ao atualizar etapa' });
-    }
-
-    res.json({ 
-      message: 'Etapa atualizada com sucesso',
-      stage 
-    });
-  } catch (error) {
-    console.error('Erro interno:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
 // DELETE /api/pipelines/:id/stages/:stage_id - Excluir etapa
 router.delete('/:id/stages/:stage_id', async (req, res) => {
   try {
@@ -418,36 +308,43 @@ router.delete('/:id/stages/:stage_id', async (req, res) => {
   }
 });
 
-// PUT /api/pipelines/:id/stages/reorder - Reordenar etapas
-router.put('/:id/stages/reorder', async (req, res) => {
-  try {
-    const { id: pipeline_id } = req.params;
-    const { stages } = req.body; // Array de { id, order_index }
+// ============================================
+// ROTAS DE CAMPOS CUSTOMIZADOS
+// ============================================
 
-    if (!Array.isArray(stages)) {
-      return res.status(400).json({ error: 'Stages deve ser um array' });
-    }
+// GET /api/pipelines/:pipeline_id/custom-fields - Listar campos customizados
+router.get('/:pipeline_id/custom-fields', CustomFieldController.getCustomFields);
 
-    // Atualizar ordem das etapas
-    const updates = stages.map(stage => 
-      supabase
-        .from('pipeline_stages')
-        .update({ order_index: stage.order_index })
-        .eq('id', stage.id)
-        .eq('pipeline_id', pipeline_id)
-    );
+// POST /api/pipelines/:pipeline_id/custom-fields - Criar campo customizado
+router.post('/:pipeline_id/custom-fields', CustomFieldController.createCustomField);
 
-    await Promise.all(updates);
+// PUT /api/pipelines/:pipeline_id/custom-fields/:field_id - Atualizar campo
+router.put('/:pipeline_id/custom-fields/:field_id', CustomFieldController.updateCustomField);
 
-    res.json({ message: 'Etapas reordenadas com sucesso' });
-  } catch (error) {
-    console.error('Erro interno:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
+// DELETE /api/pipelines/:pipeline_id/custom-fields/:field_id - Excluir campo
+router.delete('/:pipeline_id/custom-fields/:field_id', CustomFieldController.deleteCustomField);
+
+// PUT /api/pipelines/:pipeline_id/custom-fields/reorder - Reordenar campos
+router.put('/:pipeline_id/custom-fields/reorder', CustomFieldController.reorderFields);
 
 // ============================================
-// ROTAS PARA FOLLOW-UPS
+// ROTAS DE LEADS
+// ============================================
+
+// GET /api/pipelines/:pipeline_id/leads - Buscar leads de uma pipeline
+router.get('/:pipeline_id/leads', LeadController.getLeadsByPipeline);
+
+// POST /api/pipelines/:pipeline_id/leads - Criar novo lead
+router.post('/:pipeline_id/leads', LeadController.createLead);
+
+// PUT /api/pipelines/:pipeline_id/leads/:lead_id - Atualizar lead
+router.put('/:pipeline_id/leads/:lead_id', LeadController.updateLead);
+
+// DELETE /api/pipelines/:pipeline_id/leads/:lead_id - Excluir lead
+router.delete('/:pipeline_id/leads/:lead_id', LeadController.deleteLead);
+
+// ============================================
+// ROTAS DE FOLLOW-UPS (mantidas temporariamente)
 // ============================================
 
 // POST /api/pipelines/:id/follow-ups - Criar follow-up
@@ -457,9 +354,7 @@ router.post('/:id/follow-ups', async (req, res) => {
     const { stage_id, day_offset, note } = req.body;
 
     if (!stage_id || !day_offset) {
-      return res.status(400).json({ 
-        error: 'stage_id e day_offset são obrigatórios' 
-      });
+      return res.status(400).json({ error: 'stage_id e day_offset são obrigatórios' });
     }
 
     const { data: followUp, error } = await supabase
@@ -488,89 +383,367 @@ router.post('/:id/follow-ups', async (req, res) => {
   }
 });
 
-// DELETE /api/pipelines/:id/follow-ups/:follow_up_id - Excluir follow-up
-router.delete('/:id/follow-ups/:follow_up_id', async (req, res) => {
+// Rota de teste para debug
+router.post('/test-create', async (req, res) => {
   try {
-    const { follow_up_id } = req.params;
+    console.log('🧪 TESTE: Iniciando criação de pipeline simples...');
+    console.log('📝 TESTE: Dados recebidos:', JSON.stringify(req.body, null, 2));
 
-    const { error } = await supabase
-      .from('follow_ups')
-      .delete()
-      .eq('id', follow_up_id);
+    const { name, tenant_id, created_by } = req.body;
 
-    if (error) {
-      console.error('Erro ao excluir follow-up:', error);
-      return res.status(500).json({ error: 'Erro ao excluir follow-up' });
+    if (!name || !tenant_id || !created_by) {
+      console.log('❌ TESTE: Dados obrigatórios faltando');
+      return res.status(400).json({ error: 'Dados obrigatórios faltando' });
     }
 
-    res.json({ message: 'Follow-up excluído com sucesso' });
+    // Verificar se o usuário existe
+    console.log('🔍 TESTE: Buscando usuário:', created_by);
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', created_by)
+      .single();
+
+    if (userError || !user) {
+      console.log('❌ TESTE: Usuário não encontrado:', userError);
+      return res.status(400).json({ error: 'Usuário não encontrado', details: userError?.message });
+    }
+
+    console.log('✅ TESTE: Usuário encontrado:', user.id);
+
+    // Tentar criar pipeline simples
+    console.log('🔄 TESTE: Criando pipeline...');
+    const { data: pipeline, error: pipelineError } = await supabase
+      .from('pipelines')
+      .insert({
+        name,
+        tenant_id,
+        created_by: user.id,
+        description: 'Pipeline de teste'
+      })
+      .select()
+      .single();
+
+    if (pipelineError) {
+      console.log('❌ TESTE: Erro ao criar pipeline:', pipelineError);
+      return res.status(500).json({ error: 'Erro ao criar pipeline', details: pipelineError.message });
+    }
+
+    console.log('✅ TESTE: Pipeline criada com sucesso:', pipeline.id);
+
+    res.status(201).json({
+      success: true,
+      message: 'Pipeline de teste criada com sucesso',
+      pipeline
+    });
+
   } catch (error) {
-    console.error('Erro interno:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    console.log('❌ TESTE: Erro geral:', error);
+    console.log('❌ TESTE: Stack:', error instanceof Error ? error.stack : 'Sem stack');
+    res.status(500).json({
+      error: 'Erro no teste',
+      details: error instanceof Error ? error.message : 'Erro desconhecido',
+      stack: error instanceof Error ? error.stack : null
+    });
   }
 });
 
-
-
-// GET /api/pipelines/member/:member_id - Listar pipelines do membro
-router.get('/member/:member_id', async (req, res) => {
+// Rota de teste para etapas
+router.post('/test-create-with-stages', async (req, res) => {
   try {
-    const { member_id } = req.params;
+    console.log('🧪 TESTE ETAPAS: Iniciando...');
+    console.log('📝 TESTE ETAPAS: Dados:', JSON.stringify(req.body, null, 2));
 
-    if (!member_id) {
-      return res.status(400).json({ error: 'member_id é obrigatório' });
+    const { name, tenant_id, created_by, stages = [] } = req.body;
+
+    // Verificar usuário
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', created_by)
+      .single();
+
+    if (userError || !user) {
+      return res.status(400).json({ error: 'Usuário não encontrado' });
     }
 
-    // Buscar pipelines onde o membro está vinculado
-    const { data: pipelineMembers, error: membersError } = await supabase
-      .from('pipeline_members')
-      .select('pipeline_id')
-      .eq('member_id', member_id);
-
-    if (membersError) {
-      console.error('Erro ao buscar pipeline_members:', membersError);
-      return res.status(500).json({ error: 'Erro ao buscar pipeline_members' });
-    }
-
-    if (!pipelineMembers || pipelineMembers.length === 0) {
-      return res.json({ pipelines: [] });
-    }
-
-    const pipelineIds = pipelineMembers.map(pm => pm.pipeline_id);
-
-    // Buscar detalhes das pipelines
-    const { data: pipelines, error: pipelinesError } = await supabase
+    // Criar pipeline
+    const { data: pipeline, error: pipelineError } = await supabase
       .from('pipelines')
-      .select('*')
-      .in('id', pipelineIds)
-      .order('created_at', { ascending: false });
+      .insert({
+        name,
+        tenant_id,
+        created_by: user.id,
+        description: 'Pipeline de teste com etapas'
+      })
+      .select()
+      .single();
 
-    if (pipelinesError) {
-      console.error('Erro ao buscar pipelines:', pipelinesError);
-      return res.status(500).json({ error: 'Erro ao buscar pipelines' });
+    if (pipelineError) {
+      console.log('❌ TESTE ETAPAS: Erro ao criar pipeline:', pipelineError);
+      return res.status(500).json({ error: 'Erro ao criar pipeline', details: pipelineError.message });
     }
 
-    // Para cada pipeline, buscar etapas
-    const pipelinesWithStages = await Promise.all(
-      (pipelines || []).map(async (pipeline) => {
-        // Buscar etapas
-        const { data: stages } = await supabase
-          .from('pipeline_stages')
-          .select('*')
-          .eq('pipeline_id', pipeline.id)
-          .order('order_index');
+    console.log('✅ TESTE ETAPAS: Pipeline criada:', pipeline.id);
 
-        return {
-          ...pipeline,
-          pipeline_stages: stages || []
-        };
-      })
-    );
+    // Criar etapas se fornecidas
+    if (stages.length > 0) {
+      console.log('🔄 TESTE ETAPAS: Criando etapas:', stages.length);
+      
+      const stageInserts = stages.map((stage: any, index: number) => ({
+        pipeline_id: pipeline.id,
+        name: stage.name,
+        temperature_score: stage.temperature_score || 50,
+        max_days_allowed: stage.max_days_allowed || 7,
+        color: stage.color || '#3B82F6',
+        order_index: stage.order_index !== undefined ? stage.order_index : index + 1
+      }));
 
-    res.json({ pipelines: pipelinesWithStages });
+      console.log('📝 TESTE ETAPAS: Dados das etapas:', JSON.stringify(stageInserts, null, 2));
+
+      const { data: createdStages, error: stagesError } = await supabase
+        .from('pipeline_stages')
+        .insert(stageInserts)
+        .select();
+
+      if (stagesError) {
+        console.log('❌ TESTE ETAPAS: Erro ao criar etapas:', stagesError);
+        return res.status(500).json({ error: 'Erro ao criar etapas', details: stagesError.message });
+      }
+
+      console.log('✅ TESTE ETAPAS: Etapas criadas:', createdStages?.length);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Pipeline com etapas criada com sucesso',
+      pipeline
+    });
+
   } catch (error) {
-    console.error('Erro interno:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    console.log('❌ TESTE ETAPAS: Erro geral:', error);
+    res.status(500).json({
+      error: 'Erro no teste de etapas',
+      details: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
+  }
+});
+
+// Rota de teste para campos customizados
+router.post('/test-create-with-fields', async (req, res) => {
+  try {
+    console.log('🧪 TESTE CAMPOS: Iniciando...');
+    console.log('📝 TESTE CAMPOS: Dados:', JSON.stringify(req.body, null, 2));
+
+    const { name, tenant_id, created_by, custom_fields = [] } = req.body;
+
+    // Verificar usuário
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', created_by)
+      .single();
+
+    if (userError || !user) {
+      return res.status(400).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Criar pipeline
+    const { data: pipeline, error: pipelineError } = await supabase
+      .from('pipelines')
+      .insert({
+        name,
+        tenant_id,
+        created_by: user.id,
+        description: 'Pipeline de teste com campos'
+      })
+      .select()
+      .single();
+
+    if (pipelineError) {
+      console.log('❌ TESTE CAMPOS: Erro ao criar pipeline:', pipelineError);
+      return res.status(500).json({ error: 'Erro ao criar pipeline', details: pipelineError.message });
+    }
+
+    console.log('✅ TESTE CAMPOS: Pipeline criada:', pipeline.id);
+
+    // Criar campos customizados se fornecidos
+    if (custom_fields.length > 0) {
+      console.log('🔄 TESTE CAMPOS: Criando campos:', custom_fields.length);
+      
+      const fieldInserts = custom_fields.map((field: any) => ({
+        pipeline_id: pipeline.id,
+        field_name: field.field_name,
+        field_label: field.field_label,
+        field_type: field.field_type,
+        field_options: field.field_options,
+        is_required: field.is_required || false,
+        field_order: field.field_order || 1,
+        placeholder: field.placeholder
+      }));
+
+      console.log('📝 TESTE CAMPOS: Dados dos campos:', JSON.stringify(fieldInserts, null, 2));
+
+      const { data: createdFields, error: fieldsError } = await supabase
+        .from('pipeline_custom_fields')
+        .insert(fieldInserts)
+        .select();
+
+      if (fieldsError) {
+        console.log('❌ TESTE CAMPOS: Erro ao criar campos:', fieldsError);
+        return res.status(500).json({ error: 'Erro ao criar campos', details: fieldsError.message });
+      }
+
+      console.log('✅ TESTE CAMPOS: Campos criados:', createdFields?.length);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Pipeline com campos criada com sucesso',
+      pipeline
+    });
+
+  } catch (error) {
+    console.log('❌ TESTE CAMPOS: Erro geral:', error);
+    res.status(500).json({
+      error: 'Erro no teste de campos',
+      details: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
+  }
+});
+
+// Rota completamente nova para debug
+router.post('/debug-complete', async (req, res) => {
+  try {
+    console.log('🐛 DEBUG: Iniciando criação completa...');
+    
+    const { name, tenant_id, created_by, stages = [], custom_fields = [] } = req.body;
+
+    // 1. Verificar usuário
+    const { data: user } = await supabase.from('users').select('id').eq('email', created_by).single();
+    if (!user) return res.status(400).json({ error: 'Usuário não encontrado' });
+    console.log('✅ DEBUG: Usuário OK');
+
+    // 2. Criar pipeline
+    const { data: pipeline, error: pipelineError } = await supabase
+      .from('pipelines')
+      .insert({ name, tenant_id, created_by: user.id, description: 'Debug pipeline' })
+      .select()
+      .single();
+    
+    if (pipelineError) {
+      console.log('❌ DEBUG: Erro pipeline:', pipelineError);
+      return res.status(500).json({ error: 'Erro ao criar pipeline', details: pipelineError.message });
+    }
+    console.log('✅ DEBUG: Pipeline criada:', pipeline.id);
+
+    // 3. Criar etapas
+    if (stages.length > 0) {
+      const stageInserts = stages.map((s: any, i: number) => ({
+        pipeline_id: pipeline.id,
+        name: s.name,
+        order_index: i + 1,
+        temperature_score: s.temperature_score || 50,
+        max_days_allowed: s.max_days_allowed || 7,
+        color: s.color || '#3B82F6'
+      }));
+
+      const { error: stagesError } = await supabase
+        .from('pipeline_stages')
+        .insert(stageInserts);
+
+      if (stagesError) {
+        console.log('❌ DEBUG: Erro etapas:', stagesError);
+        return res.status(500).json({ error: 'Erro ao criar etapas', details: stagesError.message });
+      }
+      console.log('✅ DEBUG: Etapas criadas');
+    }
+
+    // 4. Tentar criar campos (pode falhar por RLS)
+    let fieldsCreated = false;
+    if (custom_fields.length > 0) {
+      const fieldInserts = custom_fields.map((f: any) => ({
+        pipeline_id: pipeline.id,
+        field_name: f.field_name,
+        field_label: f.field_label,
+        field_type: f.field_type,
+        is_required: f.is_required || false,
+        field_order: f.field_order || 1,
+        placeholder: f.placeholder
+      }));
+
+      // Tentar com supabase normal
+      const { error: fieldsError1 } = await supabase
+        .from('pipeline_custom_fields')
+        .insert(fieldInserts);
+
+      if (fieldsError1) {
+        console.log('❌ DEBUG: Erro campos (supabase normal):', fieldsError1.message);
+        
+        // Tentar com supabaseAdmin
+        const { error: fieldsError2 } = await supabaseAdmin
+          .from('pipeline_custom_fields')
+          .insert(fieldInserts);
+
+        if (fieldsError2) {
+          console.log('❌ DEBUG: Erro campos (supabaseAdmin):', fieldsError2.message);
+        } else {
+          fieldsCreated = true;
+          console.log('✅ DEBUG: Campos criados com Admin');
+        }
+      } else {
+        fieldsCreated = true;
+        console.log('✅ DEBUG: Campos criados normalmente');
+      }
+    }
+
+    console.log('✅ DEBUG: Processo concluído');
+    
+    res.status(201).json({
+      success: true,
+      message: 'Pipeline debug criada',
+      pipeline,
+      stages_created: stages.length > 0,
+      fields_created: fieldsCreated,
+      fields_attempted: custom_fields.length
+    });
+
+  } catch (error) {
+    console.log('❌ DEBUG: Erro geral:', error);
+    res.status(500).json({
+      error: 'Erro no debug',
+      details: error instanceof Error ? error.message : 'Erro desconhecido',
+      stack: error instanceof Error ? error.stack : null
+    });
+  }
+});
+
+// Rota temporária para criar tabela de leads
+router.post('/create-leads-table', async (req, res) => {
+  try {
+    console.log('🔧 Adicionando coluna custom_data à tabela pipeline_leads...');
+    
+    // Tentar adicionar a coluna custom_data se não existir
+    const { error: alterError } = await supabase
+      .from('pipeline_leads')
+      .select('custom_data')
+      .limit(1);
+
+    if (alterError && alterError.message.includes('custom_data')) {
+      console.log('⚠️ Coluna custom_data não existe, mas não podemos alterar a estrutura via Supabase client');
+      return res.status(500).json({ 
+        error: 'Coluna custom_data não existe na tabela pipeline_leads',
+        solution: 'Execute este SQL no Supabase SQL Editor: ALTER TABLE pipeline_leads ADD COLUMN custom_data JSONB DEFAULT \'{}\';'
+      });
+    }
+
+    // Se chegou aqui, a coluna existe
+    console.log('✅ Coluna custom_data já existe ou tabela está OK');
+    res.json({ message: 'Tabela pipeline_leads está pronta para uso' });
+
+  } catch (error) {
+    console.log('❌ Erro geral:', error);
+    res.status(500).json({ error: 'Erro interno', details: error instanceof Error ? error.message : 'Erro desconhecido' });
   }
 });
 

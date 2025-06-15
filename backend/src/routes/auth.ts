@@ -3,6 +3,15 @@ import { supabase } from '../index';
 
 const router = Router();
 
+// Credenciais demo para desenvolvimento
+const DEMO_CREDENTIALS = {
+  'superadmin@crm.com': 'SuperAdmin123!',
+  'admin@crm.com': '123456',
+  'member@crm.com': '123456',
+  'carlos@renovedigital.com.br': '123456',
+  'felipe@felipe.com': '123456'
+};
+
 // Rota de login
 router.post('/login', async (req: Request, res: Response) => {
   try {
@@ -14,6 +23,35 @@ router.post('/login', async (req: Request, res: Response) => {
       });
     }
 
+    // Verificar se é uma credencial demo
+    if (DEMO_CREDENTIALS[email as keyof typeof DEMO_CREDENTIALS] === password) {
+      // Buscar usuário na tabela
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email)
+        .eq('is_active', true)
+        .single();
+
+      if (userError || !userData) {
+        return res.status(401).json({
+          error: 'Usuário não encontrado na base de dados'
+        });
+      }
+
+      return res.json({
+        message: 'Login realizado com sucesso',
+        user: {
+          id: userData.id,
+          email: userData.email
+        },
+        session: { access_token: 'demo_token' },
+        userData: userData,
+        redirect: '/app'
+      });
+    }
+
+    // Tentar autenticação normal do Supabase
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password
