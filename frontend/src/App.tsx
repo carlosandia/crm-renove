@@ -34,7 +34,7 @@ function App() {
   useEffect(() => {
     const checkBackend = async () => {
       try {
-        const response = await fetch('http://localhost:5000/health');
+        const response = await fetch('http://localhost:5001/health');
         if (response.ok) {
           const data = await response.json();
           setBackendStatus(`✅ Backend Online - ${data.status}`);
@@ -68,7 +68,7 @@ function App() {
         setCurrentUser(mockUser);
 
         // Carregar clientes
-        const customersResponse = await fetch('http://localhost:5000/api/customers');
+        const customersResponse = await fetch('http://localhost:5001/api/customers');
         if (customersResponse.ok) {
           const customersData = await customersResponse.json();
           setCustomers(customersData.customers || []);
@@ -76,7 +76,7 @@ function App() {
 
         // Carregar usuários (apenas para admin e manager)
         if (mockUser.role === 'admin' || mockUser.role === 'manager') {
-          const usersResponse = await fetch('http://localhost:5000/api/users');
+          const usersResponse = await fetch('http://localhost:5001/api/users');
           if (usersResponse.ok) {
             const usersData = await usersResponse.json();
             setUsers(usersData.users || []);
@@ -98,7 +98,7 @@ function App() {
 
   const testBackendConnection = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/test-db');
+      const response = await fetch('http://localhost:5001/api/test-db');
       const data = await response.json();
       alert(`Teste de conexão: ${data.message}`);
     } catch (error) {
@@ -193,7 +193,7 @@ function App() {
             {error && (
               <div className="error-message">
                 <p>❌ {error}</p>
-                <p>💡 Certifique-se de que o backend está rodando na porta 5000</p>
+                <p>💡 Certifique-se de que o backend está rodando na porta 5001</p>
               </div>
             )}
             
