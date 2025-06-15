@@ -1,6 +1,6 @@
 
 import express from 'express';
-import { supabase } from '../index';
+import { supabaseAdmin } from '../index';
 
 const router = express.Router();
 
@@ -9,7 +9,7 @@ router.get('/', async (req, res) => {
   try {
     const { role, tenant_id } = req.query;
     
-    let query = supabase.from('users').select('*');
+    let query = supabaseAdmin.from('users').select('*');
     
     if (role) {
       query = query.eq('role', role);
@@ -22,6 +22,7 @@ router.get('/', async (req, res) => {
     const { data: users, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
+      console.error('Erro ao buscar usuários:', error);
       throw error;
     }
 
@@ -43,7 +44,9 @@ router.patch('/:userId/toggle-status', async (req, res) => {
     const { userId } = req.params;
     const { is_active } = req.body;
 
-    const { data: user, error } = await supabase
+    console.log('Alterando status do usuário:', { userId, is_active });
+
+    const { data: user, error } = await supabaseAdmin
       .from('users')
       .update({ is_active })
       .eq('id', userId)
@@ -51,8 +54,11 @@ router.patch('/:userId/toggle-status', async (req, res) => {
       .single();
 
     if (error) {
+      console.error('Erro ao alterar status:', error);
       throw error;
     }
+
+    console.log('Status alterado com sucesso:', user);
 
     res.json({
       success: true,
