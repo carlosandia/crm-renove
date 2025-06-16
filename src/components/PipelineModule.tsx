@@ -537,14 +537,14 @@ const PipelineModule: React.FC = () => {
           logger.error('❌ Erro ao atribuir membro:', memberError);
         }
       }
-
-      // Resetar formulários
-      setPipelineForm({ name: '', description: '', member_ids: [] });
-      setStages([]);
-      setCustomFields([]);
-      setActiveTab('list');
-      loadPipelines();
-      
+        
+        // Resetar formulários
+        setPipelineForm({ name: '', description: '', member_ids: [] });
+        setStages([]);
+        setCustomFields([]);
+        setActiveTab('list');
+        loadPipelines();
+        
       alert(`Pipeline criada com sucesso!\n- ${stagesCreated} etapas criadas\n- ${membersAssigned} membros atribuídos`);
     } catch (error) {
       logger.error('❌ Erro ao criar pipeline:', error);
@@ -572,11 +572,11 @@ const PipelineModule: React.FC = () => {
         throw new Error(`Erro ao atualizar pipeline: ${error.message}`);
       }
 
-      setActiveTab('list');
-      setSelectedPipeline(null);
-      setPipelineForm({ name: '', description: '', member_ids: [] });
-      loadPipelines();
-      alert('Pipeline atualizada com sucesso!');
+        setActiveTab('list');
+        setSelectedPipeline(null);
+        setPipelineForm({ name: '', description: '', member_ids: [] });
+        loadPipelines();
+        alert('Pipeline atualizada com sucesso!');
     } catch (error) {
       logger.error('❌ Erro ao atualizar pipeline:', error);
       alert(`Erro ao atualizar pipeline: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
@@ -616,8 +616,8 @@ const PipelineModule: React.FC = () => {
         throw new Error(`Erro ao excluir pipeline: ${pipelineError.message}`);
       }
 
-      loadPipelines();
-      alert('Pipeline excluída com sucesso!');
+        loadPipelines();
+        alert('Pipeline excluída com sucesso!');
     } catch (error) {
       logger.error('❌ Erro ao excluir pipeline:', error);
       alert(`Erro ao excluir pipeline: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
@@ -642,8 +642,8 @@ const PipelineModule: React.FC = () => {
         throw new Error(`Erro ao adicionar membro: ${error.message}`);
       }
 
-      loadPipelines();
-      alert('Membro adicionado com sucesso!');
+        loadPipelines();
+        alert('Membro adicionado com sucesso!');
     } catch (error) {
       logger.error('❌ Erro ao adicionar membro:', error);
       alert(`Erro ao adicionar membro: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
@@ -664,8 +664,8 @@ const PipelineModule: React.FC = () => {
         throw new Error(`Erro ao remover membro: ${error.message}`);
       }
 
-      loadPipelines();
-      alert('Membro removido com sucesso!');
+        loadPipelines();
+        alert('Membro removido com sucesso!');
     } catch (error) {
       logger.error('❌ Erro ao remover membro:', error);
       alert(`Erro ao remover membro: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
@@ -707,10 +707,10 @@ const PipelineModule: React.FC = () => {
         throw new Error(`Erro ao criar etapa: ${error.message}`);
       }
 
-      setStageForm({ name: '', temperature_score: 50, max_days_allowed: 7, color: '#3B82F6' });
-      setShowStageModal(false);
-      loadPipelines();
-      alert('Etapa criada com sucesso!');
+        setStageForm({ name: '', temperature_score: 50, max_days_allowed: 7, color: '#3B82F6' });
+        setShowStageModal(false);
+        loadPipelines();
+        alert('Etapa criada com sucesso!');
     } catch (error) {
       logger.error('❌ Erro ao criar etapa:', error);
       alert(`Erro ao criar etapa: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
@@ -738,8 +738,8 @@ const PipelineModule: React.FC = () => {
         throw new Error(`Erro ao excluir etapa: ${stageError.message}`);
       }
 
-      loadPipelines();
-      alert('Etapa excluída com sucesso!');
+        loadPipelines();
+        alert('Etapa excluída com sucesso!');
     } catch (error) {
       logger.error('❌ Erro ao excluir etapa:', error);
       alert(`Erro ao excluir etapa: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
@@ -769,10 +769,10 @@ const PipelineModule: React.FC = () => {
         throw new Error(`Erro ao criar follow-up: ${error.message}`);
       }
 
-      setFollowUpForm({ stage_id: '', day_offset: 1, note: '' });
-      setShowFollowUpModal(false);
-      loadPipelines();
-      alert('Follow-up criado com sucesso!');
+        setFollowUpForm({ stage_id: '', day_offset: 1, note: '' });
+        setShowFollowUpModal(false);
+        loadPipelines();
+        alert('Follow-up criado com sucesso!');
     } catch (error) {
       logger.error('❌ Erro ao criar follow-up:', error);
       alert(`Erro ao criar follow-up: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
@@ -1707,7 +1707,7 @@ const PipelineModule: React.FC = () => {
       {showEditModal && editingPipeline && (
         <div className="edit-pipeline-form">
           <div>
-            <h4>✏️ Editar Pipeline</h4>
+          <h4>✏️ Editar Pipeline</h4>
             <div className="edit-tabs">
             <button 
               onClick={() => setActiveEditTab('info')}
@@ -1731,23 +1731,23 @@ const PipelineModule: React.FC = () => {
           {activeEditTab === 'info' && (
             <div className="edit-section">
               <h5>📋 Informações Básicas</h5>
-              <div className="form-group">
-                <label>Nome da Pipeline *</label>
-                <input
-                  type="text"
+            <div className="form-group">
+              <label>Nome da Pipeline *</label>
+              <input
+                type="text"
                   value={editForm.name}
                   onChange={(e) => setEditForm({...editForm, name: e.target.value})}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Descrição</label>
-                <textarea
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>Descrição</label>
+              <textarea
                   value={editForm.description}
                   onChange={(e) => setEditForm({...editForm, description: e.target.value})}
-                  rows={3}
-                />
-              </div>
+                rows={3}
+              />
+            </div>
             </div>
           )}
           {activeEditTab === 'stages' && (
@@ -1807,9 +1807,9 @@ const PipelineModule: React.FC = () => {
                         title="Mover para cima"
                       >
                         ⬆️
-                      </button>
-                      <button 
-                        type="button"
+              </button>
+              <button 
+                type="button" 
                         onClick={() => moveEditStage(index, 'down')}
                         disabled={index === editStages.length - 1}
                         className="move-button"
@@ -1964,11 +1964,11 @@ const PipelineModule: React.FC = () => {
             <button 
               type="button" 
               onClick={() => setShowEditModal(false)}
-              className="cancel-button"
-            >
-              Cancelar
-            </button>
-          </div>
+                className="cancel-button"
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -40,9 +40,9 @@ const isValidCredential = async (email: string, password: string) => {
       if (!error && user && user.role === 'member') {
         return true;
       }
-          } catch (error) {
-        // Ignorar erro silenciosamente para não poluir o console
-      }
+    } catch (error) {
+      // Ignorar erro silenciosamente para não poluir o console
+    }
   }
   
   return false;
@@ -156,6 +156,11 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       localStorage.removeItem('crm_user');
       setUser(null);
       logger.success('Logout realizado com sucesso');
+      
+      // Redirecionar para a página de login
+      if (typeof window !== 'undefined') {
+        window.location.href = '/';
+      }
     } catch (error) {
       logger.error('Erro ao fazer logout', error);
     }

@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Importar todos os estilos existentes */
+@import '../src/index.css';
+@import '../src/App.css';
+@import '../src/styles/base.css';
+@import '../src/styles/auth.css';
+@import '../src/styles/crm-layout.css';
+@import '../src/styles/dashboard.css';
+@import '../src/styles/menu.css';
+@import '../src/styles/responsive.css';
+@import '../src/styles/clientes.css';
+@import '../src/styles/vendedores.css';
+@import '../src/styles/VendedoresModule.css';
+@import '../src/styles/PipelineModule.css';
+@import '../src/components/PipelineViewModule.css';
+@import '../src/styles/modern-crm.css';
+
+/* Estilos globais específicos do Next.js */
+html,
+body {
+  padding: 0;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
+    Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Garantir que os estilos do CRM funcionem corretamente */
+.crm-app {
+  min-height: 100vh;
+  background-color: #f8fafc;
+} 

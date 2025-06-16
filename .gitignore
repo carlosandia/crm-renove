@@ -11,6 +11,10 @@ dist/
 */build/
 */dist/
 
+# Next.js
+.next/
+out/
+
 # Environment variables
 .env
 .env.local
@@ -95,4 +99,15 @@ jspm_packages/
 .tern-port
 
 # Cursor specific
-.cursor/ 
+.cursor/
+
+# Supabase
+supabase/.temp/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Vite (legacy - pode ser removido após migração)
+vite.config.ts
+index.html 

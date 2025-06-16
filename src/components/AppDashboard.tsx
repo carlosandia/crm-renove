@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '../contexts/AuthContext';
 import { Customer, User } from '../types/User';
 import CRMLayout from './CRMLayout';
@@ -12,10 +13,25 @@ import { logger } from '../lib/logger';
 
 const AppDashboard: React.FC = () => {
   const { user, logout } = useAuth();
+  const router = useRouter();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeModule, setActiveModule] = useState('relatorio');
+
+  // Função de logout personalizada com redirecionamento
+  const handleLogout = async () => {
+    try {
+      logger.info('Iniciando processo de logout...');
+      await logout();
+      logger.success('Logout concluído, redirecionando...');
+      router.push('/');
+    } catch (error) {
+      logger.error('Erro durante logout:', error);
+      // Forçar redirecionamento mesmo em caso de erro
+      window.location.href = '/';
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -285,7 +301,7 @@ const AppDashboard: React.FC = () => {
   }
 
   return (
-    <CRMLayout user={user} onLogout={logout}>
+    <CRMLayout user={user} onLogout={handleLogout}>
       {renderActiveModule()}
     </CRMLayout>
   );
