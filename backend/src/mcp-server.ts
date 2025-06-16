@@ -8,7 +8,10 @@ dotenv.config();
 
 export class IntegratedMCPServer {
     private server: Server;
-    private supabase: SupabaseClient;
+    private supabase: SupabaseClient = createClient(
+        process.env.SUPABASE_URL || '',
+        process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || ''
+    );
     private isInitialized = false;
 
     constructor() {
@@ -178,7 +181,7 @@ export class IntegratedMCPServer {
                 }
             } catch (error) {
                 return {
-                    content: [{ type: 'text', text: `❌ Erro: ${error.message}` }],
+                    content: [{ type: 'text', text: `❌ Erro: ${error instanceof Error ? error.message : 'Erro desconhecido'}` }],
                     isError: true
                 };
             }
@@ -354,7 +357,7 @@ export class IntegratedMCPServer {
                 }]
             };
         } catch (error) {
-            throw new Error(`Erro ao buscar estatísticas: ${error.message}`);
+            throw new Error(`Erro ao buscar estatísticas: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
         }
     }
 

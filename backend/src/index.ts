@@ -9,7 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 8080;
 
 // Configuração do Supabase
 const supabaseUrl = process.env.SUPABASE_URL || 'https://marajvabdwkpgopytvhh.supabase.co';
@@ -111,6 +111,8 @@ import salesGoalsRoutes from './routes/sales-goals';
 import pipelinesRoutes from './routes/pipelines';
 import setupRoutes from './routes/setup';
 import mcpRoutes from './routes/mcp';
+import databaseRoutes from './routes/database';
+import healthRoutes from './routes/health';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
@@ -122,6 +124,8 @@ app.use('/api/sales-goals', salesGoalsRoutes);
 app.use('/api/pipelines', pipelinesRoutes);
 app.use('/api/setup', setupRoutes);
 app.use('/api/mcp', mcpRoutes);
+app.use('/api/database', databaseRoutes);
+app.use('/api/health', healthRoutes);
 
 // Middleware de tratamento de erros
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

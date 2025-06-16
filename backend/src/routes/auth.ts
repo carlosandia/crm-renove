@@ -1,7 +1,11 @@
 import { Router, Request, Response } from 'express';
-import { supabase } from '../index';
+import { createClient } from '@supabase/supabase-js';
 
 const router = Router();
+
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Credenciais demo para desenvolvimento
 const DEMO_CREDENTIALS = {
@@ -47,7 +51,7 @@ router.post('/login', async (req: Request, res: Response) => {
         },
         session: { access_token: 'demo_token' },
         userData: userData,
-        redirect: '/app'
+        redirect: '/'
       });
     }
 
@@ -71,15 +75,15 @@ router.post('/login', async (req: Request, res: Response) => {
       .eq('id', data.user.id)
       .single();
 
-    res.json({
+    return res.json({
       message: 'Login realizado com sucesso',
       user: data.user,
       session: data.session,
-      userData: userData, // ✅ Dados da tabela única com role e tenant_id
-      redirect: '/app' // ✅ Redirecionamento único para /app
+      userData: userData,
+      redirect: '/'
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Erro interno do servidor',
       details: error instanceof Error ? error.message : 'Erro desconhecido'
     });

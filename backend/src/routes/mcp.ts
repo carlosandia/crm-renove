@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { mcpMiddleware } from '../mcp-integration';
 
 const router = Router();
@@ -53,5 +53,84 @@ router.get('/status', (req, res) => {
         ]
     });
 });
+
+// GET /api/mcp/tools
+router.get('/tools', async (req: Request, res: Response) => {
+  try {
+    const tools = [
+      {
+        name: 'execute_sql',
+        description: 'Execute SQL queries on Supabase database',
+        parameters: {
+          query: 'string',
+          params: 'array (optional)'
+        }
+      },
+      {
+        name: 'create_user',
+        description: 'Create a new user in the system',
+        parameters: {
+          email: 'string',
+          first_name: 'string',
+          last_name: 'string',
+          role: 'string',
+          tenant_id: 'string'
+        }
+      },
+      {
+        name: 'create_pipeline',
+        description: 'Create a new sales pipeline',
+        parameters: {
+          name: 'string',
+          description: 'string',
+          tenant_id: 'string',
+          created_by: 'string'
+        }
+      }
+    ]
+
+    return res.json({
+      tools,
+      total: tools.length,
+      server_info: {
+        name: 'CRM Marketing MCP Server',
+        version: '1.0.0'
+      }
+    })
+  } catch (error) {
+    return res.status(500).json({
+      error: 'Erro ao listar ferramentas MCP',
+      details: error instanceof Error ? error.message : 'Erro desconhecido'
+    })
+  }
+})
+
+// POST /api/mcp/execute
+router.post('/execute', async (req: Request, res: Response) => {
+  try {
+    const { toolName, params } = req.body
+
+    if (!toolName) {
+      return res.status(400).json({
+        error: 'toolName é obrigatório'
+      })
+    }
+
+    // Aqui você pode implementar a lógica de execução das ferramentas MCP
+    // Por enquanto, retornamos uma resposta de exemplo
+    return res.json({
+      message: `Ferramenta ${toolName} executada com sucesso`,
+      toolName,
+      params,
+      result: 'Implementação pendente',
+      timestamp: new Date().toISOString()
+    })
+  } catch (error) {
+    return res.status(500).json({
+      error: 'Erro ao executar ferramenta MCP',
+      details: error instanceof Error ? error.message : 'Erro desconhecido'
+    })
+  }
+})
 
 export default router; 

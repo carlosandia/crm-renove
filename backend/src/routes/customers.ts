@@ -1,149 +1,116 @@
 import { Router, Request, Response } from 'express';
-import { supabase } from '../index';
+import { createClient } from '@supabase/supabase-js';
 
 const router = Router();
 
-// Listar todos os clientes
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// GET /api/customers
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase
-      .from('customers')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const { tenant_id } = req.query;
 
-    if (error) {
-      return res.status(400).json({
-        error: 'Erro ao buscar clientes',
-        details: error.message
-      });
+    let query = supabase
+      .from('companies')
+      .select('*');
+
+    if (tenant_id) {
+      query = query.eq('tenant_id', tenant_id);
     }
 
-    res.json({
-      customers: data,
-      total: data?.length || 0
-    });
+    const { data: customers, error } = await query.order('created_at', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    return res.json({ customers });
   } catch (error) {
-    res.status(500).json({
-      error: 'Erro interno do servidor',
+    return res.status(500).json({
+      error: 'Erro ao buscar clientes',
       details: error instanceof Error ? error.message : 'Erro desconhecido'
     });
   }
 });
 
-// Buscar cliente por ID
-router.get('/:id', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-
-    const { data, error } = await supabase
-      .from('customers')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (error) {
-      return res.status(404).json({
-        error: 'Cliente não encontrado',
-        details: error.message
-      });
-    }
-
-    res.json({
-      customer: data
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: 'Erro interno do servidor',
-      details: error instanceof Error ? error.message : 'Erro desconhecido'
-    });
-  }
-});
-
-// Criar novo cliente
+// POST /api/customers
 router.post('/', async (req: Request, res: Response) => {
   try {
     const customerData = req.body;
-
-    const { data, error } = await supabase
-      .from('customers')
+    
+    const { data: customer, error } = await supabase
+      .from('companies')
       .insert([customerData])
       .select()
       .single();
 
     if (error) {
-      return res.status(400).json({
-        error: 'Erro ao criar cliente',
-        details: error.message
-      });
+      throw error;
     }
 
-    res.status(201).json({
+    return res.status(201).json({
       message: 'Cliente criado com sucesso',
-      customer: data
+      customer 
     });
   } catch (error) {
-    res.status(500).json({
-      error: 'Erro interno do servidor',
+    return res.status(500).json({
+      error: 'Erro ao criar cliente',
       details: error instanceof Error ? error.message : 'Erro desconhecido'
     });
   }
 });
 
-// Atualizar cliente
+// PUT /api/customers/:id
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
-
-    const { data, error } = await supabase
-      .from('customers')
-      .update(updates)
+    const customerData = req.body;
+    
+    const { data: customer, error } = await supabase
+      .from('companies')
+      .update(customerData)
       .eq('id', id)
       .select()
       .single();
 
     if (error) {
-      return res.status(400).json({
-        error: 'Erro ao atualizar cliente',
-        details: error.message
-      });
+      throw error;
     }
 
-    res.json({
+    return res.json({
       message: 'Cliente atualizado com sucesso',
-      customer: data
+      customer 
     });
   } catch (error) {
-    res.status(500).json({
-      error: 'Erro interno do servidor',
+    return res.status(500).json({
+      error: 'Erro ao atualizar cliente',
       details: error instanceof Error ? error.message : 'Erro desconhecido'
     });
   }
 });
 
-// Deletar cliente
+// DELETE /api/customers/:id
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-
+    
     const { error } = await supabase
-      .from('customers')
+      .from('companies')
       .delete()
       .eq('id', id);
 
     if (error) {
-      return res.status(400).json({
-        error: 'Erro ao deletar cliente',
-        details: error.message
-      });
+      throw error;
     }
 
-    res.json({
-      message: 'Cliente deletado com sucesso'
+    return res.json({
+      message: 'Cliente removido com sucesso'
     });
   } catch (error) {
-    res.status(500).json({
-      error: 'Erro interno do servidor',
+    return res.status(500).json({
+      error: 'Erro ao remover cliente',
       details: error instanceof Error ? error.message : 'Erro desconhecido'
     });
   }

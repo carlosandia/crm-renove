@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Router, Request, Response } from 'express';
 import { PipelineController } from '../controllers/PipelineController';
 import { CustomFieldController } from '../controllers/customFieldController';
 import { LeadController } from '../controllers/leadController';
