@@ -605,3 +605,33 @@
 .activity-item {
   animation: fadeInUp 0.4s ease-out;
 }
+
+/* Layout sem sidebar */
+.crm-layout-no-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: linear-gradient(135deg, var(--gray-50) 0%, var(--primary-50) 100%);
+}
+
+.crm-content-full {
+  flex: 1;
+  padding: 32px;
+  background: transparent;
+  overflow-y: auto;
+}
+
+/* Ajustar header para layout sem sidebar */
+.crm-layout-no-sidebar .crm-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  width: 100%;
+}
+
+/* Responsividade para layout sem sidebar */
+@media (max-width: 768px) {
+  .crm-content-full {
+    padding: 16px;
+  }
+}

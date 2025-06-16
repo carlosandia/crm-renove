@@ -4,16 +4,12 @@ import React from 'react';
 interface CRMHeaderProps {
   user: any;
   onLogout: () => void;
-  onMenuToggle: () => void;
 }
 
-const CRMHeader: React.FC<CRMHeaderProps> = ({ user, onLogout, onMenuToggle }) => {
+const CRMHeader: React.FC<CRMHeaderProps> = ({ user, onLogout }) => {
   return (
     <header className="crm-header">
       <div className="header-left">
-        <button className="menu-toggle md:hidden" onClick={onMenuToggle}>
-          ☰
-        </button>
         <div className="breadcrumb">
           <span>Dashboard CRM</span>
         </div>

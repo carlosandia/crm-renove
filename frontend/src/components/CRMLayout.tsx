@@ -1,6 +1,5 @@
 
-import React, { useState } from 'react';
-import CRMSidebar from './CRMSidebar';
+import React from 'react';
 import CRMHeader from './CRMHeader';
 import '../styles/modern-crm.css';
 
@@ -11,25 +10,15 @@ interface CRMLayoutProps {
 }
 
 const CRMLayout: React.FC<CRMLayoutProps> = ({ children, user, onLogout }) => {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-
   return (
-    <div className="crm-layout">
-      <CRMSidebar 
+    <div className="crm-layout-no-sidebar">
+      <CRMHeader 
         user={user} 
-        isOpen={sidebarOpen} 
-        onToggle={() => setSidebarOpen(!sidebarOpen)}
+        onLogout={onLogout}
       />
-      <div className={`crm-main ${!sidebarOpen ? 'sidebar-closed' : ''}`}>
-        <CRMHeader 
-          user={user} 
-          onLogout={onLogout}
-          onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
-        />
-        <main className="crm-content">
-          {children}
-        </main>
-      </div>
+      <main className="crm-content-full">
+        {children}
+      </main>
     </div>
   );
 };
