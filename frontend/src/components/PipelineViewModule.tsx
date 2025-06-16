@@ -125,27 +125,24 @@ const PipelineViewModule: React.FC = () => {
   };
 
   const handleCreateLead = async () => {
-    if (!selectedPipeline || !selectedStageId) return;
+    if (!selectedPipeline) return;
 
     try {
-      // Determinar o status baseado na etapa
+      // Determinar o status baseado na etapa selecionada
       let leadStatus = 'active';
+      let customData = { ...leadFormData };
+
       if (selectedStageId === 'system-won') {
         leadStatus = 'won';
+        customData._system_status = 'won';
+        customData._system_stage = 'system-won';
       } else if (selectedStageId === 'system-lost') {
         leadStatus = 'lost';
+        customData._system_status = 'lost';
+        customData._system_stage = 'system-lost';
       }
 
-      // Para etapas do sistema, usar a primeira etapa real como stage_id no banco
-      // mas marcar o status apropriado
-      let actualStageId = selectedStageId;
-      if (selectedStageId.startsWith('system-')) {
-        const regularStages = (selectedPipeline.pipeline_stages || [])
-          .sort((a, b) => a.order_index - b.order_index);
-        if (regularStages.length > 0) {
-          actualStageId = regularStages[0].id;
-        }
-      }
+      console.log('🎯 Criando lead - Stage ID:', selectedStageId, 'Status:', leadStatus);
 
       const response = await fetch(`http://localhost:5001/api/pipelines/${selectedPipeline.id}/leads`, {
         method: 'POST',
@@ -153,27 +150,30 @@ const PipelineViewModule: React.FC = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          stage_id: actualStageId,
-          custom_data: {
-            ...leadFormData,
-            _system_status: leadStatus, // Adicionar status do sistema aos dados customizados
-            _system_stage: selectedStageId // Guardar a etapa do sistema original
-          },
+          // O backend agora ignora o stage_id e sempre usa a primeira etapa
+          // Mas enviamos mesmo assim para compatibilidade
+          stage_id: selectedStageId,
+          custom_data: customData,
           created_by: user?.id
         }),
       });
 
+      const responseData = await response.json();
+
       if (response.ok) {
         setShowAddLeadModal(false);
         setLeadFormData({});
+        setSelectedStageId('');
         loadLeads(selectedPipeline.id);
         
         const statusMessage = leadStatus === 'won' ? 'Lead criado como GANHO!' : 
                              leadStatus === 'lost' ? 'Lead criado como PERDIDO!' : 
-                             'Lead criado com sucesso!';
+                             'Lead criado com sucesso na primeira etapa!';
         alert(statusMessage);
+        console.log('✅ Lead criado:', responseData);
       } else {
-        alert('Erro ao criar lead');
+        console.error('❌ Erro na resposta:', responseData);
+        alert(`Erro ao criar lead: ${responseData.error || 'Erro desconhecido'}`);
       }
     } catch (error) {
       console.error('❌ Erro ao criar lead:', error);

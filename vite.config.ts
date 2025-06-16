@@ -16,10 +16,10 @@ export default defineConfig(({ mode }) => ({
   },
   server: {
     host: "::",
-    port: 8080,
+    port: 5173,
     hmr: {
-      clientPort: 8080,
-      port: 8080
+      clientPort: 5173,
+      port: 5173
     }
   },
   resolve: {

@@ -11,6 +11,7 @@ export class LeadController {
         return res.status(400).json({ error: 'pipeline_id é obrigatório' });
       }
 
+      // Usar lead_data que é a coluna que existe na tabela
       const { data: leads, error } = await supabase
         .from('pipeline_leads')
         .select('*')
@@ -22,16 +23,124 @@ export class LeadController {
         return res.status(500).json({ error: 'Erro ao buscar leads', details: error.message });
       }
 
-      // Renomear lead_data para custom_data em todos os leads
-      const leadsWithCustomData = (leads || []).map(lead => ({
+      // Renomear lead_data para custom_data no retorno para manter compatibilidade
+      const leadsResponse = (leads || []).map(lead => ({
         ...lead,
-        custom_data: lead.lead_data || {}
+        custom_data: lead.lead_data
       }));
 
-      res.json({ leads: leadsWithCustomData });
+      res.json({ leads: leadsResponse });
     } catch (error) {
       console.error('Erro ao buscar leads:', error);
       res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
+
+  // Função auxiliar para garantir que existe uma etapa "Novos Leads" na primeira posição
+  static async ensureNewLeadsStage(pipeline_id: string) {
+    try {
+      // Verificar se já existe uma etapa com order_index = 0
+      const { data: firstStage, error: checkError } = await supabase
+        .from('pipeline_stages')
+        .select('*')
+        .eq('pipeline_id', pipeline_id)
+        .eq('order_index', 0)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('Erro ao verificar primeira etapa:', checkError);
+        return null;
+      }
+
+      // Se existe uma etapa com order_index = 0, verificar se é "Novos Leads"
+      if (firstStage) {
+        if (firstStage.name === 'Novos Leads') {
+          return firstStage.id;
+        } else {
+          // Existe uma etapa no índice 0, mas não é "Novos Leads"
+          // Vamos usar essa etapa existente
+          return firstStage.id;
+        }
+      }
+
+      // Se não existe etapa com order_index = 0, verificar se existe "Novos Leads" em outro índice
+      const { data: existingNewLeadsStage, error: existingError } = await supabase
+        .from('pipeline_stages')
+        .select('*')
+        .eq('pipeline_id', pipeline_id)
+        .eq('name', 'Novos Leads')
+        .single();
+
+      if (existingNewLeadsStage && !existingError) {
+        // Existe "Novos Leads" mas em outro índice, vamos atualizar para order_index = 0
+        const { error: updateError } = await supabase
+          .from('pipeline_stages')
+          .update({ order_index: 0 })
+          .eq('id', existingNewLeadsStage.id);
+
+        if (updateError) {
+          console.error('Erro ao atualizar ordem da etapa Novos Leads:', updateError);
+        }
+        
+        return existingNewLeadsStage.id;
+      }
+
+      // Não existe "Novos Leads", vamos criar uma nova etapa
+      const { data: newStage, error: createError } = await supabase
+        .from('pipeline_stages')
+        .insert({
+          pipeline_id: pipeline_id,
+          name: 'Novos Leads',
+          order_index: 0,
+          temperature_score: 25,
+          max_days_allowed: 7,
+          color: '#3B82F6'
+        })
+        .select()
+        .single();
+
+      if (createError) {
+        console.error('Erro ao criar etapa Novos Leads:', createError);
+        return null;
+      }
+
+      console.log('✅ Etapa "Novos Leads" criada com sucesso:', newStage.id);
+      return newStage.id;
+
+    } catch (error) {
+      console.error('Erro na função ensureNewLeadsStage:', error);
+      return null;
+    }
+  }
+
+  // Função auxiliar para obter a primeira etapa da pipeline
+  static async getFirstStage(pipeline_id: string) {
+    try {
+      // Primeiro, garantir que existe uma etapa "Novos Leads"
+      let firstStageId = await LeadController.ensureNewLeadsStage(pipeline_id);
+      
+      if (firstStageId) {
+        return firstStageId;
+      }
+
+      // Se não conseguiu criar/encontrar "Novos Leads", pegar a primeira etapa disponível
+      const { data: firstStage, error } = await supabase
+        .from('pipeline_stages')
+        .select('id')
+        .eq('pipeline_id', pipeline_id)
+        .order('order_index', { ascending: true })
+        .limit(1)
+        .single();
+
+      if (error) {
+        console.error('Erro ao buscar primeira etapa:', error);
+        return null;
+      }
+
+      return firstStage?.id || null;
+    } catch (error) {
+      console.error('Erro na função getFirstStage:', error);
+      return null;
     }
   }
 
@@ -41,9 +150,19 @@ export class LeadController {
       const { pipeline_id } = req.params;
       const { stage_id, custom_data, created_by } = req.body;
 
-      if (!pipeline_id || !stage_id) {
+      if (!pipeline_id) {
         return res.status(400).json({ 
-          error: 'pipeline_id e stage_id são obrigatórios' 
+          error: 'pipeline_id é obrigatório' 
+        });
+      }
+
+      // SEMPRE usar a primeira etapa da pipeline para novos leads
+      // Ignorar o stage_id fornecido e garantir que vai para "Novos Leads"
+      const firstStageId = await LeadController.getFirstStage(pipeline_id);
+      
+      if (!firstStageId) {
+        return res.status(400).json({ 
+          error: 'Pipeline não possui etapas configuradas ou não foi possível criar etapa "Novos Leads"' 
         });
       }
 
@@ -52,7 +171,7 @@ export class LeadController {
         .from('pipeline_leads')
         .insert({
           pipeline_id,
-          stage_id,
+          stage_id: firstStageId, // SEMPRE usar a primeira etapa
           lead_data: custom_data || {},
           created_by: created_by || null
         })
@@ -72,12 +191,15 @@ export class LeadController {
       delete leadResponse.lead_data;
 
       res.status(201).json({ 
-        message: 'Lead criado com sucesso',
+        message: 'Lead criado com sucesso na primeira etapa "Novos Leads"',
         lead: leadResponse
       });
     } catch (error) {
       console.error('Erro ao criar lead:', error);
-      res.status(500).json({ error: 'Erro interno do servidor' });
+      res.status(500).json({ 
+        error: 'Erro interno do servidor', 
+        details: error instanceof Error ? error.message : 'Erro desconhecido' 
+      });
     }
   }
 

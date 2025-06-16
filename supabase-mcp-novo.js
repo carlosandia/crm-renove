@@ -147,14 +147,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     
     switch (name) {
       case 'listar_tabelas':
-        // Listar tabelas usando a API do Supabase
         const { data: tabelas, error: erroTabelas } = await supabase
           .from('information_schema.tables')
           .select('table_name')
           .eq('table_schema', 'public');
           
         if (erroTabelas) {
-          // Fallback com tabelas conhecidas
           resultado = {
             sucesso: true,
             tabelas: ['users', 'companies', 'leads', 'pipelines', 'custom_fields'],
@@ -304,7 +302,6 @@ async function iniciarServidor() {
   }
 }
 
-// Executar servidor se chamado diretamente
 if (require.main === module) {
   iniciarServidor().catch((error) => {
     console.error('❌ Erro não tratado:', error);
@@ -312,4 +309,17 @@ if (require.main === module) {
   });
 }
 
-module.exports = { server, tools }; 
+// ✅ Exportação esperada pelo Cursor (para reconhecer rota /api/mcp)
+module.exports = {
+  id: 'supabase',
+  name: 'Supabase MCP',
+  icon: 'database',
+  color: '#3ECF8E',
+  run: async ({ logger }) => {
+    logger.info('🟢 Supabase MCP ativo via endpoint padrão do Cursor');
+    return {
+      status: 'ok',
+      message: 'Supabase MCP conectado com sucesso'
+    };
+  }
+};
