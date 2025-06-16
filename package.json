@@ -17,7 +17,7 @@
     "type-check": "cd frontend && npm run type-check && cd ../backend && npm run build",
     "mcp-server": "cd backend && node supabase-mcp-server.js",
     "test-connection": "cd backend && node test-connection.js",
-    "health-check": "curl http://localhost:8080/api/health && curl http://localhost:3000"
+    "health-check": "curl http://localhost:3001/api/health && curl http://localhost:8080"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.3",
