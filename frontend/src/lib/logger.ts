@@ -1,5 +1,5 @@
 // Utilitário de log para controlar mensagens no console
-const isDevelopment = process.env.NODE_ENV === 'development';
+const isDevelopment = import.meta.env.DEV;
 
 export const logger = {
   info: (message: string, data?: any) => {
