@@ -1,4 +1,3 @@
-
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
@@ -35,7 +34,8 @@ export default defineConfig(({ mode }) => ({
           vendor: ['react', 'react-dom'],
           router: ['react-router-dom'],
           query: ['@tanstack/react-query'],
-          supabase: ['@supabase/supabase-js']
+          supabase: ['@supabase/supabase-js'],
+          dndkit: ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities']
         }
       }
     }
@@ -44,6 +44,14 @@ export default defineConfig(({ mode }) => ({
     global: 'globalThis',
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom', '@tanstack/react-query']
+    include: [
+      'react', 
+      'react-dom', 
+      'react-router-dom', 
+      '@tanstack/react-query',
+      '@dnd-kit/core',
+      '@dnd-kit/sortable',
+      '@dnd-kit/utilities'
+    ]
   }
 }))
