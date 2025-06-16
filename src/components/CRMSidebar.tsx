@@ -1,4 +1,5 @@
-import React from 'react';
+
+import React, { useState, useEffect } from 'react';
 
 interface CRMSidebarProps {
   user: any;
@@ -7,6 +8,19 @@ interface CRMSidebarProps {
 }
 
 const CRMSidebar: React.FC<CRMSidebarProps> = ({ user, isOpen, onToggle }) => {
+  const [activeModule, setActiveModule] = useState('dashboard');
+
+  useEffect(() => {
+    const handleNavigate = (event: CustomEvent) => {
+      setActiveModule(event.detail.module);
+    };
+
+    window.addEventListener('navigate', handleNavigate as EventListener);
+    return () => {
+      window.removeEventListener('navigate', handleNavigate as EventListener);
+    };
+  }, []);
+
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'pipeline', label: 'Pipeline', icon: '🔄' },
@@ -16,7 +30,7 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ user, isOpen, onToggle }) => {
   ];
 
   const handleMenuClick = (moduleId: string) => {
-    // Implementar navegação entre módulos
+    setActiveModule(moduleId);
     const event = new CustomEvent('navigate', { detail: { module: moduleId } });
     window.dispatchEvent(event);
   };
@@ -25,7 +39,8 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ user, isOpen, onToggle }) => {
     <aside className={`crm-sidebar ${isOpen ? 'open' : 'closed'}`}>
       <div className="sidebar-header">
         <div className="logo">
-          <h2>CRM System</h2>
+          {isOpen && <h2>CRM System</h2>}
+          {!isOpen && <h2>CRM</h2>}
         </div>
         <button className="toggle-btn" onClick={onToggle}>
           {isOpen ? '←' : '→'}
@@ -50,7 +65,7 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ user, isOpen, onToggle }) => {
         {menuItems.map((item) => (
           <button
             key={item.id}
-            className="nav-item"
+            className={`nav-item ${activeModule === item.id ? 'active' : ''}`}
             onClick={() => handleMenuClick(item.id)}
             title={!isOpen ? item.label : ''}
           >
@@ -63,4 +78,4 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ user, isOpen, onToggle }) => {
   );
 };
 
-export default CRMSidebar; 
+export default CRMSidebar;

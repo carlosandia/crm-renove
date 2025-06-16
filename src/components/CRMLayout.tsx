@@ -1,7 +1,8 @@
+
 import React, { useState } from 'react';
 import CRMSidebar from './CRMSidebar';
 import CRMHeader from './CRMHeader';
-import '../styles/crm-layout.css';
+import '../styles/modern-crm.css';
 
 interface CRMLayoutProps {
   children: React.ReactNode;
@@ -33,4 +34,4 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({ children, user, onLogout }) => {
   );
 };
 
-export default CRMLayout; 
+export default CRMLayout;

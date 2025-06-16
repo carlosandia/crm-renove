@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 interface CRMHeaderProps {
@@ -10,19 +11,19 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({ user, onLogout, onMenuToggle }) =
   return (
     <header className="crm-header">
       <div className="header-left">
-        <button className="menu-toggle" onClick={onMenuToggle}>
+        <button className="menu-toggle md:hidden" onClick={onMenuToggle}>
           ☰
         </button>
         <div className="breadcrumb">
-          <span>Dashboard</span>
+          <span>Dashboard CRM</span>
         </div>
       </div>
 
-      <div className="header-center">
+      <div className="header-center hidden md:block">
         <div className="search-bar">
           <input 
             type="text" 
-            placeholder="Pesquisar leads, clientes..." 
+            placeholder="Pesquisar leads, clientes, vendedores..." 
             className="search-input"
           />
           <button className="search-btn">🔍</button>
@@ -37,12 +38,14 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({ user, onLogout, onMenuToggle }) =
           </button>
         </div>
 
-        <div className="user-menu">
-          <div className="user-info">
-            <span className="user-name">
+        <div className="user-menu flex items-center gap-4">
+          <div className="user-info text-right hidden sm:block">
+            <div className="user-name text-sm font-semibold text-gray-800">
               {user?.first_name} {user?.last_name}
-            </span>
-            <span className="user-role">{user?.role}</span>
+            </div>
+            <div className="user-role text-xs text-gray-500 capitalize">
+              {user?.role?.replace('_', ' ')}
+            </div>
           </div>
           <div className="user-avatar">
             {user?.first_name?.charAt(0) || 'U'}
@@ -56,4 +59,4 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({ user, onLogout, onMenuToggle }) =
   );
 };
 
-export default CRMHeader; 
+export default CRMHeader;
