@@ -1,10 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-// Configuração do Supabase
-const supabaseUrl = 'https://marajvabdwkpgopytvhh.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hcmFqdmFiZHdrcGdvcHl0dmhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjQwMDksImV4cCI6MjA2NTM0MDAwOX0.C_2W2u8JyApjbhqPJm1q1dFX82KoRSm3auBfE7IpmDU';
-const supabase = createClient(supabaseUrl, supabaseKey);
+import { supabase } from '../lib/supabase';
+import { logger } from '../lib/logger';
+import { testSupabaseConnection } from '../lib/supabaseTest';
 
 interface Company {
   id: string;
@@ -57,7 +54,13 @@ const ClientesModule: React.FC = () => {
 
   const loadData = async () => {
     try {
-      console.log('🔄 Carregando dados...');
+      logger.info('Carregando dados...');
+
+      // Primeiro, testar conectividade
+      const isConnected = await testSupabaseConnection();
+      if (!isConnected) {
+        throw new Error('Falha na conectividade com Supabase');
+      }
 
       // Carregar empresas
       const { data: companies, error: companiesError } = await supabase
@@ -66,11 +69,11 @@ const ClientesModule: React.FC = () => {
         .order('created_at', { ascending: false });
 
       if (companiesError) {
-        console.error('❌ Erro ao buscar empresas:', companiesError);
+        logger.error('Erro ao buscar empresas', companiesError);
         throw companiesError;
       }
       
-      console.log('✅ Empresas carregadas:', companies?.length || 0);
+      logger.success(`Empresas carregadas: ${companies?.length || 0}`);
       setCompanies(companies || []);
 
       // Carregar admins (filtrar apenas role admin)
@@ -81,11 +84,11 @@ const ClientesModule: React.FC = () => {
         .order('created_at', { ascending: false });
 
       if (usersError) {
-        console.error('❌ Erro ao buscar usuários:', usersError);
+        logger.error('Erro ao buscar usuários', usersError);
         throw usersError;
       }
       
-      console.log('✅ Admins carregados:', users?.length || 0);
+      logger.success(`Admins carregados: ${users?.length || 0}`);
       setAdmins(users || []);
 
       // Carregar integrações
@@ -94,16 +97,15 @@ const ClientesModule: React.FC = () => {
         .select('*');
 
       if (integrationsError) {
-        console.error('❌ Erro ao buscar integrações:', integrationsError);
-        console.warn('⚠️ Tabela integrations pode não existir ainda');
+        logger.warning('Erro ao buscar integrações - tabela pode não existir ainda', integrationsError);
         setIntegrations([]);
       } else {
-        console.log('✅ Integrações carregadas:', integrations?.length || 0);
+        logger.success(`Integrações carregadas: ${integrations?.length || 0}`);
         setIntegrations(integrations || []);
       }
 
     } catch (error) {
-      console.error('💥 Erro ao carregar dados:', error);
+      logger.error('Erro ao carregar dados', error);
       alert('Erro ao carregar dados. Verifique o console para mais detalhes.');
     } finally {
       setLoading(false);
@@ -112,7 +114,7 @@ const ClientesModule: React.FC = () => {
 
   const loadMembers = async (companyId: string) => {
     try {
-      console.log('🔄 Carregando membros para empresa:', companyId);
+      logger.info(`Carregando membros para empresa: ${companyId}`);
       
       const { data: members, error } = await supabase
         .from('users')
@@ -121,14 +123,14 @@ const ClientesModule: React.FC = () => {
         .eq('role', 'member');
 
       if (error) {
-        console.error('❌ Erro ao carregar membros:', error);
+        logger.error('Erro ao carregar membros', error);
         throw error;
       }
       
-      console.log('✅ Membros carregados:', members?.length || 0);
+      logger.success(`Membros carregados: ${members?.length || 0}`);
       setMembers(members || []);
     } catch (error) {
-      console.error('💥 Erro ao carregar membros:', error);
+      logger.error('Erro ao carregar membros', error);
       alert('Erro ao carregar membros.');
     }
   };
@@ -149,37 +151,76 @@ const ClientesModule: React.FC = () => {
     }
 
     try {
-      console.log('🚀 Enviando dados para o backend...');
+      logger.info('Iniciando criação de empresa...');
       
-      const requestData = {
-        companyName: formData.companyName,
-        segment: formData.segment || null,
-        adminName: formData.adminName,
-        adminEmail: formData.adminEmail,
-        adminPassword: formData.adminPassword || '123456'
-      };
+      // Verificar se email já existe
+      logger.debug('Verificando se email já existe...');
+      const { data: existingUser, error: checkError } = await supabase
+        .from('users')
+        .select('id, email')
+        .eq('email', formData.adminEmail)
+        .maybeSingle();
 
-      console.log('📋 Dados da requisição:', requestData);
-
-      // Fazer requisição para o backend
-      const response = await fetch('http://localhost:5001/api/companies', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestData)
-      });
-
-      console.log('📡 Resposta do servidor:', response.status, response.statusText);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('❌ Erro do servidor:', errorData);
-        throw new Error(errorData.message || `Erro ${response.status}: ${response.statusText}`);
+      if (checkError) {
+        logger.error('Erro ao verificar email existente', checkError);
+        throw new Error(`Erro ao verificar email: ${checkError.message}`);
       }
 
-      const result = await response.json();
-      console.log('✅ Resposta bem-sucedida:', result);
+      if (existingUser) {
+        logger.warning(`Email já existe: ${formData.adminEmail}`);
+        throw new Error(`Email já está em uso: ${formData.adminEmail}`);
+      }
+
+      logger.success('Email disponível');
+
+      const companyData = {
+        name: formData.companyName,
+        segment: formData.segment || null
+      };
+
+      logger.debug('Dados da empresa', companyData);
+
+      // 1. Criar empresa
+      const { data: company, error: companyError } = await supabase
+        .from('companies')
+        .insert([companyData])
+        .select()
+        .single();
+
+      if (companyError) {
+        logger.error('Erro ao criar empresa', companyError);
+        throw new Error(`Erro ao criar empresa: ${companyError.message}`);
+      }
+
+      logger.success('Empresa criada', company);
+
+      // 2. Criar admin
+      const adminData = {
+        email: formData.adminEmail,
+        first_name: formData.adminName.split(' ')[0],
+        last_name: formData.adminName.split(' ').slice(1).join(' ') || '',
+        role: 'admin' as const,
+        tenant_id: company.id,
+        is_active: true
+      };
+
+      logger.debug('Dados do admin', adminData);
+
+      const { data: admin, error: adminError } = await supabase
+        .from('users')
+        .insert([adminData])
+        .select()
+        .single();
+
+      if (adminError) {
+        logger.error('Erro ao criar admin', adminError);
+        // Se erro ao criar admin, reverter criação da empresa
+        logger.info('Fazendo rollback da empresa...');
+        await supabase.from('companies').delete().eq('id', company.id);
+        throw new Error(`Erro ao criar admin: ${adminError.message}`);
+      }
+
+      logger.success('Admin criado', admin);
 
       // Reset do formulário
       setShowForm(false);
@@ -195,27 +236,21 @@ const ClientesModule: React.FC = () => {
       await loadData();
       
       // Mostrar mensagem de sucesso
-      alert(`✅ ${result.message}
+      alert(`✅ Empresa e admin criados com sucesso!
 
 📋 Detalhes:
-• Empresa: ${result.company?.name}
-• Admin: ${result.admin?.first_name} ${result.admin?.last_name}
+• Empresa: ${company.name}
+• Admin: ${admin.first_name} ${admin.last_name}
 
 🔑 Credenciais de acesso:
-• Email: ${result.credentials?.email}
-• Senha: ${result.credentials?.password}
+• Email: ${admin.email}
+• Senha padrão: 123456
 
-✨ O admin pode fazer login com essas credenciais!`);
-      
+⚠️ O admin pode fazer login usando essas credenciais.`);
+
     } catch (error) {
-      console.error('💥 Erro ao criar empresa:', error);
-      
-      let errorMessage = 'Erro desconhecido';
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-      
-      alert(`❌ Erro ao criar empresa: ${errorMessage}\n\nVerifique o console para mais detalhes.`);
+      logger.error('Erro ao criar empresa', error);
+      alert(`❌ Erro ao criar empresa: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 

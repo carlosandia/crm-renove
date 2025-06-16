@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
+import { logger } from '../lib/logger';
 import '../styles/PipelineModule.css';
 
 // ============================================
@@ -61,6 +63,27 @@ interface CustomFieldForm {
 }
 
 interface StageForm {
+  name: string;
+  temperature_score: number;
+  max_days_allowed: number;
+  color: string;
+  order_index: number;
+}
+
+// Novas interfaces para edição completa
+interface CustomField {
+  id?: string;
+  field_name: string;
+  field_label: string;
+  field_type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number' | 'date';
+  field_options?: string[];
+  is_required: boolean;
+  field_order: number;
+  placeholder?: string;
+}
+
+interface EditableStage {
+  id?: string;
   name: string;
   temperature_score: number;
   max_days_allowed: number;
@@ -131,44 +154,141 @@ const PipelineModule: React.FC = () => {
     note: ''
   });
 
+  // Novos estados para edição completa
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingPipeline, setEditingPipeline] = useState<Pipeline | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    description: '',
+    member_ids: [] as string[]
+  });
+  const [editStages, setEditStages] = useState<EditableStage[]>([]);
+  const [editCustomFields, setEditCustomFields] = useState<CustomField[]>([]);
+  const [activeEditTab, setActiveEditTab] = useState<'info' | 'stages' | 'fields'>('info');
+
   // ============================================
   // EFEITOS E CARREGAMENTO DE DADOS
   // ============================================
 
-
-
   useEffect(() => {
-    console.log('👤 Estado do usuário:', user);
-    console.log('🔑 Role do usuário:', user?.role);
-    console.log('🏢 Tenant ID:', user?.tenant_id);
+    logger.info('👤 Estado do usuário:', user);
+    logger.info('🔑 Role do usuário:', user?.role);
+    logger.info('🏢 Tenant ID:', user?.tenant_id);
     
     if (user && user.role === 'admin') {
-      console.log('✅ Usuário é admin, carregando dados...');
+      logger.info('✅ Usuário é admin, carregando dados...');
       loadPipelines();
       loadMembers();
     } else {
-      console.log('❌ Usuário não é admin ou não está logado');
+      logger.info('❌ Usuário não é admin ou não está logado');
     }
   }, [user]);
 
   const loadPipelines = async () => {
     try {
-      console.log('🔍 Carregando pipelines para tenant:', user?.tenant_id);
-      const response = await fetch(`http://localhost:5001/api/pipelines?tenant_id=${user?.tenant_id}`);
-      console.log('📡 Response status:', response.status);
+      logger.info('🔍 Carregando pipelines para tenant:', user?.tenant_id);
       
-      if (response.ok) {
-        const data = await response.json();
-        console.log('📊 Dados recebidos:', data);
-        console.log('📋 Pipelines encontradas:', data.pipelines?.length || 0);
-        setPipelines(data.pipelines || []);
-      } else {
-        console.error('❌ Erro na resposta:', response.status, response.statusText);
-        const errorText = await response.text();
-        console.error('❌ Detalhes do erro:', errorText);
+      // 1. Carregar pipelines básicas
+      const { data: pipelinesData, error: pipelinesError } = await supabase
+        .from('pipelines')
+        .select('*')
+        .eq('tenant_id', user?.tenant_id)
+        .order('created_at', { ascending: false });
+
+      if (pipelinesError) {
+        throw pipelinesError;
       }
+
+      if (!pipelinesData || pipelinesData.length === 0) {
+        logger.info('✅ Nenhuma pipeline encontrada');
+        setPipelines([]);
+        return;
+      }
+
+      // 2. Para cada pipeline, carregar membros e etapas
+      const enrichedPipelines = await Promise.all(
+        pipelinesData.map(async (pipeline) => {
+          // Carregar membros - abordagem simplificada
+          const { data: pipelineMembers, error: membersError } = await supabase
+            .from('pipeline_members')
+            .select('id, assigned_at, member_id')
+            .eq('pipeline_id', pipeline.id);
+
+          if (membersError) {
+            logger.error('❌ Erro ao carregar membros da pipeline:', membersError);
+          }
+
+          // Buscar dados dos usuários separadamente
+          const members = [];
+          if (pipelineMembers && pipelineMembers.length > 0) {
+            const memberIds = pipelineMembers.map(pm => pm.member_id);
+            const { data: usersData } = await supabase
+              .from('users')
+              .select('id, first_name, last_name, email')
+              .in('id', memberIds);
+
+            // Combinar os dados
+            for (const pipelineMember of pipelineMembers) {
+              const userData = usersData?.find(u => u.id === pipelineMember.member_id);
+              members.push({
+                id: pipelineMember.id,
+                assigned_at: pipelineMember.assigned_at,
+                member_id: pipelineMember.member_id,
+                member: userData || {
+                  id: pipelineMember.member_id,
+                  first_name: 'Usuário',
+                  last_name: 'Desconhecido',
+                  email: 'N/A'
+                }
+              });
+            }
+          }
+
+          logger.info(`👥 Membros carregados para pipeline ${pipeline.name}:`, members.length);
+
+          // Carregar etapas
+          const { data: stages } = await supabase
+            .from('pipeline_stages')
+            .select(`
+              id,
+              name,
+              order_index,
+              temperature_score,
+              max_days_allowed,
+              color
+            `)
+            .eq('pipeline_id', pipeline.id)
+            .order('order_index', { ascending: true });
+
+          // Carregar follow-ups para cada etapa
+          const stagesWithFollowUps = await Promise.all(
+            (stages || []).map(async (stage) => {
+              const { data: followUps } = await supabase
+                .from('follow_ups')
+                .select('*')
+                .eq('stage_id', stage.id)
+                .order('day_offset', { ascending: true });
+
+              return {
+                ...stage,
+                follow_ups: followUps || []
+              };
+            })
+          );
+
+          return {
+            ...pipeline,
+            pipeline_members: members,
+            pipeline_stages: stagesWithFollowUps
+          };
+        })
+      );
+
+      logger.info('✅ Pipelines carregadas:', enrichedPipelines.length);
+      setPipelines(enrichedPipelines);
     } catch (error) {
-      console.error('💥 Erro ao carregar pipelines:', error);
+      logger.error('💥 Erro ao carregar pipelines:', error);
+      setPipelines([]);
     } finally {
       setLoading(false);
     }
@@ -176,13 +296,23 @@ const PipelineModule: React.FC = () => {
 
   const loadMembers = async () => {
     try {
-      const response = await fetch(`http://localhost:5001/api/users?role=member&tenant_id=${user?.tenant_id}`);
-      if (response.ok) {
-        const data = await response.json();
-        setMembers(data.users || []);
+      const { data: users, error } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, email')
+        .eq('role', 'member')
+        .eq('tenant_id', user?.tenant_id)
+        .order('first_name', { ascending: true });
+
+      if (error) {
+        logger.error('❌ Erro ao carregar membros:', error);
+        setMembers([]);
+      } else {
+        logger.info('✅ Membros carregados:', users?.length || 0);
+        setMembers(users || []);
       }
     } catch (error) {
-      console.error('Erro ao carregar membros:', error);
+      logger.error('💥 Erro ao carregar membros:', error);
+      setMembers([]);
     }
   };
 
@@ -343,50 +473,82 @@ const PipelineModule: React.FC = () => {
     }
 
     try {
-      console.log('🚀 Criando pipeline completa...');
-      console.log('📝 Dados do formulário:', {
-        pipeline: pipelineForm,
-        stages: stages,
-        customFields: customFields,
-        user: user
-      });
-
-      const response = await fetch('http://localhost:5001/api/pipelines/complete', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      logger.info('🚀 Criando pipeline completa...');
+      
+      // 1. Criar a pipeline
+      const { data: pipelineData, error: pipelineError } = await supabase
+        .from('pipelines')
+        .insert([{
           name: pipelineForm.name,
           description: pipelineForm.description,
           tenant_id: user?.tenant_id,
-          created_by: user?.email,
-          member_ids: pipelineForm.member_ids,
-          stages: stages,
-          custom_fields: customFields
-        }),
-      });
+          created_by: user?.email
+        }])
+        .select()
+        .single();
 
-      if (response.ok) {
-        const result = await response.json();
-        console.log('✅ Pipeline criada:', result);
-        
-        // Resetar formulários
-        setPipelineForm({ name: '', description: '', member_ids: [] });
-        setStages([]);
-        setCustomFields([]);
-        setActiveTab('list');
-        loadPipelines();
-        
-        alert(`Pipeline criada com sucesso!\n- ${result.stages_created} etapas criadas\n- ${result.fields_attempted} campos processados`);
-      } else {
-        const errorData = await response.json();
-        console.error('❌ Erro na resposta:', errorData);
-        alert(`Erro ao criar pipeline: ${errorData.error || 'Erro desconhecido'}`);
+      if (pipelineError) {
+        throw new Error(`Erro ao criar pipeline: ${pipelineError.message}`);
       }
+
+      logger.info('✅ Pipeline criada:', pipelineData);
+
+      // 2. Criar as etapas
+      let stagesCreated = 0;
+      for (const stage of stages) {
+        const { error: stageError } = await supabase
+          .from('pipeline_stages')
+          .insert([{
+            pipeline_id: pipelineData.id,
+            name: stage.name,
+            order_index: stage.order_index,
+            temperature_score: stage.temperature_score,
+            max_days_allowed: stage.max_days_allowed,
+            color: stage.color
+          }]);
+
+        if (!stageError) {
+          stagesCreated++;
+        } else {
+          logger.error('❌ Erro ao criar etapa:', stageError);
+        }
+      }
+
+      // 3. Atribuir membros
+      let membersAssigned = 0;
+      logger.info('🔗 Atribuindo membros:', pipelineForm.member_ids);
+      
+      for (const memberId of pipelineForm.member_ids) {
+        logger.info('👤 Atribuindo membro ID:', memberId);
+        
+        const { data: memberData, error: memberError } = await supabase
+          .from('pipeline_members')
+          .insert([{
+            pipeline_id: pipelineData.id,
+            member_id: memberId,
+            assigned_at: new Date().toISOString()
+          }])
+          .select();
+
+        if (!memberError) {
+          membersAssigned++;
+          logger.info('✅ Membro atribuído com sucesso:', memberData);
+        } else {
+          logger.error('❌ Erro ao atribuir membro:', memberError);
+        }
+      }
+
+      // Resetar formulários
+      setPipelineForm({ name: '', description: '', member_ids: [] });
+      setStages([]);
+      setCustomFields([]);
+      setActiveTab('list');
+      loadPipelines();
+      
+      alert(`Pipeline criada com sucesso!\n- ${stagesCreated} etapas criadas\n- ${membersAssigned} membros atribuídos`);
     } catch (error) {
-      console.error('❌ Erro ao criar pipeline:', error);
-      alert('Erro ao criar pipeline');
+      logger.error('❌ Erro ao criar pipeline:', error);
+      alert(`Erro ao criar pipeline: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 
@@ -396,29 +558,28 @@ const PipelineModule: React.FC = () => {
     if (!selectedPipeline) return;
 
     try {
-      const response = await fetch(`http://localhost:5001/api/pipelines/${selectedPipeline.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const { error } = await supabase
+        .from('pipelines')
+        .update({
           name: pipelineForm.name,
-          description: pipelineForm.description
-        }),
-      });
+          description: pipelineForm.description,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedPipeline.id)
+        .eq('tenant_id', user?.tenant_id);
 
-      if (response.ok) {
-        setActiveTab('list');
-        setSelectedPipeline(null);
-        setPipelineForm({ name: '', description: '', member_ids: [] });
-        loadPipelines();
-        alert('Pipeline atualizada com sucesso!');
-      } else {
-        alert('Erro ao atualizar pipeline');
+      if (error) {
+        throw new Error(`Erro ao atualizar pipeline: ${error.message}`);
       }
+
+      setActiveTab('list');
+      setSelectedPipeline(null);
+      setPipelineForm({ name: '', description: '', member_ids: [] });
+      loadPipelines();
+      alert('Pipeline atualizada com sucesso!');
     } catch (error) {
-      console.error('Erro ao atualizar pipeline:', error);
-      alert('Erro ao atualizar pipeline');
+      logger.error('❌ Erro ao atualizar pipeline:', error);
+      alert(`Erro ao atualizar pipeline: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 
@@ -426,19 +587,40 @@ const PipelineModule: React.FC = () => {
     if (!confirm('Tem certeza que deseja excluir esta pipeline?')) return;
 
     try {
-      const response = await fetch(`http://localhost:5001/api/pipelines/${pipelineId}`, {
-        method: 'DELETE',
-      });
+      // Primeiro, deletar as dependências (stages, members, follow-ups)
+      const { error: followUpsError } = await supabase
+        .from('follow_ups')
+        .delete()
+        .in('stage_id', 
+          pipelines.find(p => p.id === pipelineId)?.pipeline_stages?.map(s => s.id) || []
+        );
 
-      if (response.ok) {
-        loadPipelines();
-        alert('Pipeline excluída com sucesso!');
-      } else {
-        alert('Erro ao excluir pipeline');
+      const { error: stagesError } = await supabase
+        .from('pipeline_stages')
+        .delete()
+        .eq('pipeline_id', pipelineId);
+
+      const { error: membersError } = await supabase
+        .from('pipeline_members')
+        .delete()
+        .eq('pipeline_id', pipelineId);
+
+      // Depois, deletar a pipeline
+      const { error: pipelineError } = await supabase
+        .from('pipelines')
+        .delete()
+        .eq('id', pipelineId)
+        .eq('tenant_id', user?.tenant_id);
+
+      if (pipelineError) {
+        throw new Error(`Erro ao excluir pipeline: ${pipelineError.message}`);
       }
+
+      loadPipelines();
+      alert('Pipeline excluída com sucesso!');
     } catch (error) {
-      console.error('Erro ao excluir pipeline:', error);
-      alert('Erro ao excluir pipeline');
+      logger.error('❌ Erro ao excluir pipeline:', error);
+      alert(`Erro ao excluir pipeline: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 
@@ -448,23 +630,23 @@ const PipelineModule: React.FC = () => {
 
   const handleAddMember = async (pipelineId: string, memberId: string) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/pipelines/${pipelineId}/members`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ member_id: memberId }),
-      });
+      const { error } = await supabase
+        .from('pipeline_members')
+        .insert([{
+          pipeline_id: pipelineId,
+          member_id: memberId,
+          assigned_at: new Date().toISOString()
+        }]);
 
-      if (response.ok) {
-        loadPipelines();
-        alert('Membro adicionado com sucesso!');
-      } else {
-        alert('Erro ao adicionar membro');
+      if (error) {
+        throw new Error(`Erro ao adicionar membro: ${error.message}`);
       }
+
+      loadPipelines();
+      alert('Membro adicionado com sucesso!');
     } catch (error) {
-      console.error('Erro ao adicionar membro:', error);
-      alert('Erro ao adicionar membro');
+      logger.error('❌ Erro ao adicionar membro:', error);
+      alert(`Erro ao adicionar membro: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 
@@ -472,19 +654,21 @@ const PipelineModule: React.FC = () => {
     if (!confirm('Tem certeza que deseja remover este membro?')) return;
 
     try {
-      const response = await fetch(`http://localhost:5001/api/pipelines/${pipelineId}/members/${memberId}`, {
-        method: 'DELETE',
-      });
+      const { error } = await supabase
+        .from('pipeline_members')
+        .delete()
+        .eq('pipeline_id', pipelineId)
+        .eq('member_id', memberId);
 
-      if (response.ok) {
-        loadPipelines();
-        alert('Membro removido com sucesso!');
-      } else {
-        alert('Erro ao remover membro');
+      if (error) {
+        throw new Error(`Erro ao remover membro: ${error.message}`);
       }
+
+      loadPipelines();
+      alert('Membro removido com sucesso!');
     } catch (error) {
-      console.error('Erro ao remover membro:', error);
-      alert('Erro ao remover membro');
+      logger.error('❌ Erro ao remover membro:', error);
+      alert(`Erro ao remover membro: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 
@@ -498,25 +682,38 @@ const PipelineModule: React.FC = () => {
     if (!selectedPipeline) return;
 
     try {
-      const response = await fetch(`http://localhost:5001/api/pipelines/${selectedPipeline.id}/stages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(stageForm),
-      });
+      // Buscar a próxima ordem (order_index)
+      const { data: existingStages } = await supabase
+        .from('pipeline_stages')
+        .select('order_index')
+        .eq('pipeline_id', selectedPipeline.id)
+        .order('order_index', { ascending: false })
+        .limit(1);
 
-      if (response.ok) {
-        setStageForm({ name: '', temperature_score: 50, max_days_allowed: 7, color: '#3B82F6' });
-        setShowStageModal(false);
-        loadPipelines();
-        alert('Etapa criada com sucesso!');
-      } else {
-        alert('Erro ao criar etapa');
+      const nextOrderIndex = (existingStages?.[0]?.order_index || 0) + 1;
+
+      const { error } = await supabase
+        .from('pipeline_stages')
+        .insert([{
+          pipeline_id: selectedPipeline.id,
+          name: stageForm.name,
+          temperature_score: stageForm.temperature_score,
+          max_days_allowed: stageForm.max_days_allowed,
+          color: stageForm.color,
+          order_index: nextOrderIndex
+        }]);
+
+      if (error) {
+        throw new Error(`Erro ao criar etapa: ${error.message}`);
       }
+
+      setStageForm({ name: '', temperature_score: 50, max_days_allowed: 7, color: '#3B82F6' });
+      setShowStageModal(false);
+      loadPipelines();
+      alert('Etapa criada com sucesso!');
     } catch (error) {
-      console.error('Erro ao criar etapa:', error);
-      alert('Erro ao criar etapa');
+      logger.error('❌ Erro ao criar etapa:', error);
+      alert(`Erro ao criar etapa: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 
@@ -524,19 +721,28 @@ const PipelineModule: React.FC = () => {
     if (!confirm('Tem certeza que deseja excluir esta etapa?')) return;
 
     try {
-      const response = await fetch(`http://localhost:5001/api/pipelines/${pipelineId}/stages/${stageId}`, {
-        method: 'DELETE',
-      });
+      // Primeiro, deletar os follow-ups da etapa
+      const { error: followUpsError } = await supabase
+        .from('follow_ups')
+        .delete()
+        .eq('stage_id', stageId);
 
-      if (response.ok) {
-        loadPipelines();
-        alert('Etapa excluída com sucesso!');
-      } else {
-        alert('Erro ao excluir etapa');
+      // Depois, deletar a etapa
+      const { error: stageError } = await supabase
+        .from('pipeline_stages')
+        .delete()
+        .eq('id', stageId)
+        .eq('pipeline_id', pipelineId);
+
+      if (stageError) {
+        throw new Error(`Erro ao excluir etapa: ${stageError.message}`);
       }
+
+      loadPipelines();
+      alert('Etapa excluída com sucesso!');
     } catch (error) {
-      console.error('Erro ao excluir etapa:', error);
-      alert('Erro ao excluir etapa');
+      logger.error('❌ Erro ao excluir etapa:', error);
+      alert(`Erro ao excluir etapa: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 
@@ -550,25 +756,26 @@ const PipelineModule: React.FC = () => {
     if (!selectedPipeline) return;
 
     try {
-      const response = await fetch(`http://localhost:5001/api/pipelines/${selectedPipeline.id}/follow-ups`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(followUpForm),
-      });
+      const { error } = await supabase
+        .from('follow_ups')
+        .insert([{
+          stage_id: followUpForm.stage_id,
+          day_offset: followUpForm.day_offset,
+          note: followUpForm.note,
+          is_active: true
+        }]);
 
-      if (response.ok) {
-        setFollowUpForm({ stage_id: '', day_offset: 1, note: '' });
-        setShowFollowUpModal(false);
-        loadPipelines();
-        alert('Follow-up criado com sucesso!');
-      } else {
-        alert('Erro ao criar follow-up');
+      if (error) {
+        throw new Error(`Erro ao criar follow-up: ${error.message}`);
       }
+
+      setFollowUpForm({ stage_id: '', day_offset: 1, note: '' });
+      setShowFollowUpModal(false);
+      loadPipelines();
+      alert('Follow-up criado com sucesso!');
     } catch (error) {
-      console.error('Erro ao criar follow-up:', error);
-      alert('Erro ao criar follow-up');
+      logger.error('❌ Erro ao criar follow-up:', error);
+      alert(`Erro ao criar follow-up: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 
@@ -577,13 +784,7 @@ const PipelineModule: React.FC = () => {
   // ============================================
 
   const startEditPipeline = (pipeline: Pipeline) => {
-    setSelectedPipeline(pipeline);
-    setPipelineForm({
-      name: pipeline.name,
-      description: pipeline.description || '',
-      member_ids: (pipeline.pipeline_members || []).map(pm => pm.member?.id || pm.member_id)
-    });
-    setActiveTab('edit');
+    loadPipelineForEdit(pipeline);
   };
 
   const openStageModal = (pipeline: Pipeline) => {
@@ -594,6 +795,294 @@ const PipelineModule: React.FC = () => {
   const openFollowUpModal = (pipeline: Pipeline) => {
     setSelectedPipeline(pipeline);
     setShowFollowUpModal(true);
+  };
+
+  // Função para carregar dados completos da pipeline para edição
+  const loadPipelineForEdit = async (pipeline: Pipeline) => {
+    try {
+      logger.info('📝 Carregando dados completos da pipeline para edição:', pipeline.id);
+      
+      // Carregar etapas
+      const { data: stagesData, error: stagesError } = await supabase
+        .from('pipeline_stages')
+        .select('*')
+        .eq('pipeline_id', pipeline.id)
+        .order('order_index', { ascending: true });
+
+      if (stagesError) {
+        throw stagesError;
+      }
+
+      // Carregar campos customizados
+      const { data: fieldsData, error: fieldsError } = await supabase
+        .from('pipeline_custom_fields')
+        .select('*')
+        .eq('pipeline_id', pipeline.id)
+        .order('field_order', { ascending: true });
+
+      if (fieldsError) {
+        throw fieldsError;
+      }
+
+      // Configurar estados de edição
+      setEditingPipeline(pipeline);
+      setEditForm({
+        name: pipeline.name,
+        description: pipeline.description || '',
+        member_ids: (pipeline.pipeline_members || []).map(pm => pm.member?.id || pm.member_id)
+      });
+      setEditStages(stagesData || []);
+      setEditCustomFields(fieldsData || []);
+      setActiveEditTab('info');
+      setShowEditModal(true);
+
+      logger.info('✅ Dados carregados para edição');
+    } catch (error) {
+      logger.error('❌ Erro ao carregar dados para edição:', error);
+      alert('Erro ao carregar dados da pipeline para edição');
+    }
+  };
+
+  // Funções para gerenciar etapas na edição
+  const addEditStage = () => {
+    const newStage: EditableStage = {
+      name: '',
+      temperature_score: 50,
+      max_days_allowed: 7,
+      color: '#3B82F6',
+      order_index: editStages.length
+    };
+    setEditStages([...editStages, newStage]);
+  };
+
+  const updateEditStage = (index: number, field: keyof EditableStage, value: any) => {
+    const updatedStages = [...editStages];
+    updatedStages[index] = { ...updatedStages[index], [field]: value };
+    setEditStages(updatedStages);
+  };
+
+  const removeEditStage = (index: number) => {
+    const updatedStages = editStages.filter((_, i) => i !== index);
+    // Reordenar índices
+    updatedStages.forEach((stage, i) => {
+      stage.order_index = i;
+    });
+    setEditStages(updatedStages);
+  };
+
+  const moveEditStage = (index: number, direction: 'up' | 'down') => {
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= editStages.length) return;
+
+    const updatedStages = [...editStages];
+    [updatedStages[index], updatedStages[newIndex]] = [updatedStages[newIndex], updatedStages[index]];
+    
+    // Atualizar order_index
+    updatedStages.forEach((stage, i) => {
+      stage.order_index = i;
+    });
+    
+    setEditStages(updatedStages);
+  };
+
+  // Funções para gerenciar campos customizados na edição
+  const addEditCustomField = () => {
+    const newField: CustomField = {
+      field_name: '',
+      field_label: '',
+      field_type: 'text',
+      field_options: [],
+      is_required: false,
+      field_order: editCustomFields.length,
+      placeholder: ''
+    };
+    setEditCustomFields([...editCustomFields, newField]);
+  };
+
+  const updateEditCustomField = (index: number, field: keyof CustomField, value: any) => {
+    const updatedFields = [...editCustomFields];
+    updatedFields[index] = { ...updatedFields[index], [field]: value };
+    setEditCustomFields(updatedFields);
+  };
+
+  const removeEditCustomField = (index: number) => {
+    const updatedFields = editCustomFields.filter((_, i) => i !== index);
+    // Reordenar índices
+    updatedFields.forEach((field, i) => {
+      field.field_order = i;
+    });
+    setEditCustomFields(updatedFields);
+  };
+
+  const moveEditCustomField = (index: number, direction: 'up' | 'down') => {
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= editCustomFields.length) return;
+
+    const updatedFields = [...editCustomFields];
+    [updatedFields[index], updatedFields[newIndex]] = [updatedFields[newIndex], updatedFields[index]];
+    
+    // Atualizar field_order
+    updatedFields.forEach((field, i) => {
+      field.field_order = i;
+    });
+    
+    setEditCustomFields(updatedFields);
+  };
+
+  // Função para salvar todas as alterações
+  const handleSaveCompleteEdit = async () => {
+    try {
+      if (!editingPipeline) return;
+
+      logger.info('💾 Salvando edição completa da pipeline:', editingPipeline.id);
+
+      // 1. Atualizar informações básicas da pipeline
+      const { error: pipelineError } = await supabase
+        .from('pipelines')
+        .update({
+          name: editForm.name,
+          description: editForm.description,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', editingPipeline.id);
+
+      if (pipelineError) {
+        throw pipelineError;
+      }
+
+      // 2. Atualizar etapas
+      // Primeiro, deletar etapas existentes que não estão mais na lista
+      const existingStageIds = editStages.filter(s => s.id).map(s => s.id);
+      if (editingPipeline.pipeline_stages) {
+        const stagesToDelete = editingPipeline.pipeline_stages
+          .filter(s => !existingStageIds.includes(s.id))
+          .map(s => s.id);
+
+        if (stagesToDelete.length > 0) {
+          const { error: deleteStagesError } = await supabase
+            .from('pipeline_stages')
+            .delete()
+            .in('id', stagesToDelete);
+
+          if (deleteStagesError) {
+            throw deleteStagesError;
+          }
+        }
+      }
+
+      // Inserir/atualizar etapas
+      for (const stage of editStages) {
+        if (stage.id) {
+          // Atualizar etapa existente
+          const { error: updateStageError } = await supabase
+            .from('pipeline_stages')
+            .update({
+              name: stage.name,
+              temperature_score: stage.temperature_score,
+              max_days_allowed: stage.max_days_allowed,
+              color: stage.color,
+              order_index: stage.order_index
+            })
+            .eq('id', stage.id);
+
+          if (updateStageError) {
+            throw updateStageError;
+          }
+        } else {
+          // Criar nova etapa
+          const { error: insertStageError } = await supabase
+            .from('pipeline_stages')
+            .insert({
+              pipeline_id: editingPipeline.id,
+              name: stage.name,
+              temperature_score: stage.temperature_score,
+              max_days_allowed: stage.max_days_allowed,
+              color: stage.color,
+              order_index: stage.order_index
+            });
+
+          if (insertStageError) {
+            throw insertStageError;
+          }
+        }
+      }
+
+      // 3. Atualizar campos customizados
+      // Primeiro, deletar campos existentes que não estão mais na lista
+      const existingFieldIds = editCustomFields.filter(f => f.id).map(f => f.id);
+      const { data: currentFields } = await supabase
+        .from('pipeline_custom_fields')
+        .select('id')
+        .eq('pipeline_id', editingPipeline.id);
+
+      if (currentFields) {
+        const fieldsToDelete = currentFields
+          .filter(f => !existingFieldIds.includes(f.id))
+          .map(f => f.id);
+
+        if (fieldsToDelete.length > 0) {
+          const { error: deleteFieldsError } = await supabase
+            .from('pipeline_custom_fields')
+            .delete()
+            .in('id', fieldsToDelete);
+
+          if (deleteFieldsError) {
+            throw deleteFieldsError;
+          }
+        }
+      }
+
+      // Inserir/atualizar campos customizados
+      for (const field of editCustomFields) {
+        if (field.id) {
+          // Atualizar campo existente
+          const { error: updateFieldError } = await supabase
+            .from('pipeline_custom_fields')
+            .update({
+              field_name: field.field_name,
+              field_label: field.field_label,
+              field_type: field.field_type,
+              field_options: field.field_options,
+              is_required: field.is_required,
+              field_order: field.field_order,
+              placeholder: field.placeholder
+            })
+            .eq('id', field.id);
+
+          if (updateFieldError) {
+            throw updateFieldError;
+          }
+        } else {
+          // Criar novo campo
+          const { error: insertFieldError } = await supabase
+            .from('pipeline_custom_fields')
+            .insert({
+              pipeline_id: editingPipeline.id,
+              field_name: field.field_name,
+              field_label: field.field_label,
+              field_type: field.field_type,
+              field_options: field.field_options,
+              is_required: field.is_required,
+              field_order: field.field_order,
+              placeholder: field.placeholder
+            });
+
+          if (insertFieldError) {
+            throw insertFieldError;
+          }
+        }
+      }
+
+      logger.info('✅ Pipeline editada com sucesso');
+      alert('✅ Pipeline editada com sucesso!');
+      
+      // Recarregar dados e fechar modal
+      setShowEditModal(false);
+      loadPipelines();
+    } catch (error) {
+      logger.error('❌ Erro ao salvar edição:', error);
+      alert('❌ Erro ao salvar alterações. Tente novamente.');
+    }
   };
 
   // ============================================
@@ -632,7 +1121,7 @@ const PipelineModule: React.FC = () => {
     );
   }
 
-  console.log('🎯 Renderizando PipelineModule com', pipelines.length, 'pipelines');
+  logger.info('🎯 Renderizando PipelineModule com ' + pipelines.length + ' pipelines');
 
   // ============================================
   // RENDERIZAÇÃO
@@ -657,8 +1146,6 @@ const PipelineModule: React.FC = () => {
           </button>
         </div>
       </div>
-
-
 
       {/* LISTA DE PIPELINES */}
       {activeTab === 'list' && (
@@ -1216,43 +1703,273 @@ const PipelineModule: React.FC = () => {
         </div>
       )}
 
-      {/* FORMULÁRIO DE EDIÇÃO */}
-      {activeTab === 'edit' && selectedPipeline && (
+      {/* MODAL DE EDIÇÃO COMPLETA */}
+      {showEditModal && editingPipeline && (
         <div className="edit-pipeline-form">
-          <h4>✏️ Editar Pipeline</h4>
-          <form onSubmit={handleEditPipeline}>
-            <div className="form-group">
-              <label>Nome da Pipeline *</label>
-              <input
-                type="text"
-                value={pipelineForm.name}
-                onChange={(e) => setPipelineForm({...pipelineForm, name: e.target.value})}
-                required
-              />
+          <div>
+            <h4>✏️ Editar Pipeline</h4>
+            <div className="edit-tabs">
+            <button 
+              onClick={() => setActiveEditTab('info')}
+              className={`edit-tab ${activeEditTab === 'info' ? 'active' : ''}`}
+            >
+              Informações
+            </button>
+            <button 
+              onClick={() => setActiveEditTab('stages')}
+              className={`edit-tab ${activeEditTab === 'stages' ? 'active' : ''}`}
+            >
+              Etapas
+            </button>
+            <button 
+              onClick={() => setActiveEditTab('fields')}
+              className={`edit-tab ${activeEditTab === 'fields' ? 'active' : ''}`}
+            >
+              Campos
+            </button>
+          </div>
+          {activeEditTab === 'info' && (
+            <div className="edit-section">
+              <h5>📋 Informações Básicas</h5>
+              <div className="form-group">
+                <label>Nome da Pipeline *</label>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Descrição</label>
+                <textarea
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({...editForm, description: e.target.value})}
+                  rows={3}
+                />
+              </div>
             </div>
-
-            <div className="form-group">
-              <label>Descrição</label>
-              <textarea
-                value={pipelineForm.description}
-                onChange={(e) => setPipelineForm({...pipelineForm, description: e.target.value})}
-                rows={3}
-              />
-            </div>
-
-            <div className="form-actions">
-              <button type="submit" className="submit-button">
-                Salvar Alterações
-              </button>
+          )}
+          {activeEditTab === 'stages' && (
+            <div className="edit-section">
+              <h5>🎯 Etapas do Funil</h5>
+              <div className="stages-list">
+                {editStages.map((stage, index) => (
+                  <div key={index} className="stage-item">
+                    <div className="stage-form">
+                      <div className="form-row">
+                        <div className="form-group">
+                          <label>Nome da Etapa</label>
+                          <input
+                            type="text"
+                            value={stage.name}
+                            onChange={(e) => updateEditStage(index, 'name', e.target.value)}
+                            placeholder="Ex: Contato Inicial"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>Temperatura (%)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={stage.temperature_score}
+                            onChange={(e) => updateEditStage(index, 'temperature_score', parseInt(e.target.value))}
+                          />
+                        </div>
+                      </div>
+                      <div className="form-row">
+                        <div className="form-group">
+                          <label>Máx. Dias</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={stage.max_days_allowed}
+                            onChange={(e) => updateEditStage(index, 'max_days_allowed', parseInt(e.target.value))}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>Cor</label>
+                          <input
+                            type="color"
+                            value={stage.color}
+                            onChange={(e) => updateEditStage(index, 'color', e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="stage-actions">
+                      <button 
+                        type="button"
+                        onClick={() => moveEditStage(index, 'up')}
+                        disabled={index === 0}
+                        className="move-button"
+                        title="Mover para cima"
+                      >
+                        ⬆️
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => moveEditStage(index, 'down')}
+                        disabled={index === editStages.length - 1}
+                        className="move-button"
+                        title="Mover para baixo"
+                      >
+                        ⬇️
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => removeEditStage(index)}
+                        className="delete-button"
+                        title="Remover"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
               <button 
                 type="button" 
-                onClick={() => setActiveTab('list')}
-                className="cancel-button"
+                onClick={addEditStage}
+                className="add-button"
               >
-                Cancelar
+                + Adicionar Etapa
               </button>
             </div>
-          </form>
+          )}
+          {activeEditTab === 'fields' && (
+            <div className="edit-section">
+              <h5>📝 Campos Customizados</h5>
+              <div className="fields-list">
+                {editCustomFields.map((field, index) => (
+                  <div key={index} className="field-item">
+                    <div className="field-form">
+                      <div className="form-row">
+                        <div className="form-group">
+                          <label>Nome do Campo</label>
+                          <input
+                            type="text"
+                            value={field.field_name}
+                            onChange={(e) => updateEditCustomField(index, 'field_name', e.target.value)}
+                            placeholder="Ex: nome_cliente"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>Rótulo</label>
+                          <input
+                            type="text"
+                            value={field.field_label}
+                            onChange={(e) => updateEditCustomField(index, 'field_label', e.target.value)}
+                            placeholder="Ex: Nome do Cliente"
+                          />
+                        </div>
+                      </div>
+                      <div className="form-row">
+                        <div className="form-group">
+                          <label>Tipo</label>
+                          <select
+                            value={field.field_type}
+                            onChange={(e) => updateEditCustomField(index, 'field_type', e.target.value)}
+                          >
+                            <option value="text">Texto</option>
+                            <option value="email">Email</option>
+                            <option value="phone">Telefone</option>
+                            <option value="textarea">Texto Longo</option>
+                            <option value="select">Lista de Opções</option>
+                            <option value="number">Número</option>
+                            <option value="date">Data</option>
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={field.is_required}
+                              onChange={(e) => updateEditCustomField(index, 'is_required', e.target.checked)}
+                            />
+                            Obrigatório
+                          </label>
+                        </div>
+                      </div>
+                      <div className="form-group">
+                        <label>Placeholder</label>
+                        <input
+                          type="text"
+                          value={field.placeholder || ''}
+                          onChange={(e) => updateEditCustomField(index, 'placeholder', e.target.value)}
+                          placeholder="Texto de ajuda para o campo"
+                        />
+                      </div>
+                      {field.field_type === 'select' && (
+                        <div className="form-group">
+                          <label>Opções (uma por linha)</label>
+                          <textarea
+                            value={(field.field_options || []).join('\n')}
+                            onChange={(e) => updateEditCustomField(index, 'field_options', e.target.value.split('\n').filter(opt => opt.trim()))}
+                            placeholder="Opção 1&#10;Opção 2&#10;Opção 3"
+                            rows={3}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <div className="field-actions">
+                      <button 
+                        type="button"
+                        onClick={() => moveEditCustomField(index, 'up')}
+                        disabled={index === 0}
+                        className="move-button"
+                        title="Mover para cima"
+                      >
+                        ⬆️
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => moveEditCustomField(index, 'down')}
+                        disabled={index === editCustomFields.length - 1}
+                        className="move-button"
+                        title="Mover para baixo"
+                      >
+                        ⬇️
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => removeEditCustomField(index)}
+                        className="delete-button"
+                        title="Remover"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button 
+                type="button" 
+                onClick={addEditCustomField}
+                className="add-button"
+              >
+                + Adicionar Campo
+              </button>
+            </div>
+          )}
+          <div className="edit-actions">
+            <button 
+              type="button"
+              onClick={handleSaveCompleteEdit}
+              className="submit-button"
+            >
+              💾 Salvar Todas as Alterações
+            </button>
+            <button 
+              type="button" 
+              onClick={() => setShowEditModal(false)}
+              className="cancel-button"
+            >
+              Cancelar
+            </button>
+          </div>
+          </div>
         </div>
       )}
 

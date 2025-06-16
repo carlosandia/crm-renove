@@ -7,13 +7,52 @@ interface CRMSidebarProps {
 }
 
 const CRMSidebar: React.FC<CRMSidebarProps> = ({ user, isOpen, onToggle }) => {
-  const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: '📊' },
-    { id: 'pipeline', label: 'Pipeline', icon: '🔄' },
-    { id: 'clientes', label: 'Clientes', icon: '👥' },
-    { id: 'vendedores', label: 'Vendedores', icon: '💼' },
-    { id: 'performance', label: 'Performance', icon: '📈' },
-  ];
+  // Função para obter itens de menu baseado na role do usuário
+  const getMenuItems = () => {
+    if (!user) return [];
+
+    if (user.role === 'super_admin') {
+      return [
+        { id: 'relatorio', label: 'Relatório', icon: '📊' },
+        { id: 'perfil', label: 'Meu Perfil', icon: '👤' },
+        { id: 'comentarios', label: 'Comentários', icon: '💬' },
+        { id: 'clientes', label: 'Clientes', icon: '👥' },
+        { id: 'integracoes', label: 'Integrações', icon: '🔗' },
+      ];
+    }
+    
+    if (user.role === 'admin') {
+      return [
+        { id: 'meta', label: 'Meta', icon: '🎯' },
+        { id: 'vendedores', label: 'Vendedores', icon: '💼' },
+        { id: 'pipeline-creator', label: 'Criador de pipeline', icon: '🔧' },
+        { id: 'form-creator', label: 'Criador de formulários', icon: '📝' },
+        { id: 'relatorio', label: 'Relatório', icon: '📊' },
+        { id: 'acompanhamento', label: 'Acompanhamento', icon: '👀' },
+        { id: 'leads', label: 'Leads', icon: '🎪' },
+        { id: 'perfil', label: 'Meu Perfil', icon: '👤' },
+      ];
+    }
+    
+    if (user.role === 'member') {
+      return [
+        { id: 'relatorio', label: 'Relatório', icon: '📊' },
+        { id: 'pipeline', label: 'Pipeline', icon: '🔄' },
+        { id: 'acompanhamento', label: 'Acompanhamento', icon: '👀' },
+        { id: 'leads', label: 'Leads', icon: '🎪' },
+        { id: 'perfil', label: 'Meu Perfil', icon: '👤' },
+        { id: 'calendario', label: 'Calendário Público', icon: '📅' },
+        { id: 'encurtador', label: 'Encurtador de URL', icon: '🔗' },
+      ];
+    }
+    
+    // Fallback para usuários sem role definida ou role desconhecida
+    return [
+      { id: 'perfil', label: 'Meu Perfil', icon: '👤' },
+    ];
+  };
+
+  const menuItems = getMenuItems();
 
   const handleMenuClick = (moduleId: string) => {
     // Implementar navegação entre módulos
@@ -41,7 +80,12 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ user, isOpen, onToggle }) => {
             <span className="user-name">
               {user?.first_name} {user?.last_name}
             </span>
-            <span className="user-role">{user?.role}</span>
+            <span className="user-role">
+              {user?.role === 'super_admin' ? 'Super Admin' : 
+               user?.role === 'admin' ? 'Admin' : 
+               user?.role === 'member' ? 'Member' : 
+               user?.role || 'Usuário'}
+            </span>
           </div>
         )}
       </div>

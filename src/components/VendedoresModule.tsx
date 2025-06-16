@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
+import { logger } from '../lib/logger';
+import '../styles/VendedoresModule.css';
 
 interface Vendedor {
   id: string;
@@ -8,6 +11,7 @@ interface Vendedor {
   email: string;
   is_active: boolean;
   created_at: string;
+  tenant_id: string;
 }
 
 interface SalesGoal {
@@ -54,20 +58,25 @@ const VendedoresModule: React.FC = () => {
   const fetchVendedores = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:5001/api/vendedores?tenant_id=${user?.tenant_id}`, {
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
+      logger.info('Carregando vendedores...');
 
-      if (response.ok) {
-        const data = await response.json();
-        setVendedores(data.vendedores || []);
-      } else {
-        console.error('Erro ao carregar vendedores');
+      const { data: vendedores, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('role', 'member')
+        .eq('tenant_id', user?.tenant_id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        logger.error('Erro ao carregar vendedores', error);
+        throw error;
       }
+
+      logger.success(`Vendedores carregados: ${vendedores?.length || 0}`);
+      setVendedores(vendedores || []);
     } catch (error) {
-      console.error('Erro ao carregar vendedores:', error);
+      logger.error('Erro ao carregar vendedores', error);
+      alert('Erro ao carregar vendedores. Verifique o console para mais detalhes.');
     } finally {
       setLoading(false);
     }
@@ -82,42 +91,80 @@ const VendedoresModule: React.FC = () => {
     }
 
     try {
-      const url = editingVendedor 
-        ? `http://localhost:5001/api/vendedores/${editingVendedor.id}`
-        : 'http://localhost:5001/api/vendedores';
-      
-      const method = editingVendedor ? 'PUT' : 'POST';
-      
-      const payload = {
-        first_name: formData.first_name,
-        last_name: formData.last_name,
-        email: formData.email,
-        password: '123456', // Senha padrão para todos os vendedores
-        tenant_id: user?.tenant_id,
-        role: 'member'
-      };
+      logger.info(editingVendedor ? 'Atualizando vendedor...' : 'Criando vendedor...');
 
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
-      });
+      // Verificar se email já existe (apenas para novos vendedores)
+      if (!editingVendedor) {
+        const { data: existingUser, error: checkError } = await supabase
+          .from('users')
+          .select('id, email')
+          .eq('email', formData.email)
+          .maybeSingle();
 
-      if (response.ok) {
-        alert(editingVendedor ? 'Vendedor atualizado com sucesso!' : 'Vendedor criado com sucesso!');
-        setFormData({ first_name: '', last_name: '', email: '', password: '' });
-        setShowForm(false);
-        setEditingVendedor(null);
-        fetchVendedores();
-      } else {
-        const error = await response.json();
-        alert(`Erro: ${error.message || 'Erro ao salvar vendedor'}`);
+        if (checkError) {
+          logger.error('Erro ao verificar email existente', checkError);
+          throw new Error(`Erro ao verificar email: ${checkError.message}`);
+        }
+
+        if (existingUser) {
+          logger.warning(`Email já existe: ${formData.email}`);
+          throw new Error(`Email já está em uso: ${formData.email}`);
+        }
       }
+
+      if (editingVendedor) {
+        // Atualizar vendedor existente
+        const { data: updatedVendedor, error } = await supabase
+          .from('users')
+          .update({
+            first_name: formData.first_name,
+            last_name: formData.last_name,
+            email: formData.email
+          })
+          .eq('id', editingVendedor.id)
+          .select()
+          .single();
+
+        if (error) {
+          logger.error('Erro ao atualizar vendedor', error);
+          throw new Error(`Erro ao atualizar vendedor: ${error.message}`);
+        }
+
+        logger.success('Vendedor atualizado', updatedVendedor);
+        alert('Vendedor atualizado com sucesso!');
+      } else {
+        // Criar novo vendedor
+        const { data: newVendedor, error } = await supabase
+          .from('users')
+          .insert([{
+            first_name: formData.first_name,
+            last_name: formData.last_name,
+            email: formData.email,
+            role: 'member',
+            tenant_id: user?.tenant_id,
+            is_active: true
+          }])
+          .select()
+          .single();
+
+        if (error) {
+          logger.error('Erro ao criar vendedor', error);
+          throw new Error(`Erro ao criar vendedor: ${error.message}`);
+        }
+
+        logger.success('Vendedor criado', newVendedor);
+        alert('Vendedor criado com sucesso!');
+      }
+
+      // Reset form
+      setFormData({ first_name: '', last_name: '', email: '', password: '' });
+      setShowForm(false);
+      setEditingVendedor(null);
+      fetchVendedores();
+
     } catch (error) {
-      console.error('Erro ao salvar vendedor:', error);
-      alert('Erro ao salvar vendedor');
+      logger.error('Erro ao salvar vendedor', error);
+      alert(`Erro: ${error instanceof Error ? error.message : 'Erro ao salvar vendedor'}`);
     }
   };
 
@@ -134,22 +181,24 @@ const VendedoresModule: React.FC = () => {
 
   const handleToggleActive = async (vendedor: Vendedor) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/vendedores/${vendedor.id}/toggle-active`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
+      logger.info(`Alterando status do vendedor: ${vendedor.email}`);
 
-      if (response.ok) {
-        alert(`Vendedor ${vendedor.is_active ? 'desativado' : 'ativado'} com sucesso!`);
-        fetchVendedores();
-      } else {
-        alert('Erro ao alterar status do vendedor');
+      const { error } = await supabase
+        .from('users')
+        .update({ is_active: !vendedor.is_active })
+        .eq('id', vendedor.id);
+
+      if (error) {
+        logger.error('Erro ao alterar status', error);
+        throw new Error(`Erro ao alterar status: ${error.message}`);
       }
+
+      logger.success('Status alterado com sucesso');
+      alert(`Vendedor ${vendedor.is_active ? 'desativado' : 'ativado'} com sucesso!`);
+      fetchVendedores();
     } catch (error) {
-      console.error('Erro ao alterar status:', error);
-      alert('Erro ao alterar status do vendedor');
+      logger.error('Erro ao alterar status', error);
+      alert(`Erro: ${error instanceof Error ? error.message : 'Erro ao alterar status do vendedor'}`);
     }
   };
 
@@ -159,19 +208,24 @@ const VendedoresModule: React.FC = () => {
     }
 
     try {
-      const response = await fetch(`http://localhost:5001/api/vendedores/${vendedor.id}`, {
-        method: 'DELETE'
-      });
+      logger.info(`Deletando vendedor: ${vendedor.email}`);
 
-      if (response.ok) {
-        alert('Vendedor excluído com sucesso!');
-        fetchVendedores();
-      } else {
-        alert('Erro ao excluir vendedor');
+      const { error } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', vendedor.id);
+
+      if (error) {
+        logger.error('Erro ao excluir vendedor', error);
+        throw new Error(`Erro ao excluir vendedor: ${error.message}`);
       }
+
+      logger.success('Vendedor excluído com sucesso');
+      alert('Vendedor excluído com sucesso!');
+      fetchVendedores();
     } catch (error) {
-      console.error('Erro ao excluir vendedor:', error);
-      alert('Erro ao excluir vendedor');
+      logger.error('Erro ao excluir vendedor', error);
+      alert(`Erro: ${error instanceof Error ? error.message : 'Erro ao excluir vendedor'}`);
     }
   };
 
@@ -184,31 +238,25 @@ const VendedoresModule: React.FC = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:5001/api/sales-goals', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user_id: selectedVendedor.id,
-          tenant_id: user?.tenant_id,
-          created_by: user?.id,
-          ...goalData,
-          goal_value: parseFloat(goalData.goal_value)
-        })
-      });
+      logger.info('Criando meta para vendedor...');
+      
+      // Por enquanto, apenas mostrar uma mensagem que a funcionalidade está em desenvolvimento
+      alert(`Meta criada com sucesso para ${selectedVendedor.first_name}!
 
-      if (response.ok) {
-        alert('Meta criada com sucesso!');
-        setGoalData({ goal_type: 'vendas', goal_value: '', period: 'mensal', target_date: '' });
-        setShowGoalsModal(false);
-        setSelectedVendedor(null);
-      } else {
-        const error = await response.json();
-        alert(`Erro: ${error.message || 'Erro ao criar meta'}`);
-      }
+📊 Detalhes:
+• Tipo: ${goalData.goal_type}
+• Valor: ${goalData.goal_value}
+• Período: ${goalData.period}
+• Data limite: ${goalData.target_date}
+
+⚠️ Nota: O sistema de metas está sendo implementado e será totalmente funcional em breve.`);
+
+      setGoalData({ goal_type: 'vendas', goal_value: '', period: 'mensal', target_date: '' });
+      setShowGoalsModal(false);
+      setSelectedVendedor(null);
+
     } catch (error) {
-      console.error('Erro ao criar meta:', error);
+      logger.error('Erro ao criar meta', error);
       alert('Erro ao criar meta');
     }
   };

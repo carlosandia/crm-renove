@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
+import { logger } from '../lib/logger';
 
 // ============================================
 // INTERFACES E TIPOS
@@ -80,27 +82,74 @@ const PipelineViewModule: React.FC = () => {
 
   const loadMemberPipelines = async () => {
     try {
-      console.log('🔍 Carregando pipelines do membro:', user?.id);
+      logger.info('🔍 Carregando pipelines do membro:', user?.id);
       
-      const response = await fetch(`http://localhost:5001/api/pipelines/member/${user?.id}`);
-      if (response.ok) {
-        const data = await response.json();
-        console.log('📊 Pipelines recebidas:', data);
-        
-        setPipelines(data.pipelines || []);
-        
-        // Selecionar primeira pipeline automaticamente
-        if (data.pipelines && data.pipelines.length > 0) {
-          setSelectedPipeline(data.pipelines[0]);
-          console.log('✅ Pipeline selecionada:', data.pipelines[0].name);
-          console.log('📝 Campos customizados:', data.pipelines[0].pipeline_custom_fields);
-        }
-      } else {
-        const errorData = await response.json();
-        console.error('❌ Erro ao carregar pipelines do membro:', errorData);
+      // Buscar pipelines onde o usuário é membro
+      const { data: pipelineMembers, error: membersError } = await supabase
+        .from('pipeline_members')
+        .select('pipeline_id')
+        .eq('member_id', user?.id);
+
+      if (membersError) {
+        throw membersError;
+      }
+
+      if (!pipelineMembers || pipelineMembers.length === 0) {
+        logger.info('📋 Nenhuma pipeline atribuída ao membro');
+        setPipelines([]);
+        setLoading(false);
+        return;
+      }
+
+      const pipelineIds = pipelineMembers.map(pm => pm.pipeline_id);
+
+      // Buscar dados das pipelines
+      const { data: pipelinesData, error: pipelinesError } = await supabase
+        .from('pipelines')
+        .select('*')
+        .in('id', pipelineIds)
+        .eq('tenant_id', user?.tenant_id);
+
+      if (pipelinesError) {
+        throw pipelinesError;
+      }
+
+      // Para cada pipeline, buscar etapas e campos customizados
+      const enrichedPipelines = await Promise.all(
+        (pipelinesData || []).map(async (pipeline) => {
+          // Buscar etapas
+          const { data: stages } = await supabase
+            .from('pipeline_stages')
+            .select('*')
+            .eq('pipeline_id', pipeline.id)
+            .order('order_index', { ascending: true });
+
+          // Buscar campos customizados
+          const { data: customFields } = await supabase
+            .from('pipeline_custom_fields')
+            .select('*')
+            .eq('pipeline_id', pipeline.id)
+            .order('field_order', { ascending: true });
+
+          return {
+            ...pipeline,
+            pipeline_stages: stages || [],
+            pipeline_custom_fields: customFields || []
+          };
+        })
+      );
+
+      logger.info('📊 Pipelines carregadas:', enrichedPipelines.length);
+      setPipelines(enrichedPipelines);
+      
+      // Selecionar primeira pipeline automaticamente
+      if (enrichedPipelines.length > 0) {
+        setSelectedPipeline(enrichedPipelines[0]);
+        logger.info('✅ Pipeline selecionada:', enrichedPipelines[0].name);
       }
     } catch (error) {
-      console.error('❌ Erro ao carregar pipelines:', error);
+      logger.error('❌ Erro ao carregar pipelines:', error);
+      setPipelines([]);
     } finally {
       setLoading(false);
     }
@@ -108,13 +157,36 @@ const PipelineViewModule: React.FC = () => {
 
   const loadLeads = async (pipelineId: string) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/pipelines/${pipelineId}/leads`);
-      if (response.ok) {
-        const data = await response.json();
-        setLeads(data.leads || []);
+      logger.info('📋 Carregando leads da pipeline:', pipelineId);
+      
+      // Buscar leads reais do Supabase
+      const { data: leadsData, error } = await supabase
+        .from('pipeline_leads')
+        .select('*')
+        .eq('pipeline_id', pipelineId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
       }
+
+      logger.info('✅ Leads carregados:', leadsData?.length || 0);
+      
+      // Mapear os dados para a interface Lead
+      const mappedLeads: Lead[] = (leadsData || []).map(lead => ({
+        id: lead.id,
+        pipeline_id: lead.pipeline_id,
+        stage_id: lead.stage_id,
+        custom_data: lead.lead_data || {}, // Mapear lead_data para custom_data
+        created_at: lead.created_at,
+        updated_at: lead.updated_at,
+        status: 'active'
+      }));
+      
+      setLeads(mappedLeads);
     } catch (error) {
-      console.error('❌ Erro ao carregar leads:', error);
+      logger.error('❌ Erro ao carregar leads:', error);
+      setLeads([]);
     }
   };
 
@@ -125,59 +197,85 @@ const PipelineViewModule: React.FC = () => {
   };
 
   const handleCreateLead = async () => {
-    if (!selectedPipeline) return;
-
     try {
-      // Determinar o status baseado na etapa selecionada
-      let leadStatus = 'active';
-      let customData = { ...leadFormData };
-
-      if (selectedStageId === 'system-won') {
-        leadStatus = 'won';
-        customData._system_status = 'won';
-        customData._system_stage = 'system-won';
-      } else if (selectedStageId === 'system-lost') {
-        leadStatus = 'lost';
-        customData._system_status = 'lost';
-        customData._system_stage = 'system-lost';
+      if (!selectedPipeline || !selectedStageId) {
+        alert('❌ Erro: Pipeline ou etapa não selecionada');
+        return;
       }
 
-      console.log('🎯 Criando lead - Stage ID:', selectedStageId, 'Status:', leadStatus);
+      // Validar campos obrigatórios
+      const requiredFields = (selectedPipeline.pipeline_custom_fields || [])
+        .filter(field => field.is_required);
+      
+      const missingFields = requiredFields.filter(field => 
+        !leadFormData[field.field_name] || 
+        leadFormData[field.field_name].toString().trim() === ''
+      );
 
-      const response = await fetch(`http://localhost:5001/api/pipelines/${selectedPipeline.id}/leads`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          // O backend agora ignora o stage_id e sempre usa a primeira etapa
-          // Mas enviamos mesmo assim para compatibilidade
+      if (missingFields.length > 0) {
+        const missingFieldNames = missingFields.map(f => f.field_label).join(', ');
+        alert(`❌ Por favor, preencha os campos obrigatórios: ${missingFieldNames}`);
+        return;
+      }
+
+      // Validar formato de email se houver campo de email
+      const emailFields = (selectedPipeline.pipeline_custom_fields || [])
+        .filter(field => field.field_type === 'email');
+      
+      for (const emailField of emailFields) {
+        const emailValue = leadFormData[emailField.field_name];
+        if (emailValue && emailValue.trim() !== '') {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(emailValue)) {
+            alert(`❌ O campo ${emailField.field_label} deve conter um email válido`);
+            return;
+          }
+        }
+      }
+
+      logger.info('📝 Criando novo lead...');
+
+      // Criar lead no Supabase
+      const { data: newLead, error } = await supabase
+        .from('pipeline_leads')
+        .insert([{
+          pipeline_id: selectedPipeline.id,
           stage_id: selectedStageId,
-          custom_data: customData,
+          lead_data: leadFormData, // Usar lead_data ao invés de custom_data
           created_by: user?.id
-        }),
-      });
+        }])
+        .select()
+        .single();
 
-      const responseData = await response.json();
-
-      if (response.ok) {
-        setShowAddLeadModal(false);
-        setLeadFormData({});
-        setSelectedStageId('');
-        loadLeads(selectedPipeline.id);
-        
-        const statusMessage = leadStatus === 'won' ? 'Lead criado como GANHO!' : 
-                             leadStatus === 'lost' ? 'Lead criado como PERDIDO!' : 
-                             'Lead criado com sucesso na primeira etapa!';
-        alert(statusMessage);
-        console.log('✅ Lead criado:', responseData);
-      } else {
-        console.error('❌ Erro na resposta:', responseData);
-        alert(`Erro ao criar lead: ${responseData.error || 'Erro desconhecido'}`);
+      if (error) {
+        throw error;
       }
+
+      logger.info('✅ Lead criado com sucesso:', newLead.id);
+      
+      // Mapear o novo lead para a interface
+      const mappedNewLead: Lead = {
+        id: newLead.id,
+        pipeline_id: newLead.pipeline_id,
+        stage_id: newLead.stage_id,
+        custom_data: newLead.lead_data || {},
+        created_at: newLead.created_at,
+        updated_at: newLead.updated_at,
+        status: 'active'
+      };
+      
+      // Atualizar lista de leads
+      setLeads(prev => [mappedNewLead, ...prev]);
+      
+      // Limpar formulário e fechar modal
+      setLeadFormData({});
+      setShowAddLeadModal(false);
+      setSelectedStageId('');
+      
+      alert('✅ Lead criado com sucesso!');
     } catch (error) {
-      console.error('❌ Erro ao criar lead:', error);
-      alert('Erro ao criar lead');
+      logger.error('❌ Erro ao criar lead:', error);
+      alert('❌ Erro ao criar lead. Tente novamente.');
     }
   };
 
@@ -406,58 +504,70 @@ const PipelineViewModule: React.FC = () => {
             </div>
             
             <div className="modal-content">
-              <p>Preencha os campos abaixo para criar um novo lead:</p>
-              
-              <div className="lead-form">
-                {(selectedPipeline.pipeline_custom_fields || [])
-                  .sort((a, b) => a.field_order - b.field_order)
-                  .map((field) => (
-                    <div key={field.id} className="form-group">
-                      <label>
-                        {field.field_label}
-                        {field.is_required && <span className="required">*</span>}
-                      </label>
-                      
-                      {field.field_type === 'textarea' ? (
-                        <textarea
-                          value={leadFormData[field.field_name] || ''}
-                          onChange={(e) => handleFieldChange(field.field_name, e.target.value)}
-                          placeholder={field.placeholder}
-                          required={field.is_required}
-                          rows={3}
-                        />
-                      ) : field.field_type === 'select' ? (
-                        <select
-                          value={leadFormData[field.field_name] || ''}
-                          onChange={(e) => handleFieldChange(field.field_name, e.target.value)}
-                          required={field.is_required}
-                        >
-                          <option value="">Selecione...</option>
-                          {(field.field_options || []).map((option, index) => (
-                            <option key={index} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          type={field.field_type}
-                          value={leadFormData[field.field_name] || ''}
-                          onChange={(e) => handleFieldChange(field.field_name, e.target.value)}
-                          placeholder={field.placeholder}
-                          required={field.is_required}
-                        />
-                      )}
-                    </div>
-                  ))
-                }
-              </div>
+              {(selectedPipeline.pipeline_custom_fields || []).length > 0 ? (
+                <>
+                  <p>Preencha os campos customizados configurados para esta pipeline:</p>
+                  
+                  <div className="lead-form">
+                    {(selectedPipeline.pipeline_custom_fields || [])
+                      .sort((a, b) => a.field_order - b.field_order)
+                      .map((field) => (
+                        <div key={field.id} className="form-group">
+                          <label>
+                            {field.field_label}
+                            {field.is_required && <span className="required">*</span>}
+                          </label>
+                          
+                          {field.field_type === 'textarea' ? (
+                            <textarea
+                              value={leadFormData[field.field_name] || ''}
+                              onChange={(e) => handleFieldChange(field.field_name, e.target.value)}
+                              placeholder={field.placeholder}
+                              required={field.is_required}
+                              rows={3}
+                            />
+                          ) : field.field_type === 'select' ? (
+                            <select
+                              value={leadFormData[field.field_name] || ''}
+                              onChange={(e) => handleFieldChange(field.field_name, e.target.value)}
+                              required={field.is_required}
+                            >
+                              <option value="">Selecione...</option>
+                              {(field.field_options || []).map((option, index) => (
+                                <option key={index} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type={field.field_type}
+                              value={leadFormData[field.field_name] || ''}
+                              onChange={(e) => handleFieldChange(field.field_name, e.target.value)}
+                              placeholder={field.placeholder}
+                              required={field.is_required}
+                            />
+                          )}
+                        </div>
+                      ))
+                    }
+                  </div>
+                </>
+              ) : (
+                <div className="no-custom-fields">
+                  <h4>⚠️ Nenhum Campo Customizado</h4>
+                  <p>Esta pipeline ainda não possui campos customizados configurados.</p>
+                  <p>Entre em contato com seu administrador para configurar os campos necessários para criação de leads.</p>
+                </div>
+              )}
             </div>
 
             <div className="modal-actions">
-              <button onClick={handleCreateLead} className="submit-button">
-                ✅ Criar Lead
-              </button>
+              {(selectedPipeline.pipeline_custom_fields || []).length > 0 && (
+                <button onClick={handleCreateLead} className="submit-button">
+                  ✅ Criar Lead
+                </button>
+              )}
               <button 
                 onClick={() => setShowAddLeadModal(false)}
                 className="cancel-button"
