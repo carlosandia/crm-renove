@@ -1,11 +1,10 @@
-
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { 
   BarChart3, 
   Users, 
   Settings, 
-  PipelineIcon,
+  GitBranch,
   FileText,
   Target,
   Eye,
@@ -56,7 +55,7 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate }) => 
     if (user.role === 'member') {
       return [
         { id: 'Relatório', label: 'Relatório', icon: BarChart3 },
-        { id: 'Pipeline', label: 'Pipeline', icon: PipelineIcon },
+        { id: 'Pipeline', label: 'Pipeline', icon: GitBranch },
         { id: 'Acompanhamento', label: 'Acompanhamento', icon: Eye },
         { id: 'Leads', label: 'Leads', icon: Users },
         { id: 'Meu Perfil', label: 'Meu Perfil', icon: User },
