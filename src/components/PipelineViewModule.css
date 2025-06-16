@@ -1,0 +1,565 @@
+/* ============================================ */
+/* PIPELINE VIEW MODULE - KANBAN PARA MEMBERS */
+/* ============================================ */
+
+.pipeline-view-module {
+  padding: 20px;
+  background: #f8f9fa;
+  min-height: 100vh;
+}
+
+/* ============================================ */
+/* HEADER E SELETOR */
+/* ============================================ */
+
+.module-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.module-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 24px;
+}
+
+.pipeline-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pipeline-selector label {
+  font-weight: 600;
+  color: #555;
+}
+
+.pipeline-select {
+  padding: 8px 12px;
+  border: 2px solid #e1e8ed;
+  border-radius: 8px;
+  font-size: 14px;
+  min-width: 200px;
+  background: white;
+}
+
+.pipeline-select:focus {
+  outline: none;
+  border-color: #4f46e5;
+}
+
+/* ============================================ */
+/* INFORMAÇÕES DA PIPELINE */
+/* ============================================ */
+
+.pipeline-info {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.pipeline-info h4 {
+  margin: 0 0 10px 0;
+  color: #2c3e50;
+  font-size: 20px;
+}
+
+.pipeline-info p {
+  margin: 0;
+  color: #666;
+  font-size: 14px;
+}
+
+/* ============================================ */
+/* KANBAN BOARD */
+/* ============================================ */
+
+.kanban-board {
+  display: flex;
+  gap: 20px;
+  overflow-x: auto;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  min-height: 500px;
+}
+
+.kanban-column {
+  flex: 0 0 300px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 1px solid #e1e8ed;
+  overflow: hidden;
+}
+
+.column-header {
+  padding: 15px;
+  background: white;
+  border-top: 4px solid #4f46e5;
+  border-bottom: 1px solid #e1e8ed;
+}
+
+.stage-info h5 {
+  margin: 0 0 8px 0;
+  color: #2c3e50;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.stage-meta {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 10px;
+}
+
+.temperature, .max-days {
+  font-size: 12px;
+  color: #666;
+  background: #f1f3f4;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.leads-count {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.leads-count .count {
+  font-size: 24px;
+  font-weight: bold;
+  color: #4f46e5;
+}
+
+.leads-count .label {
+  font-size: 12px;
+  color: #666;
+}
+
+/* ============================================ */
+/* CONTEÚDO DAS COLUNAS */
+/* ============================================ */
+
+.column-content {
+  padding: 15px;
+  min-height: 400px;
+}
+
+.empty-column {
+  text-align: center;
+  padding: 40px 20px;
+  color: #666;
+}
+
+.empty-column p {
+  margin-bottom: 15px;
+  font-size: 14px;
+}
+
+.add-lead-button {
+  background: #4f46e5;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.add-lead-button:hover {
+  background: #4338ca;
+}
+
+/* ============================================ */
+/* ESTADOS ESPECIAIS */
+/* ============================================ */
+
+.access-denied, .empty-state, .no-stages {
+  text-align: center;
+  padding: 60px 20px;
+  background: white;
+  border-radius: 12px;
+  margin: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.access-denied h3, .empty-state h3, .no-stages h4 {
+  color: #e74c3c;
+  margin-bottom: 15px;
+}
+
+.empty-state h3 {
+  color: #f39c12;
+}
+
+.no-stages h4 {
+  color: #f39c12;
+}
+
+.access-denied p, .empty-state p, .no-stages p {
+  color: #666;
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.loading {
+  text-align: center;
+  padding: 60px 20px;
+  font-size: 18px;
+  color: #666;
+}
+
+/* ============================================ */
+/* RESPONSIVIDADE */
+/* ============================================ */
+
+@media (max-width: 768px) {
+  .module-header {
+    flex-direction: column;
+    gap: 15px;
+    align-items: stretch;
+  }
+  
+  .pipeline-selector {
+    justify-content: center;
+  }
+  
+  .kanban-board {
+    flex-direction: column;
+    gap: 15px;
+  }
+  
+  .kanban-column {
+    flex: none;
+  }
+}
+
+/* ============================================ */
+/* CORES PERSONALIZADAS PARA ETAPAS */
+/* ============================================ */
+
+.kanban-column[data-color="red"] .column-header {
+  border-top-color: #e74c3c;
+}
+
+.kanban-column[data-color="blue"] .column-header {
+  border-top-color: #3498db;
+}
+
+.kanban-column[data-color="green"] .column-header {
+  border-top-color: #2ecc71;
+}
+
+.kanban-column[data-color="yellow"] .column-header {
+  border-top-color: #f1c40f;
+}
+
+.kanban-column[data-color="purple"] .column-header {
+  border-top-color: #9b59b6;
+}
+
+.kanban-column[data-color="orange"] .column-header {
+  border-top-color: #f97316;
+}
+
+/* ============================================ */
+/* LEADS E CARDS */
+/* ============================================ */
+
+.leads-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lead-card {
+  background: white;
+  border: 1px solid #e1e8ed;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+}
+
+.lead-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.lead-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f1f3f4;
+}
+
+.lead-header h6 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.lead-date {
+  font-size: 12px;
+  color: #666;
+}
+
+.lead-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lead-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lead-field label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.lead-field span {
+  font-size: 13px;
+  color: #2c3e50;
+  word-break: break-word;
+}
+
+/* ============================================ */
+/* MODAL DE ADICIONAR LEAD */
+/* ============================================ */
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #e1e8ed;
+}
+
+.modal-header h4 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 18px;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.close-button:hover {
+  background: #f1f3f4;
+}
+
+.modal-content {
+  padding: 20px;
+}
+
+.modal-content p {
+  margin: 0 0 20px 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.lead-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.form-group label {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 14px;
+}
+
+.required {
+  color: #e74c3c;
+  margin-left: 3px;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+  padding: 10px 12px;
+  border: 2px solid #e1e8ed;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: #4f46e5;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 20px;
+  border-top: 1px solid #e1e8ed;
+}
+
+.submit-button {
+  background: #4f46e5;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+
+.submit-button:hover {
+  background: #4338ca;
+}
+
+.cancel-button {
+  background: #6b7280;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+
+.cancel-button:hover {
+  background: #4b5563;
+}
+
+/* ============================================ */
+/* ETAPAS DO SISTEMA */
+/* ============================================ */
+
+.kanban-column[data-system-stage="true"] {
+  border: 2px solid;
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+}
+
+.kanban-column[data-system-stage="true"] .column-header {
+  font-weight: bold;
+  position: relative;
+}
+
+.kanban-column[data-system-stage="true"] .column-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, currentColor 0%, transparent 100%);
+}
+
+/* Etapa Ganho */
+.kanban-column[data-stage-id="system-won"] {
+  border-color: #10B981;
+}
+
+.kanban-column[data-stage-id="system-won"] .column-header {
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  color: white;
+}
+
+.kanban-column[data-stage-id="system-won"] .stage-meta .temperature,
+.kanban-column[data-stage-id="system-won"] .stage-meta .max-days {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+/* Etapa Perdido */
+.kanban-column[data-stage-id="system-lost"] {
+  border-color: #EF4444;
+}
+
+.kanban-column[data-stage-id="system-lost"] .column-header {
+  background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+  color: white;
+}
+
+.kanban-column[data-stage-id="system-lost"] .stage-meta .temperature,
+.kanban-column[data-stage-id="system-lost"] .stage-meta .max-days {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+/* Cards nas etapas do sistema */
+.kanban-column[data-stage-id="system-won"] .lead-card {
+  border-left: 4px solid #10B981;
+  background: linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%);
+}
+
+.kanban-column[data-stage-id="system-lost"] .lead-card {
+  border-left: 4px solid #EF4444;
+  background: linear-gradient(135deg, #ffffff 0%, #fef2f2 100%);
+}
