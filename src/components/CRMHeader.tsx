@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Search, Bell } from 'lucide-react';
+import { Bell } from 'lucide-react';
 
 interface CRMHeaderProps {
   user: any;
@@ -11,21 +11,7 @@ interface CRMHeaderProps {
 const CRMHeader: React.FC<CRMHeaderProps> = ({ user, showSearch = true }) => {
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
-      <div className="flex items-center justify-between">
-        {/* Search Bar */}
-        {showSearch && (
-          <div className="flex-1 max-w-md">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar leads por nome, email, telefone..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-        )}
-
+      <div className="flex items-center justify-end">
         {/* Right Section */}
         <div className="flex items-center space-x-4">
           {/* Notifications */}

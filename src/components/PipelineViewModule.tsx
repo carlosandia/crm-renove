@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCorners } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -8,6 +9,7 @@ import { Plus, TrendingUp, DollarSign, CheckCircle, Users, Search } from 'lucide
 import KanbanColumn from './Pipeline/KanbanColumn';
 import LeadCard from './Pipeline/LeadCard';
 import LeadModal from './Pipeline/LeadModal';
+import './PipelineViewModule.css';
 
 // ============================================
 // INTERFACES E TIPOS
@@ -114,7 +116,7 @@ const PipelineViewModule: React.FC = () => {
             order_index: 2,
             temperature_score: 50,
             max_days_allowed: 7,
-            color: '#8B5CF6'
+            color: '#10B981'
           },
           {
             id: 'stage-3',
@@ -138,7 +140,7 @@ const PipelineViewModule: React.FC = () => {
             order_index: 5,
             temperature_score: 100,
             max_days_allowed: 0,
-            color: '#10B981'
+            color: '#8B5CF6'
           }
         ],
         pipeline_custom_fields: [
@@ -321,10 +323,10 @@ const PipelineViewModule: React.FC = () => {
   // ============================================
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="pipeline-view-module">
       {/* Header da Pipeline */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
-        <div className="flex items-center justify-between">
+      <div className="pipeline-header">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex-1">
             {/* Barra de busca */}
             <div className="max-w-md">
@@ -340,7 +342,7 @@ const PipelineViewModule: React.FC = () => {
           </div>
 
           <div className="flex items-center space-x-4">
-            <h1 className="text-xl font-semibold text-gray-900">Pipeline de Vendas</h1>
+            <h1 className="pipeline-title">Pipeline de Vendas</h1>
             
             <select 
               value={selectedPipeline?.id || ''} 
@@ -368,16 +370,16 @@ const PipelineViewModule: React.FC = () => {
         </div>
 
         {/* Métricas resumidas */}
-        <div className="flex items-center space-x-6 mt-3 text-sm text-gray-600">
-          <div className="flex items-center space-x-2">
+        <div className="pipeline-metrics">
+          <div className="metric-item">
             <Users className="w-4 h-4" />
             <span>Total de Leads: {totalLeads}</span>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="metric-item">
             <TrendingUp className="w-4 h-4" />
             <span>Receita Total: R$ {totalRevenue.toLocaleString('pt-BR')}</span>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="metric-item">
             <CheckCircle className="w-4 h-4" />
             <span>Fechados: R$ 0</span>
           </div>
@@ -385,54 +387,52 @@ const PipelineViewModule: React.FC = () => {
       </div>
 
       {/* Métricas Cards */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-blue-50 rounded-lg p-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
-                <Users className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Total de Leads</p>
-                <p className="text-2xl font-bold text-gray-900">{totalLeads}</p>
-              </div>
+      <div className="metrics-grid">
+        <div className="metric-card blue">
+          <div className="metric-content">
+            <div className="metric-icon blue">
+              <Users className="w-6 h-6" />
+            </div>
+            <div className="metric-info">
+              <h3>Total de Leads</h3>
+              <p>{totalLeads}</p>
             </div>
           </div>
-          
-          <div className="bg-green-50 rounded-lg p-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Receita Total</p>
-                <p className="text-2xl font-bold text-gray-900">R$ {totalRevenue.toLocaleString('pt-BR')}</p>
-              </div>
+        </div>
+        
+        <div className="metric-card green">
+          <div className="metric-content">
+            <div className="metric-icon green">
+              <DollarSign className="w-6 h-6" />
+            </div>
+            <div className="metric-info">
+              <h3>Receita Total</h3>
+              <p>R$ {totalRevenue.toLocaleString('pt-BR')}</p>
             </div>
           </div>
-          
-          <div className="bg-purple-50 rounded-lg p-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Fechados</p>
-                <p className="text-2xl font-bold text-gray-900">R$ 0</p>
-              </div>
+        </div>
+        
+        <div className="metric-card purple">
+          <div className="metric-content">
+            <div className="metric-icon purple">
+              <CheckCircle className="w-6 h-6" />
+            </div>
+            <div className="metric-info">
+              <h3>Fechados</h3>
+              <p>R$ 0</p>
             </div>
           </div>
         </div>
       </div>
 
       {/* Kanban Board */}
-      <div className="flex-1 p-6 overflow-hidden">
+      <div className="kanban-container">
         <DndContext
           collisionDetection={closestCorners}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex gap-6 h-full overflow-x-auto pb-4">
+          <div className="kanban-board">
             {getAllStages().map((stage) => (
               <KanbanColumn
                 key={stage.id}
