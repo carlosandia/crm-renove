@@ -1,16 +1,15 @@
 {
   "name": "crm-marketing-supabase-genesis",
-  "version": "1.0.0",
-  "description": "Sistema CRM Fullstack com React, Node.js e MCP Server para Supabase integrado",
+  "private": true,
+  "version": "0.0.0",
   "type": "module",
-  "main": "index.js",
   "scripts": {
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "preview": "vite preview",
     "server": "cd backend && npm run dev",
     "client": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "install-all": "npm install && cd backend && npm install",
     "build:dev": "vite build --mode development",
     "start": "cd backend && npm start",
@@ -28,17 +27,13 @@
     "build-all": "cd backend && npm run build && npm run build",
     "clean": "rm -rf node_modules backend/node_modules && rm -rf backend/dist dist"
   },
-  "keywords": [
-    "crm",
-    "react",
-    "nodejs",
-    "typescript",
-    "supabase",
-    "mcp",
-    "fullstack"
-  ],
-  "author": "Carlos Andia",
-  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.50.0",
+    "@tanstack/react-query": "^5.80.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.6.2"
+  },
   "devDependencies": {
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
@@ -46,28 +41,21 @@
     "@typescript-eslint/parser": "^6.14.0",
     "@vitejs/plugin-react": "^4.5.2",
     "autoprefixer": "^10.4.21",
-    "concurrently": "^8.2.2",
     "eslint": "^8.55.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
-    "nodemon": "^3.1.4",
+    "lovable-tagger": "^1.1.8",
     "postcss": "^8.5.5",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.2.2"
-  },
-  "dependencies": {
+    "typescript": "^5.2.2",
+    "vite": "^5.0.8",
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.1.4",
     "@modelcontextprotocol/sdk": "^1.12.3",
-    "@supabase/supabase-js": "^2.50.0",
-    "@tanstack/react-query": "^5.80.7",
     "@types/node": "^24.0.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "lovable-tagger": "^1.1.8",
-    "node-fetch": "^3.3.2",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^7.6.2",
-    "vite": "^5.0.8"
+    "node-fetch": "^3.3.2"
   }
 }
