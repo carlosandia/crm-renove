@@ -1,60 +1,39 @@
 {
-  "name": "crm-marketing-fullstack",
+  "name": "crm-insight",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "build:dev": "vite build --mode development",
-    "preview": "vite preview",
+    "build": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "type-check": "tsc --noEmit",
-    "dev:backend": "cd backend && npm run dev",
-    "build:backend": "cd backend && npm run build",
-    "start:backend": "cd backend && npm run start",
-    "install:backend": "cd backend && npm install",
-    "clean": "rm -rf node_modules backend/node_modules dist backend/dist",
-    "mcp-server": "cd backend && node supabase-mcp-server.js",
-    "test-connection": "cd backend && node test-connection.js",
-    "health-check": "curl http://localhost:3001/api/health && curl http://localhost:8080"
+    "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0",
     "@supabase/supabase-js": "^2.50.0",
     "@tanstack/react-query": "^5.80.7",
     "axios": "^1.7.9",
-    "lucide-react": "^0.263.1",
     "clsx": "^2.1.1",
-    "tailwind-merge": "^2.5.4"
+    "lucide-react": "^0.263.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "tailwind-merge": "^2.5.4",
+    "lovable-tagger": "^1.0.0"
   },
   "devDependencies": {
-    "@types/react": "^18.3.23",
-    "@types/react-dom": "^18.3.7",
-    "@typescript-eslint/eslint-plugin": "^6.14.0",
-    "@typescript-eslint/parser": "^6.14.0",
-    "@vitejs/plugin-react": "^4.3.4",
-    "eslint": "^8.55.0",
-    "eslint-plugin-react-hooks": "^4.6.0",
-    "eslint-plugin-react-refresh": "^0.4.12",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@typescript-eslint/eslint-plugin": "^7.15.0",
+    "@typescript-eslint/parser": "^7.15.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "eslint-plugin-react-refresh": "^0.4.7",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.4",
     "typescript": "^5.2.2",
-    "vite": "^5.4.10",
-    "autoprefixer": "^10.4.21",
-    "postcss": "^8.5.5",
-    "tailwindcss": "^3.4.17",
-    "concurrently": "^8.2.2"
-  },
-  "description": "CRM Marketing System - Vite + React + TypeScript + Backend API",
-  "keywords": [
-    "crm",
-    "marketing",
-    "react",
-    "vite",
-    "typescript",
-    "supabase"
-  ],
-  "author": "CRM Team",
-  "license": "MIT"
+    "vite": "^5.3.1"
+  }
 }
