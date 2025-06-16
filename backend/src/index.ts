@@ -58,7 +58,8 @@ app.get('/', (req, res) => {
   res.json({
     message: 'CRM Backend está funcionando!',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    mcp_integration: 'Ativo'
   });
 });
 
@@ -67,7 +68,11 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'OK',
     uptime: process.uptime(),
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    services: {
+      supabase: 'Connected',
+      mcp: 'Active'
+    }
   });
 });
 
@@ -105,6 +110,7 @@ import vendedoresRoutes from './routes/vendedores';
 import salesGoalsRoutes from './routes/sales-goals';
 import pipelinesRoutes from './routes/pipelines';
 import setupRoutes from './routes/setup';
+import mcpRoutes from './routes/mcp';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
@@ -115,6 +121,7 @@ app.use('/api/vendedores', vendedoresRoutes);
 app.use('/api/sales-goals', salesGoalsRoutes);
 app.use('/api/pipelines', pipelinesRoutes);
 app.use('/api/setup', setupRoutes);
+app.use('/api/mcp', mcpRoutes);
 
 // Middleware de tratamento de erros
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -138,4 +145,5 @@ app.listen(PORT, () => {
   console.log(`📱 Ambiente: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 URL: http://localhost:${PORT}`);
   console.log(`💾 Supabase conectado: ${supabaseUrl}`);
+  console.log(`🛠️ MCP Integration ativa em: http://localhost:${PORT}/api/mcp`);
 });

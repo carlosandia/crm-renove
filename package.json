@@ -19,7 +19,12 @@
     "test-mcp": "node -e \"const server = require('./supabase-mcp-server.js'); console.log('MCP Server OK!');\"",
     "test-mcp-tools": "node test-mcp-tools.js",
     "setup-supabase": "node setup-supabase-functions.js",
-    "verify-all": "npm run test-connection && npm run test-mcp-tools"
+    "verify-all": "npm run test-connection && npm run test-mcp-tools",
+    "start-full-system": "./start-full-mcp-system.sh",
+    "test-backend": "cd backend && npm test",
+    "test-frontend": "cd frontend && npm test",
+    "build-all": "cd backend && npm run build && cd ../frontend && npm run build",
+    "clean": "rm -rf node_modules backend/node_modules frontend/node_modules && rm -rf backend/dist frontend/dist"
   },
   "keywords": [
     "crm",
@@ -43,12 +48,12 @@
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.5.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
     "lovable-tagger": "^1.1.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "vite": "^6.3.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "cors": "^2.8.5"
+    "vite": "^6.3.5"
   }
 }
