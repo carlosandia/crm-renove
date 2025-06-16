@@ -14,15 +14,15 @@ interface Vendedor {
   tenant_id: string;
 }
 
-interface SalesGoal {
-  id: string;
-  goal_type: 'vendas' | 'receita' | 'leads' | 'conversao';
-  goal_value: number;
-  current_value: number;
-  period: 'mensal' | 'trimestral' | 'semestral' | 'anual';
-  target_date: string;
-  status: 'ativa' | 'pausada' | 'concluida' | 'cancelada';
-}
+// interface SalesGoal {
+//   id: string;
+//   goal_type: 'vendas' | 'receita' | 'leads' | 'conversao';
+//   goal_value: number;
+//   current_value: number;
+//   period: 'mensal' | 'trimestral' | 'semestral' | 'anual';
+//   target_date: string;
+//   status: 'ativa' | 'pausada' | 'concluida' | 'cancelada';
+// }
 
 const VendedoresModule: React.FC = () => {
   const { user } = useAuth();
