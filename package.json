@@ -13,8 +13,10 @@
     "start": "cd backend && npm start",
     "mcp-server": "node supabase-mcp-server.js",
     "mcp-dev": "nodemon supabase-mcp-server.js",
+    "mcp-start": "./start-mcp.sh",
     "test-connection": "node test-connection.js",
-    "test": "node test-connection.js"
+    "test": "node test-connection.js",
+    "test-mcp": "node -e \"const server = require('./supabase-mcp-server.js'); console.log('MCP Server OK!');\""
   },
   "keywords": [
     "crm",
