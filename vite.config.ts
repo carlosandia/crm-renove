@@ -12,6 +12,7 @@ export default defineConfig({
   },
   server: {
     port: 8080,
+    host: true,
     proxy: {
       '/api': {
         target: 'http://localhost:3001',
@@ -23,8 +24,21 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          router: ['react-router-dom'],
+          query: ['@tanstack/react-query'],
+          supabase: ['@supabase/supabase-js']
+        }
+      }
+    }
   },
   define: {
     global: 'globalThis',
   },
-}) 
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-router-dom', '@tanstack/react-query']
+  }
+})
