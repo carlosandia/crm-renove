@@ -1,11 +1,7 @@
 import { Router, Request, Response } from 'express'
-import { createClient } from '@supabase/supabase-js'
+import { supabaseAdmin } from '../index'
 
 const router = Router()
-
-const supabaseUrl = process.env.SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY!
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
 // GET - Listar tabelas e estruturas
 router.get('/', async (req: Request, res: Response) => {

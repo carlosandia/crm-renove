@@ -151,3 +151,5 @@ app.listen(PORT, () => {
   console.log(`💾 Supabase conectado: ${supabaseUrl}`);
   console.log(`🛠️ MCP Integration ativa em: http://localhost:${PORT}/api/mcp`);
 });
+
+export default app;

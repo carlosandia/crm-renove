@@ -1,11 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../index';
 
 const router = Router();
-
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Credenciais demo para desenvolvimento
 const DEMO_CREDENTIALS = {
