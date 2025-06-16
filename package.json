@@ -16,7 +16,10 @@
     "mcp-start": "./start-mcp.sh",
     "test-connection": "node test-connection.js",
     "test": "node test-connection.js",
-    "test-mcp": "node -e \"const server = require('./supabase-mcp-server.js'); console.log('MCP Server OK!');\""
+    "test-mcp": "node -e \"const server = require('./supabase-mcp-server.js'); console.log('MCP Server OK!');\"",
+    "test-mcp-tools": "node test-mcp-tools.js",
+    "setup-supabase": "node setup-supabase-functions.js",
+    "verify-all": "npm run test-connection && npm run test-mcp-tools"
   },
   "keywords": [
     "crm",
