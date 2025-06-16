@@ -135,82 +135,7 @@ const PipelineModule: React.FC = () => {
   // EFEITOS E CARREGAMENTO DE DADOS
   // ============================================
 
-  // Função de teste para criar pipeline
-  const handleTestCreatePipeline = async () => {
-    try {
-      console.log('🧪 Teste direto de criação de pipeline');
-      console.log('👤 Usuário logado:', {
-        email: user?.email,
-        id: user?.id,
-        role: user?.role,
-        tenant_id: user?.tenant_id
-      });
 
-      const testData = {
-        name: "Pipeline Teste " + new Date().toLocaleTimeString(),
-        description: "Pipeline criada via teste direto",
-        tenant_id: user?.tenant_id,
-        created_by: user?.email,
-        member_ids: [],
-        stages: [
-          {
-            name: "Novo Lead",
-            temperature_score: 50,
-            max_days_allowed: 7,
-            color: "#3B82F6",
-            order_index: 1
-          },
-          {
-            name: "Oportunidade",
-            temperature_score: 75,
-            max_days_allowed: 10,
-            color: "#10B981",
-            order_index: 2
-          }
-        ],
-        custom_fields: [
-          {
-            field_name: "nome",
-            field_label: "Nome",
-            field_type: "text",
-            is_required: true,
-            field_order: 1
-          },
-          {
-            field_name: "email",
-            field_label: "Email",
-            field_type: "email",
-            is_required: true,
-            field_order: 2
-          }
-        ]
-      };
-
-      console.log('📦 Enviando dados:', testData);
-
-      const response = await fetch('http://localhost:5001/api/pipelines/complete', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(testData),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log('✅ Pipeline criada com sucesso:', result);
-        alert('✅ Pipeline de teste criada com sucesso!\nID: ' + result.pipeline.id);
-        loadPipelines(); // Recarregar lista
-      } else {
-        const errorData = await response.json();
-        console.error('❌ Erro na resposta:', errorData);
-        alert('❌ Erro ao criar pipeline: ' + errorData.error);
-      }
-    } catch (error) {
-      console.error('💥 Erro:', error);
-      alert('💥 Erro de conexão');
-    }
-  };
 
   useEffect(() => {
     console.log('👤 Estado do usuário:', user);
@@ -733,36 +658,7 @@ const PipelineModule: React.FC = () => {
         </div>
       </div>
 
-      {/* CAIXA DE TESTE VERDE */}
-      <div style={{
-        backgroundColor: '#10B981',
-        color: 'white',
-        padding: '20px',
-        borderRadius: '8px',
-        margin: '20px 0',
-        textAlign: 'center',
-        border: '2px solid #059669'
-      }}>
-        <h4 style={{ margin: '0 0 10px 0' }}>🧪 TESTE RÁPIDO DE PIPELINE</h4>
-        <p style={{ margin: '0 0 15px 0' }}>
-          Clique no botão abaixo para criar uma pipeline de teste automaticamente
-        </p>
-        <button 
-          onClick={handleTestCreatePipeline}
-          style={{
-            backgroundColor: 'white',
-            color: '#10B981',
-            border: 'none',
-            padding: '12px 24px',
-            borderRadius: '6px',
-            fontSize: '16px',
-            fontWeight: 'bold',
-            cursor: 'pointer'
-          }}
-        >
-          🚀 CRIAR PIPELINE DE TESTE
-        </button>
-      </div>
+
 
       {/* LISTA DE PIPELINES */}
       {activeTab === 'list' && (

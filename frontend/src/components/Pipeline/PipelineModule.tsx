@@ -132,47 +132,7 @@ const PipelineModule: React.FC = () => {
   };
 
   // Função de teste simples
-  const handleTestCreatePipeline = async () => {
-    const testData = {
-      name: "Pipeline Teste " + new Date().toLocaleTimeString(),
-      description: "Pipeline criada via teste",
-      member_ids: [],
-      stages: [
-        {
-          name: "Novo Lead",
-          temperature_score: 50,
-          max_days_allowed: 7,
-          color: "#3B82F6",
-          order_index: 1
-        },
-        {
-          name: "Oportunidade",
-          temperature_score: 75,
-          max_days_allowed: 10,
-          color: "#10B981",
-          order_index: 2
-        }
-      ],
-      custom_fields: [
-        {
-          field_name: "nome",
-          field_label: "Nome",
-          field_type: "text",
-          is_required: true,
-          field_order: 1
-        },
-        {
-          field_name: "email",
-          field_label: "Email",
-          field_type: "email",
-          is_required: true,
-          field_order: 2
-        }
-      ]
-    };
 
-    await handleCreateCompletePipeline(testData);
-  };
 
   const handleUpdatePipeline = async (data: { name: string; description: string }) => {
     if (!selectedPipelineId) return;
@@ -253,35 +213,7 @@ const PipelineModule: React.FC = () => {
         </div>
       </div>
 
-      {/* BOTÃO DE TESTE VISÍVEL */}
-      <div style={{ 
-        padding: '20px', 
-        backgroundColor: '#f0f9ff', 
-        border: '2px solid #10B981', 
-        borderRadius: '8px', 
-        margin: '20px 0',
-        textAlign: 'center'
-      }}>
-        <h4 style={{ color: '#10B981', margin: '0 0 10px 0' }}>🧪 Teste de Criação de Pipeline</h4>
-        <p style={{ margin: '0 0 15px 0', color: '#666' }}>
-          Clique no botão abaixo para testar a criação de uma pipeline completa
-        </p>
-        <button 
-          onClick={handleTestCreatePipeline}
-          style={{
-            backgroundColor: '#10B981',
-            color: 'white',
-            border: 'none',
-            padding: '12px 24px',
-            borderRadius: '6px',
-            fontSize: '16px',
-            fontWeight: 'bold',
-            cursor: 'pointer'
-          }}
-        >
-          🚀 CRIAR PIPELINE DE TESTE
-        </button>
-      </div>
+
 
       {activeTab === 'list' && (
         <PipelineList
