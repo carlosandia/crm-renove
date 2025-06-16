@@ -39,47 +39,36 @@ interface KanbanColumnProps {
   onAddLead: (stageId: string) => void;
 }
 
-const KanbanColumn: React.FC<KanbanColumnProps> = ({ 
-  stage, 
-  leads, 
-  customFields, 
-  onAddLead 
+const KanbanColumn: React.FC<KanbanColumnProps> = ({
+  stage,
+  leads,
+  customFields,
+  onAddLead
 }) => {
   const { setNodeRef, isOver } = useDroppable({
-    id: stage.id,
+    id: stage.id
   });
 
   const getStageIcon = () => {
-    if (stage.is_system_stage) {
-      if (stage.id === 'system-new-lead') return '🆕';
-      if (stage.id === 'system-won') return '🏆';
-      if (stage.id === 'system-lost') return '❌';
-    }
+    if (stage.name.toLowerCase().includes('novo')) return '🆕';
+    if (stage.name.toLowerCase().includes('qualificad')) return '✅';
+    if (stage.name.toLowerCase().includes('proposta')) return '📋';
+    if (stage.name.toLowerCase().includes('negoci')) return '🤝';
+    if (stage.name.toLowerCase().includes('ganho')) return '🏆';
     return '📋';
-  };
-
-  const getStageStatusText = () => {
-    if (stage.is_system_stage) {
-      if (stage.id === 'system-new-lead') return 'Inicial';
-      if (stage.id === 'system-won') return 'Final';
-      if (stage.id === 'system-lost') return 'Final';
-    }
-    return `${stage.max_days_allowed} dias`;
   };
 
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col w-80 bg-gray-50 rounded-xl border-2 transition-all duration-200 ${
-        isOver ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
-      } ${stage.is_system_stage ? 'border-dashed' : ''}`}
-      style={{
-        minHeight: '600px',
-      }}
+      className={`flex flex-col w-80 bg-white rounded-xl border-2 transition-all duration-200 ${
+        isOver ? 'border-green-300 bg-green-50' : 'border-gray-200'
+      }`}
+      style={{ minHeight: '600px' }}
     >
-      {/* Column Header */}
-      <div className="p-4 bg-white rounded-t-xl border-b border-gray-200">
-        <div 
+      {/* Header da Coluna */}
+      <div className="p-4 border-b border-gray-200">
+        <div
           className="h-1 w-full rounded-full mb-3"
           style={{ backgroundColor: stage.color }}
         />
@@ -101,13 +90,24 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
           </div>
           <div className="flex items-center space-x-1">
             <span>⏰</span>
-            <span className="text-gray-600">{getStageStatusText()}</span>
+            <span className="text-gray-600">{stage.max_days_allowed} dias</span>
+          </div>
+        </div>
+
+        {/* Valor total da etapa */}
+        <div className="mt-3 p-2 bg-gray-50 rounded-lg">
+          <div className="text-xs text-gray-500">Valor total</div>
+          <div className="text-lg font-bold text-gray-900">
+            R$ {leads.reduce((sum, lead) => {
+              const value = parseFloat(lead.custom_data?.valor_proposta || '0');
+              return sum + (isNaN(value) ? 0 : value);
+            }, 0).toLocaleString('pt-BR')}
           </div>
         </div>
       </div>
 
-      {/* Column Content */}
-      <div className="flex-1 p-4 space-y-3 overflow-y-auto modern-scrollbar">
+      {/* Conteúdo da Coluna */}
+      <div className="flex-1 p-4 space-y-3 overflow-y-auto">
         <SortableContext items={leads.map(l => l.id)} strategy={verticalListSortingStrategy}>
           {leads.map((lead) => (
             <LeadCard
@@ -117,24 +117,13 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
             />
           ))}
         </SortableContext>
-
+        
         {leads.length === 0 && (
           <div className="text-center py-8 text-gray-500">
             <div className="text-3xl mb-2">📭</div>
             <p className="text-sm">Nenhum lead nesta etapa</p>
           </div>
         )}
-      </div>
-
-      {/* Add Lead Button */}
-      <div className="p-4 border-t border-gray-200">
-        <button
-          onClick={() => onAddLead(stage.id)}
-          className="w-full modern-btn modern-btn-secondary text-sm py-2 hover:bg-gray-100"
-        >
-          <span>➕</span>
-          <span>Adicionar Lead</span>
-        </button>
       </div>
     </div>
   );

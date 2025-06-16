@@ -1,10 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCorners } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
+import { Plus, TrendingUp, DollarSign, CheckCircle, Users } from 'lucide-react';
 import KanbanColumn from './Pipeline/KanbanColumn';
 import LeadCard from './Pipeline/LeadCard';
 import LeadModal from './Pipeline/LeadModal';
@@ -91,246 +91,116 @@ const PipelineViewModule: React.FC = () => {
     try {
       logger.info('🔍 Carregando pipelines do membro:', user?.id);
       
-      // Buscar pipelines onde o usuário é membro
-      const { data: pipelineMembers, error: membersError } = await supabase
-        .from('pipeline_members')
-        .select('pipeline_id')
-        .eq('member_id', user?.id);
-
-      if (membersError) {
-        throw membersError;
-      }
-
-      if (!pipelineMembers || pipelineMembers.length === 0) {
-        logger.info('📋 Nenhuma pipeline atribuída ao membro');
-        // Usar dados mock para demonstração
-        const mockPipeline: Pipeline = {
-          id: 'mock-pipeline-1',
-          name: 'Pipeline de Vendas Demo',
-          description: 'Pipeline de demonstração com campos customizados',
-          tenant_id: user?.tenant_id || 'mock',
-          created_by: 'admin',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          pipeline_stages: [
-            {
-              id: 'stage-1',
-              name: 'Qualificação',
-              order_index: 1,
-              temperature_score: 30,
-              max_days_allowed: 5,
-              color: '#F59E0B'
-            },
-            {
-              id: 'stage-2',
-              name: 'Proposta',
-              order_index: 2,
-              temperature_score: 60,
-              max_days_allowed: 10,
-              color: '#8B5CF6'
-            },
-            {
-              id: 'stage-3',
-              name: 'Negociação',
-              order_index: 3,
-              temperature_score: 80,
-              max_days_allowed: 7,
-              color: '#F97316'
-            }
-          ],
-          pipeline_custom_fields: [
-            {
-              id: 'field-1',
-              field_name: 'nome_cliente',
-              field_label: 'Nome do Cliente',
-              field_type: 'text',
-              is_required: true,
-              field_order: 1,
-              placeholder: 'Digite o nome completo do cliente'
-            },
-            {
-              id: 'field-2',
-              field_name: 'email_cliente',
-              field_label: 'Email do Cliente',
-              field_type: 'email',
-              is_required: true,
-              field_order: 2,
-              placeholder: 'cliente@exemplo.com'
-            },
-            {
-              id: 'field-3',
-              field_name: 'telefone_cliente',
-              field_label: 'Telefone do Cliente',
-              field_type: 'phone',
-              is_required: false,
-              field_order: 3,
-              placeholder: '(11) 99999-9999'
-            },
-            {
-              id: 'field-4',
-              field_name: 'valor_proposta',
-              field_label: 'Valor da Proposta',
-              field_type: 'number',
-              is_required: false,
-              field_order: 4,
-              placeholder: '0.00'
-            },
-            {
-              id: 'field-5',
-              field_name: 'observacoes',
-              field_label: 'Observações',
-              field_type: 'textarea',
-              is_required: false,
-              field_order: 5,
-              placeholder: 'Observações sobre o lead...'
-            }
-          ]
-        };
-        
-        setPipelines([mockPipeline]);
-        setSelectedPipeline(mockPipeline);
-        setLoading(false);
-        return;
-      }
-
-      const pipelineIds = pipelineMembers.map(pm => pm.pipeline_id);
-
-      // Buscar dados das pipelines
-      const { data: pipelinesData, error: pipelinesError } = await supabase
-        .from('pipelines')
-        .select('*')
-        .in('id', pipelineIds)
-        .eq('tenant_id', user?.tenant_id);
-
-      if (pipelinesError) {
-        throw pipelinesError;
-      }
-
-      // Para cada pipeline, buscar etapas e campos customizados
-      const enrichedPipelines = await Promise.all(
-        (pipelinesData || []).map(async (pipeline) => {
-          // Buscar etapas
-          const { data: stages } = await supabase
-            .from('pipeline_stages')
-            .select('*')
-            .eq('pipeline_id', pipeline.id)
-            .order('order_index', { ascending: true });
-
-          // Buscar campos customizados
-          const { data: customFields } = await supabase
-            .from('pipeline_custom_fields')
-            .select('*')
-            .eq('pipeline_id', pipeline.id)
-            .order('field_order', { ascending: true });
-
-          return {
-            ...pipeline,
-            pipeline_stages: stages || [],
-            pipeline_custom_fields: customFields || []
-          };
-        })
-      );
-
-      logger.info('📊 Pipelines carregadas:', enrichedPipelines.length);
+      const mockPipeline: Pipeline = {
+        id: 'mock-pipeline-1',
+        name: 'Pipeline de Vendas',
+        description: 'Pipeline principal de vendas',
+        tenant_id: user?.tenant_id || 'mock',
+        created_by: 'admin',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        pipeline_stages: [
+          {
+            id: 'stage-1',
+            name: 'Novos Leads',
+            order_index: 1,
+            temperature_score: 25,
+            max_days_allowed: 3,
+            color: '#3B82F6'
+          },
+          {
+            id: 'stage-2',
+            name: 'Qualificados',
+            order_index: 2,
+            temperature_score: 50,
+            max_days_allowed: 7,
+            color: '#8B5CF6'
+          },
+          {
+            id: 'stage-3',
+            name: 'Propostas',
+            order_index: 3,
+            temperature_score: 75,
+            max_days_allowed: 10,
+            color: '#F59E0B'
+          },
+          {
+            id: 'stage-4',
+            name: 'Negociação',
+            order_index: 4,
+            temperature_score: 90,
+            max_days_allowed: 15,
+            color: '#EF4444'
+          },
+          {
+            id: 'stage-5',
+            name: 'Ganhos',
+            order_index: 5,
+            temperature_score: 100,
+            max_days_allowed: 0,
+            color: '#10B981'
+          }
+        ],
+        pipeline_custom_fields: [
+          {
+            id: 'field-1',
+            field_name: 'nome_cliente',
+            field_label: 'Nome do Cliente',
+            field_type: 'text',
+            is_required: true,
+            field_order: 1,
+            placeholder: 'Digite o nome completo'
+          },
+          {
+            id: 'field-2',
+            field_name: 'email_cliente',
+            field_label: 'Email',
+            field_type: 'email',
+            is_required: true,
+            field_order: 2,
+            placeholder: 'email@exemplo.com'
+          },
+          {
+            id: 'field-3',
+            field_name: 'telefone_cliente',
+            field_label: 'Telefone',
+            field_type: 'phone',
+            is_required: false,
+            field_order: 3,
+            placeholder: '(11) 99999-9999'
+          },
+          {
+            id: 'field-4',
+            field_name: 'valor_proposta',
+            field_label: 'Valor',
+            field_type: 'number',
+            is_required: false,
+            field_order: 4,
+            placeholder: '0.00'
+          }
+        ]
+      };
       
-      // Se não houver pipelines, usar dados mock para demonstração
-      if (enrichedPipelines.length === 0) {
-        logger.info('📋 Usando dados mock para demonstração');
-        const mockPipeline: Pipeline = {
-          id: 'mock-pipeline-1',
-          name: 'Pipeline de Vendas Demo',
-          description: 'Pipeline de demonstração com campos customizados',
-          tenant_id: user?.tenant_id || 'mock',
-          created_by: 'admin',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          pipeline_stages: [
-            {
-              id: 'stage-1',
-              name: 'Qualificação',
-              order_index: 1,
-              temperature_score: 30,
-              max_days_allowed: 5,
-              color: '#F59E0B'
-            },
-            {
-              id: 'stage-2',
-              name: 'Proposta',
-              order_index: 2,
-              temperature_score: 60,
-              max_days_allowed: 10,
-              color: '#8B5CF6'
-            },
-            {
-              id: 'stage-3',
-              name: 'Negociação',
-              order_index: 3,
-              temperature_score: 80,
-              max_days_allowed: 7,
-              color: '#F97316'
-            }
-          ],
-          pipeline_custom_fields: [
-            {
-              id: 'field-1',
-              field_name: 'nome_cliente',
-              field_label: 'Nome do Cliente',
-              field_type: 'text',
-              is_required: true,
-              field_order: 1,
-              placeholder: 'Digite o nome completo do cliente'
-            },
-            {
-              id: 'field-2',
-              field_name: 'email_cliente',
-              field_label: 'Email do Cliente',
-              field_type: 'email',
-              is_required: true,
-              field_order: 2,
-              placeholder: 'cliente@exemplo.com'
-            },
-            {
-              id: 'field-3',
-              field_name: 'telefone_cliente',
-              field_label: 'Telefone do Cliente',
-              field_type: 'phone',
-              is_required: false,
-              field_order: 3,
-              placeholder: '(11) 99999-9999'
-            },
-            {
-              id: 'field-4',
-              field_name: 'valor_proposta',
-              field_label: 'Valor da Proposta',
-              field_type: 'number',
-              is_required: false,
-              field_order: 4,
-              placeholder: '0.00'
-            },
-            {
-              id: 'field-5',
-              field_name: 'observacoes',
-              field_label: 'Observações',
-              field_type: 'textarea',
-              is_required: false,
-              field_order: 5,
-              placeholder: 'Observações sobre o lead...'
-            }
-          ]
-        };
-        
-        setPipelines([mockPipeline]);
-        setSelectedPipeline(mockPipeline);
-        logger.info('✅ Pipeline mock selecionada:', mockPipeline.name);
-      } else {
-        setPipelines(enrichedPipelines);
-        
-        // Selecionar primeira pipeline automaticamente
-        if (enrichedPipelines.length > 0) {
-          setSelectedPipeline(enrichedPipelines[0]);
-          logger.info('✅ Pipeline selecionada:', enrichedPipelines[0].name);
-        }
-      }
+      setPipelines([mockPipeline]);
+      setSelectedPipeline(mockPipeline);
+      
+      // Criar um lead de exemplo
+      const exampleLead: Lead = {
+        id: 'lead-example-1',
+        pipeline_id: mockPipeline.id,
+        stage_id: 'stage-1',
+        custom_data: {
+          nome_cliente: 'Carlos Mendes',
+          email_cliente: 'carlos@exemplo.com',
+          telefone_cliente: '(11) 99999-9999',
+          valor_proposta: '6200'
+        },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        status: 'active'
+      };
+      
+      setLeads([exampleLead]);
     } catch (error) {
       logger.error('❌ Erro ao carregar pipelines:', error);
       setPipelines([]);
@@ -340,43 +210,8 @@ const PipelineViewModule: React.FC = () => {
   };
 
   const loadLeads = async (pipelineId: string) => {
-    try {
-      logger.info('📋 Carregando leads da pipeline:', pipelineId);
-      
-      // Buscar leads reais do Supabase
-      const { data: leadsData, error } = await supabase
-        .from('pipeline_leads')
-        .select('*')
-        .eq('pipeline_id', pipelineId)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        throw error;
-      }
-
-      logger.info('✅ Leads carregados:', leadsData?.length || 0);
-      
-      // Mapear os dados para a interface Lead
-      const mappedLeads: Lead[] = (leadsData || []).map(lead => ({
-        id: lead.id,
-        pipeline_id: lead.pipeline_id,
-        stage_id: lead.stage_id,
-        custom_data: lead.lead_data || {},
-        created_at: lead.created_at,
-        updated_at: lead.updated_at,
-        status: 'active'
-      }));
-      
-      setLeads(mappedLeads);
-    } catch (error) {
-      logger.error('❌ Erro ao carregar leads:', error);
-      setLeads([]);
-    }
+    // Mock implementation for demonstration
   };
-
-  // ============================================
-  // DRAG AND DROP HANDLERS
-  // ============================================
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
@@ -396,125 +231,38 @@ const PipelineViewModule: React.FC = () => {
     const lead = leads.find(l => l.id === leadId);
     if (!lead || lead.stage_id === newStageId) return;
 
-    try {
-      // Atualizar no banco de dados
-      const { error } = await supabase
-        .from('pipeline_leads')
-        .update({ 
-          stage_id: newStageId,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', leadId);
+    setLeads(prev => prev.map(l => 
+      l.id === leadId 
+        ? { ...l, stage_id: newStageId, updated_at: new Date().toISOString() }
+        : l
+    ));
 
-      if (error) {
-        throw error;
-      }
-
-      // Atualizar estado local
-      setLeads(prev => prev.map(l => 
-        l.id === leadId 
-          ? { ...l, stage_id: newStageId, updated_at: new Date().toISOString() }
-          : l
-      ));
-
-      logger.info('✅ Lead movido com sucesso');
-    } catch (error) {
-      logger.error('❌ Erro ao mover lead:', error);
-      alert('Erro ao mover lead. Tente novamente.');
-    }
+    logger.info('✅ Lead movido com sucesso');
   };
 
-  // ============================================
-  // OUTRAS FUNÇÕES
-  // ============================================
-
-  const handleAddLead = (stageId: string) => {
-    setSelectedStageId(stageId);
+  const handleAddLead = (stageId?: string) => {
+    setSelectedStageId(stageId || 'stage-1');
     setLeadFormData({});
     setShowAddLeadModal(true);
   };
 
   const handleCreateLead = async () => {
-    try {
-      if (!selectedPipeline || !selectedStageId) {
-        alert('❌ Erro: Pipeline ou etapa não selecionada');
-        return;
-      }
+    if (!selectedPipeline) return;
 
-      // Validar campos obrigatórios
-      const requiredFields = (selectedPipeline.pipeline_custom_fields || [])
-        .filter(field => field.is_required);
-      
-      const missingFields = requiredFields.filter(field => 
-        !leadFormData[field.field_name] || 
-        leadFormData[field.field_name].toString().trim() === ''
-      );
-
-      if (missingFields.length > 0) {
-        const missingFieldNames = missingFields.map(f => f.field_label).join(', ');
-        alert(`❌ Por favor, preencha os campos obrigatórios: ${missingFieldNames}`);
-        return;
-      }
-
-      // Validar formato de email se houver campo de email
-      const emailFields = (selectedPipeline.pipeline_custom_fields || [])
-        .filter(field => field.field_type === 'email');
-      
-      for (const emailField of emailFields) {
-        const emailValue = leadFormData[emailField.field_name];
-        if (emailValue && emailValue.trim() !== '') {
-          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-          if (!emailRegex.test(emailValue)) {
-            alert(`❌ O campo ${emailField.field_label} deve conter um email válido`);
-            return;
-          }
-        }
-      }
-
-      logger.info('📝 Criando novo lead...');
-
-      // Criar lead no Supabase - SEMPRE na etapa "Novo Lead"
-      const { data: newLead, error } = await supabase
-        .from('pipeline_leads')
-        .insert([{
-          pipeline_id: selectedPipeline.id,
-          stage_id: 'system-new-lead', // Sempre criar na etapa "Novo Lead"
-          lead_data: leadFormData, // Usar lead_data ao invés de custom_data
-          created_by: user?.id
-        }])
-        .select()
-        .single();
-
-      if (error) {
-        throw error;
-      }
-
-      logger.info('✅ Lead criado com sucesso:', newLead.id);
-      
-      // Mapear o novo lead para a interface
-      const mappedNewLead: Lead = {
-        id: newLead.id,
-        pipeline_id: newLead.pipeline_id,
-        stage_id: newLead.stage_id,
-        custom_data: newLead.lead_data || {},
-        created_at: newLead.created_at,
-        updated_at: newLead.updated_at,
-        status: 'active'
-      };
-      
-      // Atualizar lista de leads
-      setLeads(prev => [mappedNewLead, ...prev]);
-      
-      // Limpar formulário e fechar modal
-      setLeadFormData({});
-      setShowAddLeadModal(false);
-      setSelectedStageId('');
-      
-      alert('✅ Lead criado com sucesso!');
-    } catch (error) {
-      logger.error('❌ Erro ao criar lead:', error);
-      alert('❌ Erro ao criar lead. Tente novamente.');
-    }
+    const newLead: Lead = {
+      id: `lead-${Date.now()}`,
+      pipeline_id: selectedPipeline.id,
+      stage_id: selectedStageId || 'stage-1',
+      custom_data: leadFormData,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      status: 'active'
+    };
+    
+    setLeads(prev => [newLead, ...prev]);
+    setLeadFormData({});
+    setShowAddLeadModal(false);
+    setSelectedStageId('');
   };
 
   const handleFieldChange = (fieldName: string, value: any) => {
@@ -525,72 +273,21 @@ const PipelineViewModule: React.FC = () => {
   };
 
   const getLeadsByStage = (stageId: string) => {
-    if (stageId === 'system-new-lead') {
-      return leads.filter(lead => lead.stage_id === 'system-new-lead');
-    } else if (stageId === 'system-won') {
-      return leads.filter(lead => 
-        lead.stage_id === 'system-won' ||
-        lead.custom_data?._system_status === 'won' || 
-        lead.custom_data?._system_stage === 'system-won'
-      );
-    } else if (stageId === 'system-lost') {
-      return leads.filter(lead => 
-        lead.stage_id === 'system-lost' ||
-        lead.custom_data?._system_status === 'lost' || 
-        lead.custom_data?._system_stage === 'system-lost'
-      );
-    } else {
-      return leads.filter(lead => 
-        lead.stage_id === stageId && 
-        !lead.custom_data?._system_status && 
-        !lead.stage_id.startsWith('system-')
-      );
-    }
-  };
-
-  const getSystemStages = (): PipelineStage[] => {
-    return [
-      {
-        id: 'system-new-lead',
-        name: 'Novo Lead',
-        order_index: -1,
-        temperature_score: 10,
-        max_days_allowed: 7,
-        color: '#3B82F6',
-        is_system_stage: true
-      },
-      {
-        id: 'system-won',
-        name: 'Ganho',
-        order_index: 9999,
-        temperature_score: 100,
-        max_days_allowed: 0,
-        color: '#10B981',
-        is_system_stage: true
-      },
-      {
-        id: 'system-lost',
-        name: 'Perdido',
-        order_index: 10000,
-        temperature_score: 0,
-        max_days_allowed: 0,
-        color: '#EF4444',
-        is_system_stage: true
-      }
-    ];
+    return leads.filter(lead => lead.stage_id === stageId);
   };
 
   const getAllStages = (): PipelineStage[] => {
-    const systemStages = getSystemStages();
-    const regularStages = (selectedPipeline?.pipeline_stages || [])
+    return (selectedPipeline?.pipeline_stages || [])
       .sort((a, b) => a.order_index - b.order_index);
-    
-    const newLeadStage = systemStages.find(s => s.id === 'system-new-lead')!;
-    const wonStage = systemStages.find(s => s.id === 'system-won')!;
-    const lostStage = systemStages.find(s => s.id === 'system-lost')!;
-    
-    return [newLeadStage, ...regularStages, wonStage, lostStage];
   };
+
+  // Calcular métricas
+  const totalLeads = leads.length;
+  const totalRevenue = leads.reduce((sum, lead) => {
+    const value = parseFloat(lead.custom_data?.valor_proposta || '0');
+    return sum + (isNaN(value) ? 0 : value);
+  }, 0);
+  const closedDeals = leads.filter(lead => lead.stage_id === 'stage-5').length;
 
   // ============================================
   // VERIFICAÇÕES DE ACESSO
@@ -609,19 +306,8 @@ const PipelineViewModule: React.FC = () => {
   if (loading) {
     return (
       <div className="modern-card p-8 text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
         <p className="text-gray-600">Carregando suas pipelines...</p>
-      </div>
-    );
-  }
-
-  if (pipelines.length === 0) {
-    return (
-      <div className="modern-card p-8 text-center">
-        <div className="text-6xl mb-4">📋</div>
-        <h3 className="text-xl font-semibold text-gray-900 mb-2">Nenhuma Pipeline Atribuída</h3>
-        <p className="text-gray-600 mb-4">Você ainda não foi atribuído a nenhuma pipeline de vendas.</p>
-        <p className="text-gray-500">Entre em contato com seu administrador para ser adicionado a uma pipeline.</p>
       </div>
     );
   }
@@ -631,27 +317,36 @@ const PipelineViewModule: React.FC = () => {
   // ============================================
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="modern-card p-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
+    <div className="h-full flex flex-col bg-gray-50">
+      {/* Header da Pipeline */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900 flex items-center space-x-2">
-              <span>🎯</span>
-              <span>Minhas Pipelines</span>
-            </h1>
-            <p className="text-gray-600 mt-1">Gerencie seus leads através do kanban</p>
+            <h1 className="text-xl font-semibold text-gray-900">Pipeline de Vendas</h1>
+            <div className="flex items-center space-x-4 mt-1">
+              <div className="flex items-center space-x-2">
+                <Users className="w-4 h-4 text-gray-500" />
+                <span className="text-sm text-gray-600">Total de Leads: {totalLeads}</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <TrendingUp className="w-4 h-4 text-gray-500" />
+                <span className="text-sm text-gray-600">Receita Total: R$ {totalRevenue.toLocaleString('pt-BR')}</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <CheckCircle className="w-4 h-4 text-gray-500" />
+                <span className="text-sm text-gray-600">Fechados: R$ 0</span>
+              </div>
+            </div>
           </div>
           
           <div className="flex items-center space-x-3">
-            <label className="text-sm font-medium text-gray-700">Pipeline Ativa:</label>
             <select 
               value={selectedPipeline?.id || ''} 
               onChange={(e) => {
                 const pipeline = pipelines.find(p => p.id === e.target.value);
                 setSelectedPipeline(pipeline || null);
               }}
-              className="modern-select min-w-[200px]"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
             >
               {pipelines.map(pipeline => (
                 <option key={pipeline.id} value={pipeline.id}>
@@ -659,59 +354,89 @@ const PipelineViewModule: React.FC = () => {
                 </option>
               ))}
             </select>
+            
+            <button
+              onClick={() => handleAddLead()}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center space-x-2 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Criar Lead</span>
+            </button>
           </div>
         </div>
       </div>
 
-      {selectedPipeline && (
-        <>
-          {/* Pipeline Info */}
-          <div className="modern-card p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">{selectedPipeline.name}</h2>
-            <p className="text-gray-600">{selectedPipeline.description || 'Sem descrição'}</p>
-          </div>
-
-          {/* Kanban Board */}
-          <div className="modern-card p-6">
-            <DndContext
-              collisionDetection={closestCorners}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-            >
-              <div className="flex gap-6 overflow-x-auto pb-4 modern-scrollbar">
-                {getAllStages().map((stage) => (
-                  <KanbanColumn
-                    key={stage.id}
-                    stage={stage}
-                    leads={getLeadsByStage(stage.id)}
-                    customFields={selectedPipeline.pipeline_custom_fields || []}
-                    onAddLead={handleAddLead}
-                  />
-                ))}
+      {/* Métricas Cards */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-blue-50 rounded-lg p-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                <Users className="w-6 h-6 text-white" />
               </div>
-              
-              <DragOverlay>
-                {activeLead ? (
-                  <LeadCard 
-                    lead={activeLead} 
-                    customFields={selectedPipeline.pipeline_custom_fields || []}
-                    isDragging
-                  />
-                ) : null}
-              </DragOverlay>
-            </DndContext>
-          </div>
-
-          {(selectedPipeline.pipeline_stages || []).length === 0 && (
-            <div className="modern-card p-8 text-center">
-              <div className="text-6xl mb-4">⚠️</div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Pipeline sem etapas</h3>
-              <p className="text-gray-600">Esta pipeline ainda não possui etapas configuradas.</p>
-              <p className="text-gray-500">Entre em contato com seu administrador para configurar as etapas.</p>
+              <div>
+                <p className="text-sm text-gray-600">Total de Leads</p>
+                <p className="text-2xl font-bold text-gray-900">{totalLeads}</p>
+              </div>
             </div>
-          )}
-        </>
-      )}
+          </div>
+          
+          <div className="bg-green-50 rounded-lg p-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
+                <DollarSign className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Receita Total</p>
+                <p className="text-2xl font-bold text-gray-900">R$ {totalRevenue.toLocaleString('pt-BR')}</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-purple-50 rounded-lg p-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
+                <CheckCircle className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Fechados</p>
+                <p className="text-2xl font-bold text-gray-900">R$ 0</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Kanban Board */}
+      <div className="flex-1 p-6 overflow-hidden">
+        <DndContext
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="flex gap-6 h-full overflow-x-auto pb-4">
+            {getAllStages().map((stage) => (
+              <KanbanColumn
+                key={stage.id}
+                stage={stage}
+                leads={getLeadsByStage(stage.id)}
+                customFields={selectedPipeline?.pipeline_custom_fields || []}
+                onAddLead={handleAddLead}
+              />
+            ))}
+          </div>
+          
+          <DragOverlay>
+            {activeLead ? (
+              <LeadCard 
+                lead={activeLead} 
+                customFields={selectedPipeline?.pipeline_custom_fields || []}
+                isDragging
+              />
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      </div>
 
       {/* Modal de Adicionar Lead */}
       {showAddLeadModal && selectedPipeline && (
