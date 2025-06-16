@@ -14,12 +14,12 @@
     "@tanstack/react-query": "^5.80.7",
     "axios": "^1.7.9",
     "clsx": "^2.1.1",
+    "lovable-tagger": "^1.1.8",
     "lucide-react": "^0.263.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0",
-    "tailwind-merge": "^2.5.4",
-    "lovable-tagger": "^1.0.0"
+    "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",
