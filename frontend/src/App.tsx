@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import AuthProvider from './providers/AuthProvider'
 import LoginForm from './components/LoginForm'
 import AppDashboard from './components/AppDashboard'
+import ErrorBoundary from './utils/errorBoundary'
 import { useAuth } from './contexts/AuthContext'
 import './App.css'
 
@@ -47,11 +48,13 @@ function AppRoutes() {
 
 function App() {
   return (
-    <AuthProvider>
-      <div className="min-h-screen bg-gray-50">
-        <AppRoutes />
-      </div>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <div className="min-h-screen bg-gray-50">
+          <AppRoutes />
+        </div>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }
 
