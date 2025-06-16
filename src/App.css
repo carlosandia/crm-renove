@@ -9,6 +9,7 @@
 @import './styles/PipelineModule.css';
 @import './styles/responsive.css';
 @import './styles/modern-theme.css';
+@import './styles/modern-sidebar.css';
 
 /* Global Reset and Base Styles */
 * {
