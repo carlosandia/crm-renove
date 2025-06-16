@@ -4,7 +4,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
-import { Plus, TrendingUp, DollarSign, CheckCircle, Users } from 'lucide-react';
+import { Plus, TrendingUp, DollarSign, CheckCircle, Users, Search } from 'lucide-react';
 import KanbanColumn from './Pipeline/KanbanColumn';
 import LeadCard from './Pipeline/LeadCard';
 import LeadModal from './Pipeline/LeadModal';
@@ -295,19 +295,23 @@ const PipelineViewModule: React.FC = () => {
 
   if (!user || user.role !== 'member') {
     return (
-      <div className="modern-card p-8 text-center">
-        <div className="text-6xl mb-4">🚫</div>
-        <h3 className="text-xl font-semibold text-gray-900 mb-2">Acesso Negado</h3>
-        <p className="text-gray-600">Apenas vendedores podem acessar esta seção.</p>
+      <div className="h-full flex items-center justify-center bg-white">
+        <div className="text-center">
+          <div className="text-6xl mb-4">🚫</div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">Acesso Negado</h3>
+          <p className="text-gray-600">Apenas vendedores podem acessar esta seção.</p>
+        </div>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="modern-card p-8 text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
-        <p className="text-gray-600">Carregando suas pipelines...</p>
+      <div className="h-full flex items-center justify-center bg-white">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Carregando suas pipelines...</p>
+        </div>
       </div>
     );
   }
@@ -317,29 +321,27 @@ const PipelineViewModule: React.FC = () => {
   // ============================================
 
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col bg-gray-50">
       {/* Header da Pipeline */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-gray-900">Pipeline de Vendas</h1>
-            <div className="flex items-center space-x-4 mt-1">
-              <div className="flex items-center space-x-2">
-                <Users className="w-4 h-4 text-gray-500" />
-                <span className="text-sm text-gray-600">Total de Leads: {totalLeads}</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <TrendingUp className="w-4 h-4 text-gray-500" />
-                <span className="text-sm text-gray-600">Receita Total: R$ {totalRevenue.toLocaleString('pt-BR')}</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <CheckCircle className="w-4 h-4 text-gray-500" />
-                <span className="text-sm text-gray-600">Fechados: R$ 0</span>
+          <div className="flex-1">
+            {/* Barra de busca */}
+            <div className="max-w-md">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar leads por nome, email, telefone..."
+                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                />
               </div>
             </div>
           </div>
-          
-          <div className="flex items-center space-x-3">
+
+          <div className="flex items-center space-x-4">
+            <h1 className="text-xl font-semibold text-gray-900">Pipeline de Vendas</h1>
+            
             <select 
               value={selectedPipeline?.id || ''} 
               onChange={(e) => {
@@ -364,11 +366,27 @@ const PipelineViewModule: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* Métricas resumidas */}
+        <div className="flex items-center space-x-6 mt-3 text-sm text-gray-600">
+          <div className="flex items-center space-x-2">
+            <Users className="w-4 h-4" />
+            <span>Total de Leads: {totalLeads}</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <TrendingUp className="w-4 h-4" />
+            <span>Receita Total: R$ {totalRevenue.toLocaleString('pt-BR')}</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <CheckCircle className="w-4 h-4" />
+            <span>Fechados: R$ 0</span>
+          </div>
+        </div>
       </div>
 
       {/* Métricas Cards */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
+        <div className="grid grid-cols-3 gap-4">
           <div className="bg-blue-50 rounded-lg p-4">
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">

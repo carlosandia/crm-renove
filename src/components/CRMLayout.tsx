@@ -21,6 +21,10 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
   onNavigate = () => {}
 }) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  
+  // Módulos que precisam de layout full-width sem padding
+  const fullWidthModules = ['Pipeline'];
+  const isFullWidth = fullWidthModules.includes(activeModule);
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -35,15 +39,21 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
         <CRMHeader 
           user={user} 
           onLogout={onLogout}
-          showSearch={true}
+          showSearch={!isFullWidth}
         />
         
-        <main className="flex-1 overflow-y-auto">
-          <div className="p-6">
-            <div className="fade-in">
+        <main className="flex-1 overflow-hidden">
+          {isFullWidth ? (
+            <div className="h-full">
               {children}
             </div>
-          </div>
+          ) : (
+            <div className="p-6 h-full overflow-y-auto">
+              <div className="fade-in">
+                {children}
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </div>
