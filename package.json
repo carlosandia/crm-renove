@@ -2,13 +2,16 @@
   "name": "crm-marketing-supabase-genesis",
   "version": "1.0.0",
   "description": "Sistema CRM Fullstack com React, Node.js e MCP Server para Supabase integrado",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "cd backend && npm run dev",
-    "client": "cd frontend && npm run dev",
-    "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install",
-    "build": "cd frontend && npm run build",
+    "client": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "install-all": "npm install && cd backend && npm install",
     "build:dev": "vite build --mode development",
     "start": "cd backend && npm start",
     "mcp-server": "node supabase-mcp-server.js",
@@ -22,9 +25,8 @@
     "verify-all": "npm run test-connection && npm run test-mcp-tools",
     "start-full-system": "./start-full-mcp-system.sh",
     "test-backend": "cd backend && npm test",
-    "test-frontend": "cd frontend && npm test",
-    "build-all": "cd backend && npm run build && cd ../frontend && npm run build",
-    "clean": "rm -rf node_modules backend/node_modules frontend/node_modules && rm -rf backend/dist frontend/dist"
+    "build-all": "cd backend && npm run build && npm run build",
+    "clean": "rm -rf node_modules backend/node_modules && rm -rf backend/dist dist"
   },
   "keywords": [
     "crm",
@@ -38,16 +40,26 @@
   "author": "Carlos Andia",
   "license": "MIT",
   "devDependencies": {
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "@typescript-eslint/eslint-plugin": "^6.14.0",
+    "@typescript-eslint/parser": "^6.14.0",
+    "@vitejs/plugin-react": "^4.5.2",
+    "autoprefixer": "^10.4.21",
     "concurrently": "^8.2.2",
-    "nodemon": "^3.1.4"
+    "eslint": "^8.55.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "nodemon": "^3.1.4",
+    "postcss": "^8.5.5",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.2.2"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.3",
     "@supabase/supabase-js": "^2.50.0",
+    "@tanstack/react-query": "^5.80.7",
     "@types/node": "^24.0.1",
-    "@types/react": "^18.3.23",
-    "@types/react-dom": "^18.3.7",
-    "@vitejs/plugin-react": "^4.5.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
@@ -55,6 +67,7 @@
     "node-fetch": "^3.3.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "vite": "^6.3.5"
+    "react-router-dom": "^7.6.2",
+    "vite": "^5.0.8"
   }
 }
