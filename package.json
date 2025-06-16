@@ -1,24 +1,49 @@
 {
-  "name": "crm-marketing",
+  "name": "crm-marketing-supabase-genesis",
   "version": "1.0.0",
-  "description": "Sistema CRM para Marketing com MCP Server para Supabase",
+  "description": "Sistema CRM Fullstack com React, Node.js e MCP Server para Supabase integrado",
   "main": "index.js",
   "scripts": {
-    "start": "node supabase-mcp-server.js",
-    "dev": "nodemon supabase-mcp-server.js",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd backend && npm run dev",
+    "client": "cd frontend && npm run dev",
+    "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "build": "cd frontend && npm run build",
+    "build:dev": "vite build --mode development",
+    "start": "cd backend && npm start",
+    "mcp-server": "node supabase-mcp-server.js",
+    "mcp-dev": "nodemon supabase-mcp-server.js",
+    "test-connection": "node test-connection.js",
     "test": "node test-connection.js"
   },
-  "keywords": ["crm", "marketing", "supabase", "mcp"],
+  "keywords": [
+    "crm",
+    "react",
+    "nodejs",
+    "typescript",
+    "supabase",
+    "mcp",
+    "fullstack"
+  ],
   "author": "Carlos Andia",
   "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.1.4"
+  },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.4",
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.12.3",
+    "@supabase/supabase-js": "^2.50.0",
+    "@types/node": "^24.0.1",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.5.2",
+    "lovable-tagger": "^1.1.8",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^6.3.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "cors": "^2.8.5"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.4"
   }
-} 
+}
