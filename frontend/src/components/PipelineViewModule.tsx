@@ -140,12 +140,104 @@ const PipelineViewModule: React.FC = () => {
       );
 
       logger.info('📊 Pipelines carregadas:', enrichedPipelines.length);
-      setPipelines(enrichedPipelines);
       
-      // Selecionar primeira pipeline automaticamente
-      if (enrichedPipelines.length > 0) {
-        setSelectedPipeline(enrichedPipelines[0]);
-        logger.info('✅ Pipeline selecionada:', enrichedPipelines[0].name);
+      // Se não houver pipelines, usar dados mock para demonstração
+      if (enrichedPipelines.length === 0) {
+        logger.info('📋 Usando dados mock para demonstração');
+        const mockPipeline: Pipeline = {
+          id: 'mock-pipeline-1',
+          name: 'Pipeline de Vendas Demo',
+          description: 'Pipeline de demonstração com campos customizados',
+          tenant_id: user?.tenant_id || 'mock',
+          created_by: 'admin',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          pipeline_stages: [
+            {
+              id: 'stage-1',
+              name: 'Qualificação',
+              order_index: 1,
+              temperature_score: 30,
+              max_days_allowed: 5,
+              color: '#F59E0B'
+            },
+            {
+              id: 'stage-2',
+              name: 'Proposta',
+              order_index: 2,
+              temperature_score: 60,
+              max_days_allowed: 10,
+              color: '#8B5CF6'
+            },
+            {
+              id: 'stage-3',
+              name: 'Negociação',
+              order_index: 3,
+              temperature_score: 80,
+              max_days_allowed: 7,
+              color: '#F97316'
+            }
+          ],
+          pipeline_custom_fields: [
+            {
+              id: 'field-1',
+              field_name: 'nome_cliente',
+              field_label: 'Nome do Cliente',
+              field_type: 'text',
+              is_required: true,
+              field_order: 1,
+              placeholder: 'Digite o nome completo do cliente'
+            },
+            {
+              id: 'field-2',
+              field_name: 'email_cliente',
+              field_label: 'Email do Cliente',
+              field_type: 'email',
+              is_required: true,
+              field_order: 2,
+              placeholder: 'cliente@exemplo.com'
+            },
+            {
+              id: 'field-3',
+              field_name: 'telefone_cliente',
+              field_label: 'Telefone do Cliente',
+              field_type: 'phone',
+              is_required: false,
+              field_order: 3,
+              placeholder: '(11) 99999-9999'
+            },
+            {
+              id: 'field-4',
+              field_name: 'valor_proposta',
+              field_label: 'Valor da Proposta',
+              field_type: 'number',
+              is_required: false,
+              field_order: 4,
+              placeholder: '0.00'
+            },
+            {
+              id: 'field-5',
+              field_name: 'observacoes',
+              field_label: 'Observações',
+              field_type: 'textarea',
+              is_required: false,
+              field_order: 5,
+              placeholder: 'Observações sobre o lead...'
+            }
+          ]
+        };
+        
+        setPipelines([mockPipeline]);
+        setSelectedPipeline(mockPipeline);
+        logger.info('✅ Pipeline mock selecionada:', mockPipeline.name);
+      } else {
+        setPipelines(enrichedPipelines);
+        
+        // Selecionar primeira pipeline automaticamente
+        if (enrichedPipelines.length > 0) {
+          setSelectedPipeline(enrichedPipelines[0]);
+          logger.info('✅ Pipeline selecionada:', enrichedPipelines[0].name);
+        }
       }
     } catch (error) {
       logger.error('❌ Erro ao carregar pipelines:', error);
@@ -235,12 +327,12 @@ const PipelineViewModule: React.FC = () => {
 
       logger.info('📝 Criando novo lead...');
 
-      // Criar lead no Supabase
+      // Criar lead no Supabase - SEMPRE na etapa "Novo Lead"
       const { data: newLead, error } = await supabase
         .from('pipeline_leads')
         .insert([{
           pipeline_id: selectedPipeline.id,
-          stage_id: selectedStageId,
+          stage_id: 'system-new-lead', // Sempre criar na etapa "Novo Lead"
           lead_data: leadFormData, // Usar lead_data ao invés de custom_data
           created_by: user?.id
         }])
@@ -287,15 +379,20 @@ const PipelineViewModule: React.FC = () => {
   };
 
   const getLeadsByStage = (stageId: string) => {
-    if (stageId === 'system-won') {
+    if (stageId === 'system-new-lead') {
+      // Retornar leads na etapa "Novo Lead"
+      return leads.filter(lead => lead.stage_id === 'system-new-lead');
+    } else if (stageId === 'system-won') {
       // Retornar leads marcados como ganhos
       return leads.filter(lead => 
+        lead.stage_id === 'system-won' ||
         lead.custom_data?._system_status === 'won' || 
         lead.custom_data?._system_stage === 'system-won'
       );
     } else if (stageId === 'system-lost') {
       // Retornar leads marcados como perdidos
       return leads.filter(lead => 
+        lead.stage_id === 'system-lost' ||
         lead.custom_data?._system_status === 'lost' || 
         lead.custom_data?._system_stage === 'system-lost'
       );
@@ -304,7 +401,7 @@ const PipelineViewModule: React.FC = () => {
       return leads.filter(lead => 
         lead.stage_id === stageId && 
         !lead.custom_data?._system_status && 
-        !lead.custom_data?._system_stage?.startsWith('system-')
+        !lead.stage_id.startsWith('system-')
       );
     }
   };
@@ -312,6 +409,15 @@ const PipelineViewModule: React.FC = () => {
   // Função para criar as etapas fixas do sistema
   const getSystemStages = (): PipelineStage[] => {
     return [
+      {
+        id: 'system-new-lead',
+        name: 'Novo Lead',
+        order_index: -1, // Primeira etapa
+        temperature_score: 10,
+        max_days_allowed: 7,
+        color: '#3B82F6', // Azul
+        is_system_stage: true
+      },
       {
         id: 'system-won',
         name: 'Ganho',
@@ -333,12 +439,19 @@ const PipelineViewModule: React.FC = () => {
     ];
   };
 
-  // Função para obter todas as etapas (regulares + sistema)
+  // Função para obter todas as etapas (regulares + sistema) organizadas corretamente
   const getAllStages = (): PipelineStage[] => {
+    const systemStages = getSystemStages();
     const regularStages = (selectedPipeline?.pipeline_stages || [])
       .sort((a, b) => a.order_index - b.order_index);
-    const systemStages = getSystemStages();
-    return [...regularStages, ...systemStages];
+    
+    // Separar etapas do sistema
+    const newLeadStage = systemStages.find(s => s.id === 'system-new-lead')!;
+    const wonStage = systemStages.find(s => s.id === 'system-won')!;
+    const lostStage = systemStages.find(s => s.id === 'system-lost')!;
+    
+    // Organizar: Novo Lead -> Etapas Regulares -> Ganho -> Perdido
+    return [newLeadStage, ...regularStages, wonStage, lostStage];
   };
 
   // ============================================
@@ -416,7 +529,8 @@ const PipelineViewModule: React.FC = () => {
                       {stage.name}
                       {stage.is_system_stage && (
                         <span style={{ marginLeft: '8px', fontSize: '12px' }}>
-                          {stage.id === 'system-won' ? '🏆' : '❌'}
+                          {stage.id === 'system-new-lead' ? '🆕' : 
+                           stage.id === 'system-won' ? '🏆' : '❌'}
                         </span>
                       )}
                     </h5>
@@ -427,7 +541,8 @@ const PipelineViewModule: React.FC = () => {
                       )}
                       {stage.is_system_stage && (
                         <span className="max-days">
-                          {stage.id === 'system-won' ? '✅ Final' : '🚫 Final'}
+                          {stage.id === 'system-new-lead' ? '🚀 Inicial' :
+                           stage.id === 'system-won' ? '✅ Final' : '🚫 Final'}
                         </span>
                       )}
                     </div>
