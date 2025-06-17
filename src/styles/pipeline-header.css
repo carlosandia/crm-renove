@@ -1,0 +1,110 @@
+
+/* ============================================ */
+/* PIPELINE HEADER - CABEÇALHO INTERNO */
+/* ============================================ */
+
+.pipeline-internal-header {
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 20px 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  flex-shrink: 0;
+}
+
+.pipeline-internal-header h1 {
+  color: #1e293b;
+  font-weight: 700;
+}
+
+.pipeline-internal-header .flex {
+  align-items: center;
+}
+
+.pipeline-internal-header select {
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.pipeline-internal-header select:focus {
+  outline: none;
+  ring: 2px;
+  ring-color: #3b82f6;
+  border-color: transparent;
+}
+
+.pipeline-internal-header button {
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.pipeline-internal-header input {
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.pipeline-internal-header input:focus {
+  outline: none;
+  ring: 2px;
+  ring-color: #3b82f6;
+  border-color: transparent;
+}
+
+/* Métricas inline */
+.pipeline-internal-header .text-gray-600 {
+  color: #6b7280;
+}
+
+.pipeline-internal-header .text-gray-900 {
+  color: #111827;
+}
+
+.pipeline-internal-header .font-semibold {
+  font-weight: 600;
+}
+
+/* Ícones coloridos */
+.pipeline-internal-header .text-blue-500 {
+  color: #3b82f6;
+}
+
+.pipeline-internal-header .text-green-500 {
+  color: #10b981;
+}
+
+.pipeline-internal-header .text-purple-500 {
+  color: #8b5cf6;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .pipeline-internal-header {
+    padding: 12px;
+  }
+
+  .pipeline-internal-header h1 {
+    font-size: 1.25rem;
+  }
+
+  .pipeline-internal-header .space-x-6 {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .pipeline-internal-header .space-x-4 {
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .pipeline-internal-header select,
+  .pipeline-internal-header button {
+    width: 100%;
+  }
+}

@@ -1,12 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
-import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCorners } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
-import { Plus, TrendingUp, DollarSign, CheckCircle, Users, Search, Filter, Settings } from 'lucide-react';
-import KanbanColumn from './Pipeline/KanbanColumn';
-import LeadCard from './Pipeline/LeadCard';
+import PipelineViewHeader from './Pipeline/PipelineViewHeader';
+import PipelineKanbanBoard from './Pipeline/PipelineKanbanBoard';
 import LeadModal from './Pipeline/LeadModal';
 import './PipelineViewModule.css';
 
@@ -273,10 +271,6 @@ const PipelineViewModule: React.FC = () => {
     }));
   };
 
-  const getLeadsByStage = (stageId: string) => {
-    return leads.filter(lead => lead.stage_id === stageId);
-  };
-
   const getAllStages = (): PipelineStage[] => {
     return (selectedPipeline?.pipeline_stages || [])
       .sort((a, b) => a.order_index - b.order_index);
@@ -323,114 +317,25 @@ const PipelineViewModule: React.FC = () => {
 
   return (
     <div className="pipeline-view-container">
-      {/* Header Interno da Pipeline */}
-      <div className="pipeline-internal-header">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-6">
-            <h1 className="text-2xl font-bold text-gray-900">Pipeline de Vendas</h1>
-            
-            {/* Métricas inline */}
-            <div className="flex items-center space-x-6 text-sm">
-              <div className="flex items-center space-x-2">
-                <Users className="w-4 h-4 text-blue-500" />
-                <span className="text-gray-600">Total de Leads:</span>
-                <span className="font-semibold text-gray-900">{totalLeads}</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <DollarSign className="w-4 h-4 text-green-500" />
-                <span className="text-gray-600">Receita Total:</span>
-                <span className="font-semibold text-gray-900">R$ {totalRevenue.toLocaleString('pt-BR')}</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <CheckCircle className="w-4 h-4 text-purple-500" />
-                <span className="text-gray-600">Fechados:</span>
-                <span className="font-semibold text-gray-900">R$ 0</span>
-              </div>
-            </div>
-          </div>
+      <PipelineViewHeader
+        pipelines={pipelines}
+        selectedPipeline={selectedPipeline}
+        onPipelineChange={setSelectedPipeline}
+        onAddLead={() => handleAddLead()}
+        totalLeads={totalLeads}
+        totalRevenue={totalRevenue}
+        closedDeals={closedDeals}
+      />
 
-          <div className="flex items-center space-x-4">
-            {/* Controles do lado direito */}
-            <select 
-              value={selectedPipeline?.id || ''} 
-              onChange={(e) => {
-                const pipeline = pipelines.find(p => p.id === e.target.value);
-                setSelectedPipeline(pipeline || null);
-              }}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {pipelines.map(pipeline => (
-                <option key={pipeline.id} value={pipeline.id}>
-                  {pipeline.name}
-                </option>
-              ))}
-            </select>
-            
-            <button
-              onClick={() => handleAddLead()}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center space-x-2 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Criar Oportunidade</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Barra de busca e filtros */}
-        <div className="flex items-center justify-between mt-4">
-          <div className="flex-1 max-w-md">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar leads por nome, email, telefone..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-          
-          <div className="flex items-center space-x-2">
-            <button className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
-              <Filter className="w-4 h-4" />
-              <span>Filtro Personalizado</span>
-            </button>
-            <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option>Ativos (Novo → Negociação)</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Kanban Board */}
-      <div className="pipeline-kanban-container">
-        <DndContext
-          collisionDetection={closestCorners}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="kanban-board-full">
-            {getAllStages().map((stage) => (
-              <KanbanColumn
-                key={stage.id}
-                stage={stage}
-                leads={getLeadsByStage(stage.id)}
-                customFields={selectedPipeline?.pipeline_custom_fields || []}
-                onAddLead={handleAddLead}
-              />
-            ))}
-          </div>
-          
-          <DragOverlay>
-            {activeLead ? (
-              <LeadCard 
-                lead={activeLead} 
-                customFields={selectedPipeline?.pipeline_custom_fields || []}
-                isDragging
-              />
-            ) : null}
-          </DragOverlay>
-        </DndContext>
-      </div>
+      <PipelineKanbanBoard
+        stages={getAllStages()}
+        leads={leads}
+        customFields={selectedPipeline?.pipeline_custom_fields || []}
+        activeLead={activeLead}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onAddLead={handleAddLead}
+      />
 
       {/* Modal de Adicionar Lead */}
       {showAddLeadModal && selectedPipeline && (

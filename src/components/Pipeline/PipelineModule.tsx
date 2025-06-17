@@ -4,7 +4,7 @@ import { usePipelines } from '../../hooks/usePipelines';
 import { useMembers } from '../../hooks/useMembers';
 import PipelineList from './PipelineList';
 import PipelineForm from './PipelineForm';
-import PipelineFormWithStagesAndFields from './PipelineFormWithStagesAndFields';
+import PipelineCreator from './PipelineCreator';
 import '../../styles/PipelineModule.css';
 
 type ActiveTab = 'list' | 'create' | 'edit' | 'create-complete';
@@ -131,9 +131,6 @@ const PipelineModule: React.FC = () => {
     }
   };
 
-  // Função de teste simples
-
-
   const handleUpdatePipeline = async (data: { name: string; description: string }) => {
     if (!selectedPipelineId) return;
     
@@ -213,8 +210,6 @@ const PipelineModule: React.FC = () => {
         </div>
       </div>
 
-
-
       {activeTab === 'list' && (
         <PipelineList
           pipelines={pipelines}
@@ -238,141 +233,10 @@ const PipelineModule: React.FC = () => {
       )}
 
       {activeTab === 'create-complete' && (
-        <div style={{ 
-          backgroundColor: 'white', 
-          padding: '30px', 
-          borderRadius: '8px', 
-          border: '1px solid #e5e7eb',
-          margin: '20px 0'
-        }}>
-          <h4 style={{ marginBottom: '20px' }}>🎛️ Criar Pipeline Completa</h4>
-          
-          <form onSubmit={(e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target as HTMLFormElement);
-            const data = {
-              name: formData.get('name') as string,
-              description: formData.get('description') as string,
-              member_ids: [],
-              stages: [
-                {
-                  name: "Novo Lead",
-                  temperature_score: 50,
-                  max_days_allowed: 7,
-                  color: "#3B82F6",
-                  order_index: 1
-                },
-                {
-                  name: "Oportunidade",
-                  temperature_score: 75,
-                  max_days_allowed: 10,
-                  color: "#10B981",
-                  order_index: 2
-                }
-              ],
-              custom_fields: [
-                {
-                  field_name: "nome",
-                  field_label: "Nome",
-                  field_type: "text",
-                  is_required: true,
-                  field_order: 1
-                },
-                {
-                  field_name: "email",
-                  field_label: "Email",
-                  field_type: "email",
-                  is_required: true,
-                  field_order: 2
-                }
-              ]
-            };
-            handleCreateCompletePipeline(data);
-          }}>
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-                Nome da Pipeline *
-              </label>
-              <input 
-                type="text" 
-                name="name" 
-                required
-                style={{ 
-                  width: '100%', 
-                  padding: '12px', 
-                  border: '1px solid #d1d5db', 
-                  borderRadius: '6px',
-                  fontSize: '16px'
-                }}
-                placeholder="Ex: Pipeline de Vendas"
-              />
-            </div>
-            
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-                Descrição
-              </label>
-              <textarea 
-                name="description"
-                rows={3}
-                style={{ 
-                  width: '100%', 
-                  padding: '12px', 
-                  border: '1px solid #d1d5db', 
-                  borderRadius: '6px',
-                  fontSize: '16px',
-                  resize: 'vertical'
-                }}
-                placeholder="Descreva o objetivo desta pipeline..."
-              />
-            </div>
-
-            <div style={{ 
-              padding: '15px', 
-              backgroundColor: '#f9fafb', 
-              borderRadius: '6px',
-              marginBottom: '20px'
-            }}>
-              <h5 style={{ margin: '0 0 10px 0', color: '#374151' }}>📋 Configuração Automática:</h5>
-              <ul style={{ margin: 0, paddingLeft: '20px', color: '#6b7280' }}>
-                <li>2 etapas: "Novo Lead" e "Oportunidade"</li>
-                <li>2 campos: "Nome" e "Email"</li>
-                <li>Configurações padrão aplicadas</li>
-              </ul>
-            </div>
-            
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button 
-                type="button" 
-                onClick={() => setActiveTab('list')}
-                style={{
-                  padding: '12px 24px',
-                  backgroundColor: '#6b7280',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer'
-                }}
-              >
-                Cancelar
-              </button>
-              <button 
-                type="submit"
-                style={{
-                  padding: '12px 24px',
-                  backgroundColor: '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontWeight: 'bold'
-                }}
-              >
-                🚀 Criar Pipeline
-              </button>
-            </div>
-          </form>
-        </div>
+        <PipelineCreator
+          onCreateComplete={handleCreateCompletePipeline}
+          onCancel={() => setActiveTab('list')}
+        />
       )}
 
       {activeTab === 'edit' && selectedPipeline && (
@@ -392,4 +256,4 @@ const PipelineModule: React.FC = () => {
   );
 };
 
-export default PipelineModule; 
+export default PipelineModule;

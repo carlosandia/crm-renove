@@ -1,0 +1,219 @@
+
+/* ============================================ */
+/* PIPELINE KANBAN - COMPONENTES ESPECÍFICOS */
+/* ============================================ */
+
+.pipeline-view-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.pipeline-kanban-container {
+  flex: 1;
+  padding: 20px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.kanban-board-full {
+  display: flex;
+  gap: 16px;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 8px;
+}
+
+/* ============================================ */
+/* COLUNAS DO KANBAN */
+/* ============================================ */
+
+.kanban-column {
+  flex: 0 0 300px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.kanban-column:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.kanban-column.drag-over {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+}
+
+.column-header {
+  padding: 16px;
+  border-bottom: 1px solid #f1f5f9;
+  flex-shrink: 0;
+}
+
+.stage-indicator {
+  height: 3px;
+  border-radius: 2px;
+  margin-bottom: 12px;
+}
+
+.stage-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.stage-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.stage-count {
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 12px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.stage-stats {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.stage-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stage-value {
+  padding: 8px;
+  background: #f8fafc;
+  border-radius: 6px;
+}
+
+.stage-value-label {
+  font-size: 10px;
+  color: #64748b;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stage-value-amount {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.column-content {
+  flex: 1;
+  padding: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.leads-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.empty-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.empty-column-icon {
+  font-size: 36px;
+  margin-bottom: 8px;
+}
+
+.empty-column-text {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ============================================ */
+/* SCROLLBAR CUSTOMIZADA */
+/* ============================================ */
+
+.kanban-board-full::-webkit-scrollbar,
+.column-content::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.kanban-board-full::-webkit-scrollbar-track,
+.column-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.kanban-board-full::-webkit-scrollbar-thumb,
+.column-content::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 2px;
+}
+
+.kanban-board-full::-webkit-scrollbar-thumb:hover,
+.column-content::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ============================================ */
+/* ANIMAÇÕES */
+/* ============================================ */
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.kanban-column {
+  animation: fadeInUp 0.3s ease-out;
+}
+
+/* ============================================ */
+/* RESPONSIVIDADE */
+/* ============================================ */
+
+@media (max-width: 768px) {
+  .pipeline-kanban-container {
+    padding: 12px;
+  }
+
+  .kanban-column {
+    flex: 0 0 250px;
+  }
+}
