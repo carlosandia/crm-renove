@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Link, Code, Eye } from 'lucide-react';
+import { X, Link, Code, Eye, Copy } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import FormFieldEditor from './FormFieldEditor';
 import FormStylingEditor from './FormStylingEditor';
