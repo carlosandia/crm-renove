@@ -43,6 +43,7 @@ interface Lead {
   status?: 'active' | 'won' | 'lost';
 }
 
+// Usando a mesma interface que está no usePipelines hook
 interface Pipeline {
   id: string;
   name: string;
