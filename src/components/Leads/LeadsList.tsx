@@ -2,7 +2,7 @@
 import React from 'react';
 import { Eye, Edit, Trash2, Phone, Mail, Building, Thermometer } from 'lucide-react';
 
-interface Lead {
+interface LeadMaster {
   id: string;
   first_name: string;
   last_name: string;
@@ -30,10 +30,10 @@ interface Lead {
 }
 
 interface LeadsListProps {
-  leads: Lead[];
+  leads: LeadMaster[];
   loading: boolean;
-  onViewDetails: (lead: Lead) => void;
-  onEditLead: (lead: Lead) => void;
+  onViewDetails: (lead: LeadMaster) => void;
+  onEditLead: (lead: LeadMaster) => void;
   onDeleteLead: (leadId: string) => void;
   currentUserRole: string;
 }

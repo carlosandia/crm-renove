@@ -6,7 +6,7 @@ import LeadDetailsModal from './Leads/LeadDetailsModal';
 import LeadFormModal from './Leads/LeadFormModal';
 import { Search, Plus, Filter, Users, TrendingUp } from 'lucide-react';
 
-interface Lead {
+interface LeadMaster {
   id: string;
   first_name: string;
   last_name: string;
@@ -35,16 +35,16 @@ interface Lead {
 
 const LeadsModule: React.FC = () => {
   const { user } = useAuth();
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
+  const [leads, setLeads] = useState<LeadMaster[]>([]);
+  const [filteredLeads, setFilteredLeads] = useState<LeadMaster[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [temperatureFilter, setTemperatureFilter] = useState('all');
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [selectedLead, setSelectedLead] = useState<LeadMaster | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
-  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [editingLead, setEditingLead] = useState<LeadMaster | null>(null);
 
   // Carregar leads
   const loadLeads = async () => {
@@ -111,12 +111,12 @@ const LeadsModule: React.FC = () => {
   }, [user?.tenant_id]);
 
   // Handlers
-  const handleViewDetails = (lead: Lead) => {
+  const handleViewDetails = (lead: LeadMaster) => {
     setSelectedLead(lead);
     setIsDetailsModalOpen(true);
   };
 
-  const handleEditLead = (lead: Lead) => {
+  const handleEditLead = (lead: LeadMaster) => {
     setEditingLead(lead);
     setIsFormModalOpen(true);
   };

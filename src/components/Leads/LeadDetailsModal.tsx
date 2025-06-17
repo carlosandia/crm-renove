@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Edit, Mail, Phone, Building, Calendar, DollarSign, TrendingUp, Activity } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
-interface Lead {
+interface LeadMaster {
   id: string;
   first_name: string;
   last_name: string;
@@ -16,8 +16,15 @@ interface Lead {
   lead_source?: string;
   created_at: string;
   updated_at: string;
+  tenant_id: string;
+  assigned_to?: string;
   estimated_value?: number;
+  created_by: string;
+  last_contact_date?: string;
+  next_action_date?: string;
   lead_score?: number;
+  probability?: number;
+  campaign_name?: string;
   utm_source?: string;
   utm_medium?: string;
   utm_campaign?: string;
@@ -55,10 +62,10 @@ interface LeadNote {
 }
 
 interface LeadDetailsModalProps {
-  lead: Lead;
+  lead: LeadMaster;
   isOpen: boolean;
   onClose: () => void;
-  onEdit: (lead: Lead) => void;
+  onEdit: (lead: LeadMaster) => void;
 }
 
 const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({

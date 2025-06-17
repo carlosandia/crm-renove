@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Plus, Trash2, GripVertical, Move3D } from 'lucide-react';
+import { Plus, Trash2, GripVertical } from 'lucide-react';
 
 interface FormField {
   id?: string;
