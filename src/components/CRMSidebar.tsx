@@ -82,7 +82,7 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate }) => 
 
   return (
     <div className={`fixed left-0 top-0 h-full bg-white border-r border-gray-200 transition-all duration-300 z-50 flex flex-col ${
-      collapsed ? 'w-16' : 'w-64'
+      collapsed ? 'w-20' : 'w-64'
     }`}>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200">
@@ -120,7 +120,7 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate }) => 
               <div className="text-sm font-medium text-gray-900 truncate">
                 {user?.first_name} {user?.last_name}
               </div>
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-gray-500 truncate">
                 {user?.email}
               </div>
             </div>
@@ -129,7 +129,7 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate }) => 
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-4">
+      <nav className="flex-1 p-4 overflow-y-auto">
         <div className="space-y-1">
           {menuItems.map((item) => {
             const IconComponent = item.icon;
@@ -139,7 +139,9 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate }) => 
               <button
                 key={item.id}
                 onClick={() => onNavigate(item.id)}
-                className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  collapsed ? 'justify-center' : 'space-x-3'
+                } ${
                   isActive
                     ? 'bg-green-50 text-green-700 border border-green-200'
                     : 'text-gray-700 hover:bg-gray-50'
@@ -162,8 +164,8 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate }) => 
       <div className="p-4 border-t border-gray-200">
         <button
           onClick={logout}
-          className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-red-600 hover:bg-red-50 ${
-            collapsed ? 'justify-center' : ''
+          className={`w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-red-600 hover:bg-red-50 ${
+            collapsed ? 'justify-center' : 'space-x-3'
           }`}
           title={collapsed ? 'Sair' : ''}
         >
