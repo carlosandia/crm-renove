@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { logger } from '../lib/logger';
 import { Pipeline, Lead, PipelineStage, CustomField } from '../types/Pipeline';
 import { supabase } from '../lib/supabase';
+import { debugPipelineData } from '../utils/debugPipeline';
 
 export const usePipelineData = () => {
   const { user } = useAuth();
@@ -28,6 +29,11 @@ export const usePipelineData = () => {
     }
 
     console.log('🔄 [PIPELINE] Carregando pipelines para:', user.role, user.email);
+
+    // Debug: executar debug completo em desenvolvimento
+    if (process.env.NODE_ENV === 'development') {
+      await debugPipelineData(user.tenant_id, user.id);
+    }
 
     try {
       setLoading(true);
@@ -141,6 +147,8 @@ export const usePipelineData = () => {
       // SE FOR ADMIN - carregar TODAS as pipelines do tenant
       if (user.role === 'admin') {
         console.log('👤 [PIPELINE] Carregando TODAS as pipelines do tenant para admin');
+        console.log('🔍 [DEBUG] Tenant ID:', user.tenant_id);
+        console.log('🔍 [DEBUG] User ID:', user.id);
         
         // Primeira query: carregar pipelines básicas com stages e custom fields
         const { data: adminPipelines, error: adminError } = await supabase
@@ -183,8 +191,11 @@ export const usePipelineData = () => {
           .eq('tenant_id', user.tenant_id)
           .order('created_at', { ascending: false });
 
+        console.log('🔍 [DEBUG] Query result:', { adminPipelines, adminError });
+
         if (adminError) {
           console.error('❌ [PIPELINE] Erro ao carregar pipelines do admin:', adminError.message);
+          console.error('❌ [PIPELINE] Detalhes do erro:', adminError);
           setPipelines([]);
           setSelectedPipeline(null);
           setLoading(false);
@@ -193,6 +204,66 @@ export const usePipelineData = () => {
 
         if (!adminPipelines || adminPipelines.length === 0) {
           console.log('ℹ️ [PIPELINE] Nenhuma pipeline encontrada para o tenant');
+          console.log('🔍 [DEBUG] Tentando criar pipeline de teste...');
+          
+          // Criar pipeline de teste
+          const { data: newPipeline, error: createError } = await supabase
+            .from('pipelines')
+            .insert({
+              name: 'Pipeline de Vendas',
+              description: 'Pipeline principal de vendas',
+              tenant_id: user.tenant_id,
+              created_by: user.id
+            })
+            .select()
+            .single();
+
+          if (createError) {
+            console.error('❌ [PIPELINE] Erro ao criar pipeline de teste:', createError);
+          } else {
+            console.log('✅ [PIPELINE] Pipeline de teste criada:', newPipeline);
+            
+            // Criar estágios para a pipeline
+            const stages = [
+              { name: 'Prospecção', order_index: 1, temperature_score: 10, max_days_allowed: 7, color: '#3B82F6' },
+              { name: 'Qualificação', order_index: 2, temperature_score: 30, max_days_allowed: 5, color: '#F59E0B' },
+              { name: 'Proposta', order_index: 3, temperature_score: 60, max_days_allowed: 3, color: '#EF4444' },
+              { name: 'Ganho', order_index: 4, temperature_score: 100, max_days_allowed: 1, color: '#10B981' }
+            ];
+
+            const { error: stagesError } = await supabase
+              .from('pipeline_stages')
+              .insert(stages.map(stage => ({
+                ...stage,
+                pipeline_id: newPipeline.id
+              })));
+
+            if (stagesError) {
+              console.error('❌ [PIPELINE] Erro ao criar estágios:', stagesError);
+            } else {
+              console.log('✅ [PIPELINE] Estágios criados com sucesso');
+            }
+            
+            // Recarregar dados
+            const updatedPipeline = {
+              ...newPipeline,
+              pipeline_stages: stages.map((stage, index) => ({
+                id: `stage-${index + 1}`,
+                pipeline_id: newPipeline.id,
+                ...stage
+              })),
+              pipeline_custom_fields: [],
+              pipeline_members: []
+            };
+            
+            setAllPipelines([updatedPipeline]);
+            setPipelines([updatedPipeline]);
+            setSelectedPipeline(updatedPipeline);
+            setAvailableVendors([]);
+            setLoading(false);
+            return;
+          }
+          
           setAllPipelines([]);
           setPipelines([]);
           setSelectedPipeline(null);
