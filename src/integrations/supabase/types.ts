@@ -33,6 +33,60 @@ export type Database = {
         }
         Relationships: []
       }
+      custom_forms: {
+        Row: {
+          assigned_to: string | null
+          created_at: string | null
+          created_by: string
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          pipeline_id: string | null
+          qualification_rules: Json | null
+          redirect_url: string | null
+          settings: Json | null
+          slug: string
+          styling: Json | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          created_at?: string | null
+          created_by: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          pipeline_id?: string | null
+          qualification_rules?: Json | null
+          redirect_url?: string | null
+          settings?: Json | null
+          slug: string
+          styling?: Json | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          created_at?: string | null
+          created_by?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          pipeline_id?: string | null
+          qualification_rules?: Json | null
+          redirect_url?: string | null
+          settings?: Json | null
+          slug?: string
+          styling?: Json | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       customers: {
         Row: {
           company: string | null
@@ -95,6 +149,103 @@ export type Database = {
           stage_id?: string | null
         }
         Relationships: []
+      }
+      form_fields: {
+        Row: {
+          created_at: string | null
+          field_description: string | null
+          field_label: string
+          field_name: string
+          field_options: Json | null
+          field_type: string
+          form_id: string
+          id: string
+          is_required: boolean | null
+          order_index: number
+          placeholder: string | null
+          styling: Json | null
+          validation_rules: Json | null
+        }
+        Insert: {
+          created_at?: string | null
+          field_description?: string | null
+          field_label: string
+          field_name: string
+          field_options?: Json | null
+          field_type: string
+          form_id: string
+          id?: string
+          is_required?: boolean | null
+          order_index: number
+          placeholder?: string | null
+          styling?: Json | null
+          validation_rules?: Json | null
+        }
+        Update: {
+          created_at?: string | null
+          field_description?: string | null
+          field_label?: string
+          field_name?: string
+          field_options?: Json | null
+          field_type?: string
+          form_id?: string
+          id?: string
+          is_required?: boolean | null
+          order_index?: number
+          placeholder?: string | null
+          styling?: Json | null
+          validation_rules?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "form_fields_form_id_fkey"
+            columns: ["form_id"]
+            isOneToOne: false
+            referencedRelation: "custom_forms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      form_submissions: {
+        Row: {
+          form_id: string
+          id: string
+          ip_address: unknown | null
+          is_qualified: boolean | null
+          lead_id: string | null
+          submission_data: Json
+          submitted_at: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          form_id: string
+          id?: string
+          ip_address?: unknown | null
+          is_qualified?: boolean | null
+          lead_id?: string | null
+          submission_data: Json
+          submitted_at?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          form_id?: string
+          id?: string
+          ip_address?: unknown | null
+          is_qualified?: boolean | null
+          lead_id?: string | null
+          submission_data?: Json
+          submitted_at?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "form_submissions_form_id_fkey"
+            columns: ["form_id"]
+            isOneToOne: false
+            referencedRelation: "custom_forms"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       integrations: {
         Row: {

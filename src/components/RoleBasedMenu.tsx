@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import ClientesModule from './ClientesModule';
@@ -5,6 +6,7 @@ import VendedoresModule from './VendedoresModule';
 import PipelineModule from './PipelineModule';
 import PipelineViewModule from './PipelineViewModule';
 import LeadsModule from './LeadsModule';
+import FormBuilderModule from './FormBuilder/FormBuilderModule';
 import './PipelineViewModule.css';
 
 interface RoleBasedMenuProps {
@@ -37,9 +39,14 @@ const RoleBasedMenu: React.FC<RoleBasedMenuProps> = ({
       return <PipelineViewModule />;
     }
 
-    // Novo módulo de Leads - acessível para admin e member
+    // Módulo de Leads - acessível para admin e member
     if (activeModule === 'Leads' && (user.role === 'admin' || user.role === 'member')) {
       return <LeadsModule />;
+    }
+
+    // Novo módulo de Criador de Formulários - acessível apenas para admin
+    if (activeModule === 'Criador de formulários' && user.role === 'admin') {
+      return <FormBuilderModule />;
     }
 
     return (
