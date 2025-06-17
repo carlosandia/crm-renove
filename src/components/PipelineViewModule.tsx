@@ -308,7 +308,7 @@ const PipelineViewModule: React.FC = () => {
   // ============================================
 
   return (
-    <div className="h-screen w-full bg-gray-50 p-2">
+    <div className="pipeline-view-container h-screen">
       <PipelineKanbanBoard
         stages={getAllStages()}
         leads={leads}
