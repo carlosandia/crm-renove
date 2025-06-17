@@ -13,19 +13,16 @@ export const usePipelineData = () => {
 
   // Memoizar a função loadMemberPipelines para evitar recriações desnecessárias
   const loadMemberPipelines = useCallback(async () => {
+    if (!user?.id || !user?.tenant_id) {
+      console.log('❌ [PIPELINE] Usuário ou tenant não identificado');
+      setLoading(false);
+      return;
+    }
+
+    console.log('🔄 [PIPELINE] Carregando pipelines para:', user.role, user.email);
+
     try {
       setLoading(true);
-      
-      console.log('🔄 [PIPELINE] Carregando pipelines vinculadas para:', user?.email);
-      
-      // VERIFICAR SE USUÁRIO EXISTE
-      if (!user?.id) {
-        console.warn('⚠️ [PIPELINE] Usuário não identificado');
-        setPipelines([]);
-        setSelectedPipeline(null);
-        setLoading(false);
-        return;
-      }
 
       // SE FOR SUPER ADMIN, criar dados mock para teste
       if (user.role === 'super_admin') {
@@ -76,41 +73,7 @@ export const usePipelineData = () => {
               is_system_stage: true
             }
           ],
-          pipeline_custom_fields: [
-            {
-              id: 'field-1',
-              field_name: 'empresa',
-              field_label: 'Empresa',
-              field_type: 'text',
-              is_required: true,
-              field_order: 1,
-              field_options: undefined,
-              placeholder: 'Nome da empresa',
-              show_in_card: true
-            },
-            {
-              id: 'field-2',
-              field_name: 'contato',
-              field_label: 'Contato',
-              field_type: 'text',
-              is_required: true,
-              field_order: 2,
-              field_options: undefined,
-              placeholder: 'Nome do contato',
-              show_in_card: true
-            },
-            {
-              id: 'field-3',
-              field_name: 'valor',
-              field_label: 'Valor',
-              field_type: 'number',
-              is_required: false,
-              field_order: 3,
-              field_options: undefined,
-              placeholder: 'Valor esperado',
-              show_in_card: true
-            }
-          ],
+          pipeline_custom_fields: [],
           pipeline_members: []
         };
 
@@ -127,7 +90,7 @@ export const usePipelineData = () => {
             created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
             updated_at: new Date().toISOString(),
             moved_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-            status: 'active'
+            status: 'active' as const
           },
           {
             id: 'lead-2',
@@ -141,7 +104,7 @@ export const usePipelineData = () => {
             created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
             updated_at: new Date().toISOString(),
             moved_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-            status: 'active'
+            status: 'active' as const
           },
           {
             id: 'lead-3',
@@ -155,7 +118,7 @@ export const usePipelineData = () => {
             created_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
             updated_at: new Date().toISOString(),
             moved_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-            status: 'active'
+            status: 'active' as const
           }
         ];
 
@@ -167,14 +130,13 @@ export const usePipelineData = () => {
         return;
       }
       
-      // CARREGAR APENAS PIPELINES VINCULADAS (user_pipeline_links)
-      const { data: userLinks, error: linkError } = await supabase
-        .from('user_pipeline_links')
-        .select(`
-          id,
-          pipeline_id,
-          created_at,
-          pipelines (
+      // SE FOR ADMIN - carregar pipelines criadas por ele
+      if (user.role === 'admin') {
+        console.log('👤 [PIPELINE] Carregando pipelines criadas pelo admin');
+        
+        const { data: adminPipelines, error: adminError } = await supabase
+          .from('pipelines')
+          .select(`
             id,
             name,
             description,
@@ -215,138 +177,122 @@ export const usePipelineData = () => {
               created_at,
               updated_at
             )
-          )
-        `)
-        .eq('user_id', user?.id);
+          `)
+          .eq('tenant_id', user.tenant_id)
+          .eq('created_by', user.id)
+          .order('created_at', { ascending: false });
 
-      // Log apenas se houver erro ou resultado vazio
-      if (linkError || !userLinks || userLinks.length === 0) {
-        console.log('📊 [PIPELINE] Query resultado:', { error: linkError, count: userLinks?.length || 0 });
-      }
-
-      if (linkError) {
-        console.error('❌ [PIPELINE] Erro ao carregar pipelines vinculadas:', linkError.message);
-        
-        // FALLBACK: Tentar carregar dados de forma separada
-        if (linkError.code === 'PGRST200' || linkError.message?.includes('foreign key')) {
-          console.log('🔄 [PIPELINE] Usando fallback...');
-          
-          try {
-            // 1. Primeiro buscar apenas os vínculos
-            const { data: links, error: linksError } = await supabase
-              .from('user_pipeline_links')
-              .select('pipeline_id')
-              .eq('user_id', user?.id);
-
-            if (linksError || !links || links.length === 0) {
-              setPipelines([]);
-              setSelectedPipeline(null);
-              setLoading(false);
-              return;
-            }
-
-            const pipelineIds = links.map(link => link.pipeline_id);
-
-            // 2. Buscar pipelines básicas
-            const { data: pipelinesData, error: pipelinesError } = await supabase
-              .from('pipelines')
-              .select('*')
-              .in('id', pipelineIds);
-
-            if (pipelinesError || !pipelinesData) {
-              setPipelines([]);
-              setSelectedPipeline(null);
-              setLoading(false);
-              return;
-            }
-
-            // 3. Buscar stages para cada pipeline
-            const { data: stagesData } = await supabase
-              .from('pipeline_stages')
-              .select('*')
-              .in('pipeline_id', pipelineIds)
-              .order('order_index', { ascending: true });
-
-            // 4. Buscar custom fields para cada pipeline
-            const { data: fieldsData } = await supabase
-              .from('pipeline_custom_fields')
-              .select('*')
-              .in('pipeline_id', pipelineIds)
-              .order('field_order', { ascending: true });
-
-            // 5. Buscar members para cada pipeline
-            const { data: membersData } = await supabase
-              .from('pipeline_members')
-              .select('*')
-              .in('pipeline_id', pipelineIds);
-
-            // 6. Montar os dados completos
-            const completePipelines = pipelinesData.map(pipeline => ({
-              ...pipeline,
-              pipeline_stages: (stagesData || []).filter(stage => stage.pipeline_id === pipeline.id),
-              pipeline_custom_fields: (fieldsData || []).filter(field => field.pipeline_id === pipeline.id),
-              pipeline_members: (membersData || []).filter(member => member.pipeline_id === pipeline.id)
-            }));
-
-            console.log('✅ [PIPELINE] Carregadas via fallback:', completePipelines.length, 'pipelines');
-
-            if (completePipelines.length > 0) {
-              setPipelines(completePipelines);
-              setSelectedPipeline(completePipelines[0]);
-              setLoading(false);
-              return;
-            }
-
-          } catch (fallbackError) {
-            console.error('💥 [PIPELINE] Erro no fallback:', fallbackError);
-          }
+        if (adminError) {
+          console.error('❌ [PIPELINE] Erro ao carregar pipelines do admin:', adminError.message);
+          setPipelines([]);
+          setSelectedPipeline(null);
+          setLoading(false);
+          return;
         }
-        
-        // Para erros, deixar vazio
-        setPipelines([]);
-        setSelectedPipeline(null);
-        setLoading(false);
-        return;
-      }
 
-      // Extrair as pipelines dos links
-      const linkedPipelines = (userLinks || []).map((link: any) => link.pipelines);
-      
-      // Log apenas resultado final
-      if (linkedPipelines && linkedPipelines.length > 0) {
-        console.log('✅ [PIPELINE] Carregadas:', linkedPipelines.length, 'pipelines vinculadas');
-      }
-      
-      // SE HOUVER PIPELINES VINCULADAS: usar apenas elas
-      if (linkedPipelines && linkedPipelines.length > 0) {
-        // Organizar etapas por order_index
-        const pipelinesWithSortedStages = linkedPipelines.map(pipeline => ({
-          ...pipeline,
-          pipeline_stages: (pipeline.pipeline_stages || []).sort((a, b) => a.order_index - b.order_index),
-          pipeline_custom_fields: (pipeline.pipeline_custom_fields || []).sort((a, b) => a.field_order - b.field_order)
-        }));
-
-        setPipelines(pipelinesWithSortedStages);
+        console.log('✅ [PIPELINE] Carregadas pipelines do admin:', adminPipelines?.length || 0);
         
-        // Selecionar primeira pipeline vinculada
-        if (pipelinesWithSortedStages.length > 0) {
-          setSelectedPipeline(pipelinesWithSortedStages[0]);
+        if (adminPipelines && adminPipelines.length > 0) {
+          setPipelines(adminPipelines);
+          setSelectedPipeline(adminPipelines[0]);
+        } else {
+          setPipelines([]);
+          setSelectedPipeline(null);
         }
         
         setLoading(false);
         return;
       }
 
-      // SE NÃO HOUVER PIPELINES VINCULADAS: deixar vazio (SEM MOCK)
-      console.log('ℹ️ [PIPELINE] Nenhuma pipeline vinculada encontrada');
-      
+      // SE FOR MEMBER - carregar pipelines onde foi atribuído via pipeline_members
+      if (user.role === 'member') {
+        console.log('👤 [PIPELINE] Carregando pipelines atribuídas ao member');
+        
+        const { data: memberPipelines, error: memberError } = await supabase
+          .from('pipeline_members')
+          .select(`
+            id,
+            pipeline_id,
+            member_id,
+            created_at,
+            pipelines!inner (
+              id,
+              name,
+              description,
+              created_by,
+              created_at,
+              updated_at,
+              tenant_id,
+              pipeline_stages (
+                id,
+                pipeline_id,
+                name,
+                order_index,
+                temperature_score,
+                max_days_allowed,
+                color,
+                is_system_stage,
+                created_at,
+                updated_at
+              ),
+              pipeline_custom_fields (
+                id,
+                pipeline_id,
+                field_name,
+                field_label,
+                field_type,
+                is_required,
+                field_order,
+                field_options,
+                placeholder,
+                show_in_card,
+                created_at,
+                updated_at
+              ),
+              pipeline_members (
+                id,
+                pipeline_id,
+                member_id,
+                created_at,
+                updated_at
+              )
+            )
+          `)
+          .eq('member_id', user.id);
+
+        if (memberError) {
+          console.error('❌ [PIPELINE] Erro ao carregar pipelines do member:', memberError.message);
+          setPipelines([]);
+          setSelectedPipeline(null);
+          setLoading(false);
+          return;
+        }
+
+        // Extrair as pipelines dos links
+        const linkedPipelines = (memberPipelines || []).map((link: any) => link.pipelines);
+        
+        console.log('✅ [PIPELINE] Carregadas pipelines do member:', linkedPipelines.length);
+        
+        if (linkedPipelines && linkedPipelines.length > 0) {
+          setPipelines(linkedPipelines);
+          setSelectedPipeline(linkedPipelines[0]);
+        } else {
+          setPipelines([]);
+          setSelectedPipeline(null);
+        }
+        
+        setLoading(false);
+        return;
+      }
+
+      // FALLBACK - caso não seja nenhum dos roles acima
+      console.log('❌ [PIPELINE] Role não suportado:', user.role);
       setPipelines([]);
       setSelectedPipeline(null);
       setLoading(false);
-      
+
     } catch (error) {
-      console.error('💥 [PIPELINE] Erro inesperado:', error.message || error);
-      // Em caso de erro, deixar vazio
+      console.error('💥 [PIPELINE] Erro inesperado:', error);
       setPipelines([]);
       setSelectedPipeline(null);
       setLoading(false);

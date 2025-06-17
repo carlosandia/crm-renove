@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, ReactNode } from 'react'
+import { useEffect, useState, useCallback, ReactNode } from 'react'
 
 interface ClientOnlyProps {
   children: ReactNode
@@ -10,14 +10,16 @@ interface ClientOnlyProps {
 const ClientOnly = ({ children, fallback = null }: ClientOnlyProps) => {
   const [hasMounted, setHasMounted] = useState(false)
 
+  const handleMount = useCallback(() => {
+    setHasMounted(true)
+  }, [])
+
   useEffect(() => {
     // Garantir que a hidratação aconteça de forma segura
-    const timer = setTimeout(() => {
-      setHasMounted(true)
-    }, 0)
+    const timer = setTimeout(handleMount, 0)
 
     return () => clearTimeout(timer)
-  }, [])
+  }, [handleMount])
 
   // Durante a hidratação, renderizar o fallback
   if (!hasMounted) {
