@@ -1,7 +1,6 @@
-
 import React from 'react';
 import ModernStatsCards from './ModernStatsCards';
-import { Clock, Phone, Mail, Handshake, CheckCircle, Target, TrendingUp, Users, Award } from 'lucide-react';
+import { Clock, Phone, Mail, Users, CheckCircle, Target, TrendingUp, Award } from 'lucide-react';
 
 const ModernDashboard: React.FC = () => {
   const recentActivities = [
@@ -18,7 +17,7 @@ const ModernDashboard: React.FC = () => {
       type: 'email'
     },
     {
-      icon: Handshake,
+      icon: Users,
       title: 'Reunião agendada com Carlos Pereira',
       time: '6 horas atrás',
       type: 'meeting'
