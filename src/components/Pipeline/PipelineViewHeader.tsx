@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { Bell } from 'lucide-react';
 import PipelineStats from './PipelineStats';
 import PipelineFilters from './PipelineFilters';
 import PipelineActions from './PipelineActions';
@@ -85,7 +86,7 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
   };
 
   return (
-    <div className="pipeline-internal-header bg-white border-b border-gray-200 flex-shrink-0">
+    <div className="pipeline-internal-header flex-shrink-0" style={{ backgroundColor: 'transparent' }}>
       {/* Container centralizado com largura máxima */}
       <div className="max-w-full mx-auto">
         <div className="px-8 py-6 space-y-6">
@@ -93,6 +94,8 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <h1 className="text-3xl font-bold text-gray-900">Pipeline de Vendas</h1>
+              {/* Ícone de sino adicionado */}
+              <Bell className="w-6 h-6 text-gray-600 hover:text-gray-800 cursor-pointer" />
             </div>
 
             <PipelineActions
@@ -105,7 +108,7 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
             />
           </div>
 
-          {/* Estatísticas - melhor espaçamento e centralização */}
+          {/* Estatísticas - melhor espaçamento e alinhamento com filtros */}
           <div className="w-full">
             <PipelineStats
               totalLeads={totalLeads}
@@ -119,7 +122,7 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
         </div>
 
         {/* Filtros - padding consistente */}
-        <div className="border-t border-gray-100">
+        <div className="border-t border-gray-100" style={{ backgroundColor: 'transparent' }}>
           <PipelineFilters
             pipelines={pipelines}
             selectedPipeline={selectedPipeline}

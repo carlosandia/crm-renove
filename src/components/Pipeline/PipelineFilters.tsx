@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Search, Filter, Calendar, User, Tag, SortAsc, ChevronDown } from 'lucide-react';
 
@@ -41,9 +42,9 @@ const PipelineFilters: React.FC<PipelineFiltersProps> = ({
   };
 
   return (
-    <div className="px-4 pb-2">
-      {/* Container com borda arredondada cinza como na imagem */}
-      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+    <div className="px-8 pb-2">
+      {/* Container com borda arredondada sem fundo */}
+      <div className="border border-gray-200 rounded-lg p-4" style={{ backgroundColor: 'transparent' }}>
         <div className="flex items-center justify-between gap-4">
           {/* Barra de busca */}
           <div className="flex-1 max-w-md">

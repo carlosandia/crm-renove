@@ -59,25 +59,25 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   const getStageBackgroundColor = () => {
     const stageName = stage.name.toLowerCase();
     if (stageName.includes('ganho') || stageName.includes('fechado') || stageName.includes('won')) {
-      return 'from-green-50 to-green-100 border-green-200';
+      return 'border-green-200';
     }
     if (stageName.includes('perdido') || stageName.includes('lost')) {
-      return 'from-red-50 to-red-100 border-red-200';
+      return 'border-red-200';
     }
-    return 'from-gray-50 to-gray-100 border-gray-200';
+    return 'border-gray-200';
   };
 
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col w-80 bg-gradient-to-b ${getStageBackgroundColor()} border border-opacity-50 rounded-xl shadow-sm transition-all duration-300 ${
+      className={`flex flex-col w-80 border border-opacity-50 rounded-xl shadow-sm transition-all duration-300 ${
         isOver ? 'border-blue-300 bg-blue-50 shadow-lg transform scale-105' : 'hover:shadow-md'
-      }`}
-      style={{ minHeight: '600px' }}
+      } ${getStageBackgroundColor()}`}
+      style={{ minHeight: '600px', backgroundColor: 'transparent' }}
     >
       {/* Header da Coluna */}
-      <div className={`px-4 py-4 bg-gradient-to-r ${getStageBackgroundColor()} border-b border-gray-200 rounded-t-xl`}>
-        <div className="flex items-center justify-between mb-3">
+      <div className="px-4 py-4 border-b border-gray-200 rounded-t-xl" style={{ backgroundColor: 'transparent' }}>
+        <div className="flex items-center justify-between mb-2">
           <h3 className="font-semibold text-gray-900 text-base flex items-center gap-2">
             <div 
               className="w-3 h-3 rounded-full" 
@@ -90,15 +90,12 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
           </div>
         </div>
 
-        {/* Valor total */}
-        <div className="text-center py-2 px-3 bg-white/70 backdrop-blur-sm rounded-lg border border-white/50">
-          <div className="text-xs text-gray-600 font-medium mb-1">Total</div>
-          <div className="text-lg font-bold text-gray-900">
-            {totalValue.toLocaleString('pt-BR', {
-              style: 'currency',
-              currency: 'BRL'
-            })}
-          </div>
+        {/* Valor total - agora diretamente abaixo do título */}
+        <div className="text-lg font-bold text-gray-900">
+          {totalValue.toLocaleString('pt-BR', {
+            style: 'currency',
+            currency: 'BRL'
+          })}
         </div>
       </div>
 
@@ -123,7 +120,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
       </div>
 
       {/* Botão Adicionar Lead */}
-      <div className="p-4 border-t border-gray-200 bg-white/50 backdrop-blur-sm rounded-b-xl">
+      <div className="p-4 border-t border-gray-200 rounded-b-xl" style={{ backgroundColor: 'transparent' }}>
         <button
           onClick={() => onAddLead(stage.id)}
           className="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-lg text-sm font-semibold transition-all duration-200 text-blue-700 bg-blue-50 border-2 border-blue-200 hover:bg-blue-100 hover:border-blue-300 hover:shadow-md"
