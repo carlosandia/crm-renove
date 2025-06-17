@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { 
@@ -86,38 +87,46 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate, onTog
     }
   };
 
+  const getRoleColor = (role: string) => {
+    switch (role) {
+      case 'super_admin': return 'from-purple-500 to-purple-600';
+      case 'admin': return 'from-blue-500 to-blue-600';
+      case 'member': return 'from-green-500 to-green-600';
+      default: return 'from-gray-500 to-gray-600';
+    }
+  };
+
   return (
-    <div className={`fixed left-0 top-0 h-full bg-white border-r border-gray-200 transition-all duration-300 z-50 flex flex-col ${
-      collapsed ? 'w-20' : 'w-64'
-    }`}>
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200">
+    <div className={`sidebar-modern ${collapsed ? 'w-20' : 'w-64'}`}>
+      {/* Header com branding moderno */}
+      <div className="flex items-center justify-between p-4 border-b border-border bg-gradient-to-r from-primary/5 to-primary/10">
         {!collapsed && (
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center">
+          <div className="flex items-center space-x-3">
+            <div className={`w-10 h-10 bg-gradient-to-br ${getRoleColor(user?.role)} rounded-xl flex items-center justify-center shadow-md`}>
               <span className="text-white font-bold text-sm">CRM</span>
             </div>
             <div>
-              <h1 className="text-sm font-semibold text-gray-900">CRM Pro</h1>
-              <p className="text-xs text-gray-500">{getRoleDisplayName(user?.role)}</p>
+              <h1 className="text-lg font-bold text-foreground">CRM Pro</h1>
+              <p className="text-xs text-muted-foreground">{getRoleDisplayName(user?.role)}</p>
             </div>
           </div>
         )}
         <button
           onClick={handleToggle}
-          className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+          className="p-2 rounded-lg hover:bg-accent transition-colors"
+          title={collapsed ? 'Expandir menu' : 'Recolher menu'}
         >
           {collapsed ? (
-            <ChevronRight className="w-4 h-4 text-gray-500" />
+            <ChevronRight className="w-4 h-4 text-muted-foreground" />
           ) : (
-            <ChevronLeft className="w-4 h-4 text-gray-500" />
+            <ChevronLeft className="w-4 h-4 text-muted-foreground" />
           )}
         </button>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 p-4 overflow-y-auto">
-        <div className="space-y-1">
+      {/* Navigation moderna */}
+      <nav className="flex-1 p-4 overflow-y-auto scrollbar-thin">
+        <div className="space-y-2">
           {menuItems.map((item) => {
             const IconComponent = item.icon;
             const isActive = activeModule === item.id;
@@ -126,20 +135,23 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate, onTog
               <button
                 key={item.id}
                 onClick={() => onNavigate(item.id)}
-                className={`w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  collapsed ? 'justify-center' : 'space-x-3'
-                } ${
-                  isActive
-                    ? 'bg-green-50 text-green-700 border border-green-200'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
+                className={`nav-item-modern w-full ${
+                  collapsed ? 'justify-center px-2' : 'justify-start'
+                } ${isActive ? 'nav-item-active' : ''}`}
                 title={collapsed ? item.label : ''}
               >
                 <IconComponent className={`w-5 h-5 flex-shrink-0 ${
-                  isActive ? 'text-green-700' : 'text-gray-500'
+                  isActive ? 'text-primary' : 'text-muted-foreground'
                 }`} />
                 {!collapsed && (
-                  <span className="truncate">{item.label}</span>
+                  <span className={`truncate ${
+                    isActive ? 'text-primary font-medium' : 'text-foreground'
+                  }`}>
+                    {item.label}
+                  </span>
+                )}
+                {isActive && !collapsed && (
+                  <div className="w-2 h-2 bg-primary rounded-full ml-auto" />
                 )}
               </button>
             );
@@ -147,29 +159,29 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate, onTog
         </div>
       </nav>
 
-      {/* User Info - Movido para baixo */}
-      <div className="p-4 border-t border-gray-200">
-        <div className="flex items-center space-x-3 mb-3 pb-3 border-b border-gray-200">
-          <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center text-white font-medium flex-shrink-0">
+      {/* User info moderno */}
+      <div className="p-4 border-t border-border bg-muted/20">
+        <div className="flex items-center space-x-3 mb-4 pb-4 border-b border-border">
+          <div className={`w-10 h-10 bg-gradient-to-br ${getRoleColor(user?.role)} rounded-full flex items-center justify-center text-white font-medium flex-shrink-0 shadow-md`}>
             {user?.first_name?.charAt(0) || 'U'}
           </div>
           {!collapsed && (
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-gray-900 truncate">
+              <div className="text-sm font-medium text-foreground truncate">
                 {user?.first_name} {user?.last_name}
               </div>
-              <div className="text-xs text-gray-500 truncate">
+              <div className="text-xs text-muted-foreground truncate">
                 {user?.email}
               </div>
             </div>
           )}
         </div>
 
-        {/* Logout Button */}
+        {/* Logout button moderno */}
         <button
           onClick={logout}
-          className={`w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-red-600 hover:bg-red-50 ${
-            collapsed ? 'justify-center' : 'space-x-3'
+          className={`nav-item-modern w-full text-destructive hover:bg-destructive/10 hover:text-destructive ${
+            collapsed ? 'justify-center px-2' : 'justify-start'
           }`}
           title={collapsed ? 'Sair' : ''}
         >

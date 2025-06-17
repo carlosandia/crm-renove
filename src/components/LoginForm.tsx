@@ -1,12 +1,15 @@
+
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { Lock, Mail, Eye, EyeOff } from 'lucide-react';
 
 const LoginForm: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
   // Hook de autenticação com tratamento de erro
@@ -16,10 +19,22 @@ const LoginForm: React.FC = () => {
   } catch (error) {
     console.error('Erro ao acessar contexto de autenticação:', error);
     return (
-      <div className="error-container">
-        <h3>Erro de Configuração</h3>
-        <p>Problema na configuração de autenticação. Recarregue a página.</p>
-        <button onClick={() => window.location.reload()}>Recarregar</button>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-accent/5">
+        <div className="card-modern p-8 max-w-md w-full mx-4">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Lock className="w-8 h-8 text-destructive" />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground mb-2">Erro de Configuração</h3>
+            <p className="text-muted-foreground mb-4">Problema na configuração de autenticação. Recarregue a página.</p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="btn-primary w-full"
+            >
+              Recarregar
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -66,92 +81,149 @@ const LoginForm: React.FC = () => {
     }
   };
 
+  const demoCredentials = [
+    {
+      role: 'super',
+      title: 'Super Admin',
+      email: 'superadmin@crm.com',
+      password: 'SuperAdmin123!',
+      color: 'from-purple-500 to-purple-600',
+      bgColor: 'hover:bg-purple-50'
+    },
+    {
+      role: 'admin',
+      title: 'Admin',
+      email: 'admin@crm.com',
+      password: '123456',
+      color: 'from-blue-500 to-blue-600',
+      bgColor: 'hover:bg-blue-50'
+    },
+    {
+      role: 'member',
+      title: 'Vendedor',
+      email: 'member@crm.com',
+      password: '123456',
+      color: 'from-green-500 to-green-600',
+      bgColor: 'hover:bg-green-50'
+    }
+  ];
+
   return (
-    <div className="w-full max-w-md mx-auto">
-      <div className="bg-white shadow-md rounded-lg px-8 pt-6 pb-8 mb-4">
-        <div className="mb-6 text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">🔐 Login CRM</h2>
-          <p className="text-gray-600">Acesse o sistema com suas credenciais</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="email">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="seu@email.com"
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-            />
-          </div>
-
-          <div>
-            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">
-              Senha
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              placeholder="Sua senha"
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-            />
-          </div>
-
-          {error && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-              {error}
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-accent/5 p-4">
+      <div className="w-full max-w-md">
+        <div className="card-modern p-8 animate-scale-in">
+          {/* Header */}
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-gradient-to-br from-primary to-primary/80 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+              <Lock className="w-8 h-8 text-white" />
             </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
-          >
-            {loading ? 'Entrando...' : 'Entrar'}
-          </button>
-        </form>
-
-        <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-          <h4 className="text-sm font-semibold text-gray-700 mb-3">Credenciais de Demonstração:</h4>
-          
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => fillDemoCredentials('super')}
-              className="w-full text-left p-2 text-xs bg-purple-100 hover:bg-purple-200 rounded"
-            >
-              <strong>Super Admin:</strong> superadmin@crm.com / SuperAdmin123!
-            </button>
-            
-            <button
-              type="button"
-              onClick={() => fillDemoCredentials('admin')}
-              className="w-full text-left p-2 text-xs bg-blue-100 hover:bg-blue-200 rounded"
-            >
-              <strong>Admin:</strong> admin@crm.com / 123456
-            </button>
-            
-            <button
-              type="button"
-              onClick={() => fillDemoCredentials('member')}
-              className="w-full text-left p-2 text-xs bg-green-100 hover:bg-green-200 rounded"
-            >
-              <strong>Member:</strong> member@crm.com / 123456
-            </button>
+            <h2 className="text-2xl font-bold text-foreground mb-2">Bem-vindo de volta</h2>
+            <p className="text-muted-foreground">Acesse o sistema com suas credenciais</p>
           </div>
 
-          <p className="text-xs text-gray-500 mt-3">
-            💡 Clique nas credenciais acima para preenchê-las automaticamente
-          </p>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Email Field */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground" htmlFor="email">
+                Email
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  placeholder="seu@email.com"
+                  className="input-modern pl-10"
+                />
+              </div>
+            </div>
+
+            {/* Password Field */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground" htmlFor="password">
+                Senha
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  placeholder="Sua senha"
+                  className="input-modern pl-10 pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Error Message */}
+            {error && (
+              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+                <p className="text-sm text-destructive">{error}</p>
+              </div>
+            )}
+
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary w-full py-3"
+            >
+              {loading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Entrando...
+                </div>
+              ) : (
+                'Entrar'
+              )}
+            </button>
+          </form>
+
+          {/* Demo Credentials */}
+          <div className="mt-8 p-4 bg-muted/30 rounded-lg">
+            <h4 className="text-sm font-semibold text-foreground mb-4 text-center">
+              Credenciais de Demonstração
+            </h4>
+            
+            <div className="space-y-2">
+              {demoCredentials.map((cred) => (
+                <button
+                  key={cred.role}
+                  type="button"
+                  onClick={() => fillDemoCredentials(cred.role as 'super' | 'admin' | 'member')}
+                  className={`w-full text-left p-3 rounded-lg border border-border transition-all duration-200 ${cred.bgColor}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 bg-gradient-to-br ${cred.color} rounded-lg flex items-center justify-center`}>
+                      <span className="text-white text-xs font-bold">
+                        {cred.title.charAt(0)}
+                      </span>
+                    </div>
+                    <div>
+                      <div className="font-medium text-foreground text-sm">{cred.title}</div>
+                      <div className="text-xs text-muted-foreground">{cred.email}</div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <p className="text-xs text-muted-foreground mt-4 text-center">
+              💡 Clique nas credenciais acima para preenchê-las automaticamente
+            </p>
+          </div>
         </div>
       </div>
     </div>

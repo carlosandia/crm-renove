@@ -1,8 +1,7 @@
+
 import React, { useState } from 'react';
 import CRMSidebar from './CRMSidebar';
 import CRMHeader from './CRMHeader';
-import '../styles/modern-crm.css';
-import '../styles/modern-theme.css';
 
 interface CRMLayoutProps {
   children: React.ReactNode;
@@ -31,7 +30,7 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex w-full">
+    <div className="min-h-screen bg-background flex w-full">
       <CRMSidebar 
         activeModule={activeModule}
         onNavigate={onNavigate}
@@ -41,7 +40,7 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
       <div className={`flex-1 flex flex-col transition-all duration-300 ${
         sidebarCollapsed ? 'ml-20' : 'ml-64'
       }`}>
-        {/* Header moderno com sombra sutil */}
+        {/* Header moderno */}
         {!isFullWidth && (
           <CRMHeader 
             user={user} 
@@ -50,14 +49,16 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
           />
         )}
         
-        <main className="flex-1 bg-gray-50">
+        <main className="flex-1 bg-background">
           {isFullWidth ? (
-            <div className="h-screen bg-white">
+            <div className="h-screen bg-background">
               {children}
             </div>
           ) : (
-            <div className="flex flex-col w-full px-6 pt-6 pb-10">
-              {children}
+            <div className="flex flex-col w-full p-6">
+              <div className="card-modern p-6 min-h-[calc(100vh-180px)] animate-fade-in">
+                {children}
+              </div>
             </div>
           )}
         </main>
