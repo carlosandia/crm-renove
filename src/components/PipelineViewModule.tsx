@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { useAuth } from '../contexts/AuthContext';
 import { logger } from '../lib/logger';
-import PipelineViewHeader from './Pipeline/PipelineViewHeader';
 import PipelineKanbanBoard from './Pipeline/PipelineKanbanBoard';
 import LeadModal from './Pipeline/LeadModal';
 import './PipelineViewModule.css';
@@ -272,22 +271,10 @@ const PipelineViewModule: React.FC = () => {
     }));
   };
 
-  const handlePipelineChange = (pipeline: Pipeline | null) => {
-    setSelectedPipeline(pipeline);
-  };
-
   const getAllStages = (): PipelineStage[] => {
     return (selectedPipeline?.pipeline_stages || [])
       .sort((a, b) => a.order_index - b.order_index);
   };
-
-  // Calcular métricas
-  const totalLeads = leads.length;
-  const totalRevenue = leads.reduce((sum, lead) => {
-    const value = parseFloat(lead.custom_data?.valor_proposta || '0');
-    return sum + (isNaN(value) ? 0 : value);
-  }, 0);
-  const closedDeals = leads.filter(lead => lead.stage_id === 'stage-5').length;
 
   // ============================================
   // VERIFICAÇÕES DE ACESSO
@@ -321,17 +308,7 @@ const PipelineViewModule: React.FC = () => {
   // ============================================
 
   return (
-    <div className="pipeline-view-container">
-      <PipelineViewHeader
-        pipelines={pipelines}
-        selectedPipeline={selectedPipeline}
-        onPipelineChange={handlePipelineChange}
-        onAddLead={() => handleAddLead()}
-        totalLeads={totalLeads}
-        totalRevenue={totalRevenue}
-        closedDeals={closedDeals}
-      />
-
+    <div className="h-screen w-full bg-gray-50 p-2">
       <PipelineKanbanBoard
         stages={getAllStages()}
         leads={leads}
