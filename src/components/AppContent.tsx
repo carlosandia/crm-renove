@@ -16,7 +16,7 @@ const AppContent: React.FC<AppContentProps> = ({ activeModule, userRole }) => {
   const renderContent = () => {
     switch (activeModule) {
       case 'dashboard':
-        return <ModernDashboard userRole={userRole} />;
+        return <ModernDashboard />;
       case 'pipelines':
         return <PipelineModule />;
       case 'leads':
@@ -28,7 +28,7 @@ const AppContent: React.FC<AppContentProps> = ({ activeModule, userRole }) => {
       case 'performance':
         return <PerformanceModule />;
       default:
-        return <ModernDashboard userRole={userRole} />;
+        return <ModernDashboard />;
     }
   };
 
