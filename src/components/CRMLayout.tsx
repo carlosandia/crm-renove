@@ -34,7 +34,7 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
       />
       
       <div className="flex-1 flex flex-col ml-64">
-        {/* Só renderiza o header se não for um módulo full-width */}
+        {/* Header moderno com sombra sutil */}
         {!isFullWidth && (
           <CRMHeader 
             user={user} 
@@ -43,15 +43,17 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
           />
         )}
         
-        <main className="flex-1">
+        <main className="flex-1 bg-gray-50">
           {isFullWidth ? (
-            <div className="h-screen">
+            <div className="h-screen bg-white">
               {children}
             </div>
           ) : (
-            <div className="p-6 h-full overflow-y-auto">
-              <div className="fade-in">
-                {children}
+            <div className="p-6 min-h-full">
+              <div className="max-w-7xl mx-auto">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 fade-in">
+                  {children}
+                </div>
               </div>
             </div>
           )}
