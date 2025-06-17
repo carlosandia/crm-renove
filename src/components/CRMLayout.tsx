@@ -27,24 +27,24 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
   const isFullWidth = fullWidthModules.includes(activeModule);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-gray-50 flex w-full">
       <CRMSidebar 
         activeModule={activeModule}
         onNavigate={onNavigate}
       />
       
-      <div className={`flex-1 flex flex-col transition-all duration-300 ${
-        sidebarCollapsed ? 'ml-16' : 'ml-64'
-      }`}>
-        <CRMHeader 
-          user={user} 
-          onLogout={onLogout}
-          showSearch={!isFullWidth}
-        />
+      <div className="flex-1 flex flex-col ml-64">
+        {!isFullWidth && (
+          <CRMHeader 
+            user={user} 
+            onLogout={onLogout}
+            showSearch={true}
+          />
+        )}
         
-        <main className="flex-1 overflow-hidden">
+        <main className="flex-1">
           {isFullWidth ? (
-            <div className="h-full">
+            <div className="h-screen">
               {children}
             </div>
           ) : (

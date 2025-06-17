@@ -58,70 +58,70 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
     return '📋';
   };
 
+  const totalValue = leads.reduce((sum, lead) => {
+    const value = parseFloat(lead.custom_data?.valor_proposta || '0');
+    return sum + (isNaN(value) ? 0 : value);
+  }, 0);
+
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col w-80 bg-white rounded-xl border-2 transition-all duration-200 ${
-        isOver ? 'border-green-300 bg-green-50' : 'border-gray-200'
-      }`}
-      style={{ minHeight: '600px' }}
+      className={`kanban-column ${isOver ? 'drag-over' : ''}`}
     >
       {/* Header da Coluna */}
-      <div className="p-4 border-b border-gray-200">
+      <div className="column-header">
         <div
-          className="h-1 w-full rounded-full mb-3"
+          className="stage-indicator"
           style={{ backgroundColor: stage.color }}
         />
         
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center space-x-2">
-            <span className="text-lg">{getStageIcon()}</span>
-            <h3 className="font-semibold text-gray-900">{stage.name}</h3>
+        <div className="stage-title">
+          <div className="stage-name">
+            <span>{getStageIcon()}</span>
+            <span>{stage.name}</span>
           </div>
-          <div className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+          <div className="stage-count">
             {leads.length}
           </div>
         </div>
 
-        <div className="flex items-center space-x-3 text-xs">
-          <div className="flex items-center space-x-1">
+        <div className="stage-stats">
+          <div className="stage-stat">
             <span>🌡️</span>
-            <span className="text-gray-600">{stage.temperature_score}%</span>
+            <span>{stage.temperature_score}%</span>
           </div>
-          <div className="flex items-center space-x-1">
+          <div className="stage-stat">
             <span>⏰</span>
-            <span className="text-gray-600">{stage.max_days_allowed} dias</span>
+            <span>{stage.max_days_allowed}d</span>
           </div>
         </div>
 
-        {/* Valor total da etapa */}
-        <div className="mt-3 p-2 bg-gray-50 rounded-lg">
-          <div className="text-xs text-gray-500">Valor total</div>
-          <div className="text-lg font-bold text-gray-900">
-            R$ {leads.reduce((sum, lead) => {
-              const value = parseFloat(lead.custom_data?.valor_proposta || '0');
-              return sum + (isNaN(value) ? 0 : value);
-            }, 0).toLocaleString('pt-BR')}
+        <div className="stage-value">
+          <div className="stage-value-label">Valor total</div>
+          <div className="stage-value-amount">
+            R$ {totalValue.toLocaleString('pt-BR')}
           </div>
         </div>
       </div>
 
       {/* Conteúdo da Coluna */}
-      <div className="flex-1 p-4 space-y-3 overflow-y-auto">
-        <SortableContext items={leads.map(l => l.id)} strategy={verticalListSortingStrategy}>
-          {leads.map((lead) => (
-            <LeadCard
-              key={lead.id}
-              lead={lead}
-              customFields={customFields}
-            />
-          ))}
-        </SortableContext>
+      <div className="column-content">
+        <div className="leads-container">
+          <SortableContext items={leads.map(l => l.id)} strategy={verticalListSortingStrategy}>
+            {leads.map((lead) => (
+              <LeadCard
+                key={lead.id}
+                lead={lead}
+                customFields={customFields}
+              />
+            ))}
+          </SortableContext>
+        </div>
         
         {leads.length === 0 && (
-          <div className="text-center py-8 text-gray-500">
-            <div className="text-3xl mb-2">📭</div>
-            <p className="text-sm">Nenhum lead nesta etapa</p>
+          <div className="empty-column">
+            <div className="empty-column-icon">📭</div>
+            <p className="empty-column-text">Nenhum lead</p>
           </div>
         )}
       </div>

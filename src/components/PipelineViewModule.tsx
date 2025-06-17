@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCorners } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
-import { Plus, TrendingUp, DollarSign, CheckCircle, Users, Search } from 'lucide-react';
+import { Plus, TrendingUp, DollarSign, CheckCircle, Users, Search, Filter, Settings } from 'lucide-react';
 import KanbanColumn from './Pipeline/KanbanColumn';
 import LeadCard from './Pipeline/LeadCard';
 import LeadModal from './Pipeline/LeadModal';
@@ -297,7 +296,7 @@ const PipelineViewModule: React.FC = () => {
 
   if (!user || user.role !== 'member') {
     return (
-      <div className="h-full flex items-center justify-center bg-white">
+      <div className="h-screen flex items-center justify-center bg-white">
         <div className="text-center">
           <div className="text-6xl mb-4">🚫</div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">Acesso Negado</h3>
@@ -309,7 +308,7 @@ const PipelineViewModule: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center bg-white">
+      <div className="h-screen flex items-center justify-center bg-white">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Carregando suas pipelines...</p>
@@ -323,34 +322,42 @@ const PipelineViewModule: React.FC = () => {
   // ============================================
 
   return (
-    <div className="pipeline-view-module">
-      {/* Header da Pipeline */}
-      <div className="pipeline-header">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex-1">
-            {/* Barra de busca */}
-            <div className="max-w-md">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar leads por nome, email, telefone..."
-                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                />
+    <div className="pipeline-view-container">
+      {/* Header Interno da Pipeline */}
+      <div className="pipeline-internal-header">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-6">
+            <h1 className="text-2xl font-bold text-gray-900">Pipeline de Vendas</h1>
+            
+            {/* Métricas inline */}
+            <div className="flex items-center space-x-6 text-sm">
+              <div className="flex items-center space-x-2">
+                <Users className="w-4 h-4 text-blue-500" />
+                <span className="text-gray-600">Total de Leads:</span>
+                <span className="font-semibold text-gray-900">{totalLeads}</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <DollarSign className="w-4 h-4 text-green-500" />
+                <span className="text-gray-600">Receita Total:</span>
+                <span className="font-semibold text-gray-900">R$ {totalRevenue.toLocaleString('pt-BR')}</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <CheckCircle className="w-4 h-4 text-purple-500" />
+                <span className="text-gray-600">Fechados:</span>
+                <span className="font-semibold text-gray-900">R$ 0</span>
               </div>
             </div>
           </div>
 
           <div className="flex items-center space-x-4">
-            <h1 className="pipeline-title">Pipeline de Vendas</h1>
-            
+            {/* Controles do lado direito */}
             <select 
               value={selectedPipeline?.id || ''} 
               onChange={(e) => {
                 const pipeline = pipelines.find(p => p.id === e.target.value);
                 setSelectedPipeline(pipeline || null);
               }}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {pipelines.map(pipeline => (
                 <option key={pipeline.id} value={pipeline.id}>
@@ -361,78 +368,47 @@ const PipelineViewModule: React.FC = () => {
             
             <button
               onClick={() => handleAddLead()}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center space-x-2 transition-colors"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center space-x-2 transition-colors"
             >
               <Plus className="w-4 h-4" />
-              <span>Criar Lead</span>
+              <span>Criar Oportunidade</span>
             </button>
           </div>
         </div>
 
-        {/* Métricas resumidas */}
-        <div className="pipeline-metrics">
-          <div className="metric-item">
-            <Users className="w-4 h-4" />
-            <span>Total de Leads: {totalLeads}</span>
-          </div>
-          <div className="metric-item">
-            <TrendingUp className="w-4 h-4" />
-            <span>Receita Total: R$ {totalRevenue.toLocaleString('pt-BR')}</span>
-          </div>
-          <div className="metric-item">
-            <CheckCircle className="w-4 h-4" />
-            <span>Fechados: R$ 0</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Métricas Cards */}
-      <div className="metrics-grid">
-        <div className="metric-card blue">
-          <div className="metric-content">
-            <div className="metric-icon blue">
-              <Users className="w-6 h-6" />
-            </div>
-            <div className="metric-info">
-              <h3>Total de Leads</h3>
-              <p>{totalLeads}</p>
+        {/* Barra de busca e filtros */}
+        <div className="flex items-center justify-between mt-4">
+          <div className="flex-1 max-w-md">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar leads por nome, email, telefone..."
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
             </div>
           </div>
-        </div>
-        
-        <div className="metric-card green">
-          <div className="metric-content">
-            <div className="metric-icon green">
-              <DollarSign className="w-6 h-6" />
-            </div>
-            <div className="metric-info">
-              <h3>Receita Total</h3>
-              <p>R$ {totalRevenue.toLocaleString('pt-BR')}</p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="metric-card purple">
-          <div className="metric-content">
-            <div className="metric-icon purple">
-              <CheckCircle className="w-6 h-6" />
-            </div>
-            <div className="metric-info">
-              <h3>Fechados</h3>
-              <p>R$ 0</p>
-            </div>
+          
+          <div className="flex items-center space-x-2">
+            <button className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
+              <Filter className="w-4 h-4" />
+              <span>Filtro Personalizado</span>
+            </button>
+            <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option>Ativos (Novo → Negociação)</option>
+            </select>
           </div>
         </div>
       </div>
 
       {/* Kanban Board */}
-      <div className="kanban-container">
+      <div className="pipeline-kanban-container">
         <DndContext
           collisionDetection={closestCorners}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="kanban-board">
+          <div className="kanban-board-full">
             {getAllStages().map((stage) => (
               <KanbanColumn
                 key={stage.id}
