@@ -89,7 +89,7 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
     <div className="pipeline-internal-header flex-shrink-0">
       {/* Container centralizado com largura máxima */}
       <div className="max-w-full mx-auto">
-        <div className="px-8 py-6 space-y-6">
+        <div className="px-8 py-6 space-y-6 bg-gray-50">
           {/* Cabeçalho principal - melhor alinhamento */}
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -108,7 +108,7 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
             />
           </div>
 
-          {/* Estatísticas - melhor espaçamento e centralização, removido fundo branco */}
+          {/* Estatísticas - melhor espaçamento e centralização */}
           <div className="w-full">
             <PipelineStats
               totalLeads={totalLeads}
@@ -121,8 +121,8 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
           </div>
         </div>
 
-        {/* Filtros - padding consistente, removido fundo branco */}
-        <div className="border-t border-gray-100">
+        {/* Filtros - padding consistente */}
+        <div className="border-t border-gray-100 bg-gray-50">
           <PipelineFilters
             pipelines={pipelines}
             selectedPipeline={selectedPipeline}

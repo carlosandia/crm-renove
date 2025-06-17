@@ -2,7 +2,7 @@
 import React from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { Plus } from 'lucide-react';
+import { Plus, Clipboard } from 'lucide-react';
 import LeadCard from './LeadCard';
 
 interface CustomField {
@@ -75,9 +75,9 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
       }`}
       style={{ minHeight: '600px' }}
     >
-      {/* Header da Coluna - Removido fundo gradiente */}
+      {/* Header da Coluna */}
       <div className={`px-4 py-4 border-b border-gray-200 rounded-t-xl`}>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-2">
           <h3 className="font-semibold text-gray-900 text-base flex items-center gap-2">
             <div 
               className="w-3 h-3 rounded-full" 
@@ -90,14 +90,12 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
           </div>
         </div>
 
-        {/* Valor total - movido para baixo do título e removido "Total" */}
-        <div className="text-center py-2 px-3 bg-gray-50 rounded-lg border border-gray-200">
-          <div className="text-lg font-bold text-gray-900">
-            {totalValue.toLocaleString('pt-BR', {
-              style: 'currency',
-              currency: 'BRL'
-            })}
-          </div>
+        {/* Valor total - logo abaixo do título, sem caixa */}
+        <div className="text-lg font-bold text-gray-900">
+          {totalValue.toLocaleString('pt-BR', {
+            style: 'currency',
+            currency: 'BRL'
+          })}
         </div>
       </div>
 
@@ -106,8 +104,8 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
         <SortableContext items={leads.map(l => l.id)} strategy={verticalListSortingStrategy}>
           {leads.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-              <div className="text-4xl mb-2">📋</div>
-              <p className="text-sm font-medium">Nenhum lead</p>
+              <Clipboard className="w-8 h-8 mb-2" />
+              <p className="text-sm font-medium">Nenhum Lead</p>
             </div>
           ) : (
             leads.map((lead) => (
@@ -121,7 +119,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
         </SortableContext>
       </div>
 
-      {/* Botão Adicionar Lead - removido fundo branco */}
+      {/* Botão Adicionar Lead */}
       <div className="p-4 border-t border-gray-200">
         <button
           onClick={() => onAddLead(stage.id)}

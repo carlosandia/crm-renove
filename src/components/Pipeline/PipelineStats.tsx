@@ -24,7 +24,7 @@ const PipelineStats: React.FC<PipelineStatsProps> = ({
       icon: Users,
       label: 'Total de Leads',
       value: totalLeads.toString(),
-      color: 'text-blue-600',
+      color: 'text-gray-600',
       bgColor: 'bg-blue-50',
       borderColor: 'border-blue-200'
     },
@@ -35,7 +35,7 @@ const PipelineStats: React.FC<PipelineStatsProps> = ({
         style: 'currency',
         currency: 'BRL'
       }),
-      color: 'text-green-600',
+      color: 'text-gray-600',
       bgColor: 'bg-green-50',
       borderColor: 'border-green-200'
     },
@@ -43,7 +43,7 @@ const PipelineStats: React.FC<PipelineStatsProps> = ({
       icon: Award,
       label: 'Negócios Fechados',
       value: closedDeals.toString(),
-      color: 'text-purple-600',
+      color: 'text-gray-600',
       bgColor: 'bg-purple-50',
       borderColor: 'border-purple-200'
     },
@@ -51,7 +51,7 @@ const PipelineStats: React.FC<PipelineStatsProps> = ({
       icon: TrendingUp,
       label: 'Taxa de Conversão',
       value: `${conversionRate.toFixed(1)}%`,
-      color: 'text-orange-600',
+      color: 'text-gray-600',
       bgColor: 'bg-orange-50',
       borderColor: 'border-orange-200'
     },
@@ -62,7 +62,7 @@ const PipelineStats: React.FC<PipelineStatsProps> = ({
         style: 'currency',
         currency: 'BRL'
       }),
-      color: 'text-indigo-600',
+      color: 'text-gray-600',
       bgColor: 'bg-indigo-50',
       borderColor: 'border-indigo-200'
     },
@@ -70,7 +70,7 @@ const PipelineStats: React.FC<PipelineStatsProps> = ({
       icon: Clock,
       label: 'Ciclo Médio (dias)',
       value: averageCycleTime.toString(),
-      color: 'text-red-600',
+      color: 'text-gray-600',
       bgColor: 'bg-red-50',
       borderColor: 'border-red-200'
     }
