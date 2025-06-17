@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -56,7 +55,7 @@ const LeadCard: React.FC<LeadCardProps> = ({ lead, customFields, isDragging = fa
           currency: 'BRL'
         }).format(Number(value) || 0);
       default:
-        return value.length > 30 ? `${value.substring(0, 30)}...` : value;
+        return value.length > 25 ? `${value.substring(0, 25)}...` : value;
     }
   };
 
@@ -73,9 +72,9 @@ const LeadCard: React.FC<LeadCardProps> = ({ lead, customFields, isDragging = fa
 
   if (isDragging || isSortableDragging) {
     return (
-      <div className="modern-card p-4 opacity-50 transform rotate-2 shadow-lg">
-        <div className="flex items-center space-x-2 mb-3">
-          <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+      <div className="bg-white border border-gray-200 rounded-lg p-3 opacity-50 transform rotate-2 shadow-lg">
+        <div className="flex items-center space-x-2">
+          <div className="w-6 h-6 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center">
             <span className="text-white text-xs font-bold">
               #{lead.id.slice(-3)}
             </span>
@@ -94,61 +93,50 @@ const LeadCard: React.FC<LeadCardProps> = ({ lead, customFields, isDragging = fa
       style={style}
       {...attributes}
       {...listeners}
-      className="modern-card p-4 cursor-move hover:shadow-md transition-all duration-200 bg-white"
+      className="bg-white border border-gray-200 rounded-lg p-3 cursor-move hover:shadow-md hover:border-green-200 transition-all duration-200"
     >
       {/* Lead Header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
+          <div className="w-6 h-6 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center">
             <span className="text-white text-xs font-bold">
               #{lead.id.slice(-3)}
             </span>
           </div>
           <div className="text-sm font-medium text-gray-900">
-            Lead
+            {lead.custom_data?.nome_cliente || 'Lead'}
           </div>
-        </div>
-        <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-          {new Date(lead.created_at).toLocaleDateString('pt-BR')}
         </div>
       </div>
 
       {/* Lead Fields */}
-      <div className="space-y-2">
+      <div className="space-y-1">
         {customFields
           .sort((a, b) => a.field_order - b.field_order)
           .slice(0, 3) // Mostrar apenas os 3 primeiros campos
           .map((field) => (
-            <div key={field.id} className="flex items-center space-x-2">
-              <span className="text-sm">{getFieldIcon(field.field_type)}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs text-gray-500 font-medium">
-                  {field.field_label}
-                </div>
-                <div className="text-sm text-gray-900 truncate">
+            <div key={field.id} className="text-xs">
+              <div className="flex items-center space-x-1">
+                <span className="text-xs">{getFieldIcon(field.field_type)}</span>
+                <span className="font-medium text-gray-600">
+                  {field.field_label}:
+                </span>
+                <span className="text-gray-900">
                   {formatFieldValue(field, lead.custom_data[field.field_name])}
-                </div>
+                </span>
               </div>
             </div>
           ))}
+      </div>
 
-        {customFields.length > 3 && (
-          <div className="text-xs text-gray-500 text-center py-1">
-            +{customFields.length - 3} campos adicionais
+      {/* Lead Value */}
+      {lead.custom_data?.valor_proposta && (
+        <div className="mt-2 pt-2 border-t border-gray-100">
+          <div className="text-sm font-semibold text-green-600">
+            {formatFieldValue({ field_type: 'number' } as CustomField, lead.custom_data.valor_proposta)}
           </div>
-        )}
-      </div>
-
-      {/* Lead Actions */}
-      <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-        <div className="text-xs text-gray-500">
-          Arraste para mover
         </div>
-        <div className="flex items-center space-x-1">
-          <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-          <span className="text-xs text-gray-500">Ativo</span>
-        </div>
-      </div>
+      )}
     </div>
   );
 };

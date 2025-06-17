@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { X, Plus } from 'lucide-react';
 
@@ -60,22 +59,22 @@ const LeadModal: React.FC<LeadModalProps> = ({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden border border-gray-200">
         {/* Header moderno */}
-        <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-6 border-b border-green-400">
+        <div className="bg-white border-b border-gray-200 p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
-                <Plus className="w-5 h-5" />
+              <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center">
+                <Plus className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold">Adicionar Novo Lead</h2>
-                <p className="text-green-100 text-sm mt-1">
+                <h2 className="text-xl font-semibold text-gray-900">Adicionar Novo Lead</h2>
+                <p className="text-gray-500 text-sm mt-1">
                   Preencha os campos para criar um novo lead
                 </p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors"
+              className="text-gray-500 hover:bg-gray-100 rounded-lg p-2 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -91,7 +90,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                   .sort((a, b) => a.field_order - b.field_order)
                   .map((field) => (
                     <div key={field.id} className={field.field_type === 'textarea' ? 'md:col-span-2' : ''}>
-                      <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 mb-2">
+                      <label className="flex items-center space-x-2 text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
                         <span className="text-lg">{getFieldIcon(field.field_type)}</span>
                         <span>{field.field_label}</span>
                         {field.is_required && (
@@ -106,14 +105,14 @@ const LeadModal: React.FC<LeadModalProps> = ({
                           placeholder={field.placeholder}
                           required={field.is_required}
                           rows={4}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors resize-none text-sm"
+                          className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 hover:border-gray-300 transition-all duration-200 resize-none text-sm bg-white"
                         />
                       ) : field.field_type === 'select' ? (
                         <select
                           value={formData[field.field_name] || ''}
                           onChange={(e) => onFieldChange(field.field_name, e.target.value)}
                           required={field.is_required}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors text-sm bg-white"
+                          className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 hover:border-gray-300 transition-all duration-200 text-sm bg-white"
                         >
                           <option value="">Selecione...</option>
                           {(field.field_options || []).map((option, index) => (
@@ -129,7 +128,7 @@ const LeadModal: React.FC<LeadModalProps> = ({
                           onChange={(e) => onFieldChange(field.field_name, e.target.value)}
                           placeholder={field.placeholder}
                           required={field.is_required}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors text-sm"
+                          className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 hover:border-gray-300 transition-all duration-200 text-sm bg-white"
                         />
                       )}
                     </div>
@@ -160,14 +159,14 @@ const LeadModal: React.FC<LeadModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+            className="px-6 py-2.5 text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 text-sm font-medium"
           >
             Cancelar
           </button>
           {(pipeline.pipeline_custom_fields || []).length > 0 && (
             <button
               onClick={onSubmit}
-              className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center space-x-2"
+              className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all duration-200 text-sm font-medium flex items-center space-x-2 shadow-sm hover:shadow-md"
             >
               <Plus className="w-4 h-4" />
               <span>Criar Lead</span>

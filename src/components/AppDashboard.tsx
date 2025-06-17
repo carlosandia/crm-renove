@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import RoleBasedMenu from './RoleBasedMenu';
@@ -8,6 +8,7 @@ import { logger } from '../lib/logger';
 const AppDashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [activeModule, setActiveModule] = useState('Relatório');
 
   // Função de logout personalizada com redirecionamento
   const handleLogout = async () => {
@@ -32,8 +33,16 @@ const AppDashboard: React.FC = () => {
   }
 
   return (
-    <CRMLayout user={user} onLogout={handleLogout}>
-      <RoleBasedMenu />
+    <CRMLayout 
+      user={user} 
+      onLogout={handleLogout}
+      activeModule={activeModule}
+      onNavigate={setActiveModule}
+    >
+      <RoleBasedMenu 
+        activeModule={activeModule}
+        onNavigate={setActiveModule}
+      />
     </CRMLayout>
   );
 };

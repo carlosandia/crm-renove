@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { 
@@ -22,13 +21,20 @@ import {
 interface CRMSidebarProps {
   activeModule: string;
   onNavigate: (module: string) => void;
+  onToggle?: (collapsed: boolean) => void;
 }
 
-const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate }) => {
+const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate, onToggle }) => {
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
 
   if (!user) return null;
+
+  const handleToggle = () => {
+    const newCollapsed = !collapsed;
+    setCollapsed(newCollapsed);
+    onToggle?.(newCollapsed);
+  };
 
   const getMenuItems = () => {
     if (user.role === 'super_admin') {
@@ -98,7 +104,7 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate }) => 
           </div>
         )}
         <button
-          onClick={() => setCollapsed(!collapsed)}
+          onClick={handleToggle}
           className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
         >
           {collapsed ? (
@@ -107,25 +113,6 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate }) => 
             <ChevronLeft className="w-4 h-4 text-gray-500" />
           )}
         </button>
-      </div>
-
-      {/* User Info */}
-      <div className="p-4 border-b border-gray-200">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center text-white font-medium flex-shrink-0">
-            {user?.first_name?.charAt(0) || 'U'}
-          </div>
-          {!collapsed && (
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-gray-900 truncate">
-                {user?.first_name} {user?.last_name}
-              </div>
-              <div className="text-xs text-gray-500 truncate">
-                {user?.email}
-              </div>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Navigation */}
@@ -160,8 +147,25 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate }) => 
         </div>
       </nav>
 
-      {/* Footer com Logout */}
+      {/* User Info - Movido para baixo */}
       <div className="p-4 border-t border-gray-200">
+        <div className="flex items-center space-x-3 mb-3 pb-3 border-b border-gray-200">
+          <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center text-white font-medium flex-shrink-0">
+            {user?.first_name?.charAt(0) || 'U'}
+          </div>
+          {!collapsed && (
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium text-gray-900 truncate">
+                {user?.first_name} {user?.last_name}
+              </div>
+              <div className="text-xs text-gray-500 truncate">
+                {user?.email}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Logout Button */}
         <button
           onClick={logout}
           className={`w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-red-600 hover:bg-red-50 ${

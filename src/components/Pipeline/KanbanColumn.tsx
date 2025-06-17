@@ -1,7 +1,7 @@
-
 import React from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { Plus } from 'lucide-react';
 import LeadCard from './LeadCard';
 
 interface CustomField {
@@ -49,15 +49,6 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
     id: stage.id
   });
 
-  const getStageIcon = () => {
-    if (stage.name.toLowerCase().includes('novo')) return '🆕';
-    if (stage.name.toLowerCase().includes('qualificad')) return '✅';
-    if (stage.name.toLowerCase().includes('proposta')) return '📋';
-    if (stage.name.toLowerCase().includes('negoci')) return '🤝';
-    if (stage.name.toLowerCase().includes('ganho')) return '🏆';
-    return '📋';
-  };
-
   const totalValue = leads.reduce((sum, lead) => {
     const value = parseFloat(lead.custom_data?.valor_proposta || '0');
     return sum + (isNaN(value) ? 0 : value);
@@ -66,64 +57,49 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   return (
     <div
       ref={setNodeRef}
-      className={`kanban-column ${isOver ? 'drag-over' : ''}`}
+      className={`flex flex-col w-64 bg-gray-50 border border-gray-200 rounded-lg transition-all duration-300 ${
+        isOver ? 'border-green-300 bg-green-50 shadow-lg' : ''
+      }`}
+      style={{ minHeight: '500px' }}
     >
       {/* Header da Coluna */}
-      <div className="column-header">
-        <div
-          className="stage-indicator"
-          style={{ backgroundColor: stage.color }}
-        />
-        
-        <div className="stage-title">
-          <div className="stage-name">
-            <span>{getStageIcon()}</span>
-            <span>{stage.name}</span>
-          </div>
-          <div className="stage-count">
+      <div className="p-3 bg-white border-b border-gray-200 rounded-t-lg">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-medium text-gray-900 text-sm">{stage.name}</h3>
+          <div className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
             {leads.length}
           </div>
         </div>
 
-        <div className="stage-stats">
-          <div className="stage-stat">
-            <span>🌡️</span>
-            <span>{stage.temperature_score}%</span>
-          </div>
-          <div className="stage-stat">
-            <span>⏰</span>
-            <span>{stage.max_days_allowed}d</span>
-          </div>
-        </div>
-
-        <div className="stage-value">
-          <div className="stage-value-label">Valor total</div>
-          <div className="stage-value-amount">
+        <div className="text-center">
+          <div className="text-lg font-semibold text-gray-900">
             R$ {totalValue.toLocaleString('pt-BR')}
           </div>
         </div>
       </div>
 
       {/* Conteúdo da Coluna */}
-      <div className="column-content">
-        <div className="leads-container">
-          <SortableContext items={leads.map(l => l.id)} strategy={verticalListSortingStrategy}>
-            {leads.map((lead) => (
-              <LeadCard
-                key={lead.id}
-                lead={lead}
-                customFields={customFields}
-              />
-            ))}
-          </SortableContext>
-        </div>
-        
-        {leads.length === 0 && (
-          <div className="empty-column">
-            <div className="empty-column-icon">📭</div>
-            <p className="empty-column-text">Nenhum lead</p>
-          </div>
-        )}
+      <div className="flex-1 p-2 space-y-2 overflow-y-auto">
+        <SortableContext items={leads.map(l => l.id)} strategy={verticalListSortingStrategy}>
+          {leads.map((lead) => (
+            <LeadCard
+              key={lead.id}
+              lead={lead}
+              customFields={customFields}
+            />
+          ))}
+        </SortableContext>
+      </div>
+
+      {/* Botão Adicionar Lead */}
+      <div className="p-4 border-t border-gray-200">
+        <button
+          onClick={() => onAddLead(stage.id)}
+          className="w-full flex items-center justify-center space-x-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 text-green-700 bg-green-50 border border-green-200 hover:bg-green-100 hover:border-green-300"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Adicionar Lead</span>
+        </button>
       </div>
     </div>
   );

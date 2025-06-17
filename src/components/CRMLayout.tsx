@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import CRMSidebar from './CRMSidebar';
 import CRMHeader from './CRMHeader';
@@ -26,14 +25,22 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
   const fullWidthModules = ['Pipeline'];
   const isFullWidth = fullWidthModules.includes(activeModule);
 
+  // Função para receber o estado collapsed da sidebar
+  const handleSidebarToggle = (collapsed: boolean) => {
+    setSidebarCollapsed(collapsed);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 flex w-full">
       <CRMSidebar 
         activeModule={activeModule}
         onNavigate={onNavigate}
+        onToggle={handleSidebarToggle}
       />
       
-      <div className="flex-1 flex flex-col ml-64">
+      <div className={`flex-1 flex flex-col transition-all duration-300 ${
+        sidebarCollapsed ? 'ml-20' : 'ml-64'
+      }`}>
         {/* Header moderno com sombra sutil */}
         {!isFullWidth && (
           <CRMHeader 

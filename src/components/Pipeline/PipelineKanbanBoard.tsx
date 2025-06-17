@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCorners } from '@dnd-kit/core';
 import KanbanColumn from './KanbanColumn';
@@ -59,13 +58,13 @@ const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = ({
   };
 
   return (
-    <div className="pipeline-kanban-container">
+    <div className="px-4 pb-4">
       <DndContext
         collisionDetection={closestCorners}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       >
-        <div className="kanban-board-full">
+        <div className="flex gap-3 overflow-x-auto pb-4">
           {stages.map((stage) => (
             <KanbanColumn
               key={stage.id}
