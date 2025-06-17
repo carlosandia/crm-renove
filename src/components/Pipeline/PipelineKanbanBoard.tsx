@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCorners } from '@dnd-kit/core';
 import KanbanColumn from './KanbanColumn';
@@ -58,34 +59,42 @@ const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = ({
   };
 
   return (
-    <div className="px-4 pb-4">
-      <DndContext
-        collisionDetection={closestCorners}
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-      >
-        <div className="flex gap-3 overflow-x-auto pb-4">
-          {stages.map((stage) => (
-            <KanbanColumn
-              key={stage.id}
-              stage={stage}
-              leads={getLeadsByStage(stage.id)}
-              customFields={customFields}
-              onAddLead={onAddLead}
-            />
-          ))}
-        </div>
-        
-        <DragOverlay>
-          {activeLead ? (
-            <LeadCard 
-              lead={activeLead} 
-              customFields={customFields}
-              isDragging
-            />
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+    <div className="flex-1 overflow-hidden">
+      {/* Container centralizado e organizado */}
+      <div className="h-full flex flex-col">
+        <DndContext
+          collisionDetection={closestCorners}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+        >
+          {/* Board com padding uniforme e centralização */}
+          <div className="flex-1 px-8 py-6">
+            <div className="h-full flex justify-center">
+              <div className="flex gap-6 overflow-x-auto pb-4 max-w-full">
+                {stages.map((stage) => (
+                  <KanbanColumn
+                    key={stage.id}
+                    stage={stage}
+                    leads={getLeadsByStage(stage.id)}
+                    customFields={customFields}
+                    onAddLead={onAddLead}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          
+          <DragOverlay>
+            {activeLead ? (
+              <LeadCard 
+                lead={activeLead} 
+                customFields={customFields}
+                isDragging
+              />
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      </div>
     </div>
   );
 };

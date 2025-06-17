@@ -1,3 +1,4 @@
+
 import React from 'react';
 import PipelineStats from './PipelineStats';
 import PipelineFilters from './PipelineFilters';
@@ -85,45 +86,52 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
 
   return (
     <div className="pipeline-internal-header bg-white border-b border-gray-200 flex-shrink-0">
-      <div className="p-6 pb-2 space-y-4">
-        {/* Cabeçalho principal */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <h1 className="text-2xl font-bold text-gray-900">Pipeline de Vendas</h1>
+      {/* Container centralizado com largura máxima */}
+      <div className="max-w-full mx-auto">
+        <div className="px-8 py-6 space-y-6">
+          {/* Cabeçalho principal - melhor alinhamento */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <h1 className="text-3xl font-bold text-gray-900">Pipeline de Vendas</h1>
+            </div>
+
+            <PipelineActions
+              onAddLead={onAddLead}
+              onExport={handleExport}
+              onImport={handleImport}
+              onSettings={handleSettings}
+              onManageMembers={handleManageMembers}
+              canManage={true}
+            />
           </div>
 
-          <PipelineActions
-            onAddLead={onAddLead}
-            onExport={handleExport}
-            onImport={handleImport}
-            onSettings={handleSettings}
-            onManageMembers={handleManageMembers}
-            canManage={true}
-          />
+          {/* Estatísticas - melhor espaçamento e centralização */}
+          <div className="w-full">
+            <PipelineStats
+              totalLeads={totalLeads}
+              totalRevenue={totalRevenue}
+              closedDeals={closedDeals}
+              conversionRate={conversionRate}
+              averageDealSize={averageDealSize}
+              averageCycleTime={averageCycleTime}
+            />
+          </div>
         </div>
 
-        {/* Estatísticas */}
-        <PipelineStats
-          totalLeads={totalLeads}
-          totalRevenue={totalRevenue}
-          closedDeals={closedDeals}
-          conversionRate={conversionRate}
-          averageDealSize={averageDealSize}
-          averageCycleTime={averageCycleTime}
-        />
+        {/* Filtros - padding consistente */}
+        <div className="border-t border-gray-100">
+          <PipelineFilters
+            pipelines={pipelines}
+            selectedPipeline={selectedPipeline}
+            onPipelineChange={onPipelineChange}
+            onSearchChange={handleSearchChange}
+            onStatusFilter={handleStatusFilter}
+            onDateFilter={handleDateFilter}
+            onAssigneeFilter={handleAssigneeFilter}
+            onSortChange={handleSortChange}
+          />
+        </div>
       </div>
-
-      {/* Filtros - sem padding extra */}
-      <PipelineFilters
-        pipelines={pipelines}
-        selectedPipeline={selectedPipeline}
-        onPipelineChange={onPipelineChange}
-        onSearchChange={handleSearchChange}
-        onStatusFilter={handleStatusFilter}
-        onDateFilter={handleDateFilter}
-        onAssigneeFilter={handleAssigneeFilter}
-        onSortChange={handleSortChange}
-      />
     </div>
   );
 };
