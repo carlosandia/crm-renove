@@ -22,7 +22,7 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
 }) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   
-  // Módulos que precisam de layout full-width sem padding
+  // Módulos que precisam de layout full-width sem padding e sem header
   const fullWidthModules = ['Pipeline'];
   const isFullWidth = fullWidthModules.includes(activeModule);
 
@@ -34,6 +34,7 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
       />
       
       <div className="flex-1 flex flex-col ml-64">
+        {/* Só renderiza o header se não for um módulo full-width */}
         {!isFullWidth && (
           <CRMHeader 
             user={user} 
