@@ -1,59 +1,44 @@
-
 import React from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Plus, Clipboard } from 'lucide-react';
 import LeadCard from './LeadCard';
-
-interface CustomField {
-  id: string;
-  field_name: string;
-  field_label: string;
-  field_type: string;
-  is_required: boolean;
-  field_order: number;
-}
-
-interface PipelineStage {
-  id: string;
-  name: string;
-  order_index: number;
-  temperature_score: number;
-  max_days_allowed: number;
-  color: string;
-  is_system_stage?: boolean;
-}
-
-interface Lead {
-  id: string;
-  pipeline_id: string;
-  stage_id: string;
-  custom_data: Record<string, any>;
-  created_at: string;
-  updated_at: string;
-}
+import { CustomField, PipelineStage, Lead } from '../../types/Pipeline';
 
 interface KanbanColumnProps {
   stage: PipelineStage;
   leads: Lead[];
   customFields: CustomField[];
   onAddLead: (stageId: string) => void;
+  onUpdateLead?: (leadId: string, updatedData: any) => void;
+  onEditLead?: (lead: Lead) => void;
 }
 
 const KanbanColumn: React.FC<KanbanColumnProps> = ({
   stage,
   leads,
   customFields,
-  onAddLead
+  onAddLead,
+  onUpdateLead,
+  onEditLead
 }) => {
   const { setNodeRef, isOver } = useDroppable({
     id: stage.id
   });
 
   const totalValue = leads.reduce((sum, lead) => {
-    const value = parseFloat(lead.custom_data?.valor_proposta || '0');
-    return sum + (isNaN(value) ? 0 : value);
+    const value = lead.custom_data?.valor || lead.custom_data?.valor_proposta || '0';
+    const numValue = typeof value === 'string' ? parseFloat(value.replace(/[^\d,.-]/g, '').replace(',', '.')) : value;
+    return sum + (isNaN(numValue) ? 0 : numValue);
   }, 0);
+
+  // Função para formatar valor monetário
+  const formatCurrency = (value: number): string => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(value);
+  };
 
   // Função para obter cor da etapa baseada no nome
   const getStageBackgroundColor = () => {
@@ -90,17 +75,14 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
           </div>
         </div>
 
-        {/* Valor total - logo abaixo do título, sem caixa */}
-        <div className="text-lg font-bold text-gray-900">
-          {totalValue.toLocaleString('pt-BR', {
-            style: 'currency',
-            currency: 'BRL'
-          })}
+        {/* Valor total - logo abaixo do título */}
+        <div className="text-sm font-bold text-green-600">
+          {formatCurrency(totalValue)}
         </div>
       </div>
 
       {/* Conteúdo da Coluna */}
-      <div className="flex-1 p-3 space-y-3 overflow-y-auto">
+      <div className="flex-1 p-3 space-y-3 overflow-y-auto bg-white">
         <SortableContext items={leads.map(l => l.id)} strategy={verticalListSortingStrategy}>
           {leads.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-gray-400">
@@ -113,22 +95,26 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
                 key={lead.id}
                 lead={lead}
                 customFields={customFields}
+                onEdit={onEditLead}
+                onUpdate={onUpdateLead}
               />
             ))
           )}
         </SortableContext>
       </div>
 
-      {/* Botão Adicionar Lead */}
-      <div className="p-4 border-t border-gray-200">
-        <button
-          onClick={() => onAddLead(stage.id)}
-          className="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-lg text-sm font-semibold transition-all duration-200 text-blue-700 bg-blue-50 border-2 border-blue-200 hover:bg-blue-100 hover:border-blue-300 hover:shadow-md"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Adicionar Lead</span>
-        </button>
-      </div>
+      {/* Botão Criar Oportunidade - apenas na primeira etapa */}
+      {stage.order_index === 0 && (
+        <div className="p-4 border-t border-gray-200">
+          <button
+            onClick={() => onAddLead(stage.id)}
+            className="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-lg text-sm font-semibold transition-all duration-200 text-blue-700 bg-blue-50 border-2 border-blue-200 hover:bg-blue-100 hover:border-blue-300 hover:shadow-md"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Criar Oportunidade</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,4 +1,3 @@
-
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 @tailwind base;
 @tailwind components;
@@ -116,7 +115,7 @@
 
   /* Header Styles */
   .header-modern {
-    @apply bg-white/95 backdrop-blur-sm border-b border-border;
+    @apply bg-gray-100;
   }
 
   /* Navigation Styles */

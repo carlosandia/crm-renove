@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Pipeline, PipelineStage } from '../../hooks/usePipelines';
 import { User } from '../../hooks/useMembers';
 import './PipelineFormWithStagesAndFields.css';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface CustomField {
   id?: string;
@@ -12,6 +14,7 @@ interface CustomField {
   is_required: boolean;
   field_order: number;
   placeholder?: string;
+  show_in_card: boolean;
 }
 
 interface PipelineFormData {
@@ -50,10 +53,10 @@ const DEFAULT_STAGES = [
 ];
 
 const DEFAULT_FIELDS: CustomField[] = [
-  { field_name: 'nome', field_label: 'Nome Completo', field_type: 'text', is_required: true, field_order: 1, placeholder: 'Digite o nome completo' },
-  { field_name: 'email', field_label: 'E-mail', field_type: 'email', is_required: true, field_order: 2, placeholder: 'exemplo@email.com' },
-  { field_name: 'telefone', field_label: 'Telefone', field_type: 'phone', is_required: false, field_order: 3, placeholder: '(11) 99999-9999' },
-  { field_name: 'empresa', field_label: 'Empresa', field_type: 'text', is_required: false, field_order: 4, placeholder: 'Nome da empresa' },
+  { field_name: 'nome', field_label: 'Nome', field_type: 'text', is_required: true, field_order: 1, placeholder: 'Digite o nome completo', show_in_card: true },
+  { field_name: 'email', field_label: 'Email', field_type: 'email', is_required: true, field_order: 2, placeholder: 'exemplo@email.com', show_in_card: true },
+  { field_name: 'telefone', field_label: 'Telefone', field_type: 'phone', is_required: true, field_order: 3, placeholder: '(11) 99999-9999', show_in_card: true },
+  { field_name: 'valor', field_label: 'Valor', field_type: 'number', is_required: true, field_order: 4, placeholder: '0.00', show_in_card: true },
 ];
 
 const PipelineFormWithStagesAndFields: React.FC<PipelineFormWithStagesAndFieldsProps> = ({
@@ -64,6 +67,7 @@ const PipelineFormWithStagesAndFields: React.FC<PipelineFormWithStagesAndFieldsP
   title,
   submitText,
 }) => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'basic' | 'stages' | 'fields'>('basic');
   const [formData, setFormData] = useState<PipelineFormData>({
     name: '',
@@ -95,7 +99,10 @@ const PipelineFormWithStagesAndFields: React.FC<PipelineFormWithStagesAndFieldsP
     is_required: false,
     field_order: 1,
     placeholder: '',
+    show_in_card: true,
   });
+
+  const [loading, setLoading] = useState(false);
 
   // Preencher formulário se estiver editando
   useEffect(() => {
@@ -131,19 +138,178 @@ const PipelineFormWithStagesAndFields: React.FC<PipelineFormWithStagesAndFieldsP
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    console.log('📝 Dados do formulário antes da validação:', formData);
-    console.log('👥 Membros disponíveis:', members);
+    if (!validateForm()) return;
     
-    if (!validateForm()) {
-      console.log('❌ Validação falhou');
-      return;
-    }
+    try {
+      setLoading(true);
+      
+      console.log('🚀 Criando pipeline completa:', formData.name);
+      
+      // Usar Supabase diretamente em vez de API
+      const { data: pipelineData, error: pipelineError } = await supabase
+        .from('pipelines')
+        .insert({
+          name: formData.name,
+          description: formData.description,
+          tenant_id: user?.tenant_id,
+          created_by: user?.email
+        })
+        .select()
+        .single();
 
-    console.log('✅ Validação passou, enviando dados:', formData);
-    onSubmit(formData);
+      if (pipelineError) {
+        throw pipelineError;
+      }
+
+      console.log('✅ Pipeline criada:', pipelineData.id);
+
+      // CRIAR ETAPAS COMPLETAS: FIXAS + CUSTOMIZADAS
+      const allStages: any[] = [];
+      
+      // 1. ETAPA FIXA: Novo lead (sempre primeira - order_index: 0)
+      allStages.push({
+        pipeline_id: pipelineData.id,
+        name: 'Novo lead',
+        order_index: 0,
+        temperature_score: 10,
+        max_days_allowed: 7,
+        color: '#3B82F6'
+      });
+
+      // 2. ETAPAS CUSTOMIZADAS (meio - order_index: 1, 2, 3...)
+      formData.stages.forEach((stage, index) => {
+        allStages.push({
+          pipeline_id: pipelineData.id,
+          name: stage.name,
+          order_index: index + 1, // Começar do 1 (depois de "Novo lead")
+          temperature_score: stage.temperature_score || 50,
+          max_days_allowed: stage.max_days_allowed || 7,
+          color: stage.color || '#8B5CF6'
+        });
+      });
+
+      // 3. ETAPAS FIXAS: Ganho e Perdido (sempre últimas)
+      const nextIndex = formData.stages.length + 1;
+      
+      allStages.push({
+        pipeline_id: pipelineData.id,
+        name: 'Ganho',
+        order_index: nextIndex,
+        temperature_score: 100,
+        max_days_allowed: 0,
+        color: '#22C55E'
+      });
+
+      allStages.push({
+        pipeline_id: pipelineData.id,
+        name: 'Perdido',
+        order_index: nextIndex + 1,
+        temperature_score: 0,
+        max_days_allowed: 0,
+        color: '#EF4444'
+      });
+
+      console.log('📝 Criando etapas:', allStages.map(s => `${s.order_index}: ${s.name}`));
+
+      // Inserir todas as etapas
+      const { error: stagesError } = await supabase
+        .from('pipeline_stages')
+        .insert(allStages);
+
+      if (stagesError) {
+        console.error('❌ Erro ao criar etapas:', stagesError);
+        throw stagesError;
+      }
+
+      console.log('✅ Etapas criadas com sucesso');
+
+      // CRIAR CAMPOS CUSTOMIZADOS OBRIGATÓRIOS + CUSTOMIZADOS
+      const allFields: any[] = [];
+
+      // 1. CAMPOS OBRIGATÓRIOS (sempre presentes)
+      const requiredFields = [
+        { field_name: 'nome', field_label: 'Nome', field_type: 'text', is_required: true, field_order: 1, placeholder: 'Digite o nome completo' },
+        { field_name: 'email', field_label: 'Email', field_type: 'email', is_required: true, field_order: 2, placeholder: 'exemplo@email.com' },
+        { field_name: 'telefone', field_label: 'Telefone', field_type: 'phone', is_required: true, field_order: 3, placeholder: '(11) 99999-9999' },
+        { field_name: 'valor', field_label: 'Valor', field_type: 'number', is_required: true, field_order: 4, placeholder: '0.00' }
+      ];
+
+      requiredFields.forEach(field => {
+        allFields.push({
+          pipeline_id: pipelineData.id,
+          field_name: field.field_name,
+          field_label: field.field_label,
+          field_type: field.field_type,
+          field_options: null,
+          is_required: field.is_required,
+          field_order: field.field_order,
+          placeholder: field.placeholder
+        });
+      });
+
+      // 2. CAMPOS CUSTOMIZADOS ADICIONAIS
+      formData.custom_fields.forEach((field, index) => {
+        // Verificar se não é um campo obrigatório duplicado
+        const isRequiredField = requiredFields.some(rf => rf.field_name === field.field_name);
+        if (!isRequiredField) {
+          allFields.push({
+            pipeline_id: pipelineData.id,
+            field_name: field.field_name,
+            field_label: field.field_label,
+            field_type: field.field_type,
+            field_options: field.field_options || null,
+            is_required: field.is_required,
+            field_order: index + 5, // Começar depois dos campos obrigatórios
+            placeholder: field.placeholder
+          });
+        }
+      });
+
+      console.log('📋 Criando campos:', allFields.map(f => `${f.field_order}: ${f.field_label}`));
+
+      // Inserir todos os campos
+      if (allFields.length > 0) {
+        const { error: fieldsError } = await supabase
+          .from('pipeline_custom_fields')
+          .insert(allFields);
+
+        if (fieldsError) {
+          console.error('❌ Erro ao criar campos:', fieldsError);
+          throw fieldsError;
+        }
+
+        console.log('✅ Campos criados com sucesso');
+      }
+
+      // Adicionar membros se fornecidos
+      if (formData.member_ids.length > 0) {
+        const memberInserts = formData.member_ids.map(member_id => ({
+          pipeline_id: pipelineData.id,
+          member_id
+        }));
+
+        const { error: membersError } = await supabase
+          .from('pipeline_members')
+          .insert(memberInserts);
+
+        if (membersError) {
+          console.warn('⚠️ Erro ao adicionar membros:', membersError);
+        } else {
+          console.log('✅ Membros adicionados com sucesso');
+        }
+      }
+
+      alert(`✅ Pipeline "${formData.name}" criada com sucesso!\n\n📊 Resumo:\n- ${allStages.length} etapas criadas\n- ${allFields.length} campos configurados\n- ${formData.member_ids.length} membros vinculados`);
+      onSubmit(formData);
+    } catch (error) {
+      console.error('💥 Erro ao criar pipeline:', error);
+      alert(`❌ Erro ao criar pipeline: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleMemberToggle = (memberId: string) => {
@@ -233,6 +399,7 @@ const PipelineFormWithStagesAndFields: React.FC<PipelineFormWithStagesAndFieldsP
       is_required: false,
       field_order: 1,
       placeholder: '',
+      show_in_card: true,
     });
     setShowFieldForm(false);
   };

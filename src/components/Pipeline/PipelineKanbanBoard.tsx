@@ -1,6 +1,5 @@
-
 import React from 'react';
-import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCorners } from '@dnd-kit/core';
+import { DragOverlay } from '@dnd-kit/core';
 import KanbanColumn from './KanbanColumn';
 import LeadCard from './LeadCard';
 
@@ -40,9 +39,10 @@ interface PipelineKanbanBoardProps {
   leads: Lead[];
   customFields: CustomField[];
   activeLead: Lead | null;
-  onDragStart: (event: DragStartEvent) => void;
-  onDragEnd: (event: DragEndEvent) => void;
   onAddLead: (stageId?: string) => void;
+  onUpdateLead?: (leadId: string, updatedData: any) => void;
+  onEditLead?: (lead: Lead) => void;
+  stageMetrics?: any;
 }
 
 const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = ({
@@ -50,9 +50,10 @@ const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = ({
   leads,
   customFields,
   activeLead,
-  onDragStart,
-  onDragEnd,
-  onAddLead
+  onAddLead,
+  onUpdateLead,
+  onEditLead,
+  stageMetrics
 }) => {
   const getLeadsByStage = (stageId: string) => {
     return leads.filter(lead => lead.stage_id === stageId);
@@ -62,41 +63,39 @@ const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = ({
     <div className="flex-1 overflow-hidden">
       {/* Container centralizado e organizado */}
       <div className="h-full flex flex-col">
-        <DndContext
-          collisionDetection={closestCorners}
-          onDragStart={onDragStart}
-          onDragEnd={onDragEnd}
-        >
-          {/* Board com padding uniforme e centralização */}
-          <div className="flex-1 px-8 py-6">
-            <div className="h-full flex justify-center">
-              <div className="flex gap-6 overflow-x-auto pb-4 max-w-full">
-                {stages.map((stage) => (
-                  <KanbanColumn
-                    key={stage.id}
-                    stage={stage}
-                    leads={getLeadsByStage(stage.id)}
-                    customFields={customFields}
-                    onAddLead={onAddLead}
-                  />
-                ))}
-              </div>
+        {/* Board com padding uniforme e centralização */}
+        <div className="flex-1 px-8 py-6">
+          <div className="h-full flex justify-center">
+            <div className="flex gap-6 overflow-x-auto pb-4 max-w-full">
+              {stages.map((stage) => (
+                <KanbanColumn
+                  key={stage.id}
+                  stage={stage}
+                  leads={getLeadsByStage(stage.id)}
+                  customFields={customFields}
+                  onAddLead={onAddLead}
+                  onUpdateLead={onUpdateLead}
+                  onEditLead={onEditLead}
+                />
+              ))}
             </div>
           </div>
-          
-          <DragOverlay>
-            {activeLead ? (
-              <LeadCard 
-                lead={activeLead} 
-                customFields={customFields}
-                isDragging
-              />
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+        </div>
+        
+        <DragOverlay>
+          {activeLead ? (
+            <LeadCard 
+              lead={activeLead} 
+              customFields={customFields}
+              isDragging
+              onEdit={onEditLead}
+              onUpdate={onUpdateLead}
+            />
+          ) : null}
+        </DragOverlay>
       </div>
     </div>
   );
 };
 
-export default PipelineKanbanBoard;
+export default PipelineKanbanBoard; 

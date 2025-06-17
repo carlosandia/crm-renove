@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Users, DollarSign, TrendingUp, Clock, Target, Award } from 'lucide-react';
 
@@ -8,7 +7,8 @@ interface PipelineStatsProps {
   closedDeals: number;
   conversionRate: number;
   averageDealSize: number;
-  averageCycleTime: number;
+  averageCycleTime: string;
+  loading?: boolean;
 }
 
 const PipelineStats: React.FC<PipelineStatsProps> = ({
@@ -17,82 +17,79 @@ const PipelineStats: React.FC<PipelineStatsProps> = ({
   closedDeals,
   conversionRate,
   averageDealSize,
-  averageCycleTime
+  averageCycleTime,
+  loading = false
 }) => {
   const stats = [
     {
       icon: Users,
       label: 'Total de Leads',
-      value: totalLeads.toString(),
-      color: 'text-gray-600',
-      bgColor: 'bg-blue-50',
-      borderColor: 'border-blue-200'
+      value: loading ? '...' : totalLeads.toString(),
+      iconColor: 'text-blue-600',
+      bgColor: 'bg-blue-50'
     },
     {
       icon: DollarSign,
       label: 'Receita Total',
-      value: totalRevenue.toLocaleString('pt-BR', {
+      value: loading ? '...' : totalRevenue.toLocaleString('pt-BR', {
         style: 'currency',
         currency: 'BRL'
       }),
-      color: 'text-gray-600',
-      bgColor: 'bg-green-50',
-      borderColor: 'border-green-200'
+      iconColor: 'text-green-600',
+      bgColor: 'bg-green-50'
     },
     {
       icon: Award,
       label: 'Negócios Fechados',
-      value: closedDeals.toString(),
-      color: 'text-gray-600',
-      bgColor: 'bg-purple-50',
-      borderColor: 'border-purple-200'
+      value: loading ? '...' : closedDeals.toString(),
+      iconColor: 'text-purple-600',
+      bgColor: 'bg-purple-50'
     },
     {
       icon: TrendingUp,
       label: 'Taxa de Conversão',
-      value: `${conversionRate.toFixed(1)}%`,
-      color: 'text-gray-600',
-      bgColor: 'bg-orange-50',
-      borderColor: 'border-orange-200'
+      value: loading ? '...' : `${conversionRate.toFixed(1)}%`,
+      iconColor: 'text-orange-600',
+      bgColor: 'bg-orange-50'
     },
     {
       icon: Target,
       label: 'Ticket Médio',
-      value: averageDealSize.toLocaleString('pt-BR', {
+      value: loading ? '...' : averageDealSize.toLocaleString('pt-BR', {
         style: 'currency',
         currency: 'BRL'
       }),
-      color: 'text-gray-600',
-      bgColor: 'bg-indigo-50',
-      borderColor: 'border-indigo-200'
+      iconColor: 'text-indigo-600',
+      bgColor: 'bg-indigo-50'
     },
     {
       icon: Clock,
-      label: 'Ciclo Médio (dias)',
-      value: averageCycleTime.toString(),
-      color: 'text-gray-600',
-      bgColor: 'bg-red-50',
-      borderColor: 'border-red-200'
+      label: 'Ciclo Médio',
+      value: loading ? '...' : averageCycleTime,
+      iconColor: 'text-red-600',
+      bgColor: 'bg-red-50'
     }
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+    <div className="flex flex-wrap gap-4 justify-between">
       {stats.map((stat, index) => {
         const IconComponent = stat.icon;
         return (
           <div
             key={index}
-            className={`${stat.bgColor} ${stat.borderColor} border rounded-xl p-4 text-center transition-all duration-200 hover:shadow-md hover:scale-105`}
+            className={`${stat.bgColor} rounded-lg p-3 flex items-center space-x-3 min-w-0 flex-1 transition-all duration-150 hover:shadow-sm`}
           >
-            <div className={`${stat.color} flex justify-center mb-2`}>
-              <IconComponent className="w-6 h-6" />
+            <div className={`${stat.iconColor} ${stat.bgColor} p-2 rounded-lg`}>
+              <IconComponent className="w-5 h-5" />
             </div>
-            <div className="text-lg font-bold text-gray-900 mb-1">
-              {stat.value}
-            </div>
-            <div className="text-xs font-medium text-gray-600">
-              {stat.label}
+            <div className="min-w-0 flex-1">
+              <div className="text-lg font-bold text-gray-900 truncate">
+                {stat.value}
+              </div>
+              <div className="text-xs font-medium text-gray-600 truncate">
+                {stat.label}
+              </div>
             </div>
           </div>
         );

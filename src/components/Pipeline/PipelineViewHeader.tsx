@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Bell } from 'lucide-react';
 import PipelineStats from './PipelineStats';
@@ -24,6 +23,9 @@ interface PipelineViewHeaderProps {
   totalLeads: number;
   totalRevenue: number;
   closedDeals: number;
+  conversionRate?: number;
+  averageCycleTime?: string;
+  loading?: boolean;
 }
 
 const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
@@ -33,12 +35,13 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
   onAddLead,
   totalLeads,
   totalRevenue,
-  closedDeals
+  closedDeals,
+  conversionRate = 0,
+  averageCycleTime = '0 dias',
+  loading = false
 }) => {
   // Calcular métricas adicionais
-  const conversionRate = totalLeads > 0 ? (closedDeals / totalLeads) * 100 : 0;
   const averageDealSize = closedDeals > 0 ? totalRevenue / closedDeals : 0;
-  const averageCycleTime = 12; // Mock data
 
   const handleSearchChange = (search: string) => {
     // Implementar lógica de busca
@@ -86,16 +89,15 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
   };
 
   return (
-    <div className="pipeline-internal-header flex-shrink-0">
+    <div className="pipeline-internal-header flex-shrink-0 bg-gray-100">
       {/* Container centralizado com largura máxima */}
       <div className="max-w-full mx-auto">
-        <div className="px-8 py-6 space-y-6 bg-gray-50">
-          {/* Cabeçalho principal - melhor alinhamento */}
-          <div className="flex items-center justify-between">
+        {/* Cabeçalho compacto em uma linha */}
+        <div className="px-8 py-4 bg-gray-100">
+          <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-4">
-              <h1 className="text-3xl font-bold text-gray-900">Pipeline de Vendas</h1>
-              {/* Sininho adicionado ao lado direito do título */}
-              <Bell className="w-6 h-6 text-gray-600 hover:text-gray-800 cursor-pointer transition-colors" />
+              <h1 className="text-2xl font-bold text-gray-900">Pipeline de Vendas</h1>
+              <Bell className="w-5 h-5 text-gray-600 hover:text-gray-800 cursor-pointer transition-colors" />
             </div>
 
             <PipelineActions
@@ -108,7 +110,7 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
             />
           </div>
 
-          {/* Estatísticas - melhor espaçamento e centralização */}
+          {/* Estatísticas em linha horizontal compacta */}
           <div className="w-full">
             <PipelineStats
               totalLeads={totalLeads}
@@ -117,12 +119,13 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
               conversionRate={conversionRate}
               averageDealSize={averageDealSize}
               averageCycleTime={averageCycleTime}
+              loading={loading}
             />
           </div>
         </div>
 
-        {/* Filtros - padding consistente */}
-        <div className="border-t border-gray-100 bg-gray-50">
+        {/* Filtros - fundo branco */}
+        <div className="border-t border-gray-200 bg-white">
           <PipelineFilters
             pipelines={pipelines}
             selectedPipeline={selectedPipeline}

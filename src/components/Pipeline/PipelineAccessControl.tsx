@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 interface PipelineAccessControlProps {
@@ -12,13 +11,18 @@ const PipelineAccessControl: React.FC<PipelineAccessControlProps> = ({
   loading,
   children
 }) => {
-  if (!userRole || userRole !== 'member') {
+  if (!userRole || (userRole !== 'member' && userRole !== 'admin' && userRole !== 'super_admin')) {
     return (
       <div className="h-screen flex items-center justify-center bg-white">
         <div className="text-center">
           <div className="text-6xl mb-4">🚫</div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">Acesso Negado</h3>
-          <p className="text-gray-600">Apenas vendedores podem acessar esta seção.</p>
+          <p className="text-gray-600">
+            Apenas vendedores e administradores vinculados podem acessar esta seção.
+          </p>
+          <p className="text-sm text-gray-500 mt-2">
+            Seu role atual: <strong>{userRole}</strong>
+          </p>
         </div>
       </div>
     );
