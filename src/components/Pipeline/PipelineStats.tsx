@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Users, DollarSign, Trophy, TrendingUp, Clock, Target } from 'lucide-react';
+import { Users, DollarSign, TrendingUp, Clock, Target, Award } from 'lucide-react';
 
 interface PipelineStatsProps {
   totalLeads: number;
@@ -19,84 +19,84 @@ const PipelineStats: React.FC<PipelineStatsProps> = ({
   averageDealSize,
   averageCycleTime
 }) => {
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(value);
-  };
-
   const stats = [
     {
-      id: 'leads',
-      title: 'Total de Leads',
-      value: totalLeads.toString(),
       icon: Users,
+      label: 'Total de Leads',
+      value: totalLeads.toString(),
       color: 'text-blue-600',
       bgColor: 'bg-blue-50',
-      iconBgColor: 'bg-blue-100'
+      borderColor: 'border-blue-200'
     },
     {
-      id: 'revenue',
-      title: 'Receita Total',
-      value: formatCurrency(totalRevenue),
       icon: DollarSign,
+      label: 'Receita Total',
+      value: totalRevenue.toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+      }),
       color: 'text-green-600',
       bgColor: 'bg-green-50',
-      iconBgColor: 'bg-green-100'
+      borderColor: 'border-green-200'
     },
     {
-      id: 'deals',
-      title: 'Negócios Fechados',
+      icon: Award,
+      label: 'Negócios Fechados',
       value: closedDeals.toString(),
-      icon: Trophy,
       color: 'text-purple-600',
       bgColor: 'bg-purple-50',
-      iconBgColor: 'bg-purple-100'
+      borderColor: 'border-purple-200'
     },
     {
-      id: 'conversion',
-      title: 'Taxa de Conversão',
-      value: `${conversionRate.toFixed(1)}%`,
       icon: TrendingUp,
+      label: 'Taxa de Conversão',
+      value: `${conversionRate.toFixed(1)}%`,
       color: 'text-orange-600',
       bgColor: 'bg-orange-50',
-      iconBgColor: 'bg-orange-100'
+      borderColor: 'border-orange-200'
+    },
+    {
+      icon: Target,
+      label: 'Ticket Médio',
+      value: averageDealSize.toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+      }),
+      color: 'text-indigo-600',
+      bgColor: 'bg-indigo-50',
+      borderColor: 'border-indigo-200'
+    },
+    {
+      icon: Clock,
+      label: 'Ciclo Médio (dias)',
+      value: averageCycleTime.toString(),
+      color: 'text-red-600',
+      bgColor: 'bg-red-50',
+      borderColor: 'border-red-200'
     }
   ];
 
   return (
-    <div className="w-full">
-      {/* Container com alinhamento específico - primeira métrica alinhada à esquerda, última à direita */}
-      <div className="grid grid-cols-4 gap-6">
-        {stats.map((stat, index) => {
-          const IconComponent = stat.icon;
-          
-          return (
-            <div
-              key={stat.id}
-              className={`rounded-xl border border-gray-200 p-6 transition-all duration-200 hover:shadow-md hover:border-gray-300 ${stat.bgColor} ${
-                index === 0 ? 'justify-self-start' : index === stats.length - 1 ? 'justify-self-end' : ''
-              }`}
-              style={{ backgroundColor: 'transparent', border: '1px solid #e5e7eb' }}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-600 mb-1">
-                    {stat.title}
-                  </p>
-                  <p className={`text-2xl font-bold ${stat.color}`}>
-                    {stat.value}
-                  </p>
-                </div>
-                <div className={`w-12 h-12 rounded-lg ${stat.iconBgColor} flex items-center justify-center ml-4`}>
-                  <IconComponent className={`w-6 h-6 ${stat.color}`} />
-                </div>
-              </div>
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      {stats.map((stat, index) => {
+        const IconComponent = stat.icon;
+        return (
+          <div
+            key={index}
+            className={`${stat.bgColor} ${stat.borderColor} border rounded-xl p-4 text-center transition-all duration-200 hover:shadow-md hover:scale-105`}
+          >
+            <div className={`${stat.color} flex justify-center mb-2`}>
+              <IconComponent className="w-6 h-6" />
             </div>
-          );
-        })}
-      </div>
+            <div className="text-lg font-bold text-gray-900 mb-1">
+              {stat.value}
+            </div>
+            <div className="text-xs font-medium text-gray-600">
+              {stat.label}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };
