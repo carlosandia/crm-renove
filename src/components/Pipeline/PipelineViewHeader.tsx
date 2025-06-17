@@ -156,6 +156,15 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
             onDateFilter={handleDateFilter}
             onAssigneeFilter={handleAssigneeFilter}
             onSortChange={handleSortChange}
+            // Novos props
+            availableVendors={availableVendors}
+            selectedVendorFilter={selectedVendorFilter}
+            searchFilter={searchFilter}
+            statusFilter={statusFilter}
+            showOnlyMyPipelines={showOnlyMyPipelines}
+            onToggleMyPipelines={onToggleMyPipelines}
+            onClearFilters={onClearFilters}
+            userRole={userRole}
           />
         </div>
       </div>

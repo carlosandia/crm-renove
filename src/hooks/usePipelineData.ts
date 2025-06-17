@@ -142,6 +142,7 @@ export const usePipelineData = () => {
       if (user.role === 'admin') {
         console.log('👤 [PIPELINE] Carregando TODAS as pipelines do tenant para admin');
         
+        // Primeira query: carregar pipelines básicas com stages e custom fields
         const { data: adminPipelines, error: adminError } = await supabase
           .from('pipelines')
           .select(`
@@ -177,19 +178,6 @@ export const usePipelineData = () => {
               show_in_card,
               created_at,
               updated_at
-            ),
-            pipeline_members (
-              id,
-              pipeline_id,
-              member_id,
-              created_at,
-              updated_at,
-              users!pipeline_members_member_id_fkey (
-                id,
-                first_name,
-                last_name,
-                email
-              )
             )
           `)
           .eq('tenant_id', user.tenant_id)
@@ -203,22 +191,70 @@ export const usePipelineData = () => {
           return;
         }
 
-        console.log('✅ [PIPELINE] Carregadas pipelines do admin:', adminPipelines?.length || 0);
-        
-        if (adminPipelines && adminPipelines.length > 0) {
-          // Para admin, armazenar todas as pipelines em allPipelines
-          setAllPipelines(adminPipelines);
-          setPipelines(adminPipelines);
-          setSelectedPipeline(adminPipelines[0]);
-          
-          // Extrair vendedores disponíveis
-          setAvailableVendors(extractAvailableVendors(adminPipelines));
-        } else {
+        if (!adminPipelines || adminPipelines.length === 0) {
+          console.log('ℹ️ [PIPELINE] Nenhuma pipeline encontrada para o tenant');
           setAllPipelines([]);
           setPipelines([]);
           setSelectedPipeline(null);
           setAvailableVendors([]);
+          setLoading(false);
+          return;
         }
+
+        // Segunda etapa: Para cada pipeline, carregar membros com dados dos usuários
+        const pipelinesWithMembers = await Promise.all(
+          adminPipelines.map(async (pipeline) => {
+            // Buscar membros da pipeline
+            const { data: pipelineMembers, error: membersError } = await supabase
+              .from('pipeline_members')
+              .select('id, pipeline_id, member_id, created_at, updated_at')
+              .eq('pipeline_id', pipeline.id);
+
+            if (membersError) {
+              console.error('❌ Erro ao carregar membros da pipeline:', pipeline.name, membersError.message);
+              return { ...pipeline, pipeline_members: [] };
+            }
+
+            // Para cada membro, buscar dados do usuário
+            const membersWithUserData = await Promise.all(
+              (pipelineMembers || []).map(async (member) => {
+                const { data: userData, error: userError } = await supabase
+                  .from('users')
+                  .select('id, first_name, last_name, email')
+                  .eq('id', member.member_id)
+                  .single();
+
+                if (userError) {
+                  console.error('❌ Erro ao carregar dados do usuário:', member.member_id, userError.message);
+                  return {
+                    ...member,
+                    users: null
+                  };
+                }
+
+                return {
+                  ...member,
+                  users: userData
+                };
+              })
+            );
+
+            return {
+              ...pipeline,
+              pipeline_members: membersWithUserData
+            };
+          })
+        );
+
+        console.log('✅ [PIPELINE] Carregadas pipelines do admin:', pipelinesWithMembers.length);
+        
+        // Para admin, armazenar todas as pipelines em allPipelines
+        setAllPipelines(pipelinesWithMembers);
+        setPipelines(pipelinesWithMembers);
+        setSelectedPipeline(pipelinesWithMembers[0]);
+        
+        // Extrair vendedores disponíveis
+        setAvailableVendors(extractAvailableVendors(pipelinesWithMembers));
         
         setLoading(false);
         return;
@@ -565,16 +601,9 @@ export const usePipelineData = () => {
       }
       
       // Atualizar lista de vendedores disponíveis
-      setAvailableVendors(extractAvailableVendors(filtered));
+      setAvailableVendors(extractAvailableVendors(allPipelines));
     }
-  }, [allPipelines, getFilteredPipelines, selectedPipeline, user, extractAvailableVendors]);
-
-  // Atualizar allPipelines quando dados são carregados
-  useEffect(() => {
-    if (user?.role === 'admin') {
-      setAllPipelines(pipelines);
-    }
-  }, [pipelines, user?.role]);
+  }, [allPipelines, showOnlyMyPipelines, selectedVendorFilter, searchFilter, user?.role, selectedPipeline?.id]);
 
   // Funções de controle dos filtros
   const toggleMyPipelinesOnly = useCallback(() => {

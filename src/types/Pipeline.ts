@@ -36,6 +36,13 @@ export interface PipelineMember {
   pipeline_id: string;
   member_id: string;
   created_at: string;
+  updated_at?: string;
+  users?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+  } | null;
 }
 
 export interface Pipeline {
