@@ -134,6 +134,234 @@ export type Database = {
           },
         ]
       }
+      lead_activities: {
+        Row: {
+          activity_description: string | null
+          activity_title: string
+          activity_type: string
+          communication_direction: string | null
+          completed: boolean | null
+          created_at: string | null
+          due_date: string | null
+          id: string
+          lead_id: string
+          user_id: string
+        }
+        Insert: {
+          activity_description?: string | null
+          activity_title: string
+          activity_type: string
+          communication_direction?: string | null
+          completed?: boolean | null
+          created_at?: string | null
+          due_date?: string | null
+          id?: string
+          lead_id: string
+          user_id: string
+        }
+        Update: {
+          activity_description?: string | null
+          activity_title?: string
+          activity_type?: string
+          communication_direction?: string | null
+          completed?: boolean | null
+          created_at?: string | null
+          due_date?: string | null
+          id?: string
+          lead_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_activities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_master"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_notes: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_private: boolean | null
+          lead_id: string
+          note_content: string
+          note_title: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_private?: boolean | null
+          lead_id: string
+          note_content: string
+          note_title?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_private?: boolean | null
+          lead_id?: string
+          note_content?: string
+          note_title?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_notes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_master"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_opportunities: {
+        Row: {
+          closed_at: string | null
+          created_at: string | null
+          expected_close_date: string | null
+          id: string
+          lead_id: string
+          lost_notes: string | null
+          lost_reason: string | null
+          opportunity_name: string
+          opportunity_value: number | null
+          pipeline_id: string | null
+          probability: number | null
+          stage_id: string | null
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          closed_at?: string | null
+          created_at?: string | null
+          expected_close_date?: string | null
+          id?: string
+          lead_id: string
+          lost_notes?: string | null
+          lost_reason?: string | null
+          opportunity_name: string
+          opportunity_value?: number | null
+          pipeline_id?: string | null
+          probability?: number | null
+          stage_id?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          closed_at?: string | null
+          created_at?: string | null
+          expected_close_date?: string | null
+          id?: string
+          lead_id?: string
+          lost_notes?: string | null
+          lost_reason?: string | null
+          opportunity_name?: string
+          opportunity_value?: number | null
+          pipeline_id?: string | null
+          probability?: number | null
+          stage_id?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_opportunities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_master"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leads_master: {
+        Row: {
+          assigned_to: string | null
+          campaign_name: string | null
+          company: string | null
+          created_at: string | null
+          created_by: string
+          email: string
+          estimated_value: number | null
+          first_name: string
+          id: string
+          job_title: string | null
+          last_contact_date: string | null
+          last_name: string | null
+          lead_score: number | null
+          lead_source: string | null
+          lead_temperature: string | null
+          next_action_date: string | null
+          phone: string | null
+          probability: number | null
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          campaign_name?: string | null
+          company?: string | null
+          created_at?: string | null
+          created_by: string
+          email: string
+          estimated_value?: number | null
+          first_name: string
+          id?: string
+          job_title?: string | null
+          last_contact_date?: string | null
+          last_name?: string | null
+          lead_score?: number | null
+          lead_source?: string | null
+          lead_temperature?: string | null
+          next_action_date?: string | null
+          phone?: string | null
+          probability?: number | null
+          status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          campaign_name?: string | null
+          company?: string | null
+          created_at?: string | null
+          created_by?: string
+          email?: string
+          estimated_value?: number | null
+          first_name?: string
+          id?: string
+          job_title?: string | null
+          last_contact_date?: string | null
+          last_name?: string | null
+          lead_score?: number | null
+          lead_source?: string | null
+          lead_temperature?: string | null
+          next_action_date?: string | null
+          phone?: string | null
+          probability?: number | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Relationships: []
+      }
       pipeline_custom_fields: {
         Row: {
           created_at: string | null
