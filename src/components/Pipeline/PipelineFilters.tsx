@@ -20,6 +20,14 @@ interface PipelineFiltersProps {
   onDateFilter: (dateRange: { start: string; end: string }) => void;
   onAssigneeFilter: (assigneeId: string) => void;
   onSortChange: (sortBy: string, direction: 'asc' | 'desc') => void;
+  availableVendors?: any[];
+  selectedVendorFilter?: string;
+  searchFilter?: string;
+  statusFilter?: string;
+  showOnlyMyPipelines?: boolean;
+  onToggleMyPipelines?: () => void;
+  onClearFilters?: () => void;
+  userRole?: string;
 }
 
 const PipelineFilters: React.FC<PipelineFiltersProps> = ({
@@ -30,9 +38,17 @@ const PipelineFilters: React.FC<PipelineFiltersProps> = ({
   onStatusFilter,
   onDateFilter,
   onAssigneeFilter,
-  onSortChange
+  onSortChange,
+  availableVendors = [],
+  selectedVendorFilter = '',
+  searchFilter = '',
+  statusFilter = '',
+  showOnlyMyPipelines = false,
+  onToggleMyPipelines,
+  onClearFilters,
+  userRole
 }) => {
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(searchFilter);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   const handleSearchChange = (value: string) => {
@@ -44,6 +60,42 @@ const PipelineFilters: React.FC<PipelineFiltersProps> = ({
     <div className="px-4 pb-2">
       {/* Container com borda arredondada e fundo branco */}
       <div className="border border-gray-200 rounded-lg p-4 bg-white">
+        
+        {/* Toggle para Admin - Minhas vs Todas */}
+        {userRole === 'admin' && onToggleMyPipelines && (
+          <div className="mb-4 pb-4 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center space-x-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showOnlyMyPipelines}
+                  onChange={onToggleMyPipelines}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700">
+                  Mostrar apenas minhas pipelines
+                </span>
+              </label>
+              
+              {(selectedVendorFilter || searchTerm || statusFilter) && (
+                <button
+                  onClick={onClearFilters}
+                  className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  Limpar Filtros
+                </button>
+              )}
+            </div>
+            
+            <p className="text-xs text-gray-500 mt-1">
+              {showOnlyMyPipelines 
+                ? 'Exibindo apenas pipelines criadas por você' 
+                : 'Exibindo todas as pipelines do tenant'
+              }
+            </p>
+          </div>
+        )}
+        
         <div className="flex items-center justify-between gap-4">
           {/* Barra de busca */}
           <div className="flex-1 max-w-md">

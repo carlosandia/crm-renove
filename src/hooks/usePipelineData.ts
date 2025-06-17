@@ -11,6 +11,14 @@ export const usePipelineData = () => {
   const [loading, setLoading] = useState(true);
   const [leads, setLeads] = useState<Lead[]>([]);
 
+  // Novos estados para filtros e controles do admin
+  const [showOnlyMyPipelines, setShowOnlyMyPipelines] = useState(false);
+  const [selectedVendorFilter, setSelectedVendorFilter] = useState<string>('');
+  const [searchFilter, setSearchFilter] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [allPipelines, setAllPipelines] = useState<Pipeline[]>([]); // Todas as pipelines carregadas
+  const [availableVendors, setAvailableVendors] = useState<any[]>([]);
+
   // Memoizar a função loadMemberPipelines para evitar recriações desnecessárias
   const loadMemberPipelines = useCallback(async () => {
     if (!user?.id || !user?.tenant_id) {
@@ -130,9 +138,9 @@ export const usePipelineData = () => {
         return;
       }
       
-      // SE FOR ADMIN - carregar pipelines criadas por ele
+      // SE FOR ADMIN - carregar TODAS as pipelines do tenant
       if (user.role === 'admin') {
-        console.log('👤 [PIPELINE] Carregando pipelines criadas pelo admin');
+        console.log('👤 [PIPELINE] Carregando TODAS as pipelines do tenant para admin');
         
         const { data: adminPipelines, error: adminError } = await supabase
           .from('pipelines')
@@ -175,11 +183,16 @@ export const usePipelineData = () => {
               pipeline_id,
               member_id,
               created_at,
-              updated_at
+              updated_at,
+              users!pipeline_members_member_id_fkey (
+                id,
+                first_name,
+                last_name,
+                email
+              )
             )
           `)
           .eq('tenant_id', user.tenant_id)
-          .eq('created_by', user.id)
           .order('created_at', { ascending: false });
 
         if (adminError) {
@@ -193,11 +206,18 @@ export const usePipelineData = () => {
         console.log('✅ [PIPELINE] Carregadas pipelines do admin:', adminPipelines?.length || 0);
         
         if (adminPipelines && adminPipelines.length > 0) {
+          // Para admin, armazenar todas as pipelines em allPipelines
+          setAllPipelines(adminPipelines);
           setPipelines(adminPipelines);
           setSelectedPipeline(adminPipelines[0]);
+          
+          // Extrair vendedores disponíveis
+          setAvailableVendors(extractAvailableVendors(adminPipelines));
         } else {
+          setAllPipelines([]);
           setPipelines([]);
           setSelectedPipeline(null);
+          setAvailableVendors([]);
         }
         
         setLoading(false);
@@ -486,6 +506,100 @@ export const usePipelineData = () => {
     }
   }, [selectedPipeline]);
 
+  // Função para extrair vendedores únicos das pipelines
+  const extractAvailableVendors = useCallback((pipelineList: Pipeline[]) => {
+    const vendorsMap = new Map();
+    
+    pipelineList.forEach(pipeline => {
+      pipeline.pipeline_members?.forEach(member => {
+        if (member.users) {
+          vendorsMap.set(member.member_id, {
+            id: member.member_id,
+            name: `${member.users.first_name} ${member.users.last_name}`,
+            email: member.users.email
+          });
+        }
+      });
+    });
+    
+    return Array.from(vendorsMap.values());
+  }, []);
+
+  // Função para filtrar pipelines baseado nos filtros ativos
+  const getFilteredPipelines = useCallback(() => {
+    let filtered = allPipelines;
+    
+    // Se admin quer ver apenas suas pipelines
+    if (user?.role === 'admin' && showOnlyMyPipelines) {
+      filtered = filtered.filter(p => p.created_by === user.id);
+    }
+    
+    // Filtro por vendedor
+    if (selectedVendorFilter) {
+      filtered = filtered.filter(p => 
+        p.pipeline_members?.some(m => m.member_id === selectedVendorFilter)
+      );
+    }
+    
+    // Filtro por busca (nome ou descrição)
+    if (searchFilter) {
+      const search = searchFilter.toLowerCase();
+      filtered = filtered.filter(p => 
+        p.name.toLowerCase().includes(search) || 
+        p.description?.toLowerCase().includes(search)
+      );
+    }
+    
+    return filtered;
+  }, [allPipelines, showOnlyMyPipelines, selectedVendorFilter, searchFilter, user]);
+
+  // Atualizar pipelines filtradas quando filtros mudam
+  useEffect(() => {
+    if (user?.role === 'admin' && allPipelines.length > 0) {
+      const filtered = getFilteredPipelines();
+      setPipelines(filtered);
+      
+      // Se a pipeline selecionada não está mais na lista filtrada, selecionar a primeira
+      if (selectedPipeline && !filtered.find(p => p.id === selectedPipeline.id)) {
+        setSelectedPipeline(filtered[0] || null);
+      }
+      
+      // Atualizar lista de vendedores disponíveis
+      setAvailableVendors(extractAvailableVendors(filtered));
+    }
+  }, [allPipelines, getFilteredPipelines, selectedPipeline, user, extractAvailableVendors]);
+
+  // Atualizar allPipelines quando dados são carregados
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      setAllPipelines(pipelines);
+    }
+  }, [pipelines, user?.role]);
+
+  // Funções de controle dos filtros
+  const toggleMyPipelinesOnly = useCallback(() => {
+    setShowOnlyMyPipelines(prev => !prev);
+  }, []);
+
+  const setVendorFilter = useCallback((vendorId: string) => {
+    setSelectedVendorFilter(vendorId);
+  }, []);
+
+  const setSearchFilterValue = useCallback((search: string) => {
+    setSearchFilter(search);
+  }, []);
+
+  const setStatusFilterValue = useCallback((status: string) => {
+    setStatusFilter(status);
+  }, []);
+
+  const clearAllFilters = useCallback(() => {
+    setShowOnlyMyPipelines(false);
+    setSelectedVendorFilter('');
+    setSearchFilter('');
+    setStatusFilter('');
+  }, []);
+
   return {
     pipelines,
     selectedPipeline,
@@ -495,6 +609,19 @@ export const usePipelineData = () => {
     setLeads,
     handleCreateLead,
     updateLeadStage,
-    updateLeadData
+    updateLeadData,
+    // Novos controles de filtro
+    showOnlyMyPipelines,
+    selectedVendorFilter,
+    searchFilter,
+    statusFilter,
+    availableVendors,
+    toggleMyPipelinesOnly,
+    setVendorFilter,
+    setSearchFilterValue,
+    setStatusFilterValue,
+    clearAllFilters,
+    // Dados para admin
+    allPipelines: user?.role === 'admin' ? allPipelines : pipelines
   };
 };

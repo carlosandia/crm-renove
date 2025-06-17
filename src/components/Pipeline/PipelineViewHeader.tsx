@@ -26,6 +26,18 @@ interface PipelineViewHeaderProps {
   conversionRate?: number;
   averageCycleTime?: string;
   loading?: boolean;
+  // Novos props para filtros
+  showOnlyMyPipelines?: boolean;
+  selectedVendorFilter?: string;
+  searchFilter?: string;
+  statusFilter?: string;
+  availableVendors?: any[];
+  onToggleMyPipelines?: () => void;
+  onVendorFilterChange?: (vendorId: string) => void;
+  onSearchFilterChange?: (search: string) => void;
+  onStatusFilterChange?: (status: string) => void;
+  onClearFilters?: () => void;
+  userRole?: string;
 }
 
 const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
@@ -38,19 +50,29 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
   closedDeals,
   conversionRate = 0,
   averageCycleTime = '0 dias',
-  loading = false
+  loading = false,
+  // Novos props para filtros
+  showOnlyMyPipelines = false,
+  selectedVendorFilter = '',
+  searchFilter = '',
+  statusFilter = '',
+  availableVendors = [],
+  onToggleMyPipelines,
+  onVendorFilterChange,
+  onSearchFilterChange,
+  onStatusFilterChange,
+  onClearFilters,
+  userRole
 }) => {
   // Calcular métricas adicionais
   const averageDealSize = closedDeals > 0 ? totalRevenue / closedDeals : 0;
 
   const handleSearchChange = (search: string) => {
-    // Implementar lógica de busca
-    console.log('Search:', search);
+    onSearchFilterChange?.(search);
   };
 
   const handleStatusFilter = (status: string) => {
-    // Implementar filtro por status
-    console.log('Status filter:', status);
+    onStatusFilterChange?.(status);
   };
 
   const handleDateFilter = (dateRange: { start: string; end: string }) => {
@@ -59,8 +81,7 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
   };
 
   const handleAssigneeFilter = (assigneeId: string) => {
-    // Implementar filtro por responsável
-    console.log('Assignee filter:', assigneeId);
+    onVendorFilterChange?.(assigneeId);
   };
 
   const handleSortChange = (sortBy: string, direction: 'asc' | 'desc') => {
