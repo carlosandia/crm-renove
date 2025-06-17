@@ -13,7 +13,20 @@ interface Lead {
   status?: string;
   lead_source?: string;
   created_at: string;
+  updated_at: string;
+  tenant_id: string;
+  assigned_to?: string;
   estimated_value?: number;
+  created_by: string;
+  job_title?: string;
+  last_contact_date?: string;
+  next_action_date?: string;
+  lead_score?: number;
+  probability?: number;
+  campaign_name?: string;
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
 }
 
 interface LeadsListProps {
