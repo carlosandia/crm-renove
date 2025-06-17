@@ -55,16 +55,28 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
     return sum + (isNaN(value) ? 0 : value);
   }, 0);
 
+  // Função para obter cor da etapa baseada no nome
+  const getStageBackgroundColor = () => {
+    const stageName = stage.name.toLowerCase();
+    if (stageName.includes('ganho') || stageName.includes('fechado') || stageName.includes('won')) {
+      return 'from-green-50 to-green-100 border-green-200';
+    }
+    if (stageName.includes('perdido') || stageName.includes('lost')) {
+      return 'from-red-50 to-red-100 border-red-200';
+    }
+    return 'from-gray-50 to-gray-100 border-gray-200';
+  };
+
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col w-80 bg-white border border-gray-200 rounded-xl shadow-sm transition-all duration-300 ${
-        isOver ? 'border-green-300 bg-green-50 shadow-lg transform scale-105' : 'hover:shadow-md'
+      className={`flex flex-col w-80 bg-gradient-to-b ${getStageBackgroundColor()} border border-opacity-50 rounded-xl shadow-sm transition-all duration-300 ${
+        isOver ? 'border-blue-300 bg-blue-50 shadow-lg transform scale-105' : 'hover:shadow-md'
       }`}
       style={{ minHeight: '600px' }}
     >
-      {/* Header da Coluna - melhor organização */}
-      <div className="px-4 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 rounded-t-xl">
+      {/* Header da Coluna */}
+      <div className={`px-4 py-4 bg-gradient-to-r ${getStageBackgroundColor()} border-b border-gray-200 rounded-t-xl`}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-gray-900 text-base flex items-center gap-2">
             <div 
@@ -73,14 +85,14 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
             ></div>
             {stage.name}
           </h3>
-          <div className="text-xs font-semibold text-white bg-gray-500 px-2.5 py-1 rounded-full min-w-[24px] text-center">
+          <div className="text-xs font-semibold text-white bg-gray-600 px-2.5 py-1 rounded-full min-w-[24px] text-center">
             {leads.length}
           </div>
         </div>
 
-        {/* Valor total centralizado */}
-        <div className="text-center py-2 px-3 bg-white rounded-lg border border-gray-100">
-          <div className="text-xs text-gray-500 font-medium mb-1">Total</div>
+        {/* Valor total */}
+        <div className="text-center py-2 px-3 bg-white/70 backdrop-blur-sm rounded-lg border border-white/50">
+          <div className="text-xs text-gray-600 font-medium mb-1">Total</div>
           <div className="text-lg font-bold text-gray-900">
             {totalValue.toLocaleString('pt-BR', {
               style: 'currency',
@@ -90,7 +102,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
         </div>
       </div>
 
-      {/* Conteúdo da Coluna - melhor espaçamento */}
+      {/* Conteúdo da Coluna */}
       <div className="flex-1 p-3 space-y-3 overflow-y-auto">
         <SortableContext items={leads.map(l => l.id)} strategy={verticalListSortingStrategy}>
           {leads.length === 0 ? (
@@ -110,11 +122,11 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
         </SortableContext>
       </div>
 
-      {/* Botão Adicionar Lead - melhor estilo */}
-      <div className="p-4 border-t border-gray-100 bg-gray-50 rounded-b-xl">
+      {/* Botão Adicionar Lead */}
+      <div className="p-4 border-t border-gray-200 bg-white/50 backdrop-blur-sm rounded-b-xl">
         <button
           onClick={() => onAddLead(stage.id)}
-          className="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-lg text-sm font-semibold transition-all duration-200 text-green-700 bg-green-50 border-2 border-green-200 hover:bg-green-100 hover:border-green-300 hover:shadow-md"
+          className="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-lg text-sm font-semibold transition-all duration-200 text-blue-700 bg-blue-50 border-2 border-blue-200 hover:bg-blue-100 hover:border-blue-300 hover:shadow-md"
         >
           <Plus className="w-4 h-4" />
           <span>Adicionar Lead</span>
