@@ -49,12 +49,8 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
               {children}
             </div>
           ) : (
-            <div className="p-6 min-h-full">
-              <div className="max-w-7xl mx-auto">
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 fade-in">
-                  {children}
-                </div>
-              </div>
+            <div className="flex flex-col w-full px-6 pt-6 pb-10">
+              {children}
             </div>
           )}
         </main>
