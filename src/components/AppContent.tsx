@@ -1,40 +1,24 @@
 
 import React from 'react';
-import ModernDashboard from './ModernDashboard';
-import ClientesModule from './ClientesModule';
-import VendedoresModule from './VendedoresModule';
-import PerformanceModule from './PerformanceModule';
-import PipelineModule from './Pipeline/PipelineModule';
-import LeadsModule from './LeadsModule';
+import { useAuth } from '../contexts/AuthContext';
+import LoginForm from './LoginForm';
+import AppDashboard from './AppDashboard';
 
-interface AppContentProps {
-  activeModule: string;
-  userRole: string;
-}
+const AppContent: React.FC = () => {
+  const { user, loading } = useAuth();
 
-const AppContent: React.FC<AppContentProps> = ({ activeModule, userRole }) => {
-  const renderContent = () => {
-    switch (activeModule) {
-      case 'dashboard':
-        return <ModernDashboard />;
-      case 'pipelines':
-        return <PipelineModule />;
-      case 'leads':
-        return <LeadsModule />;
-      case 'clientes':
-        return <ClientesModule />;
-      case 'vendedores':
-        return userRole === 'admin' ? <VendedoresModule /> : <div>Acesso negado</div>;
-      case 'performance':
-        return <PerformanceModule />;
-      default:
-        return <ModernDashboard />;
-    }
-  };
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <h2>Carregando...</h2>
+      </div>
+    );
+  }
 
+  // ✅ Redirecionamento único: se não logado, mostra login; se logado, vai para /app
   return (
-    <div className="flex-1 overflow-auto">
-      {renderContent()}
+    <div className="App">
+      {!user ? <LoginForm /> : <AppDashboard />}
     </div>
   );
 };
