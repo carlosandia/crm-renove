@@ -18,6 +18,7 @@ interface Lead {
   estimated_value: number;
   lead_score: number;
   lead_temperature: string;
+  probability: number;
   status: string;
   assigned_to?: string;
   created_at: string;
