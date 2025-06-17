@@ -271,6 +271,10 @@ const PipelineViewModule: React.FC = () => {
     }));
   };
 
+  const handlePipelineChange = (pipeline: Pipeline | null) => {
+    setSelectedPipeline(pipeline);
+  };
+
   const getAllStages = (): PipelineStage[] => {
     return (selectedPipeline?.pipeline_stages || [])
       .sort((a, b) => a.order_index - b.order_index);
@@ -320,7 +324,7 @@ const PipelineViewModule: React.FC = () => {
       <PipelineViewHeader
         pipelines={pipelines}
         selectedPipeline={selectedPipeline}
-        onPipelineChange={setSelectedPipeline}
+        onPipelineChange={handlePipelineChange}
         onAddLead={() => handleAddLead()}
         totalLeads={totalLeads}
         totalRevenue={totalRevenue}

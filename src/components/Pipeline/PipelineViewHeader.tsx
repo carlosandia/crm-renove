@@ -1,6 +1,9 @@
 
 import React from 'react';
-import { Plus, Users, DollarSign, CheckCircle, Search, Filter } from 'lucide-react';
+import PipelineStats from './PipelineStats';
+import PipelineFilters from './PipelineFilters';
+import PipelineActions from './PipelineActions';
+import PipelineSelector from './PipelineSelector';
 
 interface Pipeline {
   id: string;
@@ -27,80 +30,99 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
   totalRevenue,
   closedDeals
 }) => {
+  // Calcular métricas adicionais
+  const conversionRate = totalLeads > 0 ? (closedDeals / totalLeads) * 100 : 0;
+  const averageDealSize = closedDeals > 0 ? totalRevenue / closedDeals : 0;
+  const averageCycleTime = 12; // Mock data
+
+  const handleSearchChange = (search: string) => {
+    // Implementar lógica de busca
+    console.log('Search:', search);
+  };
+
+  const handleStatusFilter = (status: string) => {
+    // Implementar filtro por status
+    console.log('Status filter:', status);
+  };
+
+  const handleDateFilter = (dateRange: { start: string; end: string }) => {
+    // Implementar filtro por data
+    console.log('Date filter:', dateRange);
+  };
+
+  const handleAssigneeFilter = (assigneeId: string) => {
+    // Implementar filtro por responsável
+    console.log('Assignee filter:', assigneeId);
+  };
+
+  const handleSortChange = (sortBy: string, direction: 'asc' | 'desc') => {
+    // Implementar ordenação
+    console.log('Sort:', sortBy, direction);
+  };
+
+  const handleExport = () => {
+    // Implementar exportação
+    console.log('Export data');
+  };
+
+  const handleImport = () => {
+    // Implementar importação
+    console.log('Import data');
+  };
+
+  const handleSettings = () => {
+    // Implementar configurações
+    console.log('Settings');
+  };
+
+  const handleManageMembers = () => {
+    // Implementar gerenciamento de membros
+    console.log('Manage members');
+  };
+
   return (
-    <div className="pipeline-internal-header">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-6">
-          <h1 className="text-2xl font-bold text-gray-900">Pipeline de Vendas</h1>
-          
-          {/* Métricas inline */}
-          <div className="flex items-center space-x-6 text-sm">
-            <div className="flex items-center space-x-2">
-              <Users className="w-4 h-4 text-blue-500" />
-              <span className="text-gray-600">Total de Leads:</span>
-              <span className="font-semibold text-gray-900">{totalLeads}</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <DollarSign className="w-4 h-4 text-green-500" />
-              <span className="text-gray-600">Receita Total:</span>
-              <span className="font-semibold text-gray-900">R$ {totalRevenue.toLocaleString('pt-BR')}</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <CheckCircle className="w-4 h-4 text-purple-500" />
-              <span className="text-gray-600">Fechados:</span>
-              <span className="font-semibold text-gray-900">R$ 0</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center space-x-4">
-          <select 
-            value={selectedPipeline?.id || ''} 
-            onChange={(e) => {
-              const pipeline = pipelines.find(p => p.id === e.target.value);
-              onPipelineChange(pipeline || null);
-            }}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {pipelines.map(pipeline => (
-              <option key={pipeline.id} value={pipeline.id}>
-                {pipeline.name}
-              </option>
-            ))}
-          </select>
-          
-          <button
-            onClick={onAddLead}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center space-x-2 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Criar Oportunidade</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Barra de busca e filtros */}
-      <div className="flex items-center justify-between mt-4">
-        <div className="flex-1 max-w-md">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar leads por nome, email, telefone..."
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+    <div className="pipeline-internal-header bg-white border-b border-gray-200 flex-shrink-0">
+      <div className="p-6 space-y-6">
+        {/* Cabeçalho principal */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <h1 className="text-2xl font-bold text-gray-900">Pipeline de Vendas</h1>
+            <PipelineSelector
+              pipelines={pipelines}
+              selectedPipeline={selectedPipeline}
+              onPipelineChange={onPipelineChange}
+              canCreate={false}
             />
           </div>
+
+          <PipelineActions
+            onAddLead={onAddLead}
+            onExport={handleExport}
+            onImport={handleImport}
+            onSettings={handleSettings}
+            onManageMembers={handleManageMembers}
+            canManage={true}
+          />
         </div>
-        
-        <div className="flex items-center space-x-2">
-          <button className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
-            <Filter className="w-4 h-4" />
-            <span>Filtro Personalizado</span>
-          </button>
-          <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option>Ativos (Novo → Negociação)</option>
-          </select>
-        </div>
+
+        {/* Estatísticas */}
+        <PipelineStats
+          totalLeads={totalLeads}
+          totalRevenue={totalRevenue}
+          closedDeals={closedDeals}
+          conversionRate={conversionRate}
+          averageDealSize={averageDealSize}
+          averageCycleTime={averageCycleTime}
+        />
+
+        {/* Filtros */}
+        <PipelineFilters
+          onSearchChange={handleSearchChange}
+          onStatusFilter={handleStatusFilter}
+          onDateFilter={handleDateFilter}
+          onAssigneeFilter={handleAssigneeFilter}
+          onSortChange={handleSortChange}
+        />
       </div>
     </div>
   );
