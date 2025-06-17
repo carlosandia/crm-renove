@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Search, Filter, Calendar, User, Tag, SortAsc, ChevronDown } from 'lucide-react';
 
@@ -42,8 +43,8 @@ const PipelineFilters: React.FC<PipelineFiltersProps> = ({
 
   return (
     <div className="px-4 pb-2">
-      {/* Container com borda arredondada cinza como na imagem */}
-      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+      {/* Container com borda arredondada cinza sem fundo branco */}
+      <div className="border border-gray-200 rounded-lg p-4">
         <div className="flex items-center justify-between gap-4">
           {/* Barra de busca */}
           <div className="flex-1 max-w-md">
@@ -92,7 +93,7 @@ const PipelineFilters: React.FC<PipelineFiltersProps> = ({
 
             <button
               onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-              className="flex items-center space-x-2 px-3 py-2 border border-gray-200 rounded-lg text-sm hover:bg-white hover:border-gray-300 transition-all duration-200 bg-white"
+              className="flex items-center space-x-2 px-3 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 bg-white"
             >
               <Filter className="w-4 h-4" />
               <span>Filtro Personalizado</span>
@@ -181,7 +182,7 @@ const PipelineFilters: React.FC<PipelineFiltersProps> = ({
                 Limpar Filtros
               </button>
               <div className="flex gap-2">
-                <button className="px-3 py-2 text-sm border border-gray-200 rounded-lg hover:bg-white bg-white">
+                <button className="px-3 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 bg-white">
                   Salvar Filtro
                 </button>
                 <button 
