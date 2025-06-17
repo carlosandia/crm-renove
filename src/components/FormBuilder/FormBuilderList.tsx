@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Eye, Edit, Trash2, Copy, ExternalLink, Calendar, Globe } from 'lucide-react';
+import { Eye, Edit, Trash2, Copy, ExternalLink, Calendar, MoreHorizontal } from 'lucide-react';
 
 interface CustomForm {
   id: string;
@@ -22,7 +22,6 @@ interface FormBuilderListProps {
   forms: CustomForm[];
   loading: boolean;
   onEditForm: (form: CustomForm) => void;
-  onPreviewForm: (form: CustomForm) => void;
   onDeleteForm: (formId: string) => void;
 }
 
@@ -30,7 +29,6 @@ const FormBuilderList: React.FC<FormBuilderListProps> = ({
   forms,
   loading,
   onEditForm,
-  onPreviewForm,
   onDeleteForm
 }) => {
   const formatDate = (dateString: string) => {
@@ -48,6 +46,19 @@ const FormBuilderList: React.FC<FormBuilderListProps> = ({
     const embedCode = `<iframe src="${formUrl}" width="100%" height="600" frameborder="0"></iframe>`;
     navigator.clipboard.writeText(embedCode);
     alert('Código embed copiado para a área de transferência!');
+  };
+
+  // Simular dados para demonstração
+  const getFormStats = (formId: string) => {
+    const randomLeads = Math.floor(Math.random() * 200) + 10;
+    const randomViews = Math.floor(randomLeads * (Math.random() * 10 + 5));
+    const conversion = ((randomLeads / randomViews) * 100).toFixed(1);
+    
+    return {
+      leads: randomLeads,
+      views: randomViews,
+      conversion: conversion
+    };
   };
 
   if (loading) {
@@ -74,119 +85,105 @@ const FormBuilderList: React.FC<FormBuilderListProps> = ({
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
-          <tr>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Formulário
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Status
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Links
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Criado em
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Ações
-            </th>
-          </tr>
-        </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-          {forms.map((form) => (
-            <tr key={form.id} className="hover:bg-gray-50">
-              <td className="px-6 py-4 whitespace-nowrap">
-                <div>
-                  <div className="text-sm font-medium text-gray-900">
-                    {form.name}
+    <div className="p-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        {forms.map((form) => {
+          const stats = getFormStats(form.id);
+          const fieldCount = Math.floor(Math.random() * 15) + 5; // Simular número de campos
+          
+          return (
+            <div key={form.id} className="bg-white border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+              {/* Header do Card */}
+              <div className="p-4 border-b border-gray-100">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-lg font-medium text-gray-900 truncate">
+                      {form.name}
+                    </h3>
+                    <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+                      {form.description || 'Formulário para captura de leads da landing page principal'}
+                    </p>
                   </div>
-                  {form.description && (
-                    <div className="text-sm text-gray-500 mt-1">
-                      {form.description}
-                    </div>
-                  )}
-                  <div className="text-xs text-gray-400 mt-1">
-                    Slug: {form.slug}
+                  
+                  <div className="relative ml-2">
+                    <button className="p-1 text-gray-400 hover:text-gray-600 rounded">
+                      <MoreHorizontal size={16} />
+                    </button>
                   </div>
                 </div>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap">
-                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                  form.is_active 
-                    ? 'bg-green-100 text-green-800 border border-green-200' 
-                    : 'bg-gray-100 text-gray-800 border border-gray-200'
-                }`}>
-                  <div className={`w-2 h-2 rounded-full mr-1 ${
-                    form.is_active ? 'bg-green-400' : 'bg-gray-400'
-                  }`}></div>
-                  {form.is_active ? 'Ativo' : 'Inativo'}
-                </span>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap">
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => copyFormLink(form.slug)}
-                    className="text-blue-600 hover:text-blue-900 p-1 rounded transition-colors"
-                    title="Copiar link do formulário"
-                  >
-                    <Copy size={14} />
-                  </button>
-                  <button
-                    onClick={() => copyEmbedCode(form.slug)}
-                    className="text-green-600 hover:text-green-900 p-1 rounded transition-colors"
-                    title="Copiar código embed"
-                  >
-                    <Globe size={14} />
-                  </button>
-                  <a
-                    href={`/form/${form.slug}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-purple-600 hover:text-purple-900 p-1 rounded transition-colors"
-                    title="Abrir formulário"
-                  >
-                    <ExternalLink size={14} />
-                  </a>
-                </div>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                <div className="flex items-center">
-                  <Calendar size={14} className="mr-1" />
-                  {formatDate(form.created_at)}
-                </div>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                <button
-                  onClick={() => onPreviewForm(form)}
-                  className="text-blue-600 hover:text-blue-900 p-1 rounded transition-colors"
-                  title="Visualizar"
-                >
-                  <Eye size={16} />
-                </button>
                 
-                <button
-                  onClick={() => onEditForm(form)}
-                  className="text-green-600 hover:text-green-900 p-1 rounded transition-colors"
-                  title="Editar"
-                >
-                  <Edit size={16} />
-                </button>
-                
-                <button
-                  onClick={() => onDeleteForm(form.id)}
-                  className="text-red-600 hover:text-red-900 p-1 rounded transition-colors"
-                  title="Excluir"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                <div className="flex items-center justify-between mt-3">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs text-gray-500">{fieldCount} campos</span>
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                      form.is_active 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {form.is_active ? 'Ativo' : 'Inativo'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Estatísticas */}
+              <div className="p-4 border-b border-gray-100">
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <div className="text-lg font-semibold text-gray-900">{stats.leads}</div>
+                    <div className="text-xs text-gray-500">Leads</div>
+                  </div>
+                  <div>
+                    <div className="text-lg font-semibold text-gray-900">{stats.conversion}%</div>
+                    <div className="text-xs text-gray-500">Conversão</div>
+                  </div>
+                  <div>
+                    <div className="text-lg font-semibold text-gray-900">{stats.views}</div>
+                    <div className="text-xs text-gray-500">Views</div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Ações */}
+              <div className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => copyFormLink(form.slug)}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="Ver"
+                    >
+                      <Eye size={16} />
+                    </button>
+                    <button
+                      onClick={() => onEditForm(form)}
+                      className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                      title="Editar"
+                    >
+                      <Edit size={16} />
+                    </button>
+                    <button
+                      onClick={() => copyEmbedCode(form.slug)}
+                      className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                      title="Copiar código"
+                    >
+                      <Copy size={16} />
+                    </button>
+                  </div>
+                  
+                  <button
+                    onClick={() => onDeleteForm(form.id)}
+                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Excluir"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };
