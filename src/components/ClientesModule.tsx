@@ -777,21 +777,28 @@ const ClientesModule: React.FC = () => {
 
       {/* Modal de Detalhes */}
       {showDetailsModal && selectedCliente && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
+        <div 
+          className="client-modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowDetailsModal(false);
+            }
+          }}
+        >
+          <div className="client-modal-content">
+            <div className="client-modal-header">
               <div className="flex items-center justify-between">
                 <h3 className="text-xl font-semibold text-gray-900">Detalhes do Cliente</h3>
                 <button
                   onClick={() => setShowDetailsModal(false)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
             
-            <div className="p-6 space-y-6">
+            <div className="client-modal-body space-y-6">
               <div className="flex items-start space-x-4">
                 <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
                   {selectedCliente.company ? selectedCliente.company.charAt(0) : selectedCliente.name.charAt(0)}
