@@ -133,4 +133,8 @@ router.post('/execute', async (req: Request, res: Response) => {
   }
 })
 
+router.get('/', (req, res) => {
+  res.json({ message: 'MCP routes - em desenvolvimento' });
+});
+
 export default router; 

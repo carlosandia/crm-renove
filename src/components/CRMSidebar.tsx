@@ -67,11 +67,11 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate, onTog
         .from('pipelines')
         .select('id, name, description, created_at, created_by, tenant_id')
         .eq('tenant_id', user.tenant_id)
-        .eq('created_by', user.id) // Apenas pipelines criadas pelo admin logado
+        .eq('created_by', user.email) // Usando email como identificador
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Erro ao carregar pipelines:', error);
+        console.error('❌ SIDEBAR: Erro ao carregar pipelines:', error);
         setAvailablePipelines([]);
         return;
       }
@@ -80,7 +80,7 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate, onTog
       // Usar availablePipelines como userPipelines para manter compatibilidade
       setUserPipelines(pipelines || []);
     } catch (error) {
-      console.error('Erro ao carregar pipelines:', error);
+      console.error('❌ SIDEBAR: Erro ao carregar pipelines:', error);
       setAvailablePipelines([]);
       setUserPipelines([]);
     } finally {
@@ -115,7 +115,8 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate, onTog
         { id: 'Criador de formulários', label: 'Criador de formulários', icon: FileText },
         { id: 'Relatório', label: 'Relatório', icon: BarChart3 },
         { id: 'Acompanhamento', label: 'Acompanhamento', icon: Eye },
-        { id: 'Leads', label: 'Leads', icon: Users }
+        { id: 'Leads', label: 'Leads', icon: Users },
+        { id: 'Integrações', label: 'Integrações', icon: Settings }
       ];
 
       // Admin sempre vê o menu Pipeline se tiver pelo menos 1 pipeline criada

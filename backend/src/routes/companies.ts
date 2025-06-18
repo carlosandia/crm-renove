@@ -1,194 +1,362 @@
-import express from 'express';
-import { supabase } from '../index';
+import { Router, Request, Response } from 'express';
+import { supabase } from '../config/supabase';
+import { asyncHandler, NotFoundError, ForbiddenError, ConflictError } from '../middleware/errorHandler';
+import { validateRequest, schemas } from '../middleware/validation';
+import { requireRole } from '../middleware/auth';
+import { ApiResponse } from '../types/express';
 
-const router = express.Router();
+const router = Router();
 
-// Listar empresas
-router.get('/', async (req, res) => {
-  try {
-    console.log('📋 Buscando empresas...');
-    
-    const { data: companies, error } = await supabase
-      .from('companies')
-      .select('*')
+/**
+ * Validação específica para empresas
+ */
+const companyValidation = {
+  create: {
+    body: {
+      name: { required: true, type: 'string', min: 2, max: 255 },
+      segment: { type: 'string', max: 100 },
+      website: { type: 'string', max: 255 },
+      phone: { type: 'string', max: 20 },
+      email: { type: 'string', email: true, max: 255 },
+      address: { type: 'string', max: 500 },
+      city: { type: 'string', max: 100 },
+      state: { type: 'string', max: 100 },
+      country: { type: 'string', max: 100 },
+      admin_name: { required: true, type: 'string', min: 2, max: 100 },
+      admin_email: { required: true, type: 'string', email: true },
+      admin_password: { type: 'string', min: 6, max: 100 }
+    }
+  },
+  update: {
+    body: {
+      name: { type: 'string', min: 2, max: 255 },
+      segment: { type: 'string', max: 100 },
+      website: { type: 'string', max: 255 },
+      phone: { type: 'string', max: 20 },
+      email: { type: 'string', email: true, max: 255 },
+      address: { type: 'string', max: 500 },
+      city: { type: 'string', max: 100 },
+      state: { type: 'string', max: 100 },
+      country: { type: 'string', max: 100 },
+      is_active: { type: 'boolean' }
+    }
+  }
+};
+
+/**
+ * GET /api/companies - Listar empresas
+ */
+router.get('/', 
+  requireRole(['super_admin', 'admin']),
+  validateRequest({
+    query: {
+      page: { type: 'number', min: 1 },
+      limit: { type: 'number', min: 1, max: 100 },
+      search: { type: 'string', max: 255 },
+      segment: { type: 'string', max: 100 },
+      is_active: { type: 'boolean' }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      segment,
+      is_active
+    } = req.query;
+
+    // 1. Construir query base
+    let query = supabase.from('companies').select('*', { count: 'exact' });
+
+    // 2. Admins só veem a própria empresa
+    if (req.user?.role === 'admin') {
+      query = query.eq('id', req.user.tenant_id);
+    }
+
+    // 3. Aplicar filtros
+    if (search) {
+      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,segment.ilike.%${search}%`);
+    }
+
+    if (segment) {
+      query = query.eq('segment', segment);
+    }
+
+    if (is_active !== undefined) {
+      query = query.eq('is_active', is_active);
+    }
+
+    // 4. Paginação
+    const offset = ((page as number) - 1) * (limit as number);
+    query = query
+      .range(offset, offset + (limit as number) - 1)
       .order('created_at', { ascending: false });
 
+    // 5. Executar query
+    const { data: companies, error, count } = await query;
+
     if (error) {
-      console.error('❌ Erro ao buscar empresas:', error);
-      throw error;
+      throw new Error(`Erro ao buscar empresas: ${error.message}`);
     }
 
-    console.log('✅ Empresas encontradas:', companies?.length || 0);
+    const totalPages = Math.ceil((count || 0) / (limit as number));
 
-    res.json({
-      companies: companies || []
-    });
-  } catch (error) {
-    console.error('💥 Erro ao buscar empresas:', error);
-    res.status(500).json({
-      message: 'Erro ao buscar empresas',
-      error: error instanceof Error ? error.message : 'Erro desconhecido'
-    });
-  }
-});
+    const response: ApiResponse = {
+      success: true,
+      data: companies || [],
+      meta: {
+        page: page as number,
+        limit: limit as number,
+        total: count || 0,
+        totalPages
+      },
+      timestamp: new Date().toISOString()
+    };
 
-// Criar empresa + admin (versão simplificada)
-router.post('/', async (req, res) => {
-  try {
-    const { companyName, segment, adminName, adminEmail, adminPassword } = req.body;
+    res.json(response);
+  })
+);
 
-    console.log('🚀 Iniciando criação de empresa...');
-    console.log('📋 Dados recebidos:', { 
-      companyName, 
-      segment, 
-      adminName, 
-      adminEmail,
-      hasPassword: !!adminPassword 
-    });
+/**
+ * GET /api/companies/:id - Buscar empresa por ID
+ */
+router.get('/:id',
+  requireRole(['super_admin', 'admin']),
+  validateRequest(schemas.uuidParam),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
 
-    // Validações básicas
-    if (!companyName || !adminName || !adminEmail) {
-      console.log('❌ Dados obrigatórios faltando');
-      return res.status(400).json({
-        message: 'Nome da empresa, nome do admin e email são obrigatórios'
-      });
+    // 1. Verificar permissões
+    if (req.user?.role === 'admin' && id !== req.user.tenant_id) {
+      throw new ForbiddenError('Admins só podem acessar a própria empresa');
     }
 
-    // Verificar se email já existe
-    console.log('🔍 Verificando se email já existe...');
-    const { data: existingUser, error: checkError } = await supabase
+    // 2. Buscar empresa
+    const { data: company, error } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error || !company) {
+      throw new NotFoundError('Empresa não encontrada');
+    }
+
+    const response: ApiResponse = {
+      success: true,
+      data: company,
+      timestamp: new Date().toISOString()
+    };
+
+    res.json(response);
+  })
+);
+
+/**
+ * POST /api/companies - Criar nova empresa (apenas super admins)
+ */
+router.post('/',
+  requireRole(['super_admin']),
+  validateRequest(companyValidation.create),
+  asyncHandler(async (req: Request, res: Response) => {
+    const {
+      name,
+      segment,
+      website,
+      phone,
+      email,
+      address,
+      city,
+      state,
+      country,
+      admin_name,
+      admin_email,
+      admin_password = '123456'
+    } = req.body;
+
+    // 1. Verificar se empresa já existe
+    const { data: existingCompany } = await supabase
+      .from('companies')
+      .select('id')
+      .eq('name', name)
+      .single();
+
+    if (existingCompany) {
+      throw new ConflictError('Empresa com este nome já existe');
+    }
+
+    // 2. Verificar se email do admin já existe
+    const { data: existingUser } = await supabase
       .from('users')
-      .select('id, email')
-      .eq('email', adminEmail)
-      .maybeSingle();
-
-    if (checkError) {
-      console.error('❌ Erro ao verificar email:', checkError);
-      throw checkError;
-    }
+      .select('id')
+      .eq('email', admin_email)
+      .single();
 
     if (existingUser) {
-      console.log('❌ Email já existe:', adminEmail);
-      return res.status(400).json({
-        message: `Email já está em uso: ${adminEmail}`
-      });
+      throw new ConflictError('Email do administrador já está em uso');
     }
 
-    console.log('✅ Email disponível');
-
-    // 1. Criar empresa
-    console.log('🏢 Criando empresa...');
-    const { data: company, error: companyError } = await supabase
+    // 3. Criar empresa
+    const { data: newCompany, error: companyError } = await supabase
       .from('companies')
-      .insert([{ 
-        name: companyName, 
-        segment: segment || null
+      .insert([{
+        name,
+        segment,
+        website,
+        phone,
+        email,
+        address,
+        city,
+        state,
+        country,
+        is_active: true
       }])
       .select()
       .single();
 
     if (companyError) {
-      console.error('❌ Erro ao criar empresa:', companyError);
-      throw companyError;
+      throw new Error(`Erro ao criar empresa: ${companyError.message}`);
     }
 
-    console.log('✅ Empresa criada:', {
-      id: company.id,
-      name: company.name,
-      segment: company.segment
-    });
-
-    // 2. Preparar dados do admin
-    const adminNames = adminName.trim().split(' ');
+    // 4. Criar admin
+    const adminNames = admin_name.trim().split(' ');
     const firstName = adminNames[0];
     const lastName = adminNames.slice(1).join(' ') || '';
-    const finalPassword = adminPassword || '123456';
 
-    console.log('👤 Criando admin na tabela users...');
-
-    // 3. Criar admin na tabela users (sem Supabase Auth por enquanto)
-    const { data: admin, error: adminError } = await supabase
+    const { data: newAdmin, error: adminError } = await supabase
       .from('users')
       .insert([{
-        email: adminEmail,
+        email: admin_email,
         first_name: firstName,
         last_name: lastName,
         role: 'admin',
-        tenant_id: company.id,
+        tenant_id: newCompany.id,
         is_active: true
       }])
       .select()
       .single();
 
     if (adminError) {
-      console.error('❌ Erro ao criar admin:', adminError);
-      
       // Rollback: remover empresa criada
-      console.log('🔄 Fazendo rollback da empresa...');
-      await supabase.from('companies').delete().eq('id', company.id);
-      
-      throw adminError;
+      await supabase.from('companies').delete().eq('id', newCompany.id);
+      throw new Error(`Erro ao criar admin: ${adminError.message}`);
     }
 
-    console.log('✅ Admin criado na tabela:', {
-      id: admin.id,
-      email: admin.email,
-      name: `${admin.first_name} ${admin.last_name}`,
-      role: admin.role,
-      tenant_id: admin.tenant_id
-    });
+    // 5. Log de auditoria
+    console.log(`✅ Empresa criada: ${name} com admin ${admin_email} por ${req.user?.email}`);
 
-    // 4. Criar registro de integração (opcional)
-    try {
-      console.log('🔗 Criando registro de integração...');
-      const { error: integrationError } = await supabase
-        .from('integrations')
-        .insert([{
-          company_id: company.id
-        }]);
-
-      if (integrationError) {
-        console.warn('⚠️ Erro ao criar integração (não crítico):', integrationError.message);
-      } else {
-        console.log('✅ Integração criada');
-      }
-    } catch (integrationErr) {
-      console.warn('⚠️ Erro ao criar integração (tabela pode não existir):', integrationErr);
-    }
-
-    // 5. Resposta de sucesso
-    console.log('🎉 Empresa e admin criados com sucesso!');
-
-    res.json({
+    const response: ApiResponse = {
       success: true,
-      company: {
-        id: company.id,
-        name: company.name,
-        segment: company.segment
+      data: {
+        company: newCompany,
+        admin: newAdmin,
+        credentials: {
+          email: admin_email,
+          password: admin_password
+        }
       },
-      admin: {
-        id: admin.id,
-        email: admin.email,
-        first_name: admin.first_name,
-        last_name: admin.last_name,
-        role: admin.role,
-        tenant_id: admin.tenant_id
-      },
-      credentials: {
-        email: adminEmail,
-        password: finalPassword
-      },
-      message: `Empresa "${companyName}" e gestor "${adminName}" criados com sucesso!`
-    });
+      message: `Empresa "${name}" e administrador criados com sucesso`,
+      timestamp: new Date().toISOString()
+    };
 
-  } catch (error) {
-    console.error('💥 Erro completo ao criar empresa:', error);
-    res.status(500).json({
-      message: 'Erro interno ao criar empresa',
-      error: error instanceof Error ? error.message : 'Erro desconhecido',
-      details: process.env.NODE_ENV === 'development' ? error : undefined
-    });
-  }
-});
+    res.status(201).json(response);
+  })
+);
 
-export default router;
+/**
+ * PUT /api/companies/:id - Atualizar empresa
+ */
+router.put('/:id',
+  requireRole(['super_admin', 'admin']),
+  validateRequest({
+    ...schemas.uuidParam,
+    ...companyValidation.update
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const updates = req.body;
+
+    // 1. Verificar permissões
+    if (req.user?.role === 'admin' && id !== req.user.tenant_id) {
+      throw new ForbiddenError('Admins só podem atualizar a própria empresa');
+    }
+
+    // 2. Verificar se empresa existe
+    const { data: existingCompany } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (!existingCompany) {
+      throw new NotFoundError('Empresa não encontrada');
+    }
+
+    // 3. Atualizar empresa
+    const { data: updatedCompany, error } = await supabase
+      .from('companies')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Erro ao atualizar empresa: ${error.message}`);
+    }
+
+    console.log(`✅ Empresa atualizada: ${existingCompany.name} por ${req.user?.email}`);
+
+    const response: ApiResponse = {
+      success: true,
+      data: updatedCompany,
+      message: 'Empresa atualizada com sucesso',
+      timestamp: new Date().toISOString()
+    };
+
+    res.json(response);
+  })
+);
+
+/**
+ * DELETE /api/companies/:id - Desativar empresa
+ */
+router.delete('/:id',
+  requireRole(['super_admin']),
+  validateRequest(schemas.uuidParam),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    const { data: existingCompany } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (!existingCompany) {
+      throw new NotFoundError('Empresa não encontrada');
+    }
+
+    // Desativar empresa
+    const { error } = await supabase
+      .from('companies')
+      .update({ is_active: false })
+      .eq('id', id);
+
+    if (error) {
+      throw new Error(`Erro ao desativar empresa: ${error.message}`);
+    }
+
+    console.log(`✅ Empresa desativada: ${existingCompany.name} por ${req.user?.email}`);
+
+    const response: ApiResponse = {
+      success: true,
+      message: 'Empresa desativada com sucesso',
+      timestamp: new Date().toISOString()
+    };
+
+    res.json(response);
+  })
+);
+
+export default router; 

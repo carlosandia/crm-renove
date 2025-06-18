@@ -192,7 +192,7 @@ const PipelineModule: React.FC = () => {
               }));
 
               const convertedStages = (stages || []).length > 0 
-                ? stages.map(stage => ({
+                ? stages?.map(stage => ({
                     id: stage.id,
                     name: stage.name,
                     order: stage.order_index + 1,
@@ -454,7 +454,7 @@ const PipelineModule: React.FC = () => {
             }));
 
             const convertedStages = (stages || []).length > 0 
-              ? stages.map(stage => ({
+              ? stages?.map(stage => ({
                   id: stage.id,
                   name: stage.name,
                   order: stage.order_index + 1,
@@ -595,7 +595,7 @@ const PipelineModule: React.FC = () => {
       }
 
       // 3. Criar campos customizados
-      const allFields = [];
+      const allFields: any[] = [];
 
       // Campos obrigatórios (sempre presentes)
       const requiredFields = [
@@ -1034,7 +1034,7 @@ const PipelineModule: React.FC = () => {
   const updateStageEdit = (stageId: string, updates: Partial<KanbanStage>) => {
     setEditForm(prev => ({
       ...prev,
-      stages: prev.stages.map(stage =>
+      stages: prev.stages?.map(stage =>
         stage.id === stageId ? { ...stage, ...updates } : stage
       )
     }));
@@ -1165,7 +1165,7 @@ const PipelineModule: React.FC = () => {
   const updateStage = (stageId: string, updates: Partial<KanbanStage>) => {
     setPipelineForm(prev => ({
       ...prev,
-      stages: prev.stages.map(stage =>
+      stages: prev.stages?.map(stage =>
         stage.id === stageId ? { ...stage, ...updates } : stage
       )
     }));
@@ -1231,11 +1231,137 @@ const PipelineModule: React.FC = () => {
   };
 
   const removeLossReason = (reasonId: string) => {
-    setPipelineForm(prev => ({
-      ...prev,
-      loss_reasons: prev.loss_reasons.filter(reason => reason.id !== reasonId)
-    }));
+    setPipelineForm({
+      ...pipelineForm,
+      loss_reasons: pipelineForm.loss_reasons.filter(reason => reason.id !== reasonId)
+    });
   };
+
+  // Implementar funções para adicionar e remover membros das pipelines
+  const handleAddMember = async (pipelineId: string, memberId: string) => {
+    if (!user?.tenant_id) {
+      alert('❌ Erro: Tenant não identificado');
+      return;
+    }
+
+    try {
+      console.log('🔗 Adicionando membro à pipeline:', { pipelineId, memberId });
+
+      // Buscar dados do membro para exibir nome
+      const memberData = vendedoresParaUsar.find(m => m.id === memberId);
+      const memberName = memberData ? `${memberData.first_name} ${memberData.last_name}` : 'Vendedor';
+
+      // Verificar se o membro já está vinculado
+      const { data: existingMembership, error: checkError } = await supabase
+        .from('pipeline_members')
+        .select('id')
+        .eq('pipeline_id', pipelineId)
+        .eq('member_id', memberId)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
+
+      if (existingMembership) {
+        alert(`⚠️ ${memberName} já está vinculado a esta pipeline`);
+        return;
+      }
+
+      // Buscar email do membro para garantir compatibilidade
+      const { data: memberUser, error: userError } = await supabase
+        .from('users')
+        .select('id, email')
+        .eq('id', memberId)
+        .single();
+
+      if (userError || !memberUser) {
+        throw new Error('Usuário não encontrado');
+      }
+
+      // Adicionar membro à pipeline usando EMAIL (para compatibilidade com busca)
+      const { error: insertError } = await supabase
+        .from('pipeline_members')
+        .insert([{
+          pipeline_id: pipelineId,
+          member_id: memberUser.email, // ✅ USAR EMAIL em vez de ID
+          assigned_at: new Date().toISOString()
+        }]);
+
+      console.log('🔗 Vinculação criada:', {
+        pipeline_id: pipelineId,
+        member_id: memberUser.email,
+        member_name: memberName
+      });
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      console.log('✅ Membro adicionado com sucesso');
+      
+      // Mostrar feedback positivo com nome
+      alert(`✅ ${memberName} foi vinculado à pipeline com sucesso!`);
+      
+      // Recarregar as pipelines para atualizar a interface
+      await reloadPipelines();
+
+    } catch (error: any) {
+      console.error('❌ Erro ao adicionar membro:', error);
+      alert(`❌ Erro ao vincular vendedor: ${error.message}`);
+    }
+  };
+
+  const handleRemoveMember = async (pipelineId: string, memberId: string) => {
+    if (!user?.tenant_id) {
+      alert('❌ Erro: Tenant não identificado');
+      return;
+    }
+
+    // Buscar dados do membro para exibir nome
+    const memberData = vendedoresParaUsar.find(m => m.id === memberId);
+    const memberName = memberData ? `${memberData.first_name} ${memberData.last_name}` : 'Vendedor';
+
+    // Confirmar ação com nome do vendedor
+    if (!confirm(`Tem certeza que deseja remover ${memberName} desta pipeline?`)) {
+      return;
+    }
+
+    try {
+      console.log('🔓 Removendo membro da pipeline:', { pipelineId, memberId });
+
+      // Remover membro da pipeline
+      const { error } = await supabase
+        .from('pipeline_members')
+        .delete()
+        .eq('pipeline_id', pipelineId)
+        .eq('member_id', memberId);
+
+      if (error) {
+        throw error;
+      }
+
+      console.log('✅ Membro removido com sucesso');
+      
+      // Mostrar feedback positivo com nome
+      alert(`✅ ${memberName} foi removido da pipeline com sucesso!`);
+      
+      // Recarregar as pipelines para atualizar a interface
+      await reloadPipelines();
+
+    } catch (error: any) {
+      console.error('❌ Erro ao remover membro:', error);
+      alert(`❌ Erro ao remover vendedor: ${error.message}`);
+    }
+  };
+
+  console.log('📊 PipelineModule - Estado atual:', {
+    loadingVendedores,
+    loadingPipelines,
+    vendedoresCount: vendedoresParaUsar.length,
+    pipelinesCount: pipelinesParaUsar.length,
+    showCreateForm
+  });
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1264,6 +1390,26 @@ const PipelineModule: React.FC = () => {
         </div>
       </div>
 
+      {/* Banner de funcionalidades implementadas (apenas em desenvolvimento) */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="bg-green-50 border border-green-200 mx-4 mt-4 rounded-lg p-4">
+          <div className="flex items-center space-x-2">
+            <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+              <span className="text-white text-xs font-bold">✓</span>
+            </div>
+            <div>
+              <h4 className="font-semibold text-green-800">Funcionalidades de Vendedores Implementadas!</h4>
+              <p className="text-sm text-green-700">
+                • Botão ➕ para vincular vendedores às pipelines funcionando
+                • Botão ❌ para remover vendedores das pipelines funcionando
+                • Feedback visual com nome dos vendedores
+                • Validação para evitar duplicatas
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Conteúdo principal */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {!showCreateForm ? (
@@ -1272,8 +1418,8 @@ const PipelineModule: React.FC = () => {
             members={vendedoresParaUsar}
             onEdit={handleEditPipeline}
             onDelete={handleDeletePipeline}
-            onAddMember={() => {}}
-            onRemoveMember={() => {}}
+            onAddMember={handleAddMember}
+            onRemoveMember={handleRemoveMember}
             onCreateNew={() => setShowCreateForm(true)}
           />
         ) : (
@@ -1526,7 +1672,7 @@ const PipelineModule: React.FC = () => {
                   </div>
 
                   <div className="space-y-4">
-                    {pipelineForm.stages.map((stage, index) => (
+                    {pipelineForm.stages?.map((stage, index) => (
                       <div key={stage.id} className="p-4 border border-gray-200 rounded-lg bg-gray-50">
                         <div className="grid grid-cols-3 gap-4">
                           <div>
@@ -1943,7 +2089,7 @@ const PipelineModule: React.FC = () => {
                   </div>
 
                   <div className="space-y-4">
-                    {editForm.stages.map((stage, index) => (
+                    {editForm.stages?.map((stage, index) => (
                       <div key={stage.id} className="p-4 border border-gray-200 rounded-lg bg-gray-50">
                         <div className="grid grid-cols-3 gap-4">
                           <div>

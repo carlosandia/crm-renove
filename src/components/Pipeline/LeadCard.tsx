@@ -52,13 +52,18 @@ const LeadCard: React.FC<LeadCardProps> = ({ lead, customFields, isDragging = fa
     const now = new Date();
     const diffMs = now.getTime() - movedAt.getTime();
     
-    const minutes = Math.floor(diffMs / (1000 * 60));
-    const hours = Math.floor(minutes / 60);
+    const totalMinutes = Math.floor(diffMs / (1000 * 60));
+    const hours = Math.floor(totalMinutes / 60);
     const days = Math.floor(hours / 24);
+    const remainingMinutes = totalMinutes % 60;
     
-    if (days > 0) return `${days}d`;
-    if (hours > 0) return `${hours}h`;
-    return `${minutes}min`;
+    if (days > 0) {
+      return `${days}d ${hours % 24}h`;
+    }
+    if (hours > 0) {
+      return `${hours}h ${remainingMinutes}min`;
+    }
+    return `${totalMinutes}min`;
   };
 
   // Função para obter ícone do campo
@@ -129,6 +134,10 @@ const LeadCard: React.FC<LeadCardProps> = ({ lead, customFields, isDragging = fa
     if (window.confirm('Tem certeza que deseja excluir esta oportunidade?')) {
       if (onDelete) {
         onDelete(lead.id);
+      } else {
+        // Fallback - remover lead localmente se não há handler
+        console.log('Lead deletion requested but no handler provided:', lead.id);
+        alert('Funcionalidade de exclusão em desenvolvimento');
       }
     }
   };

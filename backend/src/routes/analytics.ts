@@ -1,0 +1,373 @@
+import { Router, Request, Response } from 'express';
+import { supabase } from '../config/supabase';
+import { asyncHandler, ForbiddenError } from '../middleware/errorHandler';
+import { validateRequest } from '../middleware/validation';
+import { requireRole } from '../middleware/auth';
+import { ApiResponse } from '../types/express';
+import { cache, CacheKeys, CacheTTL, withCache } from '../lib/cache';
+
+const router = Router();
+
+/**
+ * Interface para métricas do dashboard
+ */
+interface DashboardMetrics {
+  totalLeads: number;
+  totalUsers: number;
+  activePipelines: number;
+  conversionRate: number;
+  leadsByStage: Record<string, number>;
+  leadsByMonth: Record<string, number>;
+  topPerformers: Array<{
+    user: string;
+    leadsCount: number;
+    conversionRate: number;
+  }>;
+  recentActivity: Array<{
+    type: string;
+    description: string;
+    timestamp: string;
+    user: string;
+  }>;
+}
+
+/**
+ * GET /api/analytics/dashboard - Métricas principais do dashboard
+ */
+router.get('/dashboard',
+  validateRequest({
+    query: {
+      period: { type: 'string', enum: ['7d', '30d', '90d', '1y'] }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { period = '30d' } = req.query;
+
+    if (!req.user?.tenant_id) {
+      throw new ForbiddenError('Usuário deve pertencer a uma empresa');
+    }
+
+    const cacheKey = CacheKeys.tenantStats(req.user.tenant_id) + `:dashboard:${period}`;
+
+    const metrics = await withCache(
+      cacheKey,
+      async () => {
+        // Mock data para demonstração
+        return {
+          totalLeads: 115,
+          totalUsers: 8,
+          activePipelines: 3,
+          conversionRate: 15.2,
+          leadsByStage: {
+            'Prospecção': 45,
+            'Qualificação': 32,
+            'Proposta': 18,
+            'Negociação': 12,
+            'Fechado': 8
+          },
+          leadsByMonth: {
+            '2024-01': 23,
+            '2024-02': 34,
+            '2024-03': 45,
+            '2024-04': 56,
+            '2024-05': 67,
+            '2024-06': 78
+          },
+          topPerformers: [
+            { user: 'João Silva', leadsCount: 23, conversionRate: 18.5 },
+            { user: 'Maria Santos', leadsCount: 19, conversionRate: 22.1 },
+            { user: 'Pedro Costa', leadsCount: 15, conversionRate: 15.8 }
+          ],
+          recentActivity: [
+            {
+              type: 'lead_created',
+              description: 'Novo lead: Empresa ABC criado no pipeline Vendas',
+              timestamp: new Date().toISOString(),
+              user: 'João Silva'
+            }
+          ]
+        };
+      },
+      CacheTTL.short
+    );
+
+    const response: ApiResponse = {
+      success: true,
+      data: metrics,
+      timestamp: new Date().toISOString()
+    };
+
+    res.json(response);
+  })
+);
+
+/**
+ * GET /api/analytics/pipelines - Analytics por pipeline
+ */
+router.get('/pipelines',
+  validateRequest({
+    query: {
+      period: { type: 'string', enum: ['7d', '30d', '90d'] },
+      pipeline_id: { type: 'string', uuid: true }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { period = '30d', pipeline_id } = req.query;
+
+    if (!req.user?.tenant_id) {
+      throw new ForbiddenError('Usuário deve pertencer a uma empresa');
+    }
+
+    const cacheKey = CacheKeys.pipelineStats(pipeline_id as string || 'all') + `:${period}`;
+
+    const analytics = await withCache(
+      cacheKey,
+      async () => {
+        const days = period === '7d' ? 7 : period === '30d' ? 30 : 90;
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+
+        // Query base
+        let query = supabase
+          .from('pipeline_leads')
+          .select(`
+            *,
+            pipeline_stages(name, stage_order),
+            pipelines!inner(id, name, tenant_id)
+          `)
+          .eq('pipelines.tenant_id', req.user.tenant_id)
+          .gte('created_at', startDate.toISOString());
+
+        if (pipeline_id) {
+          query = query.eq('pipeline_id', pipeline_id);
+        }
+
+        const { data: leads } = await query;
+
+        // Agrupar por pipeline
+        const pipelineAnalytics = leads?.reduce((acc: Record<string, any>, lead: any) => {
+          const pipelineId = lead.pipeline_id;
+          const pipelineName = lead.pipelines?.name;
+
+          if (!acc[pipelineId]) {
+            acc[pipelineId] = {
+              id: pipelineId,
+              name: pipelineName,
+              totalLeads: 0,
+              leadsByStage: {},
+              averageTimeInStage: {},
+              conversionRate: 0
+            };
+          }
+
+          acc[pipelineId].totalLeads++;
+          
+          const stageName = lead.pipeline_stages?.name || 'Sem estágio';
+          acc[pipelineId].leadsByStage[stageName] = (acc[pipelineId].leadsByStage[stageName] || 0) + 1;
+
+          return acc;
+        }, {}) || {};
+
+        return Object.values(pipelineAnalytics);
+      },
+      CacheTTL.medium
+    );
+
+    const response: ApiResponse = {
+      success: true,
+      data: analytics,
+      timestamp: new Date().toISOString()
+    };
+
+    res.json(response);
+  })
+);
+
+/**
+ * GET /api/analytics/users - Performance dos usuários
+ */
+router.get('/users',
+  requireRole(['admin', 'super_admin']),
+  validateRequest({
+    query: {
+      period: { type: 'string', enum: ['7d', '30d', '90d'] },
+      user_id: { type: 'string', uuid: true }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { period = '30d', user_id } = req.query;
+
+    if (!req.user?.tenant_id) {
+      throw new ForbiddenError('Usuário deve pertencer a uma empresa');
+    }
+
+    const cacheKey = CacheKeys.userStats(user_id as string || 'all') + `:${period}`;
+
+    const userAnalytics = await withCache(
+      cacheKey,
+      async () => {
+        const days = period === '7d' ? 7 : period === '30d' ? 30 : 90;
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+
+        // Buscar leads dos usuários
+        let query = supabase
+          .from('pipeline_leads')
+          .select(`
+            assigned_to,
+            created_by,
+            created_at,
+            stage_id,
+            users!pipeline_leads_assigned_to_fkey(id, first_name, last_name, email),
+            pipelines!inner(tenant_id)
+          `)
+          .eq('pipelines.tenant_id', req.user.tenant_id)
+          .gte('created_at', startDate.toISOString());
+
+        if (user_id) {
+          query = query.or(`assigned_to.eq.${user_id},created_by.eq.${user_id}`);
+        }
+
+        const { data: leads } = await query;
+
+        // Agrupar por usuário
+        const userPerformance = leads?.reduce((acc: Record<string, any>, lead: any) => {
+          const userId = lead.assigned_to || lead.created_by;
+          const user = lead.users;
+
+          if (!userId || !user) return acc;
+
+          if (!acc[userId]) {
+            acc[userId] = {
+              id: userId,
+              name: `${user.first_name} ${user.last_name}`.trim(),
+              email: user.email,
+              leadsAssigned: 0,
+              leadsCreated: 0,
+              totalLeads: 0,
+              conversionRate: 0,
+              avgResponseTime: 0
+            };
+          }
+
+          if (lead.assigned_to === userId) {
+            acc[userId].leadsAssigned++;
+          }
+          if (lead.created_by === userId) {
+            acc[userId].leadsCreated++;
+          }
+          acc[userId].totalLeads++;
+
+          return acc;
+        }, {}) || {};
+
+        return Object.values(userPerformance);
+      },
+      CacheTTL.medium
+    );
+
+    const response: ApiResponse = {
+      success: true,
+      data: userAnalytics,
+      timestamp: new Date().toISOString()
+    };
+
+    res.json(response);
+  })
+);
+
+/**
+ * GET /api/analytics/export - Exportar dados
+ */
+router.get('/export',
+  requireRole(['admin', 'super_admin']),
+  validateRequest({
+    query: {
+      type: { required: true, type: 'string', enum: ['leads', 'users', 'pipelines'] },
+      format: { type: 'string', enum: ['json', 'csv'] }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { type, format = 'json' } = req.query;
+
+    if (!req.user?.tenant_id) {
+      throw new ForbiddenError('Usuário deve pertencer a uma empresa');
+    }
+
+    const mockData = {
+      leads: [
+        { id: 1, name: 'Lead 1', email: 'lead1@test.com', stage: 'Prospecção' },
+        { id: 2, name: 'Lead 2', email: 'lead2@test.com', stage: 'Qualificação' }
+      ],
+      users: [
+        { id: 1, name: 'João Silva', email: 'joao@empresa.com', role: 'admin' },
+        { id: 2, name: 'Maria Santos', email: 'maria@empresa.com', role: 'member' }
+      ],
+      pipelines: [
+        { id: 1, name: 'Pipeline Vendas', stages: 5, leads: 45 },
+        { id: 2, name: 'Pipeline Marketing', stages: 4, leads: 32 }
+      ]
+    };
+
+    const data = mockData[type as keyof typeof mockData] || [];
+
+    if (format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${type}_export.csv"`);
+      
+      if (data.length > 0) {
+        const headers = Object.keys(data[0]).join(',');
+        const rows = data.map(row => 
+          Object.values(row).map(value => 
+            typeof value === 'string' ? `"${value}"` : value
+          ).join(',')
+        );
+        res.send(`${headers}\n${rows.join('\n')}`);
+      } else {
+        res.send('');
+      }
+    } else {
+      const response: ApiResponse = {
+        success: true,
+        data: {
+          type,
+          exportedAt: new Date().toISOString(),
+          totalRecords: data.length,
+          records: data
+        },
+        timestamp: new Date().toISOString()
+      };
+
+      res.json(response);
+    }
+  })
+);
+
+/**
+ * POST /api/analytics/clear-cache - Limpar cache de analytics
+ */
+router.post('/clear-cache',
+  requireRole(['admin', 'super_admin']),
+  asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user?.tenant_id) {
+      throw new ForbiddenError('Usuário deve pertencer a uma empresa');
+    }
+
+    // Limpar cache relacionado ao tenant
+    const cleared = await cache.clearTenantCache(req.user.tenant_id);
+
+    const response: ApiResponse = {
+      success: true,
+      data: {
+        cacheCleared: cleared,
+        clearedAt: new Date().toISOString()
+      },
+      message: `Cache limpo: ${cleared} entradas removidas`,
+      timestamp: new Date().toISOString()
+    };
+
+    res.json(response);
+  })
+);
+
+export default router; 

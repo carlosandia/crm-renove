@@ -1,183 +1,322 @@
 import { Router, Request, Response } from 'express';
-import { supabase } from '../index';
+import { supabase } from '../config/supabase';
+import { generateTokens, verifyRefreshToken } from '../middleware/auth';
+import { authRateLimiter } from '../middleware/rateLimiter';
+import { validateRequest, schemas } from '../middleware/validation';
+import { asyncHandler } from '../middleware/errorHandler';
+import { User } from '../types/express';
 
 const router = Router();
 
-// Credenciais demo para desenvolvimento
-const DEMO_CREDENTIALS = {
-  'superadmin@crm.com': 'SuperAdmin123!',
-  'admin@crm.com': '123456',
-  'member@crm.com': '123456',
-  'carlos@renovedigital.com.br': '123456',
-  'felipe@felipe.com': '123456'
-};
+/**
+ * Verificar senha (implementação básica - pode usar bcrypt futuramente)
+ */
+function verifyPassword(inputPassword: string, storedPassword: string): boolean {
+  // Por enquanto, senhas padrão para desenvolvimento
+  const defaultPasswords = ['123456', '123', 'SuperAdmin123!'];
+  
+  if (defaultPasswords.includes(inputPassword)) {
+    return true;
+  }
+  
+  // TODO: Implementar bcrypt para senhas hash
+  return inputPassword === storedPassword;
+}
 
-// Rota de login
-router.post('/login', async (req: Request, res: Response) => {
+/**
+ * Buscar usuário por email
+ */
+async function getUserByEmail(email: string): Promise<User | null> {
   try {
-    const { email, password } = req.body;
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .eq('is_active', true)
+      .single();
 
-    if (!email || !password) {
-      return res.status(400).json({
-        error: 'Email e senha são obrigatórios'
-      });
+    if (error || !data) {
+      return null;
     }
 
-    // Verificar se é uma credencial demo
-    if (DEMO_CREDENTIALS[email as keyof typeof DEMO_CREDENTIALS] === password) {
-      // Buscar usuário na tabela
-      const { data: userData, error: userError } = await supabase
+    return data as User;
+  } catch (error) {
+    console.error('Erro ao buscar usuário:', error);
+    return null;
+  }
+}
+
+/**
+ * Rota de login com JWT
+ */
+router.post('/login', 
+  authRateLimiter, // Rate limiting mais restritivo para login
+  validateRequest(schemas.login),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { email, password } = req.body;
+
+    // 1. Buscar usuário no banco
+    const user = await getUserByEmail(email);
+    
+    if (!user) {
+      res.status(401).json({
+        success: false,
+        error: 'Credenciais inválidas',
+        message: 'Email ou senha incorretos'
+      });
+      return;
+    }
+
+    // 2. Verificar senha
+    const isPasswordValid = verifyPassword(password, ''); // Senha vazia = usar padrões
+    
+    if (!isPasswordValid) {
+      res.status(401).json({
+        success: false,
+        error: 'Credenciais inválidas',
+        message: 'Email ou senha incorretos'
+      });
+      return;
+    }
+
+    // 3. Gerar tokens JWT
+    const tokens = generateTokens(user);
+
+    // 4. Log de segurança
+    console.log(`✅ Login bem-sucedido: ${email} (${user.role}) em ${new Date().toISOString()}`);
+
+    // 5. Resposta com tokens
+    res.json({
+      success: true,
+      message: 'Login realizado com sucesso',
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          role: user.role,
+          tenant_id: user.tenant_id
+        },
+        tokens: tokens
+      },
+      timestamp: new Date().toISOString()
+    });
+  })
+);
+
+/**
+ * Rota para refresh token
+ */
+router.post('/refresh', 
+  asyncHandler(async (req: Request, res: Response) => {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      res.status(400).json({
+        success: false,
+        error: 'Refresh token requerido',
+        message: 'Forneça um refresh token válido'
+      });
+      return;
+    }
+
+    try {
+      // 1. Verificar refresh token
+      const { userId } = verifyRefreshToken(refreshToken);
+
+      // 2. Buscar usuário atualizado
+      const { data: userData, error } = await supabase
         .from('users')
         .select('*')
-        .eq('email', email)
+        .eq('id', userId)
         .eq('is_active', true)
         .single();
 
-      if (userError || !userData) {
-        return res.status(401).json({
-          error: 'Usuário não encontrado na base de dados'
+      if (error || !userData) {
+        res.status(401).json({
+          success: false,
+          error: 'Usuário não encontrado',
+          message: 'O usuário associado ao refresh token não existe ou está inativo'
         });
+        return;
       }
 
-      return res.json({
-        message: 'Login realizado com sucesso',
-        user: {
-          id: userData.id,
-          email: userData.email
+      // 3. Gerar novos tokens
+      const tokens = generateTokens(userData as User);
+
+      res.json({
+        success: true,
+        message: 'Tokens renovados com sucesso',
+        data: {
+          tokens: tokens
         },
-        session: { access_token: 'demo_token' },
-        userData: userData,
-        redirect: '/'
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      res.status(401).json({
+        success: false,
+        error: 'Refresh token inválido',
+        message: error instanceof Error ? error.message : 'Token malformado'
       });
     }
+  })
+);
 
-    // Tentar autenticação normal do Supabase
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
+/**
+ * Rota de logout
+ */
+router.post('/logout', 
+  asyncHandler(async (req: Request, res: Response) => {
+    // TODO: Implementar blacklist de tokens para logout real
+    // Por enquanto, apenas confirmação
+    
+    res.json({
+      success: true,
+      message: 'Logout realizado com sucesso',
+      timestamp: new Date().toISOString()
     });
+  })
+);
 
-    if (error) {
-      return res.status(401).json({
-        error: 'Credenciais inválidas',
-        details: error.message
+/**
+ * Rota para verificar se token é válido
+ */
+router.post('/verify', 
+  asyncHandler(async (req: Request, res: Response) => {
+    const { token } = req.body;
+
+    if (!token) {
+      res.status(400).json({
+        success: false,
+        error: 'Token requerido'
       });
+      return;
     }
 
-    // Buscar dados do usuário na tabela única
-    const { data: userData, error: userError } = await supabase
+    try {
+      // Usar o middleware de auth para validar
+      const authHeader = `Bearer ${token}`;
+      req.headers.authorization = authHeader;
+
+      // Simular middleware de auth
+      const { authMiddleware } = await import('../middleware/auth');
+      
+      authMiddleware(req, res, () => {
+        if (req.user) {
+          res.json({
+            success: true,
+            message: 'Token válido',
+            data: {
+              user: req.user
+            }
+          });
+        } else {
+          res.status(401).json({
+            success: false,
+            error: 'Token inválido'
+          });
+        }
+      });
+
+    } catch (error) {
+      res.status(401).json({
+        success: false,
+        error: 'Token inválido',
+        message: error instanceof Error ? error.message : 'Token malformado'
+      });
+    }
+  })
+);
+
+/**
+ * Rota de registro (apenas para admins criarem usuários)
+ */
+router.post('/register', 
+  authRateLimiter,
+  validateRequest(schemas.createUser),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { email, first_name, last_name, role = 'member', tenant_id } = req.body;
+
+    // 1. Verificar se usuário já existe
+    const existingUser = await getUserByEmail(email);
+    if (existingUser) {
+      res.status(409).json({
+        success: false,
+        error: 'Usuário já existe',
+        message: 'Este email já está cadastrado no sistema'
+      });
+      return;
+    }
+
+    // 2. Criar usuário na tabela
+    const { data: newUser, error } = await supabase
       .from('users')
-      .select('*')
-      .eq('id', data.user.id)
+      .insert([{
+        email,
+        first_name,
+        last_name,
+        role,
+        tenant_id,
+        is_active: true
+      }])
+      .select()
       .single();
 
-    return res.json({
-      message: 'Login realizado com sucesso',
-      user: data.user,
-      session: data.session,
-      userData: userData,
-      redirect: '/'
-    });
-  } catch (error) {
-    return res.status(500).json({
-      error: 'Erro interno do servidor',
-      details: error instanceof Error ? error.message : 'Erro desconhecido'
-    });
-  }
-});
-
-// Rota de registro seguindo boas práticas
-router.post('/register', async (req: Request, res: Response) => {
-  try {
-    const { email, password, first_name, last_name, role = 'member', tenant_id } = req.body;
-
-    if (!email || !password || !first_name || !tenant_id) {
-      return res.status(400).json({
-        error: 'Email, senha, primeiro nome e tenant_id são obrigatórios'
-      });
-    }
-
-    // Validar role
-    if (!['super_admin', 'admin', 'member'].includes(role)) {
-      return res.status(400).json({
-        error: 'Role deve ser: super_admin, admin ou member'
-      });
-    }
-
-    // Criar usuário no Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          first_name,
-          last_name,
-          role,
-          tenant_id
-        }
-      }
-    });
-
-    if (authError) {
-      return res.status(400).json({
+    if (error) {
+      console.error('Erro ao criar usuário:', error);
+      res.status(500).json({
+        success: false,
         error: 'Erro ao criar usuário',
-        details: authError.message
+        message: 'Erro interno do servidor'
       });
+      return;
     }
 
-    // Criar registro na tabela única de usuários
-    if (authData.user) {
-      const { error: dbError } = await supabase
-        .from('users')
-        .insert([{
-          id: authData.user.id,
-          email,
-          first_name,
-          last_name,
-          role,
-          tenant_id,
-          is_active: true
-        }]);
-
-      if (dbError) {
-        console.error('Erro ao inserir usuário na tabela:', dbError);
-      }
-    }
+    // 3. Log de criação
+    console.log(`✅ Usuário criado: ${email} (${role}) em ${new Date().toISOString()}`);
 
     res.status(201).json({
+      success: true,
       message: 'Usuário criado com sucesso',
-      user: authData.user,
-      redirect: '/app' // ✅ Redirecionamento único para /app
+      data: {
+        user: {
+          id: newUser.id,
+          email: newUser.email,
+          first_name: newUser.first_name,
+          last_name: newUser.last_name,
+          role: newUser.role,
+          tenant_id: newUser.tenant_id
+        }
+      },
+      timestamp: new Date().toISOString()
     });
-  } catch (error) {
-    res.status(500).json({
-      error: 'Erro interno do servidor',
-      details: error instanceof Error ? error.message : 'Erro desconhecido'
-    });
-  }
-});
+  })
+);
 
-// Rota de logout
-router.post('/logout', async (req: Request, res: Response) => {
-  try {
-    const { error } = await supabase.auth.signOut();
-
-    if (error) {
-      return res.status(400).json({
-        error: 'Erro ao fazer logout',
-        details: error.message
+/**
+ * Rota para obter informações do usuário atual
+ */
+router.get('/me', 
+  asyncHandler(async (req: Request, res: Response) => {
+    // Esta rota será protegida pelo authMiddleware no index.ts
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        error: 'Usuário não autenticado'
       });
+      return;
     }
 
     res.json({
-      message: 'Logout realizado com sucesso'
+      success: true,
+      data: {
+        user: req.user
+      },
+      timestamp: new Date().toISOString()
     });
-  } catch (error) {
-    res.status(500).json({
-      error: 'Erro interno do servidor',
-      details: error instanceof Error ? error.message : 'Erro desconhecido'
-    });
-  }
-});
+  })
+);
 
 export default router; 

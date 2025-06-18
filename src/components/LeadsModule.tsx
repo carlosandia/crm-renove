@@ -4,7 +4,8 @@ import { supabase } from '../lib/supabase';
 import LeadsList from './Leads/LeadsList';
 import LeadDetailsModal from './Leads/LeadDetailsModal';
 import LeadFormModal from './Leads/LeadFormModal';
-import { Search, Plus, Filter, Users, TrendingUp } from 'lucide-react';
+import PendingLeadsTab from './Pipeline/PendingLeadsTab';
+import { Search, Plus, Filter, Users, TrendingUp, Clock } from 'lucide-react';
 
 interface LeadMaster {
   id: string;

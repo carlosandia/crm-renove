@@ -29,20 +29,21 @@ export interface Lead {
   updated_at: string;
   moved_at?: string;
   status?: 'active' | 'won' | 'lost';
+  assigned_to?: string;
+  created_by?: string;
 }
 
 export interface PipelineMember {
   id: string;
   pipeline_id: string;
-  member_id: string;
-  created_at: string;
-  updated_at?: string;
-  users?: {
+  user_id: string;
+  assigned_at: string;
+  users: {
     id: string;
     first_name: string;
     last_name: string;
     email: string;
-  } | null;
+  };
 }
 
 export interface Pipeline {
@@ -53,6 +54,9 @@ export interface Pipeline {
   created_by: string;
   created_at: string;
   updated_at: string;
+  members?: PipelineMember[];
+  stages?: PipelineStage[];
+  custom_fields?: CustomField[];
   pipeline_stages?: PipelineStage[];
   pipeline_custom_fields?: CustomField[];
   pipeline_members?: PipelineMember[];

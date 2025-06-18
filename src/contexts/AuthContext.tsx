@@ -1,8 +1,30 @@
-
 import { createContext, useContext } from 'react';
-import { AuthContextType } from '../types/User';
+import { User } from '../types/User';
 
-const AuthContext = createContext<AuthContextType | null>(null);
+interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  tokenType: 'Bearer';
+}
+
+export interface AuthContextType {
+  user: User | null;
+  login: (email: string, password: string) => Promise<boolean>;
+  logout: () => void;
+  loading: boolean;
+  authenticatedFetch: (url: string, options?: RequestInit) => Promise<Response>;
+  refreshTokens: () => Promise<AuthTokens | null>;
+}
+
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  login: async () => false,
+  logout: () => {},
+  loading: false,
+  authenticatedFetch: async () => new Response(),
+  refreshTokens: async () => null,
+});
 
 export const useAuth = () => {
   const context = useContext(AuthContext);

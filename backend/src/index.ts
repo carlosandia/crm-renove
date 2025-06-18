@@ -1,155 +1,264 @@
-import express from 'express';
+import express from "express";
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
+import { createServer } from 'http';
 
-// Carregar variáveis de ambiente
+// Importar rotas
+import authRoutes from './routes/auth';
+import usersRoutes from './routes/users';
+import customersRoutes from './routes/customers';
+import pipelinesRoutes from './routes/pipelines';
+import vendedoresRoutes from './routes/vendedores';
+import salesGoalsRoutes from './routes/sales-goals';
+import integrationsRoutes from './routes/integrations';
+import conversionsRoutes from './routes/conversions';
+import companiesRoutes from './routes/companies';
+import databaseRoutes from './routes/database';
+import healthRoutes from './routes/health';
+import setupRoutes from './routes/setup';
+import mcpRoutes from './routes/mcp';
+import analyticsRoutes from './routes/analytics';
+
+// Middleware de autenticação
+import { authMiddleware } from './middleware/auth';
+import { errorHandler } from './middleware/errorHandler';
+import { validateRequest } from './middleware/validation';
+import { rateLimiter } from './middleware/rateLimiter';
+
+// Configurar variáveis de ambiente
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Configuração do Supabase
-const supabaseUrl = process.env.SUPABASE_URL || 'https://marajvabdwkpgopytvhh.supabase.co';
-const supabaseKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hcmFqdmFiZHdrcGdvcHl0dmhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjQwMDksImV4cCI6MjA2NTM0MDAwOX0.C_2W2u8JyApjbhqPJm1q1dFX82KoRSm3auBfE7IpmDU';
+// ============================================
+// CONFIGURAÇÕES DE SEGURANÇA
+// ============================================
 
-// Usar a chave anon como fallback temporário até obter a service role key correta
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseKey;
-
-// Verificar se as chaves estão configuradas
-if (!supabaseUrl || !supabaseKey) {
-  console.error('❌ ERRO: Variáveis do Supabase não configuradas!');
-  process.exit(1);
-}
-
-console.log('🔑 Supabase URL:', supabaseUrl);
-console.log('🔑 Usando chave anon para operações admin (temporário)');
-
-export const supabase = createClient(supabaseUrl, supabaseKey);
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
-// Middlewares
-app.use(helmet());
-app.use(cors({
-  origin: [
-    'http://localhost:3000', 
-    'http://127.0.0.1:3000', 
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://localhost:5175',
-    'http://localhost:5176',
-    'http://localhost:5177', 
-    'http://localhost:8080',
-    'https://id-preview--0ff8b3f5-78cd-49a2-84cb-a1011762c09d.lovable.app',
-    /https:\/\/.*\.lovable\.app$/
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+// Helmet para headers de segurança
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https://marajvabdwkpgopytvhh.supabase.co"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false
 }));
-app.use(morgan('combined'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// Rota de teste
-app.get('/', (req, res) => {
-  res.json({
-    message: 'CRM Backend está funcionando!',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
-    mcp_integration: 'Ativo'
-  });
-});
+// CORS configurado de forma segura
+app.use(cors({
+  origin: function (origin, callback) {
+    // Lista de origens permitidas
+    const allowedOrigins = [
+      'http://localhost:8080',
+      'http://localhost:8081', 
+      'http://localhost:8082',
+      'http://localhost:3000',
+      'http://localhost:3001',
+      process.env.FRONTEND_URL
+    ].filter(Boolean);
 
-// Rota de health check
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-    services: {
-      supabase: 'Connected',
-      mcp: 'Active'
-    }
-  });
-});
-
-// Rota para testar conexão com Supabase
-app.get('/api/test-db', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('users')
-      .select('count')
-      .limit(1);
+    // Permitir requests sem origin (mobile apps, Postman, etc)
+    if (!origin) return callback(null, true);
     
-    if (error) {
-      throw error;
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Não permitido pelo CORS'));
     }
-    
-    res.json({
-      message: 'Conexão com Supabase OK',
-      data
-    });
-  } catch (error) {
-    res.status(500).json({
-      message: 'Erro ao conectar com Supabase',
-      error: error instanceof Error ? error.message : 'Erro desconhecido'
-    });
+  },
+  credentials: true, // Permitir cookies
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
+  exposedHeaders: ['X-Total-Count', 'X-Page-Count']
+}));
+
+// Rate limiting
+app.use(rateLimiter);
+
+// Logging de requests
+app.use(morgan('combined', {
+  skip: (req, res) => res.statusCode < 400 // Log apenas erros em produção
+}));
+
+// Parse JSON com limite de tamanho
+app.use(express.json({ 
+  limit: '10mb',
+  verify: (req, res, buf) => {
+    // Verificar integridade do JSON
+    try {
+      JSON.parse(buf.toString());
+    } catch (e) {
+      throw new Error('JSON inválido');
+    }
   }
+}));
+
+// Parse URL encoded
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// ============================================
+// MIDDLEWARE CUSTOMIZADO
+// ============================================
+
+// Adicionar timestamp a todas as requests
+app.use((req, res, next) => {
+  req.requestTime = new Date().toISOString();
+  next();
 });
 
-// Rotas da API
-import authRoutes from './routes/auth';
-import usersRoutes from './routes/users';
-import customersRoutes from './routes/customers';
-import companiesRoutes from './routes/companies';
-import integrationsRoutes from './routes/integrations';
-import vendedoresRoutes from './routes/vendedores';
-import salesGoalsRoutes from './routes/sales-goals';
-import pipelinesRoutes from './routes/pipelines';
-import setupRoutes from './routes/setup';
-import mcpRoutes from './routes/mcp';
-import databaseRoutes from './routes/database';
-import healthRoutes from './routes/health';
+// Health check básico (sem autenticação)
+app.use('/health', healthRoutes);
 
-app.use('/api/auth', authRoutes);
-app.use('/api/users', usersRoutes);
-app.use('/api/customers', customersRoutes);
-app.use('/api/companies', companiesRoutes);
-app.use('/api/integrations', integrationsRoutes);
-app.use('/api/vendedores', vendedoresRoutes);
-app.use('/api/sales-goals', salesGoalsRoutes);
-app.use('/api/pipelines', pipelinesRoutes);
-app.use('/api/setup', setupRoutes);
-app.use('/api/mcp', mcpRoutes);
-app.use('/api/database', databaseRoutes);
-app.use('/api/health', healthRoutes);
-
-// Middleware de tratamento de erros
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error(err.stack);
-  res.status(500).json({
-    message: 'Algo deu errado!',
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Erro interno do servidor'
+// API Info
+app.get('/api', (req, res) => {
+  res.json({
+    name: 'CRM Marketing API',
+    version: '1.0.0',
+    status: 'running',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
-// Middleware para rotas não encontradas
+// ============================================
+// ROTAS PÚBLICAS (SEM AUTENTICAÇÃO)
+// ============================================
+
+// Rotas de autenticação (login, registro)
+app.use('/api/auth', authRoutes);
+
+// Setup inicial do sistema
+app.use('/api/setup', setupRoutes);
+
+// Webhooks (com autenticação própria)
+app.use('/api/webhooks', integrationsRoutes);
+
+// ============================================
+// MIDDLEWARE DE AUTENTICAÇÃO
+// ============================================
+
+// Aplicar autenticação para todas as rotas /api/* (exceto as acima)
+app.use('/api', authMiddleware);
+
+// ============================================
+// ROTAS PROTEGIDAS (COM AUTENTICAÇÃO)
+// ============================================
+
+// Gestão de usuários
+app.use('/api/users', usersRoutes);
+app.use('/api/vendedores', vendedoresRoutes);
+
+// CRM Core
+app.use('/api/customers', customersRoutes);
+app.use('/api/pipelines', pipelinesRoutes);
+// app.use('/api/leads', leadsRoutes); // TODO: Implementar quando estiver pronto
+app.use('/api/sales-goals', salesGoalsRoutes);
+
+// Integrações
+app.use('/api/integrations', integrationsRoutes);
+app.use('/api/conversions', conversionsRoutes);
+
+// Gestão de empresas
+app.use('/api/companies', companiesRoutes);
+
+// Banco de dados e admin
+app.use('/api/database', databaseRoutes);
+
+// MCP Integration
+app.use('/api/mcp', mcpRoutes);
+
+// Rotas principais
+app.use('/api/auth', authRoutes);
+app.use('/api/health', healthRoutes);
+app.use('/api/setup', setupRoutes);
+
+// Rotas protegidas com autenticação
+app.use('/api/users', authMiddleware, usersRoutes);
+app.use('/api/companies', authMiddleware, companiesRoutes);
+app.use('/api/pipelines', authMiddleware, pipelinesRoutes);
+// app.use('/api/leads', authMiddleware, leadsRoutes); // TODO: Implementar
+app.use('/api/customers', authMiddleware, customersRoutes);
+app.use('/api/vendedores', authMiddleware, vendedoresRoutes);
+app.use('/api/sales-goals', authMiddleware, salesGoalsRoutes);
+app.use('/api/integrations', authMiddleware, integrationsRoutes);
+app.use('/api/database', authMiddleware, databaseRoutes);
+app.use('/api/mcp', authMiddleware, mcpRoutes);
+app.use('/api/analytics', authMiddleware, analyticsRoutes);
+
+// ============================================
+// TRATAMENTO DE ERROS
+// ============================================
+
+// Rota não encontrada
 app.use('*', (req, res) => {
   res.status(404).json({
-    message: 'Rota não encontrada',
-    path: req.originalUrl
+    error: 'Endpoint não encontrado',
+    path: req.originalUrl,
+    method: req.method,
+    timestamp: new Date().toISOString()
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando na porta ${PORT}`);
-  console.log(`📱 Ambiente: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 URL: http://localhost:${PORT}`);
-  console.log(`💾 Supabase conectado: ${supabaseUrl}`);
-  console.log(`🛠️ MCP Integration ativa em: http://localhost:${PORT}/api/mcp`);
+// Error handler global
+app.use(errorHandler);
+
+// ============================================
+// INICIALIZAÇÃO DO SERVIDOR
+// ============================================
+
+const server = createServer(app);
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('🔄 SIGTERM recebido, fechando servidor...');
+  server.close(() => {
+    console.log('✅ Servidor fechado com sucesso');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('🔄 SIGINT recebido, fechando servidor...');
+  server.close(() => {
+    console.log('✅ Servidor fechado com sucesso');
+    process.exit(0);
+  });
+});
+
+// Error handling não capturado
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
+
+// Iniciar servidor
+server.listen(PORT, () => {
+  console.log(`
+🚀 ===================================
+📡 CRM Marketing API Server
+📍 Porta: ${PORT}
+🌍 Ambiente: ${process.env.NODE_ENV || 'development'}
+📅 Iniciado: ${new Date().toISOString()}
+🔒 Segurança: Ativada
+📊 Monitoramento: Ativo
+===================================
+  `);
 });
 
 export default app;

@@ -332,7 +332,7 @@ const CustomFieldsManager: React.FC<CustomFieldsManagerProps> = ({
                     <div key={field.id}>
                       {editingField?.id === field.id ? (
                         <FieldForm
-                          field={editingField}
+                          field={editingField!}
                           onSave={saveField}
                           onCancel={() => setEditingField(null)}
                         />

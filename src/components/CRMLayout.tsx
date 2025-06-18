@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import CRMSidebar from './CRMSidebar';
+import CRMHeader from './CRMHeader';
 
 interface CRMLayoutProps {
   children: React.ReactNode;
@@ -21,6 +22,9 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
   // Módulos que precisam de layout full-width sem padding
   const fullWidthModules = ['Pipeline'];
   const isFullWidth = fullWidthModules.includes(activeModule);
+  
+  // Todos os módulos agora têm header contextual
+  const needsHeader = true;
 
   // Função para receber o estado collapsed da sidebar
   const handleSidebarToggle = (collapsed: boolean) => {
@@ -37,15 +41,25 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
       
       <div className={`flex-1 flex flex-col transition-all duration-300 ${
         sidebarCollapsed ? 'ml-20' : 'ml-64'
-      }`}>        
+      }`}>
+        {/* Header contextual unificado para todos os módulos */}
+        {needsHeader && (
+          <CRMHeader 
+            user={user} 
+            activeModule={activeModule}
+        onNavigate={onNavigate}
+            onLogout={onLogout}
+          />
+        )}
+        
         <main className="flex-1 bg-background">
           {isFullWidth ? (
-            <div className="h-screen bg-background">
+            <div className={`${needsHeader ? 'h-[calc(100vh-80px)]' : 'h-screen'} bg-background overflow-hidden`}>
               {children}
             </div>
           ) : (
             <div className="flex flex-col w-full p-6">
-              <div className="card-modern p-6 min-h-[calc(100vh-60px)] animate-fade-in">
+              <div className="card-modern p-6 min-h-[calc(100vh-140px)] animate-fade-in">
                 {children}
               </div>
             </div>

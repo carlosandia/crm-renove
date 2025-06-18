@@ -1,15 +1,35 @@
 import { createClient } from '@supabase/supabase-js';
+import { appConfig } from '../config/app';
 
-// Configuração do Supabase usando variáveis de ambiente
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://marajvabdwkpgopytvhh.supabase.co';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hcmFqdmFiZHdrcGdvcHl0dmhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjQwMDksImV4cCI6MjA2NTM0MDAwOX0.C_2W2u8JyApjbhqPJm1q1dFX82KoRSm3auBfE7IpmDU';
+// Configurações do Supabase a partir da configuração centralizada
+const supabaseUrl = appConfig.supabase.url;
+const supabaseAnonKey = appConfig.supabase.anonKey;
 
-// Criar instância única do Supabase client
-export const supabase = createClient(supabaseUrl, supabaseKey, {
+// Cliente Supabase configurado para o frontend
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    persistSession: false, // Desativar persistência automática para evitar conflitos
+    // Desabilitar persistência automática (usaremos JWT manual)
+    persistSession: false,
+    autoRefreshToken: false,
     detectSessionInUrl: false,
-    autoRefreshToken: false
+    // Configurações de segurança
+    flowType: 'pkce'
+  },
+  // Configurações globais
+  global: {
+    headers: {
+      'X-Client-Info': 'crm-marketing-frontend'
+    }
+  },
+  // Configurações da base
+  db: {
+    schema: 'public'
+  },
+  // Configurações de real-time (se necessário)
+  realtime: {
+    params: {
+      eventsPerSecond: 10
+    }
   }
 });
 

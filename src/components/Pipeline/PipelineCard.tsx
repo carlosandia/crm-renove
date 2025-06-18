@@ -37,9 +37,24 @@ const PipelineCard: React.FC<PipelineCardProps> = ({
     member.is_active && !assignedMemberIds.includes(member.id)
   );
 
+  console.log('🔍 PipelineCard Debug:', {
+    pipelineId: pipeline.id,
+    pipelineName: pipeline.name,
+    totalMembers: members.length,
+    pipelineMembers: pipelineMembers.length,
+    availableMembers: availableMembers.length,
+    assignedMemberIds
+  });
+
   const handleAddMember = (memberId: string) => {
+    console.log('🔗 PipelineCard - Adicionando membro:', { pipelineId: pipeline.id, memberId });
     onAddMember(pipeline.id, memberId);
     setShowAddMember(false);
+  };
+
+  const handleRemoveMember = (memberId: string) => {
+    console.log('🔓 PipelineCard - Removendo membro:', { pipelineId: pipeline.id, memberId });
+    onRemoveMember(pipeline.id, memberId);
   };
 
   return (
@@ -158,11 +173,11 @@ const PipelineCard: React.FC<PipelineCardProps> = ({
             pipelineMembers.map((pm) => {
               // Buscar dados do membro na lista de members ou usar dados do pipeline_member
               const memberData = members.find(m => m.id === pm.member_id) || 
-                                (pm.users && {
-                                  id: pm.users.id,
-                                  first_name: pm.users.first_name,
-                                  last_name: pm.users.last_name,
-                                  email: pm.users.email,
+                                ((pm as any).users && {
+                                  id: (pm as any).users.id,
+                                  first_name: (pm as any).users.first_name,
+                                  last_name: (pm as any).users.last_name,
+                                  email: (pm as any).users.email,
                                   is_active: true
                                 }) ||
                                 pm.member || 
@@ -187,7 +202,7 @@ const PipelineCard: React.FC<PipelineCardProps> = ({
                     </span>
                   </div>
                   <button 
-                    onClick={() => onRemoveMember(pipeline.id, pm.member_id)}
+                    onClick={() => handleRemoveMember(pm.member_id)}
                     className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-all duration-200"
                     title="Remover vendedor"
                   >

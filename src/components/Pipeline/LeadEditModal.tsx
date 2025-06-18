@@ -27,7 +27,7 @@ interface LeadEditModalProps {
   onClose: () => void;
   lead: Lead;
   customFields: CustomField[];
-  onUpdate: (updatedData: any) => void;
+  onUpdate?: (updatedData: any) => void; onSave?: (updatedData: any) => void;
 }
 
 const LeadEditModal: React.FC<LeadEditModalProps> = ({
@@ -35,7 +35,7 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
   onClose,
   lead,
   customFields,
-  onUpdate
+  onUpdate, onSave
 }) => {
   const [activeTab, setActiveTab] = useState<'info' | 'display'>('info');
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -109,7 +109,7 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
       // TODO: Implementar salvamento das configurações show_in_card
       // Isso seria feito através de uma API que atualiza a pipeline_custom_fields
       
-      onUpdate(updatedData);
+      if (onUpdate) onUpdate(updatedData); if (onSave) onSave(updatedData);
       
       // Mostrar feedback de sucesso
       alert('Alterações salvas com sucesso!');

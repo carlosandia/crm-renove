@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import AuthProvider from './providers/AuthProvider'
 import LoginForm from './components/LoginForm'
 import AppDashboard from './components/AppDashboard'
+import ToastNotifications from './components/ToastNotifications'
 import ErrorBoundary from './utils/errorBoundary'
 import { useAuth } from './contexts/AuthContext'
 import './App.css'
@@ -9,7 +10,10 @@ import './App.css'
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
   
+  console.log('🔍 ProtectedRoute - Debug:', { user: user?.email, loading })
+  
   if (loading) {
+    console.log('⏳ Aplicação carregando...')
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
@@ -18,14 +22,18 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
   
   if (!user) {
+    console.log('❌ Usuário não autenticado, redirecionando para login')
     return <Navigate to="/login" replace />
   }
   
+  console.log('✅ Usuário autenticado:', user.email)
   return <>{children}</>
 }
 
 function AppRoutes() {
   const { user } = useAuth()
+  
+  console.log('🚀 AppRoutes - Renderizando com usuário:', user?.email || 'não logado')
   
   return (
     <Routes>
@@ -47,11 +55,14 @@ function AppRoutes() {
 }
 
 function App() {
+  console.log('🎯 App component renderizado')
+  
   return (
     <ErrorBoundary>
       <AuthProvider>
         <div className="min-h-screen bg-gray-50">
           <AppRoutes />
+          <ToastNotifications />
         </div>
       </AuthProvider>
     </ErrorBoundary>

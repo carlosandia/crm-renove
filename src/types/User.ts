@@ -1,4 +1,3 @@
-
 export interface User {
   id: string;
   email: string;
@@ -9,6 +8,7 @@ export interface User {
   tenant_id: string;
   is_active: boolean;
   created_at: string;
+  token?: string;
 }
 
 export interface Customer {
