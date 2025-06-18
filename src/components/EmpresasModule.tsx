@@ -259,22 +259,30 @@ const EmpresasModule: React.FC = () => {
           throw new Error(`Erro ao criar empresa: ${companyError.message || companyError.details || JSON.stringify(companyError)}`);
         }
 
-        // Criar admin com email único
+        // Criar admin com email fornecido
         const adminNames = formData.admin_name.trim().split(' ');
         const firstName = adminNames[0];
         const lastName = adminNames.slice(1).join(' ') || '';
         
-        // Gerar email único baseado na empresa
-        const baseEmail = formData.admin_email.trim();
-        const timestamp = Date.now();
-        const uniqueEmail = baseEmail.includes('@') 
-          ? baseEmail.replace('@', `+${timestamp}@`)
-          : `${baseEmail}+${timestamp}@empresa.com`;
+        const adminEmail = formData.admin_email.trim();
+
+        // Verificar se email já existe
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('id, email')
+          .eq('email', adminEmail)
+          .single();
+
+        if (existingUser) {
+          // Rollback: remover empresa criada
+          await supabase.from('companies').delete().eq('id', newCompany.id);
+          throw new Error(`Email "${adminEmail}" já está em uso por outro usuário. Por favor, use um email diferente.`);
+        }
 
         const { data: newAdmin, error: adminError } = await supabase
           .from('users')
           .insert([{
-            email: uniqueEmail,
+            email: adminEmail,
             first_name: firstName.trim(),
             last_name: lastName.trim() || '',
             role: 'admin',
@@ -297,7 +305,7 @@ const EmpresasModule: React.FC = () => {
         await fetchEmpresas();
         logger.success('Empresa e administrador criados com sucesso');
         
-        alert(`✅ Empresa "${newCompany.name}" criada com sucesso!\n\nCredenciais do Admin:\nEmail: ${uniqueEmail}\nSenha: ${formData.admin_password || '123456'}\n\n📧 Email único gerado para evitar conflitos`);
+        alert(`✅ Empresa "${newCompany.name}" criada com sucesso!\n\nCredenciais do Admin:\nEmail: ${adminEmail}\nSenha: ${formData.admin_password || '123456'}`);
       }
 
       // Limpar formulário
