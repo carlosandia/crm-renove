@@ -55,6 +55,24 @@ const VendedoresModule: React.FC = () => {
     password: ''
   });
 
+  // Estados para validação do email
+  const [emailValidation, setEmailValidation] = useState({
+    isChecking: false,
+    exists: false,
+    message: ''
+  });
+
+  // Estados para validação da senha
+  const [passwordValidation, setPasswordValidation] = useState({
+    isValid: false,
+    message: '',
+    requirements: {
+      length: false,
+      hasLetter: false,
+      hasNumber: false
+    }
+  });
+
   // Estados das metas
   const [goalData, setGoalData] = useState<{
     goal_type: GoalType;
@@ -80,6 +98,106 @@ const VendedoresModule: React.FC = () => {
       setLoading(false);
     }
   }, [user]);
+
+  // Effect para validar email com debounce
+  useEffect(() => {
+    if (!formData.email || editingVendedor) {
+      setEmailValidation({ isChecking: false, exists: false, message: '' });
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      validateEmail(formData.email);
+    }, 800); // Aguarda 800ms após o usuário parar de digitar
+
+    return () => clearTimeout(timeoutId);
+  }, [formData.email, editingVendedor]);
+
+  // Effect para validar senha em tempo real
+  useEffect(() => {
+    validatePassword(formData.password);
+  }, [formData.password, editingVendedor]);
+
+  // Função para validar email em tempo real
+  const validateEmail = async (email: string) => {
+    if (!email || !email.includes('@') || editingVendedor) {
+      setEmailValidation({ isChecking: false, exists: false, message: '' });
+      return;
+    }
+
+    setEmailValidation({ isChecking: true, exists: false, message: 'Verificando...' });
+
+    try {
+      const { data: existingUser, error } = await supabase
+        .from('users')
+        .select('id, email')
+        .eq('email', email.trim())
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        console.error('Erro ao verificar email:', error);
+        setEmailValidation({ isChecking: false, exists: false, message: '' });
+        return;
+      }
+
+      if (existingUser) {
+        setEmailValidation({ 
+          isChecking: false, 
+          exists: true, 
+          message: 'Esse e-mail já existe, favor inserir outro.' 
+        });
+      } else {
+        setEmailValidation({ 
+          isChecking: false, 
+          exists: false, 
+          message: 'E-mail disponível.' 
+        });
+      }
+    } catch (error) {
+      console.error('Erro na validação do email:', error);
+      setEmailValidation({ isChecking: false, exists: false, message: '' });
+    }
+  };
+
+  // Função para validar senha em tempo real
+  const validatePassword = (password: string) => {
+    if (!password || editingVendedor) {
+      setPasswordValidation({
+        isValid: false,
+        message: '',
+        requirements: { length: false, hasLetter: false, hasNumber: false }
+      });
+      return;
+    }
+
+    // Verificar requisitos
+    const hasMinLength = password.length >= 6;
+    const hasLetter = /[a-zA-Z]/.test(password);
+    const hasNumber = /\d/.test(password);
+    
+    const isValid = hasMinLength && hasLetter && hasNumber;
+    
+    let message = '';
+    if (!isValid) {
+      const missing = [];
+      if (!hasMinLength) missing.push('mínimo 6 caracteres');
+      if (!hasLetter) missing.push('pelo menos 1 letra');
+      if (!hasNumber) missing.push('pelo menos 1 número');
+      message = `Senha deve ter: ${missing.join(', ')}`;
+    } else {
+      message = 'Senha válida!';
+    }
+
+    setPasswordValidation({
+      isValid,
+      message,
+      requirements: {
+        length: hasMinLength,
+        hasLetter: hasLetter,
+        hasNumber: hasNumber
+      }
+    });
+  };
 
   const fetchVendedores = async () => {
     try {
@@ -180,6 +298,18 @@ const VendedoresModule: React.FC = () => {
       return;
     }
 
+    // Validar se email já existe (apenas para criação)
+    if (!editingVendedor && emailValidation.exists) {
+      alert('O e-mail informado já está em uso. Por favor, use um e-mail diferente.');
+      return;
+    }
+
+    // Validar senha (apenas para criação e se senha foi informada)
+    if (!editingVendedor && formData.password && !passwordValidation.isValid) {
+      alert('A senha não atende aos requisitos mínimos:\n- Mínimo 6 caracteres\n- Pelo menos 1 letra\n- Pelo menos 1 número');
+      return;
+    }
+
     try {
       logger.info('Salvando vendedor...');
 
@@ -189,7 +319,8 @@ const VendedoresModule: React.FC = () => {
         email: formData.email,
         role: 'member',
         tenant_id: user?.tenant_id,
-        is_active: true
+        is_active: true,
+        password_hash: formData.password || '123456' // Usar senha personalizada ou padrão
       };
 
       if (editingVendedor) {
@@ -258,6 +389,12 @@ const VendedoresModule: React.FC = () => {
 
       // Limpar formulário
       setFormData({ first_name: '', last_name: '', email: '', password: '' });
+      setEmailValidation({ isChecking: false, exists: false, message: '' });
+      setPasswordValidation({
+        isValid: false,
+        message: '',
+        requirements: { length: false, hasLetter: false, hasNumber: false }
+      });
       setShowForm(false);
       setEditingVendedor(null);
 
@@ -550,6 +687,12 @@ const VendedoresModule: React.FC = () => {
             onClick={() => {
               setFormData({ first_name: '', last_name: '', email: '', password: '' });
               setEditingVendedor(null);
+              setEmailValidation({ isChecking: false, exists: false, message: '' });
+              setPasswordValidation({
+                isValid: false,
+                message: '',
+                requirements: { length: false, hasLetter: false, hasNumber: false }
+              });
               setShowForm(!showForm);
             }}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium flex items-center space-x-2 transition-all duration-200 shadow-sm hover:shadow-md"
@@ -575,7 +718,7 @@ const VendedoresModule: React.FC = () => {
           {!editingVendedor && (
             <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-blue-800 text-sm">
-                <strong>ℹ️ Informação:</strong> O vendedor criado poderá fazer login com a senha padrão <strong>"123456"</strong>
+                <strong>ℹ️ Informação:</strong> Se não informar uma senha personalizada, o vendedor poderá fazer login com a senha padrão <strong>"123456"</strong>
               </p>
             </div>
           )}
@@ -621,24 +764,121 @@ const VendedoresModule: React.FC = () => {
                 onChange={(e) => setFormData({...formData, email: e.target.value})}
                 required
                 placeholder="email@empresa.com"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:border-transparent transition-all ${
+                  formData.email && !editingVendedor && emailValidation.exists 
+                    ? 'border-red-300 focus:ring-red-500' 
+                    : formData.email && !editingVendedor && !emailValidation.isChecking && !emailValidation.exists && emailValidation.message
+                    ? 'border-green-300 focus:ring-green-500'
+                    : 'border-gray-300 focus:ring-blue-500'
+                }`}
               />
+              {/* Notificação de validação do email */}
+              {formData.email && !editingVendedor && emailValidation.message && (
+                <div className={`mt-3 flex items-center space-x-2 text-sm ${
+                  emailValidation.exists ? 'text-red-600' : 'text-green-600'
+                }`}>
+                  {emailValidation.isChecking ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
+                      <span>{emailValidation.message}</span>
+                    </>
+                  ) : (
+                    <>
+                      {emailValidation.exists ? (
+                        <div className="w-5 h-5 bg-red-100 rounded-full flex items-center justify-center">
+                          <XCircle className="w-3 h-3 text-red-600" />
+                        </div>
+                      ) : (
+                        <div className="w-5 h-5 bg-green-100 rounded-full flex items-center justify-center">
+                          <CheckCircle className="w-3 h-3 text-green-600" />
+                        </div>
+                      )}
+                      <span className="font-medium">{emailValidation.message}</span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
-            {editingVendedor && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Nova Senha (opcional)
-                </label>
-                <input
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  placeholder="Deixe em branco para manter a senha atual"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                />
-              </div>
-            )}
+            {/* Campo de senha - diferente para criação e edição */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {editingVendedor ? 'Nova Senha (opcional)' : 'Senha'}
+              </label>
+              <input
+                type="password"
+                value={formData.password}
+                onChange={(e) => setFormData({...formData, password: e.target.value})}
+                placeholder={editingVendedor ? 
+                  "Deixe em branco para manter a senha atual" : 
+                  "Mínimo 6 caracteres com letras e números"
+                }
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:border-transparent transition-all ${
+                  formData.password && !editingVendedor && !passwordValidation.isValid 
+                    ? 'border-red-300 focus:ring-red-500' 
+                    : formData.password && !editingVendedor && passwordValidation.isValid
+                    ? 'border-green-300 focus:ring-green-500'
+                    : 'border-gray-300 focus:ring-blue-500'
+                }`}
+              />
+              
+              {/* Validação da senha */}
+              {formData.password && !editingVendedor && passwordValidation.message && (
+                <div className={`mt-3 text-sm ${
+                  passwordValidation.isValid ? 'text-green-600' : 'text-red-600'
+                }`}>
+                  <div className="flex items-center space-x-2 mb-2">
+                    {passwordValidation.isValid ? (
+                      <div className="w-5 h-5 bg-green-100 rounded-full flex items-center justify-center">
+                        <CheckCircle className="w-3 h-3 text-green-600" />
+                      </div>
+                    ) : (
+                      <div className="w-5 h-5 bg-red-100 rounded-full flex items-center justify-center">
+                        <XCircle className="w-3 h-3 text-red-600" />
+                      </div>
+                    )}
+                    <span className="font-medium">{passwordValidation.message}</span>
+                  </div>
+                  
+                  {/* Indicadores de requisitos */}
+                  <div className="ml-7 space-y-1">
+                    <div className={`flex items-center space-x-2 text-xs ${
+                      passwordValidation.requirements.length ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      <div className={`w-3 h-3 rounded-full ${
+                        passwordValidation.requirements.length ? 'bg-green-500' : 'bg-red-500'
+                      }`}></div>
+                      <span>Mínimo 6 caracteres</span>
+                    </div>
+                    <div className={`flex items-center space-x-2 text-xs ${
+                      passwordValidation.requirements.hasLetter ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      <div className={`w-3 h-3 rounded-full ${
+                        passwordValidation.requirements.hasLetter ? 'bg-green-500' : 'bg-red-500'
+                      }`}></div>
+                      <span>Pelo menos 1 letra</span>
+                    </div>
+                    <div className={`flex items-center space-x-2 text-xs ${
+                      passwordValidation.requirements.hasNumber ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      <div className={`w-3 h-3 rounded-full ${
+                        passwordValidation.requirements.hasNumber ? 'bg-green-500' : 'bg-red-500'
+                      }`}></div>
+                      <span>Pelo menos 1 número</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <p className="text-xs text-gray-500 mt-2">
+                {editingVendedor ? 
+                  'Deixe em branco para manter a senha atual' : 
+                  formData.password ? 
+                    'Senha personalizada será usada para o vendedor' : 
+                    'Se não informada, a senha padrão será "123456"'
+                }
+              </p>
+            </div>
 
             <div className="flex items-center justify-end space-x-4">
               <button
@@ -646,6 +886,12 @@ const VendedoresModule: React.FC = () => {
                 onClick={() => {
                   setShowForm(false);
                   setEditingVendedor(null);
+                  setEmailValidation({ isChecking: false, exists: false, message: '' });
+                  setPasswordValidation({
+                    isValid: false,
+                    message: '',
+                    requirements: { length: false, hasLetter: false, hasNumber: false }
+                  });
                 }}
                 className="px-6 py-3 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
               >
@@ -653,7 +899,20 @@ const VendedoresModule: React.FC = () => {
               </button>
               <button
                 type="submit"
-                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors shadow-sm hover:shadow-md"
+                disabled={
+                  !editingVendedor && (
+                    emailValidation.exists || 
+                    (!!formData.password && !passwordValidation.isValid)
+                  )
+                }
+                className={`px-6 py-3 rounded-lg font-medium transition-colors shadow-sm hover:shadow-md ${
+                  !editingVendedor && (
+                    emailValidation.exists || 
+                    (!!formData.password && !passwordValidation.isValid)
+                  )
+                    ? 'bg-gray-400 cursor-not-allowed text-white'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
               >
                 {editingVendedor ? 'Atualizar Vendedor' : 'Criar Vendedor'}
               </button>
