@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
@@ -776,17 +777,26 @@ const ClientesModule: React.FC = () => {
       </div>
 
       {/* Modal de Detalhes */}
-      {showDetailsModal && selectedCliente && (
+      {showDetailsModal && selectedCliente && createPortal(
         <div 
-          className="client-modal-overlay"
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
+          style={{
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            backdropFilter: 'blur(4px)'
+          }}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowDetailsModal(false);
             }
           }}
         >
-          <div className="client-modal-content">
-            <div className="client-modal-header">
+          <div 
+            className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
+            style={{
+              animation: 'modalScale 0.2s ease-out forwards'
+            }}
+          >
+            <div className="p-6 border-b border-gray-200 flex-shrink-0">
               <div className="flex items-center justify-between">
                 <h3 className="text-xl font-semibold text-gray-900">Detalhes do Cliente</h3>
                 <button
@@ -798,7 +808,7 @@ const ClientesModule: React.FC = () => {
               </div>
             </div>
             
-            <div className="client-modal-body space-y-6">
+            <div className="p-6 space-y-6 overflow-y-auto flex-1">
               <div className="flex items-start space-x-4">
                 <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
                   {selectedCliente.company ? selectedCliente.company.charAt(0) : selectedCliente.name.charAt(0)}
@@ -858,7 +868,8 @@ const ClientesModule: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
