@@ -210,10 +210,10 @@ const EmpresasModule: React.FC = () => {
       setLoading(true);
       logger.info('Carregando empresas do Supabase...');
 
-      // Buscar empresas
+      // Buscar empresas com todos os campos
       const { data, error } = await supabase
         .from('companies')
-        .select('id, name, segment, created_at')
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -239,42 +239,26 @@ const EmpresasModule: React.FC = () => {
 
       // Converter dados para interface Empresa
       const empresasFormatadas = (data || []).map(item => {
-        // Extrair dados do campo segment (que contém tudo concatenado)
-        const segmentParts = (item.segment || '').split(' | ');
-        const industry = segmentParts[0] || 'Não informado';
-        const location = segmentParts[1] || 'Não informado/SP';
-        const [city, state] = location.split('/');
-        
-        // Extrair expectativas dos dados concatenados
-        const expectativasText = segmentParts[2] || '';
-        const leadsMatch = expectativasText.match(/Leads:(\d+)/);
-        const vendasMatch = expectativasText.match(/Vendas:(\d+)/);
-        const seguidoresMatch = expectativasText.match(/Seg:(\d+)/);
-        
-        // Verificar se está ativo - por padrão todas as empresas são consideradas ativas
-        const statusText = segmentParts[3] || '';
-        const isActive = !statusText.includes('ATIVO:false'); // Só desativa se explicitamente marcado como false
-        
         // Buscar admin da empresa
         const admin = adminsData.find(admin => admin.tenant_id === item.id);
         
         return {
           id: item.id,
           name: item.name,
-          industry: industry,
-          website: '',
-          phone: '',
-          email: '',
-          address: '',
-          city: city || 'Não informado',
-          state: state || 'SP',
-          country: 'Brasil',
-          expected_leads_monthly: parseInt(leadsMatch?.[1] || '0'),
-          expected_sales_monthly: parseInt(vendasMatch?.[1] || '0'),
-          expected_followers_monthly: parseInt(seguidoresMatch?.[1] || '0'),
-          is_active: isActive,
+          industry: item.industry || 'Não informado',
+          website: item.website || '',
+          phone: item.phone || '',
+          email: item.email || '',
+          address: item.address || '',
+          city: item.city || 'Não informado',
+          state: item.state || 'SP',
+          country: item.country || 'Brasil',
+          expected_leads_monthly: item.expected_leads_monthly || 0,
+          expected_sales_monthly: item.expected_sales_monthly || 0,
+          expected_followers_monthly: item.expected_followers_monthly || 0,
+          is_active: item.is_active !== false, // Por padrão true, só false se explicitamente definido
           created_at: item.created_at,
-          updated_at: item.created_at,
+          updated_at: item.updated_at || item.created_at,
           admin: admin ? {
             id: admin.id,
             name: `${admin.first_name || ''} ${admin.last_name || ''}`.trim() || 'Sem nome',
@@ -322,9 +306,22 @@ const EmpresasModule: React.FC = () => {
     try {
       logger.info('Salvando empresa...');
 
-      // TEMPORÁRIO: Usando apenas campos que existem na tabela atual
+      // Dados completos da empresa para salvar na tabela
       const empresaData = {
         name: formData.name.trim(),
+        industry: formData.industry.trim(),
+        website: formData.website.trim() || null,
+        phone: formData.phone.trim() || null,
+        email: formData.email.trim() || null,
+        address: formData.address.trim() || null,
+        city: formData.city.trim(),
+        state: formData.state.trim(),
+        country: 'Brasil',
+        expected_leads_monthly: parseInt(formData.expected_leads_monthly),
+        expected_sales_monthly: parseInt(formData.expected_sales_monthly),
+        expected_followers_monthly: parseInt(formData.expected_followers_monthly),
+        is_active: true,
+        // Manter segment para compatibilidade com código legado
         segment: `${formData.industry.trim()} | ${formData.city.trim()}/${formData.state.trim()} | Leads:${formData.expected_leads_monthly} Vendas:${formData.expected_sales_monthly} Seg:${formData.expected_followers_monthly} | ATIVO:true`
       };
 
@@ -482,18 +479,13 @@ const EmpresasModule: React.FC = () => {
     try {
       logger.info(`${acao.charAt(0).toUpperCase() + acao.slice(1)}ando empresa:`, empresa.name);
 
-      // Construir novo segment preservando outros dados
-      const segmentParts = [
-        empresa.industry || 'Não informado',
-        `${empresa.city}/${empresa.state}`,
-        `Leads:${empresa.expected_leads_monthly} Vendas:${empresa.expected_sales_monthly} Seg:${empresa.expected_followers_monthly}`,
-        `ATIVO:${novoStatus}`
-      ];
-
+      // Atualizar status da empresa
       const { error } = await supabase
         .from('companies')
         .update({
-          segment: segmentParts.join(' | ')
+          is_active: novoStatus,
+          // Atualizar segment para compatibilidade com código legado
+          segment: `${empresa.industry} | ${empresa.city}/${empresa.state} | Leads:${empresa.expected_leads_monthly} Vendas:${empresa.expected_sales_monthly} Seg:${empresa.expected_followers_monthly} | ATIVO:${novoStatus}`
         })
         .eq('id', empresa.id);
 
@@ -973,6 +965,30 @@ const EmpresasModule: React.FC = () => {
                           <span>{empresa.city}/{empresa.state}</span>
                         </div>
                       </div>
+
+                      {/* Informações de contato */}
+                      {(empresa.website || empresa.phone || empresa.email) && (
+                        <div className="flex items-center space-x-4 text-sm text-slate-500 ml-14 mt-2">
+                          {empresa.website && (
+                            <div className="flex items-center space-x-1">
+                              <Globe className="w-3.5 h-3.5" />
+                              <span className="truncate max-w-32">{empresa.website}</span>
+                            </div>
+                          )}
+                          {empresa.phone && (
+                            <div className="flex items-center space-x-1">
+                              <Phone className="w-3.5 h-3.5" />
+                              <span>{empresa.phone}</span>
+                            </div>
+                          )}
+                          {empresa.email && (
+                            <div className="flex items-center space-x-1">
+                              <Mail className="w-3.5 h-3.5" />
+                              <span className="truncate max-w-32">{empresa.email}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="company-actions">
