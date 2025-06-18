@@ -83,34 +83,45 @@ const EmpresasModule: React.FC = () => {
     }
   }, [user]);
 
-  // Função para corrigir usuários criados sem senha
+  // Função para corrigir usuários criados sem senha (quando a coluna existir)
   const fixUsersWithoutPassword = async () => {
     try {
-      // Buscar usuários sem password_hash
+      // Tentar buscar usuários sem password_hash
       const { data: usersWithoutPassword, error } = await supabase
         .from('users')
-        .select('id, email, role')
-        .is('password_hash', null)
+        .select('id, email, role, password_hash')
         .eq('role', 'admin');
 
-      if (error || !usersWithoutPassword || usersWithoutPassword.length === 0) {
+      if (error) {
+        console.log('ℹ️ Tabela users ainda não tem coluna password_hash. Execute o SQL para adicionar.');
+        return;
+      }
+
+      // Filtrar usuários sem senha
+      const usersNeedingPassword = usersWithoutPassword?.filter(user => !user.password_hash) || [];
+
+      if (usersNeedingPassword.length === 0) {
         return; // Nenhum usuário para corrigir
       }
 
-      console.log(`Corrigindo ${usersWithoutPassword.length} usuários sem senha...`);
+      console.log(`Corrigindo ${usersNeedingPassword.length} usuários sem senha...`);
 
       // Atualizar cada usuário com senha padrão
-      for (const user of usersWithoutPassword) {
-        await supabase
-          .from('users')
-          .update({ password_hash: '123456' })
-          .eq('id', user.id);
-        
-        console.log(`✅ Senha padrão definida para: ${user.email}`);
+      for (const user of usersNeedingPassword) {
+        try {
+          await supabase
+            .from('users')
+            .update({ password_hash: '123456' })
+            .eq('id', user.id);
+          
+          console.log(`✅ Senha padrão definida para: ${user.email}`);
+        } catch (updateError) {
+          console.log(`⚠️ Não foi possível definir senha para ${user.email}:`, updateError);
+        }
       }
 
     } catch (error) {
-      console.error('Erro ao corrigir usuários sem senha:', error);
+      console.log('ℹ️ Função de correção de senhas não executada. Coluna password_hash pode não existir ainda.');
     }
   };
 
@@ -378,6 +389,7 @@ const EmpresasModule: React.FC = () => {
 
         const adminPassword = formData.admin_password.trim() || '123456';
         
+        // Criar admin sem password_hash por enquanto (será adicionado via SQL)
         const { data: newAdmin, error: adminError } = await supabase
           .from('users')
           .insert([{
@@ -386,11 +398,23 @@ const EmpresasModule: React.FC = () => {
             last_name: lastName.trim() || '',
             role: 'admin',
             tenant_id: newCompany.id,
-            is_active: true,
-            password_hash: adminPassword // Salvar senha (em produção usar hash)
+            is_active: true
           }])
           .select()
           .single();
+
+        // Após criar o usuário, tentar adicionar a senha se a coluna existir
+        if (!adminError && newAdmin) {
+          try {
+            await supabase
+              .from('users')
+              .update({ password_hash: adminPassword })
+              .eq('id', newAdmin.id);
+            console.log('✅ Senha definida para o admin:', adminEmail);
+          } catch (passwordError) {
+            console.log('ℹ️ Coluna password_hash não existe ainda. Execute o SQL para adicionar.');
+          }
+        }
 
         if (adminError) {
           console.error('Erro detalhado ao criar admin:', adminError);
