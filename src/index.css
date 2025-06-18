@@ -105,7 +105,7 @@
 
   /* Modern Card Styles */
   .card-modern {
-    @apply rounded-xl border bg-card text-card-foreground shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-1;
+    @apply rounded-xl bg-card text-card-foreground shadow-sm;
   }
 
   /* Sidebar Styles */
