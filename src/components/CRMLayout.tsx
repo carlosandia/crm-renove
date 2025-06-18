@@ -53,7 +53,7 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
             </div>
           ) : (
             <div className="flex flex-col w-full p-6">
-              <div className="card-modern p-6 min-h-[calc(100vh-60px)] animate-fade-in">
+              <div className="card-modern p-6 min-h-[calc(100vh-60px)]">
                 {children}
               </div>
             </div>

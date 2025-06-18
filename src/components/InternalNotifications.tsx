@@ -118,7 +118,7 @@ const InternalNotifications: React.FC<InternalNotificationsProps> = ({
     return (
       <button 
         onClick={() => setShowNotifications(!showNotifications)}
-        className={`p-3 bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg shadow-md border border-gray-200 transition-all duration-200 relative ${
+        className={`p-3 bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg shadow-md relative ${
           compact ? 'p-2' : ''
         }`}
         title="Notificações"
@@ -138,7 +138,7 @@ const InternalNotifications: React.FC<InternalNotificationsProps> = ({
     if (!showNotifications && !alwaysVisible) return null;
 
     return (
-      <div className={`bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden ${
+      <div className={`bg-white rounded-lg shadow-xl overflow-hidden ${
         alwaysVisible ? 'w-full' : 'w-96'
       } ${isMinimized ? 'h-12' : 'max-h-96'}`}>
         
@@ -161,7 +161,7 @@ const InternalNotifications: React.FC<InternalNotificationsProps> = ({
               {unreadCount > 0 && (
                 <button
                   onClick={markAllAsRead}
-                  className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50"
                   title="Marcar todas como lidas"
                 >
                   <CheckCheck className="w-3 h-3" />
@@ -172,17 +172,17 @@ const InternalNotifications: React.FC<InternalNotificationsProps> = ({
               {alwaysVisible && (
                 <button
                   onClick={() => setIsMinimized(!isMinimized)}
-                  className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                  className="p-1 text-gray-400 hover:text-gray-600"
                   title={isMinimized ? 'Expandir' : 'Minimizar'}
                 >
-                  <ChevronDown className={`w-4 h-4 transition-transform ${isMinimized ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`w-4 h-4 ${isMinimized ? 'rotate-180' : ''}`} />
                 </button>
               )}
               
               {!alwaysVisible && (
                 <button
                   onClick={() => setShowNotifications(false)}
-                  className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                  className="p-1 text-gray-400 hover:text-gray-600"
                   title="Fechar"
                 >
                   <X className="w-4 h-4" />
@@ -213,7 +213,7 @@ const InternalNotifications: React.FC<InternalNotificationsProps> = ({
                 <div
                   key={notification.id}
                   onClick={() => handleNotificationClick(notification)}
-                  className={`p-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors ${
+                  className={`p-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${
                     !notification.read ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
                   } ${compact ? 'p-2' : ''}`}
                 >
@@ -240,7 +240,7 @@ const InternalNotifications: React.FC<InternalNotificationsProps> = ({
                                 e.stopPropagation();
                                 markAsRead(notification.id);
                               }}
-                              className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-100 transition-colors"
+                              className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-100"
                               title="Marcar como lida"
                             >
                               <Check className="w-3 h-3" />
