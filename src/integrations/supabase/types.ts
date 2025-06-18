@@ -11,25 +11,61 @@ export type Database = {
     Tables: {
       companies: {
         Row: {
+          address: string | null
+          city: string
+          country: string | null
           created_at: string | null
+          email: string | null
+          expected_followers_monthly: number
+          expected_leads_monthly: number
+          expected_sales_monthly: number
           id: string
+          industry: string
+          is_active: boolean | null
           name: string
+          phone: string | null
           segment: string | null
+          state: string
           updated_at: string | null
+          website: string | null
         }
         Insert: {
+          address?: string | null
+          city?: string
+          country?: string | null
           created_at?: string | null
+          email?: string | null
+          expected_followers_monthly?: number
+          expected_leads_monthly?: number
+          expected_sales_monthly?: number
           id?: string
+          industry?: string
+          is_active?: boolean | null
           name: string
+          phone?: string | null
           segment?: string | null
+          state?: string
           updated_at?: string | null
+          website?: string | null
         }
         Update: {
+          address?: string | null
+          city?: string
+          country?: string | null
           created_at?: string | null
+          email?: string | null
+          expected_followers_monthly?: number
+          expected_leads_monthly?: number
+          expected_sales_monthly?: number
           id?: string
+          industry?: string
+          is_active?: boolean | null
           name?: string
+          phone?: string | null
           segment?: string | null
+          state?: string
           updated_at?: string | null
+          website?: string | null
         }
         Relationships: []
       }
@@ -95,7 +131,7 @@ export type Database = {
           id: string
           name: string
           phone: string | null
-          tenant_id: string
+          tenant_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -105,7 +141,7 @@ export type Database = {
           id?: string
           name: string
           phone?: string | null
-          tenant_id: string
+          tenant_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -115,7 +151,7 @@ export type Database = {
           id?: string
           name?: string
           phone?: string | null
-          tenant_id?: string
+          tenant_id?: string | null
           updated_at?: string | null
         }
         Relationships: []
@@ -332,6 +368,36 @@ export type Database = {
           },
         ]
       }
+      lead_feedback: {
+        Row: {
+          comment: string
+          created_at: string | null
+          feedback_type: string
+          id: string
+          lead_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          comment: string
+          created_at?: string | null
+          feedback_type: string
+          id?: string
+          lead_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          comment?: string
+          created_at?: string | null
+          feedback_type?: string
+          id?: string
+          lead_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       lead_notes: {
         Row: {
           created_at: string | null
@@ -436,20 +502,25 @@ export type Database = {
         Row: {
           assigned_to: string | null
           campaign_name: string | null
+          closed_date: string | null
           company: string | null
+          company_id: string | null
           created_at: string | null
           created_by: string
           email: string
           estimated_value: number | null
           first_name: string
           id: string
+          is_mql: boolean | null
           job_title: string | null
           last_contact_date: string | null
           last_name: string | null
           lead_score: number | null
           lead_source: string | null
           lead_temperature: string | null
+          mql_date: string | null
           next_action_date: string | null
+          origem: string | null
           phone: string | null
           probability: number | null
           status: string | null
@@ -458,24 +529,30 @@ export type Database = {
           utm_campaign: string | null
           utm_medium: string | null
           utm_source: string | null
+          valor: number | null
         }
         Insert: {
           assigned_to?: string | null
           campaign_name?: string | null
+          closed_date?: string | null
           company?: string | null
+          company_id?: string | null
           created_at?: string | null
           created_by: string
           email: string
           estimated_value?: number | null
           first_name: string
           id?: string
+          is_mql?: boolean | null
           job_title?: string | null
           last_contact_date?: string | null
           last_name?: string | null
           lead_score?: number | null
           lead_source?: string | null
           lead_temperature?: string | null
+          mql_date?: string | null
           next_action_date?: string | null
+          origem?: string | null
           phone?: string | null
           probability?: number | null
           status?: string | null
@@ -484,24 +561,30 @@ export type Database = {
           utm_campaign?: string | null
           utm_medium?: string | null
           utm_source?: string | null
+          valor?: number | null
         }
         Update: {
           assigned_to?: string | null
           campaign_name?: string | null
+          closed_date?: string | null
           company?: string | null
+          company_id?: string | null
           created_at?: string | null
           created_by?: string
           email?: string
           estimated_value?: number | null
           first_name?: string
           id?: string
+          is_mql?: boolean | null
           job_title?: string | null
           last_contact_date?: string | null
           last_name?: string | null
           lead_score?: number | null
           lead_source?: string | null
           lead_temperature?: string | null
+          mql_date?: string | null
           next_action_date?: string | null
+          origem?: string | null
           phone?: string | null
           probability?: number | null
           status?: string | null
@@ -510,8 +593,17 @@ export type Database = {
           utm_campaign?: string | null
           utm_medium?: string | null
           utm_source?: string | null
+          valor?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "leads_master_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pipeline_custom_fields: {
         Row: {
@@ -525,6 +617,7 @@ export type Database = {
           is_required: boolean | null
           pipeline_id: string
           placeholder: string | null
+          show_in_card: boolean | null
           updated_at: string | null
         }
         Insert: {
@@ -538,6 +631,7 @@ export type Database = {
           is_required?: boolean | null
           pipeline_id: string
           placeholder?: string | null
+          show_in_card?: boolean | null
           updated_at?: string | null
         }
         Update: {
@@ -551,6 +645,7 @@ export type Database = {
           is_required?: boolean | null
           pipeline_id?: string
           placeholder?: string | null
+          show_in_card?: boolean | null
           updated_at?: string | null
         }
         Relationships: []
@@ -645,12 +740,51 @@ export type Database = {
         }
         Relationships: []
       }
+      pipeline_win_loss_reasons: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          pipeline_id: string
+          reason_name: string
+          reason_type: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          pipeline_id: string
+          reason_name: string
+          reason_type: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          pipeline_id?: string
+          reason_name?: string
+          reason_type?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_win_loss_reasons_pipeline_id_fkey"
+            columns: ["pipeline_id"]
+            isOneToOne: false
+            referencedRelation: "pipelines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pipelines: {
         Row: {
           created_at: string | null
           created_by: string | null
           description: string | null
           id: string
+          is_active: boolean | null
           name: string
           tenant_id: string
           updated_at: string | null
@@ -660,6 +794,7 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           id?: string
+          is_active?: boolean | null
           name: string
           tenant_id: string
           updated_at?: string | null
@@ -669,6 +804,7 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           id?: string
+          is_active?: boolean | null
           name?: string
           tenant_id?: string
           updated_at?: string | null
@@ -735,6 +871,288 @@ export type Database = {
           },
         ]
       }
+      sequence_conditions: {
+        Row: {
+          action: string
+          created_at: string | null
+          field_name: string
+          field_value: string | null
+          id: string
+          operator: string
+          task_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          field_name: string
+          field_value?: string | null
+          id?: string
+          operator: string
+          task_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          field_name?: string
+          field_value?: string | null
+          id?: string
+          operator?: string
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sequence_conditions_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "sequence_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sequence_executions: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          current_task_index: number | null
+          id: string
+          last_executed_at: string | null
+          lead_id: string
+          metadata: Json | null
+          sequence_id: string
+          started_at: string | null
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          current_task_index?: number | null
+          id?: string
+          last_executed_at?: string | null
+          lead_id: string
+          metadata?: Json | null
+          sequence_id: string
+          started_at?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          current_task_index?: number | null
+          id?: string
+          last_executed_at?: string | null
+          lead_id?: string
+          metadata?: Json | null
+          sequence_id?: string
+          started_at?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sequence_executions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sequence_executions_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "sequence_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sequence_task_executions: {
+        Row: {
+          assigned_to: string | null
+          completed_at: string | null
+          created_at: string | null
+          execution_id: string
+          id: string
+          notes: string | null
+          result_data: Json | null
+          scheduled_for: string | null
+          started_at: string | null
+          status: string | null
+          task_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          execution_id: string
+          id?: string
+          notes?: string | null
+          result_data?: Json | null
+          scheduled_for?: string | null
+          started_at?: string | null
+          status?: string | null
+          task_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          execution_id?: string
+          id?: string
+          notes?: string | null
+          result_data?: Json | null
+          scheduled_for?: string | null
+          started_at?: string | null
+          status?: string | null
+          task_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sequence_task_executions_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sequence_task_executions_execution_id_fkey"
+            columns: ["execution_id"]
+            isOneToOne: false
+            referencedRelation: "sequence_executions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sequence_task_executions_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "sequence_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sequence_tasks: {
+        Row: {
+          auto_complete: boolean | null
+          created_at: string | null
+          delay_days: number | null
+          delay_hours: number | null
+          description: string | null
+          id: string
+          is_required: boolean | null
+          order_index: number | null
+          sequence_id: string
+          task_type: string
+          template_content: string | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          auto_complete?: boolean | null
+          created_at?: string | null
+          delay_days?: number | null
+          delay_hours?: number | null
+          description?: string | null
+          id?: string
+          is_required?: boolean | null
+          order_index?: number | null
+          sequence_id: string
+          task_type: string
+          template_content?: string | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          auto_complete?: boolean | null
+          created_at?: string | null
+          delay_days?: number | null
+          delay_hours?: number | null
+          description?: string | null
+          id?: string
+          is_required?: boolean | null
+          order_index?: number | null
+          sequence_id?: string
+          task_type?: string
+          template_content?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sequence_tasks_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "sequence_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sequence_templates: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          pipeline_id: string | null
+          stage_id: string | null
+          tenant_id: string
+          trigger_event: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          pipeline_id?: string | null
+          stage_id?: string | null
+          tenant_id: string
+          trigger_event: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          pipeline_id?: string | null
+          stage_id?: string | null
+          tenant_id?: string
+          trigger_event?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sequence_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sequence_templates_pipeline_id_fkey"
+            columns: ["pipeline_id"]
+            isOneToOne: false
+            referencedRelation: "pipelines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sequence_templates_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           created_at: string | null
@@ -761,6 +1179,42 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      user_pipeline_links: {
+        Row: {
+          created_at: string | null
+          id: string
+          pipeline_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          pipeline_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          pipeline_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_pipeline_links_pipeline_id_fkey"
+            columns: ["pipeline_id"]
+            isOneToOne: false
+            referencedRelation: "pipelines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_pipeline_links_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       users: {
         Row: {
@@ -912,6 +1366,10 @@ export type Database = {
         }
         Returns: Json
       }
+      exec_sql: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       fix_existing_admin_auth: {
         Args: { p_email: string; p_password: string }
         Returns: Json
@@ -952,6 +1410,14 @@ export type Database = {
       }
       get_company_full_stats: {
         Args: { p_client_id: string }
+        Returns: Json
+      }
+      get_company_metrics: {
+        Args: {
+          p_company_id: string
+          p_start_date?: string
+          p_end_date?: string
+        }
         Returns: Json
       }
       get_current_tenant_id: {
