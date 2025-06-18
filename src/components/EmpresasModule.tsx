@@ -911,14 +911,9 @@ const EmpresasModule: React.FC = () => {
                         <h3 className="text-sm font-medium text-gray-900 truncate">
                           {empresa.name}
                         </h3>
-                        <div className={`flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium ${
-                          empresa.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-                        }`}>
-                          <div className={`w-1.5 h-1.5 rounded-full ${
-                            empresa.is_active ? 'bg-green-500' : 'bg-red-500'
-                          }`}></div>
-                          <span>{empresa.is_active ? 'Ativa' : 'Inativa'}</span>
-                        </div>
+                        <span className={`status ${empresa.is_active ? 'active' : 'inactive'}`}>
+                          {empresa.is_active ? 'Ativa' : 'Inativa'}
+                        </span>
                       </div>
 
                       <div className="flex items-center space-x-4 text-xs text-gray-500">
@@ -956,19 +951,19 @@ const EmpresasModule: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Expectativas - Compacto em linha */}
+                  {/* Expectativas - Compacto em linha com cores suaves */}
                   <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
                     <div className="grid grid-cols-3 gap-4 text-center">
                       <div>
-                        <div className="text-sm font-medium text-blue-600">{empresa.expected_leads_monthly}</div>
+                        <div className="text-sm font-medium text-slate-700">{empresa.expected_leads_monthly}</div>
                         <div className="text-xs text-gray-500">Leads/mês</div>
                       </div>
                       <div>
-                        <div className="text-sm font-medium text-green-600">{empresa.expected_sales_monthly}</div>
+                        <div className="text-sm font-medium text-slate-700">{empresa.expected_sales_monthly}</div>
                         <div className="text-xs text-gray-500">Vendas/mês</div>
                       </div>
                       <div>
-                        <div className="text-sm font-medium text-purple-600">{empresa.expected_followers_monthly}</div>
+                        <div className="text-sm font-medium text-slate-700">{empresa.expected_followers_monthly}</div>
                         <div className="text-xs text-gray-500">Seguidores/mês</div>
                       </div>
                     </div>
