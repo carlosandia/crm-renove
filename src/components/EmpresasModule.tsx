@@ -367,6 +367,8 @@ const EmpresasModule: React.FC = () => {
           throw new Error(`Erro ao criar administrador: ${adminError.message || adminError.details || JSON.stringify(adminError)}`);
         }
 
+
+
         // Recarregar lista para mostrar nova empresa formatada
         await fetchEmpresas();
         logger.success('Empresa e administrador criados com sucesso');
@@ -528,8 +530,9 @@ const EmpresasModule: React.FC = () => {
 
   if (user?.role !== 'super_admin') {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="p-8 text-center">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">Acesso Negado</h2>
+        <p className="text-gray-600">Apenas Super Admins podem gerenciar empresas.</p>
       </div>
     );
   }
@@ -877,7 +880,7 @@ const EmpresasModule: React.FC = () => {
         </div>
       )}
 
-      {/* Lista de Empresas - Enhanced Layout */}
+      {/* Lista de Empresas */}
       <div className="bg-white rounded-xl border border-gray-200">
         <div className="p-6 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900">
@@ -895,128 +898,132 @@ const EmpresasModule: React.FC = () => {
           </div>
         ) : (
           <>
-            <div className="p-6">
-              <div className="space-y-6">
-                {currentEmpresas.map((empresa) => (
-                  <div key={empresa.id} className="company-card">
-                    {/* Company Header */}
-                    <div className="company-header">
-                      <div className="company-avatar">
-                        {empresa.name.charAt(0).toUpperCase()}
+            <div className="divide-y divide-gray-200">
+              {currentEmpresas.map((empresa) => (
+                <div key={empresa.id} className="p-6 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start space-x-4">
+                      <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center text-white font-medium flex-shrink-0">
+                        {empresa.name.charAt(0)}
                       </div>
                       
-                      <div className="company-info">
-                        <h5>
-                          {empresa.name}
-                          <span className={`company-status-badge ${empresa.is_active ? 'active' : 'inactive'}`}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-3 mb-2">
+                          <h3 className="text-lg font-medium text-gray-900">
+                            {empresa.name}
+                          </h3>
+                          <div className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs font-medium ${
+                            empresa.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          }`}>
                             <Star className="w-3 h-3" />
-                            {empresa.is_active ? 'Ativa' : 'Desativada'}
-                          </span>
-                        </h5>
-                        
-                        <div className="segment">
-                          {empresa.industry}
+                            <span>{empresa.is_active ? 'Ativa' : 'Desativada'}</span>
+                          </div>
+                        </div>
+
+                        <div className="text-sm text-gray-600 mb-2">
+                          <strong>Nicho:</strong> {empresa.industry}
                         </div>
                         
-                        <div className="company-details">
-                          <div className="company-detail-item">
-                            <MapPin className="w-4 h-4" />
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
+                          <div className="flex items-center space-x-2">
+                            <MapPin className="w-4 h-4 text-gray-400" />
                             <span>{empresa.city}/{empresa.state}</span>
                           </div>
                           {empresa.email && (
-                            <div className="company-detail-item">
-                              <Mail className="w-4 h-4" />
+                            <div className="flex items-center space-x-2">
+                              <Mail className="w-4 h-4 text-gray-400" />
                               <span>{empresa.email}</span>
                             </div>
                           )}
                           {empresa.phone && (
-                            <div className="company-detail-item">
-                              <Phone className="w-4 h-4" />
+                            <div className="flex items-center space-x-2">
+                              <Phone className="w-4 h-4 text-gray-400" />
                               <span>{empresa.phone}</span>
                             </div>
                           )}
-                          {empresa.website && (
-                            <div className="company-detail-item">
-                              <Globe className="w-4 h-4" />
-                              <span>{empresa.website}</span>
-                            </div>
-                          )}
                         </div>
-                      </div>
 
-                      <div className="company-actions">
-                        <button
-                          onClick={() => handleEdit(empresa)}
-                          className="action-button edit"
-                          title="Editar"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleToggleStatus(empresa)}
-                          className="action-button toggle"
-                          title={empresa.is_active ? 'Desativar empresa' : 'Ativar empresa'}
-                        >
-                          {empresa.is_active ? (
-                            <ToggleRight className="w-4 h-4" />
-                          ) : (
-                            <ToggleLeft className="w-4 h-4" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Expectations Grid */}
-                    <div className="expectations-grid">
-                      <div className="expectation-card leads">
-                        <div className="expectation-number">{empresa.expected_leads_monthly}</div>
-                        <div className="expectation-label">Leads/mês</div>
-                      </div>
-                      <div className="expectation-card sales">
-                        <div className="expectation-number">{empresa.expected_sales_monthly}</div>
-                        <div className="expectation-label">Vendas/mês</div>
-                      </div>
-                      <div className="expectation-card followers">
-                        <div className="expectation-number">{empresa.expected_followers_monthly}</div>
-                        <div className="expectation-label">Seguidores/mês</div>
-                      </div>
-                    </div>
-
-                    {/* Admin Info */}
-                    {empresa.admin ? (
-                      <div className="admin-info">
-                        <div className="admin-profile">
-                          <div className="admin-avatar">
-                            <User className="w-5 h-5" />
+                        {/* Expectativas */}
+                        <div className="grid grid-cols-3 gap-4 mt-4 p-3 bg-gray-50 rounded-lg">
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-blue-600">{empresa.expected_leads_monthly}</div>
+                            <div className="text-xs text-gray-500">Leads/mês</div>
                           </div>
-                          <div className="admin-details">
-                            <div className="admin-name">
-                              {empresa.admin.name}
-                            </div>
-                            <div className="admin-email">
-                              <Mail className="w-3 h-3" />
-                              {empresa.admin.email}
-                            </div>
-                            {empresa.admin.last_login && (
-                              <div className="admin-last-login">
-                                <Clock className="w-3 h-3" />
-                                Último acesso: {formatDateBrasilia(empresa.admin.last_login)}
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-green-600">{empresa.expected_sales_monthly}</div>
+                            <div className="text-xs text-gray-500">Vendas/mês</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-purple-600">{empresa.expected_followers_monthly}</div>
+                            <div className="text-xs text-gray-500">Seguidores/mês</div>
+                          </div>
+                        </div>
+
+                        {/* Informações do Admin */}
+                        {empresa.admin ? (
+                          <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                            <div className="flex items-center space-x-3">
+                              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-medium">
+                                <User className="w-4 h-4" />
                               </div>
-                            )}
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-2 mb-1">
+                                  <span className="text-sm font-medium text-blue-900">Admin:</span>
+                                  <span className="text-sm text-blue-800">{empresa.admin.name}</span>
+                                </div>
+                                <div className="flex items-center space-x-4 text-xs text-blue-600">
+                                  <div className="flex items-center space-x-1">
+                                    <Mail className="w-3 h-3" />
+                                    <span>{empresa.admin.email}</span>
+                                  </div>
+                                  {empresa.admin.last_login && (
+                                    <div className="flex items-center space-x-1">
+                                      <Clock className="w-3 h-3" />
+                                      <span>Último acesso: {formatDateBrasilia(empresa.admin.last_login)}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                            <div className="flex items-center space-x-2 text-yellow-800">
+                              <User className="w-4 h-4" />
+                              <span className="text-sm font-medium">Nenhum admin cadastrado</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <div className="no-admin-info">
-                        <div className="no-admin-message">
-                          <User className="w-4 h-4" />
-                          <span>Nenhum admin cadastrado</span>
-                        </div>
-                      </div>
-                    )}
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => handleEdit(empresa)}
+                        className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Editar"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleToggleStatus(empresa)}
+                        className={`p-2 transition-colors rounded-lg ${
+                          empresa.is_active 
+                            ? 'text-gray-400 hover:text-red-600 hover:bg-red-50' 
+                            : 'text-gray-400 hover:text-green-600 hover:bg-green-50'
+                        }`}
+                        title={empresa.is_active ? 'Desativar empresa' : 'Ativar empresa'}
+                      >
+                        {empresa.is_active ? (
+                          <ToggleRight className="w-4 h-4" />
+                        ) : (
+                          <ToggleLeft className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
 
             {/* Paginação */}
@@ -1072,4 +1079,4 @@ const EmpresasModule: React.FC = () => {
   );
 };
 
-export default EmpresasModule;
+export default EmpresasModule; 
