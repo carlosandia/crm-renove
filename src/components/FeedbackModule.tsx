@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Search, Filter, ThumbsUp, ThumbsDown, Clock, User, Building, Eye, X, ChevronDown, ChevronUp } from 'lucide-react';
@@ -597,8 +598,8 @@ const FeedbackModule: React.FC = () => {
       </div>
 
       {/* Modal de Detalhes Melhorado */}
-      {selectedFeedback && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      {selectedFeedback && createPortal(
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[10000] p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
             {/* Header do Modal */}
             <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-blue-50">
@@ -714,7 +715,8 @@ const FeedbackModule: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

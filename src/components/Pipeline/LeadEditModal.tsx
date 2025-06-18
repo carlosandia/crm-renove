@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Settings, Info, User, Building, Mail, Phone, MapPin, Calendar, DollarSign } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { X, Save, Settings, Info, User, Building, Mail, Phone, MapPin, Calendar, DollarSign, Eye, EyeOff } from 'lucide-react';
 
 interface CustomField {
   id: string;
@@ -125,9 +126,9 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
 
   const leadName = formData?.nome || formData?.nome_cliente || formData?.name || 'Lead sem nome';
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden border border-gray-200">
+  return createPortal(
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[10000] p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden border border-gray-200">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
           <div className="flex items-center justify-between">
@@ -319,7 +320,8 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
