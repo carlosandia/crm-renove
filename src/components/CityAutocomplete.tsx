@@ -21,19 +21,25 @@ const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
   const [suggestions, setSuggestions] = useState<City[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [hasSelectedCity, setHasSelectedCity] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (value && value !== '/') {
       setSearchTerm(value);
+      // Se o valor contém uma barra, significa que uma cidade foi selecionada
+      if (value.includes('/')) {
+        setHasSelectedCity(true);
+      }
     } else if (!value) {
       setSearchTerm('');
+      setHasSelectedCity(false);
     }
   }, [value]);
 
   useEffect(() => {
-    if (searchTerm.length >= 2) {
+    if (searchTerm.length >= 2 && !hasSelectedCity) {
       const results = searchCities(searchTerm);
       setSuggestions(results);
       setIsOpen(results.length > 0);
@@ -42,11 +48,12 @@ const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
       setSuggestions([]);
       setIsOpen(false);
     }
-  }, [searchTerm]);
+  }, [searchTerm, hasSelectedCity]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchTerm(value);
+    setHasSelectedCity(false); // Reset quando o usuário começa a digitar novamente
     
     // Não deixar começar com "/" ou ter múltiplas barras
     if (value.startsWith('/') || value.includes('//')) {
@@ -62,6 +69,7 @@ const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
     setSuggestions([]); // Limpar sugestões
     setIsOpen(false);
     setSelectedIndex(-1);
+    setHasSelectedCity(true); // Marcar que uma cidade foi selecionada
     onChange(formattedValue, city);
     
     // Forçar blur no input para garantir fechamento
@@ -128,7 +136,7 @@ const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           onFocus={() => {
-            if (suggestions.length > 0) {
+            if (suggestions.length > 0 && !hasSelectedCity) {
               setIsOpen(true);
             }
           }}
@@ -174,7 +182,7 @@ const CityAutocomplete: React.FC<CityAutocompleteProps> = ({
         </div>
       )}
 
-      {searchTerm.length >= 2 && suggestions.length === 0 && (
+      {searchTerm.length >= 2 && suggestions.length === 0 && !hasSelectedCity && (
         <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-4">
           <div className="text-center text-gray-500">
             <MapPin className="w-8 h-8 mx-auto mb-2 text-gray-300" />

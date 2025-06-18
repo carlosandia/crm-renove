@@ -51,6 +51,13 @@ const EmpresasModule: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(5);
 
+  // Estados para validação do email do admin
+  const [emailValidation, setEmailValidation] = useState({
+    isChecking: false,
+    exists: false,
+    message: ''
+  });
+
   // Estados do formulário
   const [formData, setFormData] = useState({
     name: '',
@@ -74,6 +81,20 @@ const EmpresasModule: React.FC = () => {
       fetchEmpresas();
     }
   }, [user]);
+
+  // Effect para validar email do admin com debounce
+  useEffect(() => {
+    if (!formData.admin_email || editingEmpresa) {
+      setEmailValidation({ isChecking: false, exists: false, message: '' });
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      validateAdminEmail(formData.admin_email);
+    }, 800); // Aguarda 800ms após o usuário parar de digitar
+
+    return () => clearTimeout(timeoutId);
+  }, [formData.admin_email, editingEmpresa]);
 
   // Função para formatar data no fuso horário de Brasília (GMT-3)
   const formatDateBrasilia = (dateString: string) => {
@@ -109,6 +130,47 @@ const EmpresasModule: React.FC = () => {
     lastLogin.setMinutes(seed % 60);
     
     return lastLogin.toISOString();
+  };
+
+  // Função para validar email do admin em tempo real
+  const validateAdminEmail = async (email: string) => {
+    if (!email || !email.includes('@') || editingEmpresa) {
+      setEmailValidation({ isChecking: false, exists: false, message: '' });
+      return;
+    }
+
+    setEmailValidation({ isChecking: true, exists: false, message: 'Verificando...' });
+
+    try {
+      const { data: existingUser, error } = await supabase
+        .from('users')
+        .select('id, email')
+        .eq('email', email.trim())
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        console.error('Erro ao verificar email:', error);
+        setEmailValidation({ isChecking: false, exists: false, message: '' });
+        return;
+      }
+
+      if (existingUser) {
+        setEmailValidation({
+          isChecking: false,
+          exists: true,
+          message: 'Esse e-mail já existe, favor inserir outro.'
+        });
+      } else {
+        setEmailValidation({
+          isChecking: false,
+          exists: false,
+          message: 'E-mail disponível.'
+        });
+      }
+    } catch (error) {
+      console.error('Erro na validação do email:', error);
+      setEmailValidation({ isChecking: false, exists: false, message: '' });
+    }
   };
 
   const fetchEmpresas = async () => {
@@ -219,6 +281,12 @@ const EmpresasModule: React.FC = () => {
       return;
     }
 
+    // Validar se email do admin já existe (apenas para criação)
+    if (!editingEmpresa && emailValidation.exists) {
+      alert('O e-mail do administrador já está em uso. Por favor, use um e-mail diferente.');
+      return;
+    }
+
     try {
       logger.info('Salvando empresa...');
 
@@ -325,6 +393,7 @@ const EmpresasModule: React.FC = () => {
         admin_email: '',
         admin_password: ''
       });
+      setEmailValidation({ isChecking: false, exists: false, message: '' });
       setShowForm(false);
       setEditingEmpresa(null);
       
@@ -730,8 +799,38 @@ const EmpresasModule: React.FC = () => {
                       onChange={(e) => setFormData({...formData, admin_email: e.target.value})}
                       required
                       placeholder="admin@empresa.com.br"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:border-transparent transition-all ${
+                        emailValidation.exists 
+                          ? 'border-red-300 focus:ring-red-500' 
+                          : 'border-gray-300 focus:ring-blue-500'
+                      }`}
                     />
+                    {/* Notificação de validação do email */}
+                    {formData.admin_email && !editingEmpresa && emailValidation.message && (
+                      <div className={`mt-2 flex items-center space-x-2 text-sm ${
+                        emailValidation.exists ? 'text-red-600' : 'text-green-600'
+                      }`}>
+                        {emailValidation.isChecking ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
+                            <span>{emailValidation.message}</span>
+                          </>
+                        ) : (
+                          <>
+                            {emailValidation.exists ? (
+                              <div className="w-4 h-4 bg-red-100 rounded-full flex items-center justify-center">
+                                <span className="text-red-600 text-xs">✕</span>
+                              </div>
+                            ) : (
+                              <div className="w-4 h-4 bg-green-100 rounded-full flex items-center justify-center">
+                                <span className="text-green-600 text-xs">✓</span>
+                              </div>
+                            )}
+                            <span>{emailValidation.message}</span>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -759,6 +858,7 @@ const EmpresasModule: React.FC = () => {
                 onClick={() => {
                   setShowForm(false);
                   setEditingEmpresa(null);
+                  setEmailValidation({ isChecking: false, exists: false, message: '' });
                 }}
                 className="px-6 py-3 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
               >
@@ -766,7 +866,12 @@ const EmpresasModule: React.FC = () => {
               </button>
               <button
                 type="submit"
-                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors shadow-sm hover:shadow-md"
+                disabled={!editingEmpresa && emailValidation.exists}
+                className={`px-6 py-3 rounded-lg font-medium transition-colors shadow-sm hover:shadow-md ${
+                  !editingEmpresa && emailValidation.exists
+                    ? 'bg-gray-400 cursor-not-allowed text-white'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
               >
                 {editingEmpresa ? 'Atualizar Empresa' : 'Criar Empresa'}
               </button>
