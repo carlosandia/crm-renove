@@ -127,13 +127,25 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
               <input
                 type="text"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder={`Buscar em ${activeModule.toLowerCase()}...`}
+                onChange={(e) => {
+                  try {
+                    setSearchTerm(e.target.value);
+                  } catch (error) {
+                    console.info('Erro na busca:', error);
+                  }
+                }}
+                placeholder={`Buscar em ${activeModule?.toLowerCase() || 'módulo'}...`}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-colors"
               />
               {searchTerm && (
                 <button
-                  onClick={() => setSearchTerm('')}
+                  onClick={() => {
+                    try {
+                      setSearchTerm('');
+                    } catch (error) {
+                      console.info('Erro ao limpar busca:', error);
+                    }
+                  }}
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   <X className="w-4 h-4" />

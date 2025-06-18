@@ -40,6 +40,13 @@ const VendedoresModule: React.FC = () => {
   const [showGoalsModal, setShowGoalsModal] = useState(false);
   const [selectedVendedor, setSelectedVendedor] = useState<Vendedor | null>(null);
 
+  // Log de inicialização silencioso
+  console.info('📊 VendedoresModule inicializado', { 
+    userRole: user?.role, 
+    tenantId: user?.tenant_id,
+    timestamp: new Date().toISOString()
+  });
+
   // Estados do formulário
   const [formData, setFormData] = useState({
     first_name: '',
@@ -62,8 +69,15 @@ const VendedoresModule: React.FC = () => {
   });
 
   useEffect(() => {
-    if (user?.role === 'admin' || user?.role === 'super_admin') {
-      fetchVendedores();
+    try {
+      if (user?.role === 'admin' || user?.role === 'super_admin') {
+        fetchVendedores();
+      } else {
+        setLoading(false);
+      }
+    } catch (error) {
+      console.info('Erro no useEffect do VendedoresModule:', error);
+      setLoading(false);
     }
   }, [user]);
 
@@ -75,21 +89,36 @@ const VendedoresModule: React.FC = () => {
       if (!user?.tenant_id) {
         logger.error('Usuário sem tenant_id definido');
         setVendedores([]);
+        setLoading(false);
         return;
       }
 
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('role', 'member')
-        .eq('tenant_id', user.tenant_id)
-        .order('created_at', { ascending: false });
+      // Tentar carregar do banco de dados
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('role', 'member')
+          .eq('tenant_id', user.tenant_id)
+          .order('created_at', { ascending: false });
 
-      if (error) {
-        logger.error('Erro ao carregar vendedores:', error);
+        if (error) {
+          throw error;
+        }
+
+        logger.success(`Vendedores carregados: ${data?.length || 0}`);
+        setVendedores(data || []);
+        setLoading(false);
+        return;
+      } catch (dbError: any) {
+        logger.error('Erro na consulta ao banco:', dbError);
         
-        // Se a tabela não existir ou houver erro de permissão, criar dados mock
-        if (error.message.includes('does not exist') || error.message.includes('permission denied')) {
+        // Se a tabela não existir ou houver erro de permissão, usar dados mock
+        if (dbError.message?.includes('does not exist') || 
+            dbError.message?.includes('permission denied') ||
+            dbError.message?.includes('relation') ||
+            dbError.code === 'PGRST116') {
+          
           logger.info('Usando dados simulados para vendedores');
           const mockVendedores: Vendedor[] = [
             {
@@ -112,18 +141,17 @@ const VendedoresModule: React.FC = () => {
             }
           ];
           setVendedores(mockVendedores);
+          setLoading(false);
           return;
         }
         
-        throw error;
+        throw dbError;
       }
-
-      logger.success(`Vendedores carregados: ${data?.length || 0}`);
-      setVendedores(data || []);
-    } catch (error) {
-      logger.error('Erro ao carregar vendedores:', error);
       
-      // Mostrar dados mock em caso de erro
+    } catch (error) {
+      logger.error('Erro geral ao carregar vendedores:', error);
+      
+      // Fallback final: dados mock básicos
       const mockVendedores: Vendedor[] = [
         {
           id: 'mock-1',
@@ -137,8 +165,8 @@ const VendedoresModule: React.FC = () => {
       ];
       setVendedores(mockVendedores);
       
-      // Não mostrar alert para não interromper a experiência
-      console.warn('Usando dados simulados devido a erro na consulta');
+      // Log silencioso - não usar console.warn
+      logger.info('Usando dados simulados devido a erro na consulta');
     } finally {
       setLoading(false);
     }

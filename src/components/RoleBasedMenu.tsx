@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import ErrorBoundary, { PipelineErrorBoundary } from '../utils/errorBoundary';
 
 // Lazy loading dos módulos pesados
-const ClientesModule = lazy(() => import('./ClientesModule'));
+const EmpresasModule = lazy(() => import('./EmpresasModule'));
 const VendedoresModule = lazy(() => import('./VendedoresModule'));
 const PipelineModule = lazy(() => import('./Pipeline/PipelineModule'));
 const PipelineViewModule = lazy(() => import('./PipelineViewModule'));
@@ -72,7 +72,7 @@ const RoleBasedMenu: React.FC<RoleBasedMenuProps> = ({
         return (
           <ErrorBoundary fallback={<ModuleErrorFallback moduleName="Clientes" />}>
             <Suspense fallback={<ModuleLoader moduleName="Clientes" />}>
-              <ClientesModule />
+              <EmpresasModule />
             </Suspense>
           </ErrorBoundary>
         );

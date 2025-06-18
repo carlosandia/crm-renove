@@ -14,14 +14,17 @@ const companyValidation = {
   create: {
     body: {
       name: { required: true, type: 'string', min: 2, max: 255 },
-      segment: { type: 'string', max: 100 },
+      industry: { required: true, type: 'string', max: 100 },
       website: { type: 'string', max: 255 },
       phone: { type: 'string', max: 20 },
       email: { type: 'string', email: true, max: 255 },
       address: { type: 'string', max: 500 },
-      city: { type: 'string', max: 100 },
-      state: { type: 'string', max: 100 },
+      city: { required: true, type: 'string', max: 100 },
+      state: { required: true, type: 'string', max: 100 },
       country: { type: 'string', max: 100 },
+      expected_leads_monthly: { required: true, type: 'number', min: 1 },
+      expected_sales_monthly: { required: true, type: 'number', min: 1 },
+      expected_followers_monthly: { required: true, type: 'number', min: 1 },
       admin_name: { required: true, type: 'string', min: 2, max: 100 },
       admin_email: { required: true, type: 'string', email: true },
       admin_password: { type: 'string', min: 6, max: 100 }
@@ -30,7 +33,7 @@ const companyValidation = {
   update: {
     body: {
       name: { type: 'string', min: 2, max: 255 },
-      segment: { type: 'string', max: 100 },
+      industry: { type: 'string', max: 100 },
       website: { type: 'string', max: 255 },
       phone: { type: 'string', max: 20 },
       email: { type: 'string', email: true, max: 255 },
@@ -38,6 +41,9 @@ const companyValidation = {
       city: { type: 'string', max: 100 },
       state: { type: 'string', max: 100 },
       country: { type: 'string', max: 100 },
+      expected_leads_monthly: { type: 'number', min: 1 },
+      expected_sales_monthly: { type: 'number', min: 1 },
+      expected_followers_monthly: { type: 'number', min: 1 },
       is_active: { type: 'boolean' }
     }
   }
@@ -53,7 +59,7 @@ router.get('/',
       page: { type: 'number', min: 1 },
       limit: { type: 'number', min: 1, max: 100 },
       search: { type: 'string', max: 255 },
-      segment: { type: 'string', max: 100 },
+      industry: { type: 'string', max: 100 },
       is_active: { type: 'boolean' }
     }
   }),
@@ -62,7 +68,7 @@ router.get('/',
       page = 1,
       limit = 20,
       search,
-      segment,
+      industry,
       is_active
     } = req.query;
 
@@ -76,11 +82,11 @@ router.get('/',
 
     // 3. Aplicar filtros
     if (search) {
-      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,segment.ilike.%${search}%`);
+      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,industry.ilike.%${search}%`);
     }
 
-    if (segment) {
-      query = query.eq('segment', segment);
+    if (industry) {
+      query = query.eq('industry', industry);
     }
 
     if (is_active !== undefined) {
@@ -162,7 +168,7 @@ router.post('/',
   asyncHandler(async (req: Request, res: Response) => {
     const {
       name,
-      segment,
+      industry,
       website,
       phone,
       email,
@@ -170,6 +176,9 @@ router.post('/',
       city,
       state,
       country,
+      expected_leads_monthly,
+      expected_sales_monthly,
+      expected_followers_monthly,
       admin_name,
       admin_email,
       admin_password = '123456'
@@ -202,14 +211,17 @@ router.post('/',
       .from('companies')
       .insert([{
         name,
-        segment,
+        industry,
         website,
         phone,
         email,
         address,
         city,
         state,
-        country,
+        country: country || 'Brasil',
+        expected_leads_monthly,
+        expected_sales_monthly,
+        expected_followers_monthly,
         is_active: true
       }])
       .select()
@@ -232,7 +244,8 @@ router.post('/',
         last_name: lastName,
         role: 'admin',
         tenant_id: newCompany.id,
-        is_active: true
+        is_active: true,
+        password_hash: admin_password // Salvar senha (em produção seria hash)
       }])
       .select()
       .single();

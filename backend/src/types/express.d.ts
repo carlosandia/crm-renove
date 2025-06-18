@@ -30,6 +30,7 @@ export interface User {
   role: 'super_admin' | 'admin' | 'member';
   tenant_id: string;
   is_active: boolean;
+  password_hash?: string;
   created_at: string;
 }
 

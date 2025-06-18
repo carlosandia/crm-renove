@@ -20,6 +20,28 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Tabela de empresas (clientes) - ATUALIZADA com novos campos obrigatórios
+CREATE TABLE IF NOT EXISTS companies (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  segment TEXT, -- Mantido para compatibilidade
+  industry TEXT NOT NULL, -- Novo campo: Nicho de atuação
+  website TEXT,
+  phone TEXT,
+  email TEXT,
+  address TEXT, -- Endereço completo (opcional)
+  city TEXT NOT NULL, -- Cidade obrigatória
+  state TEXT NOT NULL, -- Estado obrigatório
+  country TEXT DEFAULT 'Brasil',
+  -- Campos de expectativa mensal obrigatórios
+  expected_leads_monthly INTEGER NOT NULL CHECK (expected_leads_monthly >= 0),
+  expected_sales_monthly INTEGER NOT NULL CHECK (expected_sales_monthly >= 0),
+  expected_followers_monthly INTEGER NOT NULL CHECK (expected_followers_monthly >= 0),
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
 -- Tabela de clientes
 CREATE TABLE IF NOT EXISTS customers (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -127,6 +149,12 @@ CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON users(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
+-- Índices para companies
+CREATE INDEX IF NOT EXISTS idx_companies_city ON companies(city);
+CREATE INDEX IF NOT EXISTS idx_companies_state ON companies(state);
+CREATE INDEX IF NOT EXISTS idx_companies_industry ON companies(industry);
+CREATE INDEX IF NOT EXISTS idx_companies_is_active ON companies(is_active);
+
 -- Índices para customers
 CREATE INDEX IF NOT EXISTS idx_customers_tenant_id ON customers(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
@@ -168,6 +196,7 @@ CREATE INDEX IF NOT EXISTS idx_follow_ups_stage_id ON follow_ups(stage_id);
 
 -- Habilitar RLS em todas as tabelas
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pipelines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pipeline_members ENABLE ROW LEVEL SECURITY;
@@ -183,6 +212,7 @@ ALTER TABLE follow_ups ENABLE ROW LEVEL SECURITY;
 
 -- Políticas simples que permitem acesso total (podem ser refinadas depois)
 CREATE POLICY "users_access_policy" ON users FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "companies_access_policy" ON companies FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "customers_access_policy" ON customers FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "pipelines_access_policy" ON pipelines FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "pipeline_members_access_policy" ON pipeline_members FOR ALL USING (true) WITH CHECK (true);
@@ -206,6 +236,10 @@ END;
 $$ language 'plpgsql';
 
 -- Triggers para updated_at
+CREATE TRIGGER update_companies_updated_at 
+    BEFORE UPDATE ON companies 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 CREATE TRIGGER update_customers_updated_at 
     BEFORE UPDATE ON customers 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -227,6 +261,7 @@ CREATE TRIGGER update_pipeline_leads_updated_at
 -- ============================================
 
 COMMENT ON TABLE users IS 'Usuários do sistema CRM';
+COMMENT ON TABLE companies IS 'Empresas clientes com dados de expectativa mensal';
 COMMENT ON TABLE customers IS 'Clientes cadastrados no CRM';
 COMMENT ON TABLE pipelines IS 'Pipelines de vendas configuráveis';
 COMMENT ON TABLE pipeline_members IS 'Relacionamento entre usuários e pipelines';
@@ -239,4 +274,4 @@ COMMENT ON TABLE follow_ups IS 'Cadência de follow-ups por etapa';
 -- ============================================
 -- VERIFICAÇÃO FINAL
 -- ============================================
-SELECT 'Esquema do banco criado com sucesso!' as status; 
+SELECT 'Esquema do banco atualizado com novos campos obrigatórios!' as status; 

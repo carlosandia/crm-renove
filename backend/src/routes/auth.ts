@@ -68,7 +68,7 @@ router.post('/login',
     }
 
     // 2. Verificar senha
-    const isPasswordValid = verifyPassword(password, ''); // Senha vazia = usar padrões
+    const isPasswordValid = verifyPassword(password, user.password_hash || ''); // Usar senha salva ou padrões
     
     if (!isPasswordValid) {
       res.status(401).json({
