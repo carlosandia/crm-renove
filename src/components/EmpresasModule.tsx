@@ -633,7 +633,7 @@ const EmpresasModule: React.FC = () => {
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
                     required
                     placeholder="Nome completo da empresa"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   />
                 </div>
                 
@@ -647,7 +647,7 @@ const EmpresasModule: React.FC = () => {
                     onChange={(e) => setFormData({...formData, industry: e.target.value})}
                     required
                     placeholder="Ex: Marketing Digital, E-commerce, Consultoria"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   />
                 </div>
 
@@ -878,7 +878,7 @@ const EmpresasModule: React.FC = () => {
         </div>
       )}
 
-      {/* Lista de Empresas - Layout Moderno com cores do Feedback */}
+      {/* Lista de Empresas - Layout Moderno */}
       <div className="bg-white rounded-lg border border-gray-200">
         <div className="p-4 border-b border-gray-100">
           <h3 className="text-base font-medium text-gray-900">
@@ -912,7 +912,7 @@ const EmpresasModule: React.FC = () => {
                           {empresa.name}
                         </h3>
                         <div className={`flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium ${
-                          empresa.is_active ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+                          empresa.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
                         }`}>
                           <div className={`w-1.5 h-1.5 rounded-full ${
                             empresa.is_active ? 'bg-green-500' : 'bg-red-500'
@@ -956,25 +956,25 @@ const EmpresasModule: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Expectativas - Estilo Feedback com cores diferenciadas */}
+                  {/* Expectativas - Compacto em linha */}
                   <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
                     <div className="grid grid-cols-3 gap-4 text-center">
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
-                        <div className="text-sm font-medium text-blue-700">{empresa.expected_leads_monthly}</div>
-                        <div className="text-xs text-blue-600">Leads/mês</div>
+                      <div>
+                        <div className="text-sm font-medium text-blue-600">{empresa.expected_leads_monthly}</div>
+                        <div className="text-xs text-gray-500">Leads/mês</div>
                       </div>
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-2">
-                        <div className="text-sm font-medium text-green-700">{empresa.expected_sales_monthly}</div>
-                        <div className="text-xs text-green-600">Vendas/mês</div>
+                      <div>
+                        <div className="text-sm font-medium text-green-600">{empresa.expected_sales_monthly}</div>
+                        <div className="text-xs text-gray-500">Vendas/mês</div>
                       </div>
-                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-2">
-                        <div className="text-sm font-medium text-purple-700">{empresa.expected_followers_monthly}</div>
-                        <div className="text-xs text-purple-600">Seguidores/mês</div>
+                      <div>
+                        <div className="text-sm font-medium text-purple-600">{empresa.expected_followers_monthly}</div>
+                        <div className="text-xs text-gray-500">Seguidores/mês</div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Informações do Admin - Estilo Feedback */}
+                  {/* Informações do Admin - Compacto */}
                   {empresa.admin ? (
                     <div className="admin-info">
                       <div className="admin-details">
