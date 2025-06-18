@@ -12,7 +12,6 @@ const FormBuilderModule = lazy(() => import('./FormBuilder/FormBuilderModule'));
 const FeedbackModule = lazy(() => import('./FeedbackModule'));
 const SequenceModule = lazy(() => import('./SequenceModule'));
 const IntegrationsModule = lazy(() => import('./IntegrationsModule'));
-const ReportsModule = lazy(() => import('./ReportsModule'));
 
 interface RoleBasedMenuProps {
   activeModule?: string;
@@ -69,15 +68,6 @@ const RoleBasedMenu: React.FC<RoleBasedMenuProps> = ({
 
   const renderContent = () => {
     switch (activeModule) {
-      case 'Relatórios':
-        return (
-          <ErrorBoundary fallback={<ModuleErrorFallback moduleName="Relatórios" />}>
-            <Suspense fallback={<ModuleLoader moduleName="Relatórios" />}>
-              <ReportsModule />
-            </Suspense>
-          </ErrorBoundary>
-        );
-        
       case 'Clientes':
         return (
           <ErrorBoundary fallback={<ModuleErrorFallback moduleName="Clientes" />}>

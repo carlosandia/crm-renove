@@ -1,214 +1,300 @@
-// Sidebar do CRM com navegação principal
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { 
-  ChevronLeft, 
-  ChevronRight, 
-  LayoutDashboard, 
+  BarChart3, 
   Users, 
-  Building2, 
-  PanelLeft, 
-  Workflow, 
-  FileSpreadsheet, 
-  MessageSquare, 
   Settings, 
-  LogOut, 
-  BarChart,
-  TrendingUp,
+  GitBranch,
+  FileText,
+  Target,
+  Eye,
+  Calendar,
+  Link,
+  User,
+  MessageSquare,
   Zap,
-  FormInput,
-  MessagesSquare
+  ChevronLeft,
+  ChevronRight,
+  LogOut,
+  Plus,
+  X
 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface CRMSidebarProps {
-  isCollapsed: boolean;
-  onToggle: () => void;
   activeModule: string;
   onNavigate: (module: string) => void;
+  onToggle?: (collapsed: boolean) => void;
 }
 
-const CRMSidebar: React.FC<CRMSidebarProps> = ({ 
-  isCollapsed, 
-  onToggle, 
-  activeModule, 
-  onNavigate 
-}) => {
+interface Pipeline {
+  id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+  created_by: string;
+  tenant_id: string;
+}
+
+interface UserPipelineLink {
+  id: string;
+  user_id: string;
+  pipeline_id: string;
+  created_at: string;
+}
+
+const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate, onToggle }) => {
   const { user, logout } = useAuth();
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [collapsed, setCollapsed] = useState(false);
+  const [availablePipelines, setAvailablePipelines] = useState<Pipeline[]>([]);
+  const [userPipelines, setUserPipelines] = useState<Pipeline[]>([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  const menuItems = [
-    { 
-      id: 'Relatório', 
-      label: 'Relatório', 
-      icon: BarChart, 
-      color: '#10B981',
-      roles: ['super_admin', 'admin', 'member']
-    },
-    { 
-      id: 'Relatórios', 
-      label: 'Relatórios', 
-      icon: TrendingUp, 
-      color: '#8B5CF6',
-      roles: ['super_admin']
-    },
-    { 
-      id: 'Pipeline', 
-      label: 'Pipeline', 
-      icon: Workflow, 
-      color: '#3B82F6',
-      roles: ['super_admin', 'admin', 'member']
-    },
-    { 
-      id: 'Criador de pipeline', 
-      label: 'Criador de Pipeline', 
-      icon: PanelLeft, 
-      color: '#F59E0B',
-      roles: ['super_admin', 'admin']
-    },
-    { 
-      id: 'Leads', 
-      label: 'Leads', 
-      icon: FileSpreadsheet, 
-      color: '#EC4899',
-      roles: ['super_admin', 'admin', 'member']
-    },
-    { 
-      id: 'Vendedores', 
-      label: 'Vendedores', 
-      icon: Users, 
-      color: '#6366F1',
-      roles: ['super_admin', 'admin']
-    },
-    { 
-      id: 'Clientes', 
-      label: 'Clientes', 
-      icon: Building2, 
-      color: '#14B8A6',
-      roles: ['super_admin']
-    },
-    { 
-      id: 'Criador de formulários', 
-      label: 'Criador de Formulários', 
-      icon: FormInput, 
-      color: '#8B5CF6',
-      roles: ['super_admin', 'admin']
-    },
-    { 
-      id: 'Cadências', 
-      label: 'Cadências', 
-      icon: Zap, 
-      color: '#F97316',
-      roles: ['super_admin', 'admin']
-    },
-    { 
-      id: 'Feedback', 
-      label: 'Feedback', 
-      icon: MessagesSquare, 
-      color: '#06B6D4',
-      roles: ['super_admin', 'admin', 'member']
-    },
-    { 
-      id: 'Integrações', 
-      label: 'Integrações', 
-      icon: Settings, 
-      color: '#6B7280',
-      roles: ['super_admin', 'admin']
+    if (user?.role === 'admin') {
+      loadPipelines();
     }
-  ];
+  }, [user]);
 
-  // Filtrar itens do menu com base na role do usuário
-  const filteredMenuItems = menuItems.filter(item => 
-    user && item.roles.includes(user.role)
-  );
+  const loadPipelines = async () => {
+    if (!user?.tenant_id) return;
 
-  if (isMobile && isCollapsed) {
-    return null;
-  }
+    try {
+      setLoading(true);
+      
+      // Buscar todas as pipelines do tenant criadas pelo admin logado
+      const { data: pipelines, error } = await supabase
+        .from('pipelines')
+        .select('id, name, description, created_at, created_by, tenant_id')
+        .eq('tenant_id', user.tenant_id)
+        .eq('created_by', user.email) // Usando email como identificador
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ SIDEBAR: Erro ao carregar pipelines:', error);
+        setAvailablePipelines([]);
+        return;
+      }
+
+      setAvailablePipelines(pipelines || []);
+      // Usar availablePipelines como userPipelines para manter compatibilidade
+      setUserPipelines(pipelines || []);
+    } catch (error) {
+      console.error('❌ SIDEBAR: Erro ao carregar pipelines:', error);
+      setAvailablePipelines([]);
+      setUserPipelines([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!user) return null;
+
+  const handleToggle = () => {
+    const newCollapsed = !collapsed;
+    setCollapsed(newCollapsed);
+    onToggle?.(newCollapsed);
+  };
+
+  const getMenuItems = () => {
+    if (user.role === 'super_admin') {
+      return [
+        { id: 'Relatório', label: 'Relatório', icon: BarChart3 },
+        { id: 'Feedback', label: 'Feedback', icon: MessageSquare },
+        { id: 'Clientes', label: 'Clientes', icon: Users },
+        { id: 'Integrações', label: 'Integrações', icon: Zap }
+      ];
+    }
+    
+    if (user.role === 'admin') {
+      const baseItems = [
+        { id: 'Meta', label: 'Meta', icon: Target },
+        { id: 'Vendedores', label: 'Vendedores', icon: Users },
+        { id: 'Criador de pipeline', label: 'Criador de pipeline', icon: Settings },
+        { id: 'Cadências', label: 'Cadências', icon: Zap },
+        { id: 'Criador de formulários', label: 'Criador de formulários', icon: FileText },
+        { id: 'Relatório', label: 'Relatório', icon: BarChart3 },
+        { id: 'Acompanhamento', label: 'Acompanhamento', icon: Eye },
+        { id: 'Leads', label: 'Leads', icon: Users },
+        { id: 'Integrações', label: 'Integrações', icon: Settings }
+      ];
+
+      // Admin sempre vê o menu Pipeline se tiver pelo menos 1 pipeline criada
+      if (availablePipelines.length > 0) {
+        baseItems.splice(3, 0, { id: 'Pipeline', label: 'Pipeline', icon: GitBranch });
+      }
+
+      return baseItems;
+    }
+    
+    if (user.role === 'member') {
+      return [
+        { id: 'Relatório', label: 'Relatório', icon: BarChart3 },
+        { id: 'Pipeline', label: 'Pipeline', icon: GitBranch },
+        { id: 'Acompanhamento', label: 'Acompanhamento', icon: Eye },
+        { id: 'Leads', label: 'Leads', icon: Users },
+        { id: 'Calendário Público', label: 'Calendário Público', icon: Calendar },
+        { id: 'Encurtador de URL', label: 'Encurtador de URL', icon: Link }
+      ];
+    }
+    
+    return [];
+  };
+
+  const menuItems = getMenuItems();
+
+  const getRoleDisplayName = (role: string) => {
+    switch (role) {
+      case 'super_admin': return 'Super Admin';
+      case 'admin': return 'Admin';
+      case 'member': return 'Vendedor';
+      default: return role;
+    }
+  };
+
+  const getRoleColor = (role: string) => {
+    switch (role) {
+      case 'super_admin': return 'from-purple-500 to-purple-600';
+      case 'admin': return 'from-blue-500 to-blue-600';
+      case 'member': return 'from-green-500 to-green-600';
+      default: return 'from-gray-500 to-gray-600';
+    }
+  };
+
+  // Funções de vinculação removidas - admin vê automaticamente suas pipelines criadas
 
   return (
-    <div 
-      className={`bg-white border-r border-gray-200 flex flex-col h-full transition-all duration-300 ${
-        isCollapsed ? 'w-[70px]' : 'w-[250px]'
-      }`}
-    >
-      {/* Logo e Toggle */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200">
-        {!isCollapsed && (
-          <div className="flex items-center">
-            <span className="font-bold text-lg text-gray-800">CRM</span>
-            <span className="text-blue-600 ml-1 font-bold">Marketing</span>
-          </div>
-        )}
-        <button 
-          onClick={onToggle}
-          className={`p-1 rounded-md hover:bg-gray-100 ${isCollapsed ? 'mx-auto' : ''}`}
-        >
-          {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
-        </button>
-      </div>
-
-      {/* Menu Items */}
-      <div className="flex-1 overflow-y-auto py-4">
-        <nav className="space-y-1 px-2">
-          {filteredMenuItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              className={`flex items-center w-full px-3 py-2 rounded-md transition-colors ${
-                activeModule === item.id
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <div 
-                className="p-1 rounded-md" 
-                style={{ color: item.color }}
-              >
-                <item.icon size={20} />
+    <>
+      <div className={`sidebar-modern ${collapsed ? 'w-20' : 'w-64'}`}>
+        {/* Header com branding moderno */}
+        <div className="flex items-center justify-between p-4 border-b border-border bg-gradient-to-r from-primary/5 to-primary/10">
+          {!collapsed && (
+            <div className="flex items-center space-x-3">
+              <div className={`w-10 h-10 bg-gradient-to-br ${getRoleColor(user?.role)} rounded-xl flex items-center justify-center shadow-md`}>
+                <span className="text-white font-bold text-sm">CRM</span>
               </div>
-              {!isCollapsed && (
-                <span className="ml-3 text-sm font-medium truncate">
-                  {item.label}
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {/* User Profile & Logout */}
-      <div className="p-4 border-t border-gray-200">
-        <div className={`flex ${isCollapsed ? 'justify-center' : 'items-center'}`}>
-          {!isCollapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">
-                {user?.first_name || user?.email?.split('@')[0]}
-              </p>
-              <p className="text-xs text-gray-500 truncate">
-                {user?.role === 'super_admin' ? 'Super Admin' : 
-                 user?.role === 'admin' ? 'Administrador' : 'Membro'}
-              </p>
+              <div>
+                <h1 className="text-lg font-bold text-foreground">CRM Pro</h1>
+                <p className="text-xs text-muted-foreground">{getRoleDisplayName(user?.role)}</p>
+              </div>
             </div>
           )}
           <button
-            onClick={logout}
-            className="p-1 rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-            title="Sair"
+            onClick={handleToggle}
+            className="p-2 rounded-lg hover:bg-accent transition-colors"
+            title={collapsed ? 'Expandir menu' : 'Recolher menu'}
           >
-            <LogOut size={20} />
+            {collapsed ? (
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            ) : (
+              <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+            )}
+          </button>
+        </div>
+
+        {/* Seção de Pipelines Criadas para Admin */}
+        {user.role === 'admin' && availablePipelines.length > 0 && !collapsed && (
+          <div className="p-4 border-b border-border bg-blue-50/50">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-blue-900">Minhas Pipelines</h3>
+              <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
+                {availablePipelines.length}
+              </span>
+            </div>
+            <div className="space-y-2">
+              {availablePipelines.slice(0, 3).map((pipeline) => (
+                <div key={pipeline.id} className="flex items-center space-x-2 p-2 bg-white rounded-lg border border-blue-200">
+                  <GitBranch className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm text-blue-900 truncate flex-1">{pipeline.name}</span>
+                </div>
+              ))}
+              {availablePipelines.length > 3 && (
+                <div className="text-xs text-blue-600 text-center py-1">
+                  +{availablePipelines.length - 3} mais
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Mensagem para Admin sem pipelines */}
+        {user.role === 'admin' && availablePipelines.length === 0 && !collapsed && (
+          <div className="p-4 border-b border-border">
+            <div className="text-center p-3 border-2 border-dashed border-blue-300 rounded-lg text-blue-600">
+              <GitBranch className="w-6 h-6 mx-auto mb-2 opacity-50" />
+              <p className="text-sm font-medium">Nenhuma Pipeline</p>
+              <p className="text-xs opacity-75">Crie sua primeira pipeline</p>
+            </div>
+          </div>
+        )}
+
+        {/* Navigation moderna */}
+        <nav className="flex-1 p-4 overflow-y-auto scrollbar-thin">
+          <div className="space-y-2">
+            {menuItems.map((item) => {
+              const IconComponent = item.icon;
+              const isActive = activeModule === item.id;
+              
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => onNavigate(item.id)}
+                  className={`nav-item-modern w-full ${
+                    collapsed ? 'justify-center px-2' : 'justify-start'
+                  } ${isActive ? 'nav-item-active' : ''}`}
+                  title={collapsed ? item.label : ''}
+                >
+                  <IconComponent className={`w-5 h-5 flex-shrink-0 ${
+                    isActive ? 'text-primary' : 'text-muted-foreground'
+                  }`} />
+                  {!collapsed && (
+                    <span className={`truncate ${
+                      isActive ? 'text-primary font-medium' : 'text-foreground'
+                    }`}>
+                      {item.label}
+                    </span>
+                  )}
+                  {isActive && !collapsed && (
+                    <div className="w-2 h-2 bg-primary rounded-full ml-auto" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+
+        {/* User info moderno */}
+        <div className="p-4 border-t border-border bg-muted/20">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className={`w-10 h-10 bg-gradient-to-br ${getRoleColor(user?.role)} rounded-full flex items-center justify-center text-white font-medium flex-shrink-0 shadow-md`}>
+              {user?.first_name?.charAt(0) || 'U'}
+            </div>
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-foreground truncate">
+                  {user?.first_name} {user?.last_name}
+                </div>
+                <div className="text-xs text-muted-foreground truncate">
+                  {user?.email}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Logout button moderno */}
+          <button
+            onClick={logout}
+            className={`nav-item-modern w-full text-destructive hover:bg-destructive/10 hover:text-destructive ${
+              collapsed ? 'justify-center px-2' : 'justify-start'
+            }`}
+            title={collapsed ? 'Sair' : ''}
+          >
+            <LogOut className="w-5 h-5 flex-shrink-0" />
+            {!collapsed && <span>Sair</span>}
           </button>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 
