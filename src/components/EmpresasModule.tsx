@@ -79,8 +79,40 @@ const EmpresasModule: React.FC = () => {
   useEffect(() => {
     if (user?.role === 'super_admin') {
       fetchEmpresas();
+      fixUsersWithoutPassword(); // Corrigir usuários sem senha
     }
   }, [user]);
+
+  // Função para corrigir usuários criados sem senha
+  const fixUsersWithoutPassword = async () => {
+    try {
+      // Buscar usuários sem password_hash
+      const { data: usersWithoutPassword, error } = await supabase
+        .from('users')
+        .select('id, email, role')
+        .is('password_hash', null)
+        .eq('role', 'admin');
+
+      if (error || !usersWithoutPassword || usersWithoutPassword.length === 0) {
+        return; // Nenhum usuário para corrigir
+      }
+
+      console.log(`Corrigindo ${usersWithoutPassword.length} usuários sem senha...`);
+
+      // Atualizar cada usuário com senha padrão
+      for (const user of usersWithoutPassword) {
+        await supabase
+          .from('users')
+          .update({ password_hash: '123456' })
+          .eq('id', user.id);
+        
+        console.log(`✅ Senha padrão definida para: ${user.email}`);
+      }
+
+    } catch (error) {
+      console.error('Erro ao corrigir usuários sem senha:', error);
+    }
+  };
 
   // Effect para validar email do admin com debounce
   useEffect(() => {
@@ -347,6 +379,8 @@ const EmpresasModule: React.FC = () => {
           throw new Error(`Email "${adminEmail}" já está em uso por outro usuário. Por favor, use um email diferente.`);
         }
 
+        const adminPassword = formData.admin_password.trim() || '123456';
+        
         const { data: newAdmin, error: adminError } = await supabase
           .from('users')
           .insert([{
@@ -355,7 +389,8 @@ const EmpresasModule: React.FC = () => {
             last_name: lastName.trim() || '',
             role: 'admin',
             tenant_id: newCompany.id,
-            is_active: true
+            is_active: true,
+            password_hash: adminPassword // Salvar senha (em produção usar hash)
           }])
           .select()
           .single();
@@ -371,7 +406,7 @@ const EmpresasModule: React.FC = () => {
         await fetchEmpresas();
         logger.success('Empresa e administrador criados com sucesso');
         
-        alert(`✅ Empresa "${newCompany.name}" criada com sucesso!\n\nCredenciais do Admin:\nEmail: ${adminEmail}\nSenha: ${formData.admin_password || '123456'}`);
+        alert(`✅ Empresa "${newCompany.name}" criada com sucesso!\n\nCredenciais do Admin:\nEmail: ${adminEmail}\nSenha: ${adminPassword}`);
       }
 
       // Limpar formulário
