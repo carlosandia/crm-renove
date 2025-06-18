@@ -538,19 +538,19 @@ const EmpresasModule: React.FC = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header - Minimalista */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+    <div className="space-y-6 bg-gray-50 min-h-screen">
+      {/* Header - Enterprise Style */}
+      <div className="bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-medium text-gray-900">Gestão de Empresas</h2>
-            <p className="text-sm text-gray-500 mt-1">Cadastre empresas e seus administradores</p>
+            <h2 className="text-2xl font-semibold text-slate-900 mb-2">Gestão de Empresas</h2>
+            <p className="text-slate-600">Cadastre empresas e seus administradores com controle total</p>
           </div>
           <button
             onClick={() => {
@@ -573,31 +573,31 @@ const EmpresasModule: React.FC = () => {
               setEditingEmpresa(null);
               setShowForm(!showForm);
             }}
-            className="bg-gray-50 hover:bg-gray-100 text-gray-700 px-4 py-2 rounded-md font-medium flex items-center space-x-2 transition-colors border border-gray-200"
+            className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-xl font-medium flex items-center space-x-2 transition-all shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-5 h-5" />
             <span>{showForm ? 'Cancelar' : 'Nova Empresa'}</span>
           </button>
         </div>
       </div>
 
-      {/* Filtros - Minimalistas */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
+      {/* Filtros - Enterprise Style */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
         <div className="flex flex-col md:flex-row gap-4">
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
               placeholder="Buscar por nome, nicho, cidade..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 text-sm bg-gray-50 focus:bg-white transition-colors"
             />
           </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as 'all' | 'ativo' | 'desativado')}
-            className="border border-gray-200 rounded-md px-3 py-2 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+            className="border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-slate-500 focus:border-slate-500 text-sm bg-gray-50 focus:bg-white transition-colors"
           >
             <option value="all">Todos os Status</option>
             <option value="ativo">Ativas</option>
@@ -608,23 +608,26 @@ const EmpresasModule: React.FC = () => {
 
       {/* Formulário */}
       {showForm && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+        <div className="bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
+          <div className="mb-8">
+            <h3 className="text-xl font-semibold text-slate-900 mb-2">
               {editingEmpresa ? 'Editar Empresa' : 'Cadastrar Nova Empresa'}
             </h3>
-            <p className="text-gray-600">
+            <p className="text-slate-600">
               {editingEmpresa ? 'Atualize as informações da empresa' : 'Cadastre uma nova empresa cliente e crie seu administrador'}
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-8">
             {/* Dados da Empresa */}
             <div>
-              <h4 className="text-md font-semibold text-gray-900 mb-4">📊 Dados da Empresa</h4>
+              <h4 className="text-lg font-semibold text-slate-900 mb-6 flex items-center">
+                <Building className="w-5 h-5 mr-2 text-slate-600" />
+                Dados da Empresa
+              </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
                     Nome da Empresa *
                   </label>
                   <input
@@ -633,12 +636,12 @@ const EmpresasModule: React.FC = () => {
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
                     required
                     placeholder="Nome completo da empresa"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
                   />
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
                     Nicho de Atuação *
                   </label>
                   <input
@@ -647,12 +650,12 @@ const EmpresasModule: React.FC = () => {
                     onChange={(e) => setFormData({...formData, industry: e.target.value})}
                     required
                     placeholder="Ex: Marketing Digital, E-commerce, Consultoria"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
                     Website
                   </label>
                   <input
@@ -660,12 +663,12 @@ const EmpresasModule: React.FC = () => {
                     value={formData.website}
                     onChange={(e) => setFormData({...formData, website: e.target.value})}
                     placeholder="https://empresa.com.br"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
                     Telefone
                   </label>
                   <input
@@ -673,12 +676,12 @@ const EmpresasModule: React.FC = () => {
                     value={formData.phone}
                     onChange={(e) => setFormData({...formData, phone: e.target.value})}
                     placeholder="(11) 99999-9999"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
                     Email
                   </label>
                   <input
@@ -686,12 +689,12 @@ const EmpresasModule: React.FC = () => {
                     value={formData.email}
                     onChange={(e) => setFormData({...formData, email: e.target.value})}
                     placeholder="contato@empresa.com.br"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
                     Cidade e Estado *
                   </label>
                   <CityAutocomplete
@@ -703,8 +706,8 @@ const EmpresasModule: React.FC = () => {
                 </div>
               </div>
 
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+              <div className="mt-6">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
                   Endereço Completo
                 </label>
                 <input
@@ -712,17 +715,20 @@ const EmpresasModule: React.FC = () => {
                   value={formData.address}
                   onChange={(e) => setFormData({...formData, address: e.target.value})}
                   placeholder="Rua, número, bairro, CEP"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
                 />
               </div>
             </div>
 
             {/* Expectativas Mensais */}
             <div>
-              <h4 className="text-md font-semibold text-gray-900 mb-4">🎯 Expectativas Mensais</h4>
+              <h4 className="text-lg font-semibold text-slate-900 mb-6 flex items-center">
+                <Target className="w-5 h-5 mr-2 text-slate-600" />
+                Expectativas Mensais
+              </h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
                     Expectativa de Leads *
                   </label>
                   <input
@@ -732,12 +738,12 @@ const EmpresasModule: React.FC = () => {
                     onChange={(e) => setFormData({...formData, expected_leads_monthly: e.target.value})}
                     required
                     placeholder="Ex: 100"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
                   />
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
                     Expectativa de Vendas *
                   </label>
                   <input
@@ -747,12 +753,12 @@ const EmpresasModule: React.FC = () => {
                     onChange={(e) => setFormData({...formData, expected_sales_monthly: e.target.value})}
                     required
                     placeholder="Ex: 20"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
                   />
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
                     Expectativa de Seguidores *
                   </label>
                   <input
@@ -762,7 +768,7 @@ const EmpresasModule: React.FC = () => {
                     onChange={(e) => setFormData({...formData, expected_followers_monthly: e.target.value})}
                     required
                     placeholder="Ex: 500"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
                   />
                 </div>
               </div>
@@ -771,10 +777,13 @@ const EmpresasModule: React.FC = () => {
             {/* Dados do Admin (apenas na criação) */}
             {!editingEmpresa && (
               <div>
-                <h4 className="text-md font-semibold text-gray-900 mb-4">👤 Administrador da Empresa</h4>
+                <h4 className="text-lg font-semibold text-slate-900 mb-6 flex items-center">
+                  <User className="w-5 h-5 mr-2 text-slate-600" />
+                  Administrador da Empresa
+                </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
                       Nome Completo do Admin *
                     </label>
                     <input
@@ -783,12 +792,12 @@ const EmpresasModule: React.FC = () => {
                       onChange={(e) => setFormData({...formData, admin_name: e.target.value})}
                       required
                       placeholder="Nome completo do administrador"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
                       Email do Admin *
                     </label>
                     <input
@@ -797,34 +806,34 @@ const EmpresasModule: React.FC = () => {
                       onChange={(e) => setFormData({...formData, admin_email: e.target.value})}
                       required
                       placeholder="admin@empresa.com.br"
-                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:border-transparent transition-all ${
+                      className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-colors bg-gray-50 focus:bg-white ${
                         emailValidation.exists 
                           ? 'border-red-300 focus:ring-red-500' 
-                          : 'border-gray-300 focus:ring-blue-500'
+                          : 'border-gray-200 focus:ring-slate-500'
                       }`}
                     />
                     {/* Notificação de validação do email */}
                     {formData.admin_email && !editingEmpresa && emailValidation.message && (
-                      <div className={`mt-2 flex items-center space-x-2 text-sm ${
+                      <div className={`mt-3 flex items-center space-x-2 text-sm ${
                         emailValidation.exists ? 'text-red-600' : 'text-green-600'
                       }`}>
                         {emailValidation.isChecking ? (
                           <>
-                            <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
+                            <div className="w-4 h-4 border-2 border-gray-300 border-t-slate-600 rounded-full animate-spin"></div>
                             <span>{emailValidation.message}</span>
                           </>
                         ) : (
                           <>
                             {emailValidation.exists ? (
-                              <div className="w-4 h-4 bg-red-100 rounded-full flex items-center justify-center">
-                                <span className="text-red-600 text-xs">✕</span>
+                              <div className="w-5 h-5 bg-red-100 rounded-full flex items-center justify-center">
+                                <X className="w-3 h-3 text-red-600" />
                               </div>
                             ) : (
-                              <div className="w-4 h-4 bg-green-100 rounded-full flex items-center justify-center">
-                                <span className="text-green-600 text-xs">✓</span>
+                              <div className="w-5 h-5 bg-green-100 rounded-full flex items-center justify-center">
+                                <div className="w-2 h-2 bg-green-600 rounded-full"></div>
                               </div>
                             )}
-                            <span>{emailValidation.message}</span>
+                            <span className="font-medium">{emailValidation.message}</span>
                           </>
                         )}
                       </div>
@@ -832,7 +841,7 @@ const EmpresasModule: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
                       Senha do Admin
                     </label>
                     <input
@@ -840,9 +849,9 @@ const EmpresasModule: React.FC = () => {
                       value={formData.admin_password}
                       onChange={(e) => setFormData({...formData, admin_password: e.target.value})}
                       placeholder="Deixe em branco para usar senha padrão (123456)"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-slate-500 mt-2">
                       Se não informada, a senha padrão será "123456"
                     </p>
                   </div>
@@ -850,7 +859,7 @@ const EmpresasModule: React.FC = () => {
               </div>
             )}
 
-            <div className="flex items-center justify-end space-x-4">
+            <div className="flex items-center justify-end space-x-4 pt-6 border-t border-gray-100">
               <button
                 type="button"
                 onClick={() => {
@@ -858,17 +867,17 @@ const EmpresasModule: React.FC = () => {
                   setEditingEmpresa(null);
                   setEmailValidation({ isChecking: false, exists: false, message: '' });
                 }}
-                className="px-6 py-3 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
+                className="px-6 py-3 text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl font-medium transition-colors"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
                 disabled={!editingEmpresa && emailValidation.exists}
-                className={`px-6 py-3 rounded-lg font-medium transition-colors shadow-sm hover:shadow-md ${
+                className={`px-8 py-3 rounded-xl font-medium transition-all shadow-sm hover:shadow-md transform hover:-translate-y-0.5 ${
                   !editingEmpresa && emailValidation.exists
                     ? 'bg-gray-400 cursor-not-allowed text-white'
-                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-slate-900 hover:bg-slate-800 text-white'
                 }`}
               >
                 {editingEmpresa ? 'Atualizar Empresa' : 'Criar Empresa'}
@@ -878,22 +887,28 @@ const EmpresasModule: React.FC = () => {
         </div>
       )}
 
-      {/* Lista de Empresas - Layout Moderno */}
-      <div className="bg-white rounded-lg border border-gray-200">
-        <div className="p-4 border-b border-gray-100">
-          <h3 className="text-base font-medium text-gray-900">
-            Empresas Cadastradas ({filteredEmpresas.length})
-          </h3>
+      {/* Lista de Empresas - Enterprise Layout */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="p-6 border-b border-gray-100">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-slate-900">
+              Empresas Cadastradas ({filteredEmpresas.length})
+            </h3>
+            <div className="flex items-center space-x-2 text-sm text-slate-500">
+              <Building className="w-4 h-4" />
+              <span>Lista completa das empresas</span>
+            </div>
+          </div>
         </div>
 
         {currentEmpresas.length === 0 ? (
-          <div className="p-12 text-center">
-            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-              <Building className="w-6 h-6 text-gray-400" />
+          <div className="p-16 text-center">
+            <div className="w-16 h-16 bg-slate-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+              <Building className="w-8 h-8 text-slate-400" />
             </div>
-            <h3 className="text-base font-medium text-gray-900 mb-2">Nenhuma empresa encontrada</h3>
-            <p className="text-sm text-gray-500 mb-6">
-              {searchTerm ? 'Tente ajustar os filtros de busca' : 'Comece cadastrando sua primeira empresa cliente'}
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">Nenhuma empresa encontrada</h3>
+            <p className="text-slate-600 mb-8 max-w-md mx-auto">
+              {searchTerm ? 'Tente ajustar os filtros de busca para encontrar empresas específicas' : 'Comece cadastrando sua primeira empresa cliente para começar a gerenciar seu portfólio'}
             </p>
           </div>
         ) : (
@@ -901,14 +916,14 @@ const EmpresasModule: React.FC = () => {
             <div className="divide-y divide-gray-100">
               {currentEmpresas.map((empresa) => (
                 <div key={empresa.id} className="company-card">
-                  {/* Header do Card - Compacto */}
+                  {/* Header do Card - Enterprise */}
                   <div className="company-header">
                     <div className="company-info">
-                      <div className="flex items-center space-x-3 mb-1">
-                        <div className="w-8 h-8 bg-gray-100 rounded-md flex items-center justify-center text-gray-600 font-medium text-xs flex-shrink-0">
+                      <div className="flex items-center space-x-4 mb-2">
+                        <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-700 font-semibold text-sm flex-shrink-0">
                           {empresa.name.charAt(0)}
                         </div>
-                        <h3 className="text-sm font-medium text-gray-900 truncate">
+                        <h3 className="text-base font-semibold text-slate-900 truncate">
                           {empresa.name}
                         </h3>
                         <span className={`status ${empresa.is_active ? 'active' : 'inactive'}`}>
@@ -916,10 +931,10 @@ const EmpresasModule: React.FC = () => {
                         </span>
                       </div>
 
-                      <div className="flex items-center space-x-4 text-xs text-gray-500">
+                      <div className="flex items-center space-x-4 text-sm text-slate-500 ml-14">
                         <span className="segment">{empresa.industry}</span>
                         <div className="flex items-center space-x-1">
-                          <MapPin className="w-3 h-3" />
+                          <MapPin className="w-3.5 h-3.5" />
                           <span>{empresa.city}/{empresa.state}</span>
                         </div>
                       </div>
@@ -928,70 +943,79 @@ const EmpresasModule: React.FC = () => {
                     <div className="company-actions">
                       <button
                         onClick={() => handleEdit(empresa)}
-                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                        title="Editar"
+                        className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
+                        title="Editar empresa"
                       >
-                        <Edit className="w-3.5 h-3.5" />
+                        <Edit className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleToggleStatus(empresa)}
-                        className={`p-1.5 transition-colors rounded ${
+                        className={`p-2 transition-colors rounded-lg ${
                           empresa.is_active 
-                            ? 'text-gray-400 hover:text-red-600 hover:bg-red-50' 
-                            : 'text-gray-400 hover:text-green-600 hover:bg-green-50'
+                            ? 'text-slate-400 hover:text-red-600 hover:bg-red-50' 
+                            : 'text-slate-400 hover:text-green-600 hover:bg-green-50'
                         }`}
                         title={empresa.is_active ? 'Desativar empresa' : 'Ativar empresa'}
                       >
                         {empresa.is_active ? (
-                          <ToggleRight className="w-3.5 h-3.5" />
+                          <ToggleRight className="w-4 h-4" />
                         ) : (
-                          <ToggleLeft className="w-3.5 h-3.5" />
+                          <ToggleLeft className="w-4 h-4" />
                         )}
                       </button>
                     </div>
                   </div>
 
-                  {/* Expectativas - Compacto em linha com cores suaves */}
-                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div>
-                        <div className="text-sm font-medium text-slate-700">{empresa.expected_leads_monthly}</div>
-                        <div className="text-xs text-gray-500">Leads/mês</div>
+                  {/* Expectativas - Enterprise Style */}
+                  <div className="px-6 py-4 bg-slate-50 border-b border-gray-100">
+                    <div className="grid grid-cols-3 gap-6 text-center">
+                      <div className="bg-white rounded-lg p-3 border border-slate-200">
+                        <div className="text-lg font-semibold text-slate-900">{empresa.expected_leads_monthly}</div>
+                        <div className="text-xs text-slate-500 font-medium">Leads/mês</div>
                       </div>
-                      <div>
-                        <div className="text-sm font-medium text-slate-700">{empresa.expected_sales_monthly}</div>
-                        <div className="text-xs text-gray-500">Vendas/mês</div>
+                      <div className="bg-white rounded-lg p-3 border border-slate-200">
+                        <div className="text-lg font-semibold text-slate-900">{empresa.expected_sales_monthly}</div>
+                        <div className="text-xs text-slate-500 font-medium">Vendas/mês</div>
                       </div>
-                      <div>
-                        <div className="text-sm font-medium text-slate-700">{empresa.expected_followers_monthly}</div>
-                        <div className="text-xs text-gray-500">Seguidores/mês</div>
+                      <div className="bg-white rounded-lg p-3 border border-slate-200">
+                        <div className="text-lg font-semibold text-slate-900">{empresa.expected_followers_monthly}</div>
+                        <div className="text-xs text-slate-500 font-medium">Seguidores/mês</div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Informações do Admin - Compacto */}
+                  {/* Informações do Admin - Enterprise */}
                   {empresa.admin ? (
                     <div className="admin-info">
                       <div className="admin-details">
-                        <div className="flex items-center space-x-2">
-                          <User className="w-3 h-3 text-gray-400" />
-                          <span className="font-medium text-gray-700">{empresa.admin.name}</span>
-                          <span className="text-gray-400">•</span>
-                          <span className="text-gray-500">{empresa.admin.email}</span>
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
+                            <User className="w-4 h-4 text-slate-600" />
+                          </div>
+                          <div>
+                            <span className="font-semibold text-slate-900 block">{empresa.admin.name}</span>
+                            <span className="text-slate-500 text-sm">{empresa.admin.email}</span>
+                          </div>
                         </div>
                         {empresa.admin.last_login && (
-                          <div className="flex items-center space-x-1 mt-1">
-                            <Clock className="w-3 h-3 text-gray-400" />
-                            <span className="text-gray-500">Último acesso: {formatDateBrasilia(empresa.admin.last_login)}</span>
+                          <div className="flex items-center space-x-2 mt-2 text-xs text-slate-500">
+                            <Clock className="w-3 h-3" />
+                            <span>Último acesso: {formatDateBrasilia(empresa.admin.last_login)}</span>
                           </div>
                         )}
                       </div>
+                      <button
+                        onClick={() => handleToggleStatus(empresa)}
+                        className={`toggle-status ${empresa.is_active ? 'deactivate' : 'activate'}`}
+                      >
+                        {empresa.is_active ? 'Desativar' : 'Ativar'}
+                      </button>
                     </div>
                   ) : (
-                    <div className="px-4 py-3 bg-yellow-50 border-l-2 border-yellow-200">
-                      <div className="flex items-center space-x-2 text-yellow-800">
-                        <User className="w-3 h-3" />
-                        <span className="text-xs font-medium">Nenhum admin cadastrado</span>
+                    <div className="px-6 py-4 bg-amber-50 border-l-4 border-amber-200">
+                      <div className="flex items-center space-x-3 text-amber-800">
+                        <User className="w-4 h-4" />
+                        <span className="text-sm font-medium">Nenhum administrador cadastrado</span>
                       </div>
                     </div>
                   )}
@@ -999,18 +1023,18 @@ const EmpresasModule: React.FC = () => {
               ))}
             </div>
 
-            {/* Paginação - Minimalista */}
+            {/* Paginação - Enterprise Style */}
             {totalPages > 1 && (
-              <div className="px-4 py-3 border-t border-gray-100">
+              <div className="px-6 py-4 border-t border-gray-100 bg-slate-50">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs text-gray-500">
-                    {startIndex + 1}-{Math.min(startIndex + itemsPerPage, filteredEmpresas.length)} de {filteredEmpresas.length}
+                  <div className="text-sm text-slate-600">
+                    Mostrando {startIndex + 1}-{Math.min(startIndex + itemsPerPage, filteredEmpresas.length)} de {filteredEmpresas.length} empresas
                   </div>
-                  <div className="flex items-center space-x-1">
+                  <div className="flex items-center space-x-2">
                     <button
                       onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                       disabled={currentPage === 1}
-                      className="p-1.5 text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded"
+                      className="p-2 text-slate-400 hover:text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg hover:bg-white transition-colors"
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
@@ -1022,10 +1046,10 @@ const EmpresasModule: React.FC = () => {
                           <button
                             key={page}
                             onClick={() => setCurrentPage(page)}
-                            className={`px-2 py-1 text-xs rounded ${
+                            className={`px-3 py-2 text-sm rounded-lg transition-colors ${
                               currentPage === page
-                                ? 'bg-gray-100 text-gray-900 font-medium'
-                                : 'text-gray-500 hover:text-gray-700'
+                                ? 'bg-slate-900 text-white font-medium'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                             }`}
                           >
                             {page}
@@ -1037,7 +1061,7 @@ const EmpresasModule: React.FC = () => {
                     <button
                       onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                       disabled={currentPage === totalPages}
-                      className="p-1.5 text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded"
+                      className="p-2 text-slate-400 hover:text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg hover:bg-white transition-colors"
                     >
                       <ChevronRight className="w-4 h-4" />
                     </button>
