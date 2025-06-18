@@ -367,8 +367,6 @@ const EmpresasModule: React.FC = () => {
           throw new Error(`Erro ao criar administrador: ${adminError.message || adminError.details || JSON.stringify(adminError)}`);
         }
 
-
-
         // Recarregar lista para mostrar nova empresa formatada
         await fetchEmpresas();
         logger.success('Empresa e administrador criados com sucesso');
@@ -547,12 +545,12 @@ const EmpresasModule: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
+      {/* Header - Minimalista */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">Gestão de Empresas Clientes</h2>
-            <p className="text-gray-600">Cadastre empresas e seus administradores</p>
+            <h2 className="text-lg font-medium text-gray-900">Gestão de Empresas</h2>
+            <p className="text-sm text-gray-500 mt-1">Cadastre empresas e seus administradores</p>
           </div>
           <button
             onClick={() => {
@@ -575,16 +573,16 @@ const EmpresasModule: React.FC = () => {
               setEditingEmpresa(null);
               setShowForm(!showForm);
             }}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium flex items-center space-x-2 transition-all duration-200 shadow-sm hover:shadow-md"
+            className="bg-gray-50 hover:bg-gray-100 text-gray-700 px-4 py-2 rounded-md font-medium flex items-center space-x-2 transition-colors border border-gray-200"
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="w-4 h-4" />
             <span>{showForm ? 'Cancelar' : 'Nova Empresa'}</span>
           </button>
         </div>
       </div>
 
-      {/* Filtros */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
+      {/* Filtros - Minimalistas */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
         <div className="flex flex-col md:flex-row gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -593,13 +591,13 @@ const EmpresasModule: React.FC = () => {
               placeholder="Buscar por nome, nicho, cidade..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
             />
           </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as 'all' | 'ativo' | 'desativado')}
-            className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="border border-gray-200 rounded-md px-3 py-2 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
           >
             <option value="all">Todos os Status</option>
             <option value="ativo">Ativas</option>
@@ -610,7 +608,7 @@ const EmpresasModule: React.FC = () => {
 
       {/* Formulário */}
       {showForm && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
               {editingEmpresa ? 'Editar Empresa' : 'Cadastrar Nova Empresa'}
@@ -880,134 +878,69 @@ const EmpresasModule: React.FC = () => {
         </div>
       )}
 
-      {/* Lista de Empresas */}
-      <div className="bg-white rounded-xl border border-gray-200">
-        <div className="p-6 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">
+      {/* Lista de Empresas - Layout Moderno */}
+      <div className="bg-white rounded-lg border border-gray-200">
+        <div className="p-4 border-b border-gray-100">
+          <h3 className="text-base font-medium text-gray-900">
             Empresas Cadastradas ({filteredEmpresas.length})
           </h3>
         </div>
 
         {currentEmpresas.length === 0 ? (
           <div className="p-12 text-center">
-            <Building className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhuma empresa encontrada</h3>
-            <p className="text-gray-500 mb-6">
+            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+              <Building className="w-6 h-6 text-gray-400" />
+            </div>
+            <h3 className="text-base font-medium text-gray-900 mb-2">Nenhuma empresa encontrada</h3>
+            <p className="text-sm text-gray-500 mb-6">
               {searchTerm ? 'Tente ajustar os filtros de busca' : 'Comece cadastrando sua primeira empresa cliente'}
             </p>
           </div>
         ) : (
           <>
-            <div className="divide-y divide-gray-200">
+            <div className="divide-y divide-gray-100">
               {currentEmpresas.map((empresa) => (
-                <div key={empresa.id} className="p-6 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start space-x-4">
-                      <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center text-white font-medium flex-shrink-0">
-                        {empresa.name.charAt(0)}
+                <div key={empresa.id} className="company-card">
+                  {/* Header do Card - Compacto */}
+                  <div className="company-header">
+                    <div className="company-info">
+                      <div className="flex items-center space-x-3 mb-1">
+                        <div className="w-8 h-8 bg-gray-100 rounded-md flex items-center justify-center text-gray-600 font-medium text-xs flex-shrink-0">
+                          {empresa.name.charAt(0)}
+                        </div>
+                        <h3 className="text-sm font-medium text-gray-900 truncate">
+                          {empresa.name}
+                        </h3>
+                        <div className={`flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium ${
+                          empresa.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                        }`}>
+                          <div className={`w-1.5 h-1.5 rounded-full ${
+                            empresa.is_active ? 'bg-green-500' : 'bg-red-500'
+                          }`}></div>
+                          <span>{empresa.is_active ? 'Ativa' : 'Inativa'}</span>
+                        </div>
                       </div>
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center space-x-3 mb-2">
-                          <h3 className="text-lg font-medium text-gray-900">
-                            {empresa.name}
-                          </h3>
-                          <div className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs font-medium ${
-                            empresa.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                          }`}>
-                            <Star className="w-3 h-3" />
-                            <span>{empresa.is_active ? 'Ativa' : 'Desativada'}</span>
-                          </div>
-                        </div>
 
-                        <div className="text-sm text-gray-600 mb-2">
-                          <strong>Nicho:</strong> {empresa.industry}
+                      <div className="flex items-center space-x-4 text-xs text-gray-500">
+                        <span className="segment">{empresa.industry}</span>
+                        <div className="flex items-center space-x-1">
+                          <MapPin className="w-3 h-3" />
+                          <span>{empresa.city}/{empresa.state}</span>
                         </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
-                          <div className="flex items-center space-x-2">
-                            <MapPin className="w-4 h-4 text-gray-400" />
-                            <span>{empresa.city}/{empresa.state}</span>
-                          </div>
-                          {empresa.email && (
-                            <div className="flex items-center space-x-2">
-                              <Mail className="w-4 h-4 text-gray-400" />
-                              <span>{empresa.email}</span>
-                            </div>
-                          )}
-                          {empresa.phone && (
-                            <div className="flex items-center space-x-2">
-                              <Phone className="w-4 h-4 text-gray-400" />
-                              <span>{empresa.phone}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Expectativas */}
-                        <div className="grid grid-cols-3 gap-4 mt-4 p-3 bg-gray-50 rounded-lg">
-                          <div className="text-center">
-                            <div className="text-lg font-bold text-blue-600">{empresa.expected_leads_monthly}</div>
-                            <div className="text-xs text-gray-500">Leads/mês</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-lg font-bold text-green-600">{empresa.expected_sales_monthly}</div>
-                            <div className="text-xs text-gray-500">Vendas/mês</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-lg font-bold text-purple-600">{empresa.expected_followers_monthly}</div>
-                            <div className="text-xs text-gray-500">Seguidores/mês</div>
-                          </div>
-                        </div>
-
-                        {/* Informações do Admin */}
-                        {empresa.admin ? (
-                          <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                            <div className="flex items-center space-x-3">
-                              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-medium">
-                                <User className="w-4 h-4" />
-                              </div>
-                              <div className="flex-1">
-                                <div className="flex items-center space-x-2 mb-1">
-                                  <span className="text-sm font-medium text-blue-900">Admin:</span>
-                                  <span className="text-sm text-blue-800">{empresa.admin.name}</span>
-                                </div>
-                                <div className="flex items-center space-x-4 text-xs text-blue-600">
-                                  <div className="flex items-center space-x-1">
-                                    <Mail className="w-3 h-3" />
-                                    <span>{empresa.admin.email}</span>
-                                  </div>
-                                  {empresa.admin.last_login && (
-                                    <div className="flex items-center space-x-1">
-                                      <Clock className="w-3 h-3" />
-                                      <span>Último acesso: {formatDateBrasilia(empresa.admin.last_login)}</span>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                            <div className="flex items-center space-x-2 text-yellow-800">
-                              <User className="w-4 h-4" />
-                              <span className="text-sm font-medium">Nenhum admin cadastrado</span>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-2">
+                    <div className="company-actions">
                       <button
                         onClick={() => handleEdit(empresa)}
-                        className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
                         title="Editar"
                       >
-                        <Edit className="w-4 h-4" />
+                        <Edit className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => handleToggleStatus(empresa)}
-                        className={`p-2 transition-colors rounded-lg ${
+                        className={`p-1.5 transition-colors rounded ${
                           empresa.is_active 
                             ? 'text-gray-400 hover:text-red-600 hover:bg-red-50' 
                             : 'text-gray-400 hover:text-green-600 hover:bg-green-50'
@@ -1015,29 +948,74 @@ const EmpresasModule: React.FC = () => {
                         title={empresa.is_active ? 'Desativar empresa' : 'Ativar empresa'}
                       >
                         {empresa.is_active ? (
-                          <ToggleRight className="w-4 h-4" />
+                          <ToggleRight className="w-3.5 h-3.5" />
                         ) : (
-                          <ToggleLeft className="w-4 h-4" />
+                          <ToggleLeft className="w-3.5 h-3.5" />
                         )}
                       </button>
                     </div>
                   </div>
+
+                  {/* Expectativas - Compacto em linha */}
+                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <div className="text-sm font-medium text-blue-600">{empresa.expected_leads_monthly}</div>
+                        <div className="text-xs text-gray-500">Leads/mês</div>
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-green-600">{empresa.expected_sales_monthly}</div>
+                        <div className="text-xs text-gray-500">Vendas/mês</div>
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-purple-600">{empresa.expected_followers_monthly}</div>
+                        <div className="text-xs text-gray-500">Seguidores/mês</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Informações do Admin - Compacto */}
+                  {empresa.admin ? (
+                    <div className="admin-info">
+                      <div className="admin-details">
+                        <div className="flex items-center space-x-2">
+                          <User className="w-3 h-3 text-gray-400" />
+                          <span className="font-medium text-gray-700">{empresa.admin.name}</span>
+                          <span className="text-gray-400">•</span>
+                          <span className="text-gray-500">{empresa.admin.email}</span>
+                        </div>
+                        {empresa.admin.last_login && (
+                          <div className="flex items-center space-x-1 mt-1">
+                            <Clock className="w-3 h-3 text-gray-400" />
+                            <span className="text-gray-500">Último acesso: {formatDateBrasilia(empresa.admin.last_login)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="px-4 py-3 bg-yellow-50 border-l-2 border-yellow-200">
+                      <div className="flex items-center space-x-2 text-yellow-800">
+                        <User className="w-3 h-3" />
+                        <span className="text-xs font-medium">Nenhum admin cadastrado</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
 
-            {/* Paginação */}
+            {/* Paginação - Minimalista */}
             {totalPages > 1 && (
-              <div className="px-6 py-4 border-t border-gray-200">
+              <div className="px-4 py-3 border-t border-gray-100">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-500">
-                    Mostrando {startIndex + 1} a {Math.min(startIndex + itemsPerPage, filteredEmpresas.length)} de {filteredEmpresas.length} empresas
+                  <div className="text-xs text-gray-500">
+                    {startIndex + 1}-{Math.min(startIndex + itemsPerPage, filteredEmpresas.length)} de {filteredEmpresas.length}
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-1">
                     <button
                       onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                       disabled={currentPage === 1}
-                      className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="p-1.5 text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded"
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
@@ -1049,9 +1027,9 @@ const EmpresasModule: React.FC = () => {
                           <button
                             key={page}
                             onClick={() => setCurrentPage(page)}
-                            className={`px-3 py-1 text-sm rounded ${
+                            className={`px-2 py-1 text-xs rounded ${
                               currentPage === page
-                                ? 'bg-blue-600 text-white'
+                                ? 'bg-gray-100 text-gray-900 font-medium'
                                 : 'text-gray-500 hover:text-gray-700'
                             }`}
                           >
@@ -1064,7 +1042,7 @@ const EmpresasModule: React.FC = () => {
                     <button
                       onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                       disabled={currentPage === totalPages}
-                      className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="p-1.5 text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded"
                     >
                       <ChevronRight className="w-4 h-4" />
                     </button>
@@ -1079,4 +1057,4 @@ const EmpresasModule: React.FC = () => {
   );
 };
 
-export default EmpresasModule; 
+export default EmpresasModule;
