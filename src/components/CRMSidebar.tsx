@@ -101,8 +101,7 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate, onTog
       return [
         { id: 'Relatório', label: 'Relatório', icon: BarChart3 },
         { id: 'Feedback', label: 'Feedback', icon: MessageSquare },
-        { id: 'Clientes', label: 'Clientes', icon: Users },
-        { id: 'Integrações', label: 'Integrações', icon: Zap }
+        { id: 'Clientes', label: 'Clientes', icon: Users }
       ];
     }
     

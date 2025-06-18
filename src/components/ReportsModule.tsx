@@ -7,7 +7,6 @@ import {
   Users, 
   DollarSign, 
   Target,
-  Calendar,
   Filter,
   Search,
   Eye,
@@ -213,12 +212,6 @@ const ReportsModule: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Relatórios Estratégicos</h1>
           <p className="text-gray-600">Visão consolidada de performance de todas as empresas</p>
-        </div>
-        <div className="flex items-center space-x-2 text-sm text-gray-500">
-          <Calendar className="w-4 h-4" />
-          <span>
-            {new Date(filters.startDate).toLocaleDateString('pt-BR')} - {new Date(filters.endDate).toLocaleDateString('pt-BR')}
-          </span>
         </div>
       </div>
 
