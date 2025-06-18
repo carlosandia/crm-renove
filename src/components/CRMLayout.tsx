@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import CRMSidebar from './CRMSidebar';
 import CRMHeader from './CRMHeader';
@@ -26,28 +27,29 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
   // Todos os módulos agora têm header contextual
   const needsHeader = true;
 
-  // Função para receber o estado collapsed da sidebar
-  const handleSidebarToggle = (collapsed: boolean) => {
-    setSidebarCollapsed(collapsed);
+  // Função para toggle da sidebar
+  const handleSidebarToggle = () => {
+    setSidebarCollapsed(!sidebarCollapsed);
   };
 
   return (
     <div className="min-h-screen bg-background flex w-full">
       <CRMSidebar 
+        isCollapsed={sidebarCollapsed}
         activeModule={activeModule}
         onNavigate={onNavigate}
         onToggle={handleSidebarToggle}
       />
       
       <div className={`flex-1 flex flex-col transition-all duration-300 ${
-        sidebarCollapsed ? 'ml-20' : 'ml-64'
+        sidebarCollapsed ? 'ml-[70px]' : 'ml-[250px]'
       }`}>
         {/* Header contextual unificado para todos os módulos */}
         {needsHeader && (
           <CRMHeader 
             user={user} 
             activeModule={activeModule}
-        onNavigate={onNavigate}
+            onNavigate={onNavigate}
             onLogout={onLogout}
           />
         )}
