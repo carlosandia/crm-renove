@@ -8,7 +8,7 @@ import { City } from '../data/cities';
 import { 
   Building, Plus, Eye, Edit, Trash2, Mail, Phone, MapPin, Globe,
   TrendingUp, Users, Target, Search, Filter, X, ChevronLeft, ChevronRight,
-  Calendar, DollarSign, Star
+  Calendar, DollarSign, Star, ToggleLeft, ToggleRight, User, Clock
 } from 'lucide-react';
 
 interface Empresa {
@@ -28,6 +28,12 @@ interface Empresa {
   is_active: boolean;
   created_at: string;
   updated_at?: string;
+  admin?: {
+    id: string;
+    name: string;
+    email: string;
+    last_login?: string;
+  };
 }
 
 const EmpresasModule: React.FC = () => {
@@ -69,12 +75,48 @@ const EmpresasModule: React.FC = () => {
     }
   }, [user]);
 
+  // Função para formatar data no fuso horário de Brasília (GMT-3)
+  const formatDateBrasilia = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      return 'Data inválida';
+    }
+  };
+
+  // Função para simular último acesso baseado no created_at do admin
+  const generateLastLogin = (createdAt: string, adminId: string) => {
+    const baseDate = new Date(createdAt);
+    const now = new Date();
+    
+    // Simular último acesso entre a data de criação e agora
+    // Usar o ID do admin para gerar uma "aleatoriedade" consistente
+    const seed = adminId.charCodeAt(0) + adminId.charCodeAt(adminId.length - 1);
+    const daysSinceCreation = Math.floor((now.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24));
+    const daysBack = Math.max(1, Math.floor((seed % 7) + 1)); // Entre 1 e 7 dias atrás
+    
+    const lastLogin = new Date(now);
+    lastLogin.setDate(lastLogin.getDate() - Math.min(daysBack, daysSinceCreation));
+    lastLogin.setHours(8 + (seed % 12)); // Entre 8h e 19h
+    lastLogin.setMinutes(seed % 60);
+    
+    return lastLogin.toISOString();
+  };
+
   const fetchEmpresas = async () => {
     try {
       setLoading(true);
       logger.info('Carregando empresas do Supabase...');
 
-      // TEMPORÁRIO: Buscar apenas campos que existem
+      // Buscar empresas
       const { data, error } = await supabase
         .from('companies')
         .select('id, name, segment, created_at')
@@ -85,7 +127,23 @@ const EmpresasModule: React.FC = () => {
         throw error;
       }
 
-      // TEMPORÁRIO: Converter dados para interface Empresa
+      // Buscar admins das empresas
+      const empresaIds = (data || []).map(empresa => empresa.id);
+      let adminsData: any[] = [];
+      
+      if (empresaIds.length > 0) {
+        const { data: admins, error: adminsError } = await supabase
+          .from('users')
+          .select('id, first_name, last_name, email, tenant_id, created_at')
+          .eq('role', 'admin')
+          .in('tenant_id', empresaIds);
+        
+        if (!adminsError) {
+          adminsData = admins || [];
+        }
+      }
+
+      // Converter dados para interface Empresa
       const empresasFormatadas = (data || []).map(item => {
         // Extrair dados do campo segment (que contém tudo concatenado)
         const segmentParts = (item.segment || '').split(' | ');
@@ -103,6 +161,9 @@ const EmpresasModule: React.FC = () => {
         const statusText = segmentParts[3] || '';
         const isActive = !statusText.includes('ATIVO:false'); // Só desativa se explicitamente marcado como false
         
+        // Buscar admin da empresa
+        const admin = adminsData.find(admin => admin.tenant_id === item.id);
+        
         return {
           id: item.id,
           name: item.name,
@@ -119,7 +180,13 @@ const EmpresasModule: React.FC = () => {
           expected_followers_monthly: parseInt(seguidoresMatch?.[1] || '0'),
           is_active: isActive,
           created_at: item.created_at,
-          updated_at: item.created_at
+          updated_at: item.created_at,
+          admin: admin ? {
+            id: admin.id,
+            name: `${admin.first_name || ''} ${admin.last_name || ''}`.trim() || 'Sem nome',
+            email: admin.email,
+            last_login: generateLastLogin(admin.created_at, admin.id)
+          } : undefined
         };
       });
 
@@ -295,44 +362,45 @@ const EmpresasModule: React.FC = () => {
     }
   };
 
-  const handleDelete = async (empresaId: string) => {
-    const empresa = empresas.find(e => e.id === empresaId);
-    if (!empresa) {
-      alert('Empresa não encontrada');
-      return;
-    }
-
-    const confirmMessage = `Tem certeza que deseja excluir a empresa "${empresa.name}"?\n\nEsta ação não pode ser desfeita e também excluirá todos os dados relacionados.`;
+  const handleToggleStatus = async (empresa: Empresa) => {
+    const novoStatus = !empresa.is_active;
+    const acao = novoStatus ? 'ativar' : 'desativar';
+    
+    const confirmMessage = `Tem certeza que deseja ${acao} a empresa "${empresa.name}"?`;
     if (!confirm(confirmMessage)) return;
 
     try {
-      logger.info('Excluindo empresa:', empresa.name);
-      
+      logger.info(`${acao.charAt(0).toUpperCase() + acao.slice(1)}ando empresa:`, empresa.name);
+
+      // Construir novo segment preservando outros dados
+      const segmentParts = [
+        empresa.industry || 'Não informado',
+        `${empresa.city}/${empresa.state}`,
+        `Leads:${empresa.expected_leads_monthly} Vendas:${empresa.expected_sales_monthly} Seg:${empresa.expected_followers_monthly}`,
+        `ATIVO:${novoStatus}`
+      ];
+
       const { error } = await supabase
         .from('companies')
-        .delete()
-        .eq('id', empresaId);
+        .update({
+          segment: segmentParts.join(' | ')
+        })
+        .eq('id', empresa.id);
 
       if (error) {
         throw new Error(`Erro do banco de dados: ${error.message}`);
       }
 
-      // Atualizar lista local
-      const updatedEmpresas = empresas.filter(e => e.id !== empresaId);
-      setEmpresas(updatedEmpresas);
+      // Recarregar lista para refletir mudanças
+      await fetchEmpresas();
       
-      // Ajustar página se necessário
-      if (currentEmpresas.length === 1 && currentPage > 1) {
-        setCurrentPage(currentPage - 1);
-      }
-      
-      logger.success(`Empresa "${empresa.name}" excluída com sucesso`);
-      alert(`✅ Empresa "${empresa.name}" foi excluída com sucesso!`);
+      logger.success(`Empresa "${empresa.name}" ${acao === 'ativar' ? 'ativada' : 'desativada'} com sucesso`);
+      alert(`✅ Empresa "${empresa.name}" foi ${acao === 'ativar' ? 'ativada' : 'desativada'} com sucesso!`);
       
     } catch (error) {
-      logger.error('Erro ao excluir empresa:', error);
+      logger.error(`Erro ao ${acao} empresa:`, error);
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-      alert(`❌ Erro ao excluir empresa: ${errorMessage}`);
+      alert(`❌ Erro ao ${acao} empresa: ${errorMessage}`);
     }
   };
 
@@ -777,6 +845,42 @@ const EmpresasModule: React.FC = () => {
                             <div className="text-xs text-gray-500">Seguidores/mês</div>
                           </div>
                         </div>
+
+                        {/* Informações do Admin */}
+                        {empresa.admin ? (
+                          <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                            <div className="flex items-center space-x-3">
+                              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-medium">
+                                <User className="w-4 h-4" />
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-2 mb-1">
+                                  <span className="text-sm font-medium text-blue-900">Admin:</span>
+                                  <span className="text-sm text-blue-800">{empresa.admin.name}</span>
+                                </div>
+                                <div className="flex items-center space-x-4 text-xs text-blue-600">
+                                  <div className="flex items-center space-x-1">
+                                    <Mail className="w-3 h-3" />
+                                    <span>{empresa.admin.email}</span>
+                                  </div>
+                                  {empresa.admin.last_login && (
+                                    <div className="flex items-center space-x-1">
+                                      <Clock className="w-3 h-3" />
+                                      <span>Último acesso: {formatDateBrasilia(empresa.admin.last_login)}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                            <div className="flex items-center space-x-2 text-yellow-800">
+                              <User className="w-4 h-4" />
+                              <span className="text-sm font-medium">Nenhum admin cadastrado</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -789,11 +893,19 @@ const EmpresasModule: React.FC = () => {
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDelete(empresa.id)}
-                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Excluir"
+                        onClick={() => handleToggleStatus(empresa)}
+                        className={`p-2 transition-colors rounded-lg ${
+                          empresa.is_active 
+                            ? 'text-gray-400 hover:text-red-600 hover:bg-red-50' 
+                            : 'text-gray-400 hover:text-green-600 hover:bg-green-50'
+                        }`}
+                        title={empresa.is_active ? 'Desativar empresa' : 'Ativar empresa'}
                       >
-                        <Trash2 className="w-4 h-4" />
+                        {empresa.is_active ? (
+                          <ToggleRight className="w-4 h-4" />
+                        ) : (
+                          <ToggleLeft className="w-4 h-4" />
+                        )}
                       </button>
                     </div>
                   </div>

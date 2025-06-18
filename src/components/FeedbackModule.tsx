@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Search, Filter, ThumbsUp, ThumbsDown, Clock, User, Building, Eye, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Filter, ThumbsUp, ThumbsDown, Clock, User, Building, Eye, X, ChevronDown, ChevronUp, Facebook, Chrome, Linkedin, Globe, FileText, Zap } from 'lucide-react';
 
 interface FeedbackData {
   id: string;
@@ -27,6 +27,7 @@ interface FeedbackData {
     email?: string;
     telefone?: string;
     valor?: number;
+    source?: 'meta' | 'google' | 'linkedin' | 'webhook' | 'manual' | 'form';
   };
   pipeline: {
     id: string;
@@ -47,6 +48,7 @@ const FeedbackModule: React.FC = () => {
   const [filterType, setFilterType] = useState<'all' | 'positive' | 'negative'>('all');
   const [companyFilter, setCompanyFilter] = useState('');
   const [vendorFilter, setVendorFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackData | null>(null);
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
 
@@ -126,7 +128,8 @@ const FeedbackModule: React.FC = () => {
           nome: 'João Silva',
           email: 'joao@clienteabc.com',
           telefone: '(11) 99999-9999',
-          valor: 15000
+          valor: 15000,
+          source: 'meta'
         },
         pipeline: {
           id: 'pipeline-1',
@@ -159,7 +162,8 @@ const FeedbackModule: React.FC = () => {
           nome: 'Maria Santos',
           email: 'maria@empresa.com',
           telefone: '(11) 88888-8888',
-          valor: 8500
+          valor: 8500,
+          source: 'google'
         },
         pipeline: {
           id: 'pipeline-1',
@@ -192,7 +196,8 @@ const FeedbackModule: React.FC = () => {
           nome: 'Roberto Oliveira',
           email: 'roberto@startup.com',
           telefone: '(11) 77777-7777',
-          valor: 25000
+          valor: 25000,
+          source: 'linkedin'
         },
         pipeline: {
           id: 'pipeline-2',
@@ -221,10 +226,12 @@ const FeedbackModule: React.FC = () => {
       { name: 'Proposta Enviada', color: '#f59e0b' },
       { name: 'Negociação', color: '#8b5cf6' }
     ];
+    const sources: ('meta' | 'google' | 'linkedin' | 'webhook' | 'form' | 'manual')[] = ['meta', 'google', 'linkedin', 'webhook', 'form', 'manual'];
 
     const randomIndex = Math.abs(feedback.id.charCodeAt(0)) % 4;
     const vendor = vendors[randomIndex];
     const stage = stages[randomIndex];
+    const source = sources[randomIndex % sources.length];
 
     return {
       id: feedback.id,
@@ -247,7 +254,8 @@ const FeedbackModule: React.FC = () => {
         nome: leads[randomIndex],
         email: `${leads[randomIndex].toLowerCase().replace(' ', '.')}@cliente.com`,
         telefone: `(11) ${Math.floor(Math.random() * 90000) + 10000}-${Math.floor(Math.random() * 9000) + 1000}`,
-        valor: Math.floor(Math.random() * 50000) + 5000
+        valor: Math.floor(Math.random() * 50000) + 5000,
+        source: source
       },
       pipeline: {
         id: 'pipeline-' + randomIndex,
@@ -276,7 +284,8 @@ const FeedbackModule: React.FC = () => {
       feedback.admin_empresa.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       feedback.lead.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
       feedback.pipeline.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      feedback.stage.name.toLowerCase().includes(searchTerm.toLowerCase());
+      feedback.stage.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      getSourceIcon(feedback.lead.source).label.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesFilter = 
       filterType === 'all' || feedback.feedback_type === filterType;
@@ -287,7 +296,10 @@ const FeedbackModule: React.FC = () => {
     const matchesVendor = 
       !vendorFilter || feedback.vendedor.id === vendorFilter;
 
-    return matchesSearch && matchesFilter && matchesCompany && matchesVendor;
+    const matchesSource = 
+      !sourceFilter || feedback.lead.source === sourceFilter;
+
+    return matchesSearch && matchesFilter && matchesCompany && matchesVendor && matchesSource;
   });
 
   const formatDate = (dateString: string) => {
@@ -320,6 +332,25 @@ const FeedbackModule: React.FC = () => {
   const truncateComment = (comment: string, maxLength: number = 120) => {
     if (comment.length <= maxLength) return comment;
     return comment.substring(0, maxLength) + '...';
+  };
+
+  const getSourceIcon = (source?: string) => {
+    switch (source) {
+      case 'meta':
+        return { icon: Facebook, color: 'text-blue-600', bg: 'bg-blue-100', label: 'Meta Ads' };
+      case 'google':
+        return { icon: Chrome, color: 'text-red-600', bg: 'bg-red-100', label: 'Google Ads' };
+      case 'linkedin':
+        return { icon: Linkedin, color: 'text-blue-700', bg: 'bg-blue-100', label: 'LinkedIn Ads' };
+      case 'webhook':
+        return { icon: Zap, color: 'text-purple-600', bg: 'bg-purple-100', label: 'Webhook' };
+      case 'form':
+        return { icon: FileText, color: 'text-green-600', bg: 'bg-green-100', label: 'Formulário' };
+      case 'manual':
+        return { icon: User, color: 'text-gray-600', bg: 'bg-gray-100', label: 'Manual' };
+      default:
+        return { icon: Globe, color: 'text-gray-600', bg: 'bg-gray-100', label: 'Não informado' };
+    }
   };
 
   const handleStageClick = (feedback: FeedbackData) => {
@@ -401,7 +432,7 @@ const FeedbackModule: React.FC = () => {
 
       {/* Filtros Expandidos */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
           {/* Busca Geral */}
           <div className="lg:col-span-2">
             <div className="relative">
@@ -410,7 +441,7 @@ const FeedbackModule: React.FC = () => {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar por vendedor, empresa, lead, pipeline..."
+                placeholder="Buscar por vendedor, empresa, lead, pipeline, canal..."
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               />
             </div>
@@ -458,6 +489,23 @@ const FeedbackModule: React.FC = () => {
                   {vendor.name}
                 </option>
               ))}
+            </select>
+          </div>
+
+          {/* Filtro por Canal */}
+          <div>
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            >
+              <option value="">Todos os Canais</option>
+              <option value="meta">Meta Ads</option>
+              <option value="google">Google Ads</option>
+              <option value="linkedin">LinkedIn Ads</option>
+              <option value="webhook">Webhook</option>
+              <option value="form">Formulário</option>
+              <option value="manual">Manual</option>
             </select>
           </div>
         </div>
@@ -538,6 +586,20 @@ const FeedbackModule: React.FC = () => {
                             {formatCurrency(feedback.lead.valor)}
                           </span>
                         )}
+                        {/* Canal de Origem */}
+                        {(() => {
+                          const sourceInfo = getSourceIcon(feedback.lead.source);
+                          const SourceIcon = sourceInfo.icon;
+                          return (
+                            <div 
+                              className={`flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium ${sourceInfo.bg} ${sourceInfo.color}`}
+                              title={`Canal: ${sourceInfo.label}`}
+                            >
+                              <SourceIcon className="w-3 h-3" />
+                              <span>{sourceInfo.label}</span>
+                            </div>
+                          );
+                        })()}
                       </div>
                       
                       {/* Linha 3: Comentário */}
@@ -670,6 +732,22 @@ const FeedbackModule: React.FC = () => {
                       {selectedFeedback.lead.telefone && (
                         <p className="text-xs text-gray-500">{selectedFeedback.lead.telefone}</p>
                       )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Canal de Origem</label>
+                    <div className="mt-1">
+                      {(() => {
+                        const sourceInfo = getSourceIcon(selectedFeedback.lead.source);
+                        const SourceIcon = sourceInfo.icon;
+                        return (
+                          <div className={`inline-flex items-center space-x-2 px-3 py-2 rounded-lg ${sourceInfo.bg} ${sourceInfo.color}`}>
+                            <SourceIcon className="w-4 h-4" />
+                            <span className="font-medium">{sourceInfo.label}</span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 

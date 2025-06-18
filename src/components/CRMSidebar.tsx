@@ -17,7 +17,8 @@ import {
   ChevronRight,
   LogOut,
   Plus,
-  X
+  X,
+  Edit
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -277,6 +278,18 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate, onTog
                   {user?.email}
                 </div>
               </div>
+            )}
+            {!collapsed && (
+              <button
+                onClick={() => {
+                  // TODO: Implementar modal de edição do usuário
+                  alert('Funcionalidade de edição do usuário será implementada em breve');
+                }}
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg"
+                title="Editar perfil"
+              >
+                <Edit className="w-4 h-4" />
+              </button>
             )}
           </div>
 

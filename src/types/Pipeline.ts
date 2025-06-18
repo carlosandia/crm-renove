@@ -31,6 +31,7 @@ export interface Lead {
   status?: 'active' | 'won' | 'lost';
   assigned_to?: string;
   created_by?: string;
+  source?: 'meta' | 'google' | 'linkedin' | 'webhook' | 'manual' | 'form';
 }
 
 export interface PipelineMember {
