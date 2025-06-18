@@ -58,6 +58,17 @@ const EmpresasModule: React.FC = () => {
     message: ''
   });
 
+  // Estados para validação da senha do admin
+  const [passwordValidation, setPasswordValidation] = useState({
+    isValid: false,
+    message: '',
+    requirements: {
+      length: false,
+      hasLetter: false,
+      hasNumber: false
+    }
+  });
+
   // Estados do formulário
   const [formData, setFormData] = useState({
     name: '',
@@ -139,6 +150,11 @@ const EmpresasModule: React.FC = () => {
     return () => clearTimeout(timeoutId);
   }, [formData.admin_email, editingEmpresa]);
 
+  // Effect para validar senha do admin em tempo real
+  useEffect(() => {
+    validateAdminPassword(formData.admin_password);
+  }, [formData.admin_password, editingEmpresa]);
+
   // Função para formatar data no fuso horário de Brasília (GMT-3)
   const formatDateBrasilia = (dateString: string) => {
     try {
@@ -175,7 +191,7 @@ const EmpresasModule: React.FC = () => {
     return lastLogin.toISOString();
   };
 
-  // Função para validar email do admin em tempo real
+    // Função para validar email do admin em tempo real
   const validateAdminEmail = async (email: string) => {
     if (!email || !email.includes('@') || editingEmpresa) {
       setEmailValidation({ isChecking: false, exists: false, message: '' });
@@ -198,22 +214,62 @@ const EmpresasModule: React.FC = () => {
       }
 
       if (existingUser) {
-        setEmailValidation({
-          isChecking: false,
-          exists: true,
-          message: 'Esse e-mail já existe, favor inserir outro.'
+        setEmailValidation({ 
+          isChecking: false, 
+          exists: true, 
+          message: 'Esse e-mail já existe, favor inserir outro.' 
         });
       } else {
-        setEmailValidation({
-          isChecking: false,
-          exists: false,
-          message: 'E-mail disponível.'
+        setEmailValidation({ 
+          isChecking: false, 
+          exists: false, 
+          message: 'E-mail disponível.' 
         });
       }
     } catch (error) {
       console.error('Erro na validação do email:', error);
       setEmailValidation({ isChecking: false, exists: false, message: '' });
     }
+  };
+
+  // Função para validar senha do admin em tempo real
+  const validateAdminPassword = (password: string) => {
+    if (!password || editingEmpresa) {
+      setPasswordValidation({
+        isValid: false,
+        message: '',
+        requirements: { length: false, hasLetter: false, hasNumber: false }
+      });
+      return;
+    }
+
+    // Verificar requisitos
+    const hasMinLength = password.length >= 6;
+    const hasLetter = /[a-zA-Z]/.test(password);
+    const hasNumber = /\d/.test(password);
+    
+    const isValid = hasMinLength && hasLetter && hasNumber;
+    
+    let message = '';
+    if (!isValid) {
+      const missing = [];
+      if (!hasMinLength) missing.push('mínimo 6 caracteres');
+      if (!hasLetter) missing.push('pelo menos 1 letra');
+      if (!hasNumber) missing.push('pelo menos 1 número');
+      message = `Senha deve ter: ${missing.join(', ')}`;
+    } else {
+      message = 'Senha válida!';
+    }
+
+    setPasswordValidation({
+      isValid,
+      message,
+      requirements: {
+        length: hasMinLength,
+        hasLetter: hasLetter,
+        hasNumber: hasNumber
+      }
+    });
   };
 
   const fetchEmpresas = async () => {
@@ -311,6 +367,12 @@ const EmpresasModule: React.FC = () => {
     // Validar se email do admin já existe (apenas para criação)
     if (!editingEmpresa && emailValidation.exists) {
       alert('O e-mail do administrador já está em uso. Por favor, use um e-mail diferente.');
+      return;
+    }
+
+    // Validar senha do admin (apenas para criação e se senha foi informada)
+    if (!editingEmpresa && formData.admin_password && !passwordValidation.isValid) {
+      alert('A senha do administrador não atende aos requisitos mínimos:\n- Mínimo 6 caracteres\n- Pelo menos 1 letra\n- Pelo menos 1 número');
       return;
     }
 
@@ -448,6 +510,11 @@ const EmpresasModule: React.FC = () => {
         admin_password: ''
       });
       setEmailValidation({ isChecking: false, exists: false, message: '' });
+      setPasswordValidation({
+        isValid: false,
+        message: '',
+        requirements: { length: false, hasLetter: false, hasNumber: false }
+      });
       setShowForm(false);
       setEditingEmpresa(null);
       
@@ -899,11 +966,69 @@ const EmpresasModule: React.FC = () => {
                       type="password"
                       value={formData.admin_password}
                       onChange={(e) => setFormData({...formData, admin_password: e.target.value})}
-                      placeholder="Deixe em branco para usar senha padrão (123456)"
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
+                      placeholder="Mínimo 6 caracteres com letras e números"
+                      className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-colors bg-gray-50 focus:bg-white ${
+                        formData.admin_password && !passwordValidation.isValid 
+                          ? 'border-red-300 focus:ring-red-500' 
+                          : formData.admin_password && passwordValidation.isValid
+                          ? 'border-green-300 focus:ring-green-500'
+                          : 'border-gray-200 focus:ring-slate-500'
+                      }`}
                     />
+                    
+                    {/* Validação da senha */}
+                    {formData.admin_password && passwordValidation.message && (
+                      <div className={`mt-3 text-sm ${
+                        passwordValidation.isValid ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        <div className="flex items-center space-x-2 mb-2">
+                          {passwordValidation.isValid ? (
+                            <div className="w-5 h-5 bg-green-100 rounded-full flex items-center justify-center">
+                              <div className="w-2 h-2 bg-green-600 rounded-full"></div>
+                            </div>
+                          ) : (
+                            <div className="w-5 h-5 bg-red-100 rounded-full flex items-center justify-center">
+                              <X className="w-3 h-3 text-red-600" />
+                            </div>
+                          )}
+                          <span className="font-medium">{passwordValidation.message}</span>
+                        </div>
+                        
+                        {/* Indicadores de requisitos */}
+                        <div className="ml-7 space-y-1">
+                          <div className={`flex items-center space-x-2 text-xs ${
+                            passwordValidation.requirements.length ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            <div className={`w-3 h-3 rounded-full ${
+                              passwordValidation.requirements.length ? 'bg-green-500' : 'bg-red-500'
+                            }`}></div>
+                            <span>Mínimo 6 caracteres</span>
+                          </div>
+                          <div className={`flex items-center space-x-2 text-xs ${
+                            passwordValidation.requirements.hasLetter ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            <div className={`w-3 h-3 rounded-full ${
+                              passwordValidation.requirements.hasLetter ? 'bg-green-500' : 'bg-red-500'
+                            }`}></div>
+                            <span>Pelo menos 1 letra</span>
+                          </div>
+                          <div className={`flex items-center space-x-2 text-xs ${
+                            passwordValidation.requirements.hasNumber ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            <div className={`w-3 h-3 rounded-full ${
+                              passwordValidation.requirements.hasNumber ? 'bg-green-500' : 'bg-red-500'
+                            }`}></div>
+                            <span>Pelo menos 1 número</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
                     <p className="text-xs text-slate-500 mt-2">
-                      Se não informada, a senha padrão será "123456"
+                      {formData.admin_password ? 
+                        'Senha personalizada será usada para o admin' : 
+                        'Se não informada, a senha padrão será "123456"'
+                      }
                     </p>
                   </div>
                 </div>
@@ -917,6 +1042,11 @@ const EmpresasModule: React.FC = () => {
                   setShowForm(false);
                   setEditingEmpresa(null);
                   setEmailValidation({ isChecking: false, exists: false, message: '' });
+                  setPasswordValidation({
+                    isValid: false,
+                    message: '',
+                    requirements: { length: false, hasLetter: false, hasNumber: false }
+                  });
                 }}
                 className="px-6 py-3 text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl font-medium transition-colors"
               >
@@ -924,9 +1054,17 @@ const EmpresasModule: React.FC = () => {
               </button>
               <button
                 type="submit"
-                disabled={!editingEmpresa && emailValidation.exists}
+                disabled={
+                  !editingEmpresa && (
+                    emailValidation.exists || 
+                    (!!formData.admin_password && !passwordValidation.isValid)
+                  )
+                }
                 className={`px-8 py-3 rounded-xl font-medium transition-all shadow-sm hover:shadow-md transform hover:-translate-y-0.5 ${
-                  !editingEmpresa && emailValidation.exists
+                  !editingEmpresa && (
+                    emailValidation.exists || 
+                    (!!formData.admin_password && !passwordValidation.isValid)
+                  )
                     ? 'bg-gray-400 cursor-not-allowed text-white'
                     : 'bg-slate-900 hover:bg-slate-800 text-white'
                 }`}
