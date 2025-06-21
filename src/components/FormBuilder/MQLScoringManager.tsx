@@ -286,8 +286,8 @@ const MQLScoringManager: React.FC<MQLScoringManagerProps> = ({ formId, formSchem
         <h4 className="font-medium text-green-800 mb-2">💡 Exemplos de Pontuação</h4>
         <div className="text-sm text-green-700 space-y-1">
           <div>• <strong>CEO/Diretor:</strong> 30-40 pontos (alto poder de decisão)</div>
-          <div>• <strong>Empresa Grande (>100 funcionários):</strong> 25-35 pontos</div>
-          <div>• <strong>Orçamento Alto (>R$10k):</strong> 40-50 pontos</div>
+          <div>• <strong>Empresa Grande (&gt;100 funcionários):</strong> 25-35 pontos</div>
+          <div>• <strong>Orçamento Alto (&gt;R$10k):</strong> 40-50 pontos</div>
           <div>• <strong>Urgência Alta:</strong> 20-30 pontos</div>
           <div>• <strong>Telefone preenchido:</strong> 15-20 pontos</div>
           <div>• <strong>LinkedIn preenchido:</strong> 10-15 pontos</div>
