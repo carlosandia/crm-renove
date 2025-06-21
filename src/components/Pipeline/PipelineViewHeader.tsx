@@ -1,5 +1,4 @@
 import React from 'react';
-import { Bell } from 'lucide-react';
 import PipelineStats from './PipelineStats';
 import PipelineFilters from './PipelineFilters';
 import PipelineActions from './PipelineActions';
@@ -110,15 +109,14 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
   };
 
   return (
-    <div className="pipeline-internal-header flex-shrink-0 bg-gray-100">
+    <div className="pipeline-internal-header flex-shrink-0">
       {/* Container centralizado com largura máxima */}
       <div className="max-w-full mx-auto">
         {/* Cabeçalho compacto em uma linha */}
-        <div className="px-8 py-4 bg-gray-100">
+        <div className="px-6 py-4">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-4">
               <h1 className="text-2xl font-bold text-gray-900">Pipeline de Vendas</h1>
-              <Bell className="w-5 h-5 text-gray-600 hover:text-gray-800 cursor-pointer transition-colors" />
             </div>
 
             <PipelineActions
@@ -145,8 +143,8 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
           </div>
         </div>
 
-        {/* Filtros - fundo branco */}
-        <div className="border-t border-gray-200 bg-white">
+        {/* Filtros */}
+        <div className="border-t border-gray-200">
           <PipelineFilters
             pipelines={pipelines}
             selectedPipeline={selectedPipeline}
@@ -164,7 +162,9 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
             showOnlyMyPipelines={showOnlyMyPipelines}
             onToggleMyPipelines={onToggleMyPipelines}
             onClearFilters={onClearFilters}
+            onVendorFilter={onVendorFilterChange}
             userRole={userRole}
+            userId={undefined}
           />
         </div>
       </div>

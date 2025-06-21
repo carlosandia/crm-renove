@@ -16,8 +16,10 @@ export interface PipelineStage {
   order_index: number;
   temperature_score: number;
   max_days_allowed: number;
+  time_unit?: 'minutes' | 'hours' | 'days';
   color: string;
   is_system_stage?: boolean;
+  is_system?: boolean;
 }
 
 export interface Lead {

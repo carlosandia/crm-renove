@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Settings, Link, Users, Target } from 'lucide-react';
+import { Settings, Link, Users, Target, MessageSquare, Shield, Zap } from 'lucide-react';
 
 interface FormSettingsEditorProps {
   settings: {
@@ -9,6 +8,12 @@ interface FormSettingsEditorProps {
     pipeline_id: string;
     assigned_to: string;
     qualification_rules: any;
+    whatsapp_number?: string;
+    whatsapp_message?: string;
+    success_message?: string;
+    enable_captcha?: boolean;
+    enable_double_optin?: boolean;
+    enable_analytics?: boolean;
   };
   onUpdate: (settings: any) => void;
   tenantId: string;
@@ -86,6 +91,86 @@ const FormSettingsEditor: React.FC<FormSettingsEditorProps> = ({
         Configurações do Formulário
       </h3>
 
+      {/* Configurações do WhatsApp */}
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        <h4 className="font-medium text-gray-900 mb-4 flex items-center">
+          <MessageSquare className="mr-2 text-green-600" size={16} />
+          Integração com WhatsApp
+        </h4>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Número do WhatsApp (com código do país)
+            </label>
+            <input
+              type="text"
+              value={settings.whatsapp_number || ''}
+              onChange={(e) => updateSetting('whatsapp_number', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              placeholder="5511999999999"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Exemplo: 5511999999999 (Brasil + DDD + número)
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Mensagem Padrão do WhatsApp
+            </label>
+            <textarea
+              value={settings.whatsapp_message || 'Olá! Gostaria de mais informações.'}
+              onChange={(e) => updateSetting('whatsapp_message', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              rows={3}
+              placeholder="Olá! Gostaria de mais informações sobre..."
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Esta mensagem será enviada automaticamente quando o botão WhatsApp for clicado
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Mensagens e Confirmações */}
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        <h4 className="font-medium text-gray-900 mb-4 flex items-center">
+          <Zap className="mr-2 text-blue-600" size={16} />
+          Mensagens e Confirmações
+        </h4>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Mensagem de Sucesso
+            </label>
+            <textarea
+              value={settings.success_message || 'Formulário enviado com sucesso!'}
+              onChange={(e) => updateSetting('success_message', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              rows={2}
+              placeholder="Obrigado! Recebemos suas informações e entraremos em contato em breve."
+            />
+          </div>
+
+          <div className="space-y-3">
+            <label className="flex items-center">
+              <input
+                type="checkbox"
+                checked={settings.enable_double_optin || false}
+                onChange={(e) => updateSetting('enable_double_optin', e.target.checked)}
+                className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+              />
+              <span className="ml-2 text-sm text-gray-700">Ativar confirmação por email (Double Opt-in)</span>
+            </label>
+            <p className="text-xs text-gray-500 ml-6">
+              Enviará um email de confirmação antes de processar o lead
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Redirecionamento */}
       <div className="bg-white border border-gray-200 rounded-lg p-4">
         <h4 className="font-medium text-gray-900 mb-4 flex items-center">
@@ -159,6 +244,79 @@ const FormSettingsEditor: React.FC<FormSettingsEditorProps> = ({
               Leads serão automaticamente atribuídos a este vendedor
             </p>
           </div>
+        </div>
+      </div>
+
+      {/* Segurança e Proteção */}
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        <h4 className="font-medium text-gray-900 mb-4 flex items-center">
+          <Shield className="mr-2 text-red-600" size={16} />
+          Segurança e Proteção
+        </h4>
+        
+        <div className="space-y-3">
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={settings.enable_captcha || false}
+              onChange={(e) => updateSetting('enable_captcha', e.target.checked)}
+              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+            />
+            <span className="ml-2 text-sm text-gray-700">Ativar CAPTCHA</span>
+          </label>
+          <p className="text-xs text-gray-500 ml-6">
+            Protege contra spam e bots automatizados
+          </p>
+
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={settings.qualification_rules?.prevent_duplicates || false}
+              onChange={(e) => updateQualificationRule('prevent_duplicates', e.target.checked)}
+              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+            />
+            <span className="ml-2 text-sm text-gray-700">Prevenir envios duplicados (mesmo email)</span>
+          </label>
+
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={settings.qualification_rules?.capture_ip || false}
+              onChange={(e) => updateQualificationRule('capture_ip', e.target.checked)}
+              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+            />
+            <span className="ml-2 text-sm text-gray-700">Capturar endereço IP</span>
+          </label>
+
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={settings.qualification_rules?.capture_user_agent || false}
+              onChange={(e) => updateQualificationRule('capture_user_agent', e.target.checked)}
+              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+            />
+            <span className="ml-2 text-sm text-gray-700">Capturar informações do navegador</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Analytics e Rastreamento */}
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        <h4 className="font-medium text-gray-900 mb-4">Analytics e Rastreamento</h4>
+        
+        <div className="space-y-3">
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={settings.enable_analytics || true}
+              onChange={(e) => updateSetting('enable_analytics', e.target.checked)}
+              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+            />
+            <span className="ml-2 text-sm text-gray-700">Ativar analytics do formulário</span>
+          </label>
+          <p className="text-xs text-gray-500 ml-6">
+            Rastreia visualizações, conversões e outras métricas importantes
+          </p>
         </div>
       </div>
 
@@ -246,43 +404,6 @@ const FormSettingsEditor: React.FC<FormSettingsEditorProps> = ({
               </p>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Configurações Avançadas */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <h4 className="font-medium text-gray-900 mb-4">Configurações Avançadas</h4>
-        
-        <div className="space-y-3">
-          <label className="flex items-center">
-            <input
-              type="checkbox"
-              checked={settings.qualification_rules?.capture_ip || false}
-              onChange={(e) => updateQualificationRule('capture_ip', e.target.checked)}
-              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-            />
-            <span className="ml-2 text-sm text-gray-700">Capturar endereço IP</span>
-          </label>
-
-          <label className="flex items-center">
-            <input
-              type="checkbox"
-              checked={settings.qualification_rules?.capture_user_agent || false}
-              onChange={(e) => updateQualificationRule('capture_user_agent', e.target.checked)}
-              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-            />
-            <span className="ml-2 text-sm text-gray-700">Capturar informações do navegador</span>
-          </label>
-
-          <label className="flex items-center">
-            <input
-              type="checkbox"
-              checked={settings.qualification_rules?.prevent_duplicates || false}
-              onChange={(e) => updateQualificationRule('prevent_duplicates', e.target.checked)}
-              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-            />
-            <span className="ml-2 text-sm text-gray-700">Prevenir envios duplicados (mesmo email)</span>
-          </label>
         </div>
       </div>
     </div>

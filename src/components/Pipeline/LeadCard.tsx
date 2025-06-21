@@ -1,324 +1,274 @@
-import React, { useState } from 'react';
-import { useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { Edit, Trash2, Phone, Mail, MessageSquare, Zap, Plus, Clock, Calendar, User, Building, DollarSign, MapPin, MessageCircle, Star, Hash } from 'lucide-react';
-import LeadActionsModal from './LeadActionsModal';
-import FeedbackModal from './FeedbackModal';
-import LeadEditModal from './LeadEditModal';
+import React, { useState, useEffect, memo, useMemo, useCallback } from 'react';
+import { Draggable } from '@hello-pangea/dnd';
+import { Phone, Bell, Mail, MessageCircle, ThumbsUp, Thermometer, Clock, Calendar } from 'lucide-react';
+import { useModalContext } from '../../contexts/ModalContext';
 import { Lead, CustomField } from '../../types/Pipeline';
+import { usePendingTasks } from '../../hooks/usePendingTasks';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface LeadCardProps {
   lead: Lead;
   customFields: CustomField[];
+  index: number; // Necessário para react-beautiful-dnd
   isDragging?: boolean;
   onEdit?: (lead: Lead) => void;
   onUpdate?: (leadId: string, updatedData: any) => void;
   onDelete?: (leadId: string) => void;
 }
 
-const LeadCard: React.FC<LeadCardProps> = ({ lead, customFields, isDragging = false, onEdit, onUpdate, onDelete }) => {
-  const [showActionsModal, setShowActionsModal] = useState(false);
-  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
+const LeadCard: React.FC<LeadCardProps> = memo(({
+  lead,
+  customFields,
+  index,
+  isDragging = false,
+  onEdit,
+  onUpdate,
+  onDelete
+}) => {
+  const { openModal } = useModalContext();
+  const { user } = useAuth();
+  const { checkPendingTasksForLead } = usePendingTasks();
   
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging: isSortableDragging,
-  } = useSortable({ id: lead.id });
+  // Estados para tarefas pendentes
+  const [pendingTasksCount, setPendingTasksCount] = useState(0);
+  const [tasksLoading, setTasksLoading] = useState(false);
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
+  // 🚀 MEMOIZAÇÃO DE DADOS DO LEAD
+  const leadData = useMemo(() => {
+    return lead.custom_data || {};
+  }, [lead.custom_data]);
 
-  // Função para formatar valores monetários
-  const formatCurrency = (value: any): string => {
-    if (!value) return 'R$ 0,00';
-    const numValue = typeof value === 'string' ? parseFloat(value.replace(/[^\d,.-]/g, '').replace(',', '.')) : value;
-    if (isNaN(numValue)) return 'R$ 0,00';
-    return new Intl.NumberFormat('pt-BR', {
+  // 🚀 MEMOIZAÇÃO DE VALORES FORMATADOS
+  const displayValues = useMemo(() => {
+    const nomeOportunidade = leadData.nome_oportunidade || leadData.titulo_oportunidade || leadData.titulo || 'Oportunidade';
+    const nomeLead = leadData.nome_lead || leadData.nome_contato || leadData.contato || leadData.nome || 'Lead sem nome';
+    const temperatura = leadData.temperatura || leadData.lead_temperature || 'frio';
+    
+    const valor = leadData.valor || leadData.valor_oportunidade || leadData.valor_proposta || 0;
+    const valorFormatado = new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL'
-    }).format(numValue);
-  };
+    }).format(parseFloat(valor.toString().replace(/[^\d.,]/g, '').replace(',', '.')) || 0);
 
-  // Função para calcular tempo na etapa atual
-  const getTimeInCurrentStage = (): string => {
-    const movedAt = lead.moved_at ? new Date(lead.moved_at) : new Date(lead.created_at);
-    const now = new Date();
-    const diffMs = now.getTime() - movedAt.getTime();
-    
-    const totalMinutes = Math.floor(diffMs / (1000 * 60));
-    const hours = Math.floor(totalMinutes / 60);
-    const days = Math.floor(hours / 24);
-    const remainingMinutes = totalMinutes % 60;
-    
-    if (days > 0) {
-      return `${days}d ${hours % 24}h`;
-    }
-    if (hours > 0) {
-      return `${hours}h ${remainingMinutes}min`;
-    }
-    return `${totalMinutes}min`;
-  };
+    // Data de criação (formato: 19 Jun)
+    const dataCriacao = lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'short'
+    }) : '';
 
-  // Função para obter ícone do campo
-  const getFieldIcon = (fieldType: string, fieldName?: string) => {
-    if (fieldName === 'nome') return User;
-    if (fieldName === 'email') return Mail;
-    if (fieldName === 'telefone') return Phone;
-    if (fieldName === 'valor') return DollarSign;
-    if (fieldName === 'empresa') return Building;
-    if (fieldName === 'endereco') return MapPin;
-    
-    switch (fieldType) {
-      case 'email': return Mail;
-      case 'phone': return Phone;
-      case 'number': return Hash;
-      case 'date': return Calendar;
-      default: return MessageCircle;
-    }
-  };
+    // Calcular tempo na etapa atual com precisão de minutos/horas/dias
+    const dataMovimentacao = lead.updated_at || lead.created_at;
+    const tempoNaEtapa = dataMovimentacao ? (() => {
+      const agora = new Date();
+      const dataMove = new Date(dataMovimentacao);
+      const diffMs = agora.getTime() - dataMove.getTime();
+      const diffMinutos = Math.floor(diffMs / (1000 * 60));
+      const diffHoras = Math.floor(diffMs / (1000 * 60 * 60));
+      const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      
+      if (diffMinutos < 60) return `${diffMinutos}min`;
+      if (diffHoras < 24) return `${diffHoras}h`;
+      if (diffDias === 1) return '1 dia';
+      return `${diffDias} dias`;
+    })() : '';
 
-  // Função para formatar valor do campo
-  const formatFieldValue = (field: CustomField, value: any): string => {
-    if (!value) return '';
-    
-    if (field.field_name === 'valor' || field.field_type === 'number') {
-      return formatCurrency(value);
+    return {
+      nomeOportunidade,
+      nomeLead,
+      temperatura,
+      valorFormatado,
+      dataCriacao,
+      tempoNaEtapa
+    };
+  }, [leadData, lead.created_at, lead.updated_at]);
+
+  // 🚀 MEMOIZAÇÃO DE TAG DE TEMPERATURA
+  const getTemperatureTag = useMemo(() => {
+    switch (displayValues.temperatura) {
+      case 'quente':
+      case 'hot':
+        return { label: 'Quente', color: 'bg-red-100 text-red-700', icon: '🔥' };
+      case 'morno':
+      case 'warm':
+        return { label: 'Morno', color: 'bg-yellow-100 text-yellow-700', icon: '🌡️' };
+      case 'frio':
+      case 'cold':
+      default:
+        return { label: 'Frio', color: 'bg-blue-100 text-blue-700', icon: '❄️' };
     }
-    
-    if (field.field_type === 'date') {
+  }, [displayValues.temperatura]);
+
+  // 🚀 MEMOIZAÇÃO DE HANDLERS
+  const handleOpenModal = useCallback(() => {
+    openModal(lead.id, lead, customFields, 'dados');
+  }, [openModal, lead.id, lead, customFields]);
+
+  const handlePhoneClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    const telefone = leadData.telefone || leadData.telefone_contato || leadData.celular;
+    if (telefone) {
+      window.open(`tel:${telefone}`, '_self');
+    }
+  }, [leadData]);
+
+  const handleEmailClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    const email = leadData.email || leadData.email_contato;
+    if (email) {
+      window.open(`mailto:${email}`, '_blank');
+    }
+  }, [leadData]);
+
+  const handleCommentsClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    openModal(lead.id, lead, customFields, 'comentarios');
+  }, [openModal, lead.id, lead, customFields]);
+
+  const handleFeedbackClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    openModal(lead.id, lead, customFields, 'feedback');
+  }, [openModal, lead.id, lead, customFields]);
+
+  const handleAgendaClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Aqui você pode implementar a funcionalidade de agenda
+    console.log('Agenda clicada para lead:', lead.id);
+  }, [lead.id]);
+
+  // Verificar tarefas pendentes quando o componente montar
+  useEffect(() => {
+    const checkTasks = async () => {
+      if (!user?.id || !lead.id) return;
+      
+      setTasksLoading(true);
       try {
-        return new Date(value).toLocaleDateString('pt-BR');
-      } catch {
-        return value;
+        const count = await checkPendingTasksForLead(lead.id);
+        setPendingTasksCount(count);
+      } catch (error) {
+        console.error('Erro ao verificar tarefas pendentes:', error);
+      } finally {
+        setTasksLoading(false);
       }
-    }
-    
-    return value;
-  };
+    };
 
-  // Campos fixos que sempre aparecem (Nome e Valor)
-  const fixedFields = ['nome', 'valor'];
-  
-  // Outros campos que podem ser exibidos (configuráveis)
-  const configurableFields = customFields
-    .filter(field => 
-      !fixedFields.includes(field.field_name) && 
-      field.show_in_card && 
-      lead.custom_data[field.field_name]
-    )
-    .sort((a, b) => a.field_order - b.field_order)
-    .slice(0, 2); // Máximo 2 campos adicionais
-
-  const handleCardClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (onEdit) {
-      onEdit(lead);
-    }
-  };
-
-  const handleEdit = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setShowEditModal(true);
-  };
-
-  const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (window.confirm('Tem certeza que deseja excluir esta oportunidade?')) {
-      if (onDelete) {
-        onDelete(lead.id);
-      } else {
-        // Fallback - remover lead localmente se não há handler
-        console.log('Lead deletion requested but no handler provided:', lead.id);
-        alert('Funcionalidade de exclusão em desenvolvimento');
-      }
-    }
-  };
-
-  const handleAction = (action: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (action === 'feedback') {
-      setShowFeedbackModal(true);
-      return;
-    }
-    
-    setShowActionsModal(true);
-  };
-
-  const handleOpenActions = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setShowActionsModal(true);
-  };
-
-  const handleUpdateLead = (updatedData: any) => {
-    if (onUpdate) {
-      onUpdate(lead.id, updatedData);
-    }
-    setShowEditModal(false);
-  };
-
-  if (isDragging || isSortableDragging) {
-    return (
-      <div className="bg-white border border-gray-200 rounded-lg p-4 opacity-50 transform rotate-2 shadow-lg">
-        <div className="flex items-center space-x-2">
-          <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
-            <span className="text-white text-xs font-bold">
-              #{lead.id.slice(-3)}
-            </span>
-          </div>
-          <div className="text-sm font-medium text-gray-900">
-            Lead em movimento...
-          </div>
-        </div>
-      </div>
-    );
-  }
+    checkTasks();
+  }, [lead.id, user?.id, checkPendingTasksForLead]);
 
   return (
-    <>
-      <div
-        ref={setNodeRef}
-        style={style}
-        {...attributes}
-        className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-lg hover:border-blue-200 transition-all duration-150 group"
-      >
-        {/* Header com avatar, tempo e botões de ação */}
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center space-x-2">
-            {/* ÁREA DE DRAG - Handle específico */}
-            <div 
-              {...listeners}
-              className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center cursor-move text-white text-sm font-semibold"
-              title="Arrastar para mover"
-            >
-              {lead.custom_data.nome ? lead.custom_data.nome.charAt(0).toUpperCase() : 'L'}
+    <Draggable draggableId={lead.id} index={index}>
+      {(provided, snapshot) => (
+        <>
+          <div
+            ref={provided.innerRef}
+            {...provided.draggableProps}
+            {...provided.dragHandleProps}
+            onClick={handleOpenModal}
+            className={`lead-card group cursor-pointer ${snapshot.isDragging ? 'dragging' : ''}`}
+            style={{
+              ...provided.draggableProps.style,
+              opacity: snapshot.isDragging ? 0.7 : 1,
+              transform: snapshot.isDragging 
+                ? `${provided.draggableProps.style?.transform} rotate(3deg) scale(1.02)`
+                : provided.draggableProps.style?.transform,
+              padding: '10px', // Reduzir padding para deixar mais compacto
+              marginBottom: '6px' // Reduzir margem entre cards
+            }}
+          >
+            {/* Header: Nome da Oportunidade + Sino */}
+            <div className="flex items-start justify-between mb-0.5">
+              <h4 className="text-sm font-semibold text-gray-700 truncate flex-1">
+                {displayValues.nomeOportunidade}
+              </h4>
+              
+              {/* Sino de Notificação */}
+              {pendingTasksCount > 0 && (
+                <div className="relative ml-1 flex-shrink-0">
+                  <Bell className="w-4 h-4 text-orange-500" />
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-3 h-3 flex items-center justify-center font-bold text-[10px]">
+                    {pendingTasksCount}
+                  </span>
+                </div>
+              )}
             </div>
-            <div className="text-xs text-gray-500 flex items-center space-x-1">
-              <Clock className="w-3 h-3" />
-              <span>{getTimeInCurrentStage()}</span>
+
+            {/* Nome do Lead + Valor */}
+            <div className="flex items-center mb-0.5">
+              <span className="text-sm text-gray-500">
+                {displayValues.nomeLead}
+              </span>
+              <span className="text-xs text-gray-500 ml-1">
+                {displayValues.valorFormatado}
+              </span>
             </div>
-          </div>
-          
-          {/* Botões de ação (visíveis no hover) */}
-          <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-            <button
-              onClick={handleEdit}
-              onMouseDown={(e) => e.stopPropagation()}
-              onTouchStart={(e) => e.stopPropagation()}
-              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors duration-150"
-              title="Editar lead"
-            >
-              <Edit className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={handleDelete}
-              onMouseDown={(e) => e.stopPropagation()}
-              onTouchStart={(e) => e.stopPropagation()}
-              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors duration-150"
-              title="Excluir lead"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
 
-        {/* Campo Nome (sempre visível) */}
-        <div className="mb-3">
-          <div className="flex items-center space-x-2 mb-1">
-            <User className="w-4 h-4 text-gray-500" />
-            <span className="text-sm font-medium text-gray-900 truncate">
-              {lead.custom_data.nome || 'Nome não informado'}
-            </span>
-          </div>
-        </div>
-
-        {/* Campo Valor (sempre visível) */}
-        <div className="mb-3">
-          <div className="flex items-center space-x-2">
-            <DollarSign className="w-4 h-4 text-green-600" />
-            <span className="text-lg font-bold text-green-600">
-              {formatCurrency(lead.custom_data.valor)}
-            </span>
-          </div>
-        </div>
-
-        {/* Campos configuráveis adicionais */}
-        {configurableFields.map(field => {
-          const IconComponent = getFieldIcon(field.field_type, field.field_name);
-          const value = formatFieldValue(field, lead.custom_data[field.field_name]);
-          
-          return (
-            <div key={field.field_name} className="mb-2">
-              <div className="flex items-center space-x-2">
-                <IconComponent className="w-4 h-4 text-gray-500" />
-                <span className="text-sm text-gray-700 truncate" title={value}>
-                  {value}
-                </span>
+            {/* Data + Tempo na Etapa + Temperatura */}
+            <div className="flex items-center mb-1.5">
+              <div className="flex items-center space-x-2 text-xs text-gray-500">
+                <span>{displayValues.dataCriacao}</span>
+                <span>•</span>
+                <span>{displayValues.tempoNaEtapa}</span>
+              </div>
+              
+              <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ml-2 ${getTemperatureTag.color}`}>
+                <span className="mr-1">{getTemperatureTag.icon}</span>
+                {getTemperatureTag.label}
               </div>
             </div>
-          );
-        })}
 
-        {/* Footer com ações */}
-        <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
-          <div className="flex items-center space-x-3">
-            <button className="text-gray-400 hover:text-blue-600 transition-colors">
-              <Phone className="w-4 h-4" />
-            </button>
-            <button className="text-gray-400 hover:text-blue-600 transition-colors">
-              <Mail className="w-4 h-4" />
-            </button>
-            <button className="text-gray-400 hover:text-blue-600 transition-colors">
-              <MessageCircle className="w-4 h-4" />
-            </button>
-            <button className="text-gray-400 hover:text-blue-600 transition-colors">
-              <Star className="w-4 h-4" />
-            </button>
+            {/* Ícones do Rodapé - Alinhados à Esquerda */}
+            <div className="flex items-center space-x-2 pt-1 border-t border-gray-100">
+              {/* Telefone */}
+              <button
+                onClick={handlePhoneClick}
+                className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-50 rounded-full transition-colors"
+                title="Ligar"
+              >
+                <Phone className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Email */}
+              <button
+                onClick={handleEmailClick}
+                className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-colors"
+                title="Enviar email"
+              >
+                <Mail className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Agenda */}
+              <button
+                onClick={handleAgendaClick}
+                className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-full transition-colors"
+                title="Agenda"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Comentários */}
+              <button
+                onClick={handleCommentsClick}
+                className="p-1.5 text-gray-400 hover:text-purple-500 hover:bg-purple-50 rounded-full transition-colors"
+                title="Comentários"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Feedback */}
+              <button
+                onClick={handleFeedbackClick}
+                className="p-1.5 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 rounded-full transition-colors"
+                title="Feedback"
+              >
+                <ThumbsUp className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
-          <button 
-            onClick={handleCardClick}
-            className="text-xs text-blue-600 hover:text-blue-800 font-medium opacity-0 group-hover:opacity-100 transition-opacity"
-          >
-            + Ações
-          </button>
-        </div>
-      </div>
-
-      {/* Modal de ações */}
-      <LeadActionsModal
-        isOpen={showActionsModal}
-        onClose={() => setShowActionsModal(false)}
-        leadId={lead.id}
-        leadName={lead.custom_data.nome || 'Lead sem nome'}
-      />
-
-      {/* Modal de feedback */}
-      <FeedbackModal
-        isOpen={showFeedbackModal}
-        onClose={() => setShowFeedbackModal(false)}
-        leadId={lead.id}
-        leadName={lead.custom_data.nome || 'Lead sem nome'}
-      />
-
-      {/* Modal de edição */}
-      <LeadEditModal
-        isOpen={showEditModal}
-        onClose={() => setShowEditModal(false)}
-        lead={lead}
-        customFields={customFields}
-        onUpdate={handleUpdateLead}
-      />
-    </>
+        </>
+      )}
+    </Draggable>
   );
-};
+});
+
+LeadCard.displayName = 'LeadCard';
 
 export default LeadCard;

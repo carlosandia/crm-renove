@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { supabase } from '../index';
+import { supabase } from '../config/supabase';
 
 export class LeadController {
   // GET /api/pipelines/:pipeline_id/leads - Buscar leads de uma pipeline

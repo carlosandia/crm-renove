@@ -1,7 +1,6 @@
-import React from 'react';
-import { DragOverlay } from '@dnd-kit/core';
+import React, { memo, useRef, useCallback, useMemo } from 'react';
+import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import KanbanColumn from './KanbanColumn';
-import LeadCard from './LeadCard';
 
 interface CustomField {
   id: string;
@@ -38,64 +37,96 @@ interface PipelineKanbanBoardProps {
   stages: PipelineStage[];
   leads: Lead[];
   customFields: CustomField[];
-  activeLead: Lead | null;
   onAddLead: (stageId?: string) => void;
   onUpdateLead?: (leadId: string, updatedData: any) => void;
   onEditLead?: (lead: Lead) => void;
+  onDragEnd: (result: DropResult) => void;
   stageMetrics?: any;
 }
 
-const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = ({
+const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = memo(({
   stages,
   leads,
   customFields,
-  activeLead,
   onAddLead,
   onUpdateLead,
   onEditLead,
+  onDragEnd,
   stageMetrics
 }) => {
-  const getLeadsByStage = (stageId: string) => {
-    return leads.filter(lead => lead.stage_id === stageId);
-  };
+  // Ref para evitar re-renders desnecessários
+  const dragContextRef = useRef<HTMLDivElement>(null);
+  
+  // 🚀 MEMOIZAÇÃO OTIMIZADA - Agrupar leads por stage uma única vez
+  const leadsByStage = useMemo(() => {
+    const grouped: Record<string, Lead[]> = {};
+    
+    // Inicializar todos os stages com array vazio
+    stages.forEach(stage => {
+      grouped[stage.id] = [];
+    });
+    
+    // Agrupar leads por stage
+    leads.forEach(lead => {
+      if (grouped[lead.stage_id]) {
+        grouped[lead.stage_id].push(lead);
+      }
+    });
+    
+    return grouped;
+  }, [leads, stages]);
+
+  // 🚀 CALLBACK OTIMIZADO - Sem logs desnecessários
+  const getLeadsByStage = useCallback((stageId: string) => {
+    return leadsByStage[stageId] || [];
+  }, [leadsByStage]);
+
+  // 🚀 CALLBACK OTIMIZADO - Handler mais direto
+  const handleDragEnd = useCallback((result: DropResult) => {
+    if (!result.destination) return;
+    
+    if (result.source.droppableId === result.destination.droppableId && 
+        result.source.index === result.destination.index) {
+      return;
+    }
+
+    onDragEnd(result);
+  }, [onDragEnd]);
+
+  // Verificar se há dados suficientes para renderizar
+  if (stages.length === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-gray-500">Carregando stages...</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex-1 overflow-hidden">
-      {/* Container centralizado e organizado */}
-      <div className="h-full flex flex-col">
-        {/* Board com padding uniforme e centralização */}
-        <div className="flex-1 px-8 py-6">
-          <div className="h-full flex justify-center">
-            <div className="flex gap-6 overflow-x-auto pb-4 max-w-full">
-              {stages.map((stage) => (
-                <KanbanColumn
-                  key={stage.id}
-                  stage={stage}
-                  leads={getLeadsByStage(stage.id)}
-                  customFields={customFields}
-                  onAddLead={onAddLead}
-                  onUpdateLead={onUpdateLead}
-                  onEditLead={onEditLead}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-        
-        <DragOverlay>
-          {activeLead ? (
-            <LeadCard 
-              lead={activeLead} 
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <DragDropContext onDragEnd={handleDragEnd}>
+        {/* Container Kanban com altura flexível e scroll horizontal */}
+        <div 
+          ref={dragContextRef}
+          className="flex-1 flex overflow-x-auto overflow-y-hidden p-6 gap-4 min-h-0"
+        >
+          {stages.map((stage) => (
+            <KanbanColumn
+              key={stage.id}
+              stage={stage}
+              leads={getLeadsByStage(stage.id)}
               customFields={customFields}
-              isDragging
-              onEdit={onEditLead}
-              onUpdate={onUpdateLead}
+              onAddLead={onAddLead}
+              onUpdateLead={onUpdateLead}
+              onEditLead={onEditLead}
             />
-          ) : null}
-        </DragOverlay>
-      </div>
+          ))}
+        </div>
+      </DragDropContext>
     </div>
   );
-};
+});
+
+PipelineKanbanBoard.displayName = 'PipelineKanbanBoard';
 
 export default PipelineKanbanBoard; 

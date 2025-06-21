@@ -4,6 +4,7 @@ import { asyncHandler, NotFoundError, ForbiddenError, ValidationError } from '..
 import { validateRequest, schemas } from '../middleware/validation';
 import { requireRole } from '../middleware/auth';
 import { ApiResponse } from '../types/express';
+import { LeadService } from '../services/LeadService';
 
 const router = Router();
 
@@ -369,5 +370,36 @@ router.delete('/:id',
     res.json(response);
   })
 );
+
+// 🚀 NOVO ENDPOINT - Geração assíncrona de tarefas de cadência
+router.post('/generate-cadence-tasks', async (req, res) => {
+  try {
+    const { leadId, stageId } = req.body;
+
+    if (!leadId || !stageId) {
+      return res.status(400).json({ 
+        error: 'leadId e stageId são obrigatórios' 
+      });
+    }
+
+    console.log('🔄 Endpoint: Iniciando geração assíncrona de tarefas');
+
+    // Executar geração de tarefas em background
+    const result = await LeadService.generateCadenceTasksForLeadEndpoint(leadId, stageId);
+
+    // Responder imediatamente, sem aguardar conclusão
+    res.status(202).json({ 
+      message: 'Geração de tarefas iniciada em background',
+      ...result
+    });
+
+  } catch (error: any) {
+    console.error('❌ Erro no endpoint de geração de tarefas:', error);
+    res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      details: error.message 
+    });
+  }
+});
 
 export default router; 

@@ -4,6 +4,8 @@ import { logger } from '../lib/logger';
 import { Pipeline, Lead, PipelineStage, CustomField } from '../types/Pipeline';
 import { supabase } from '../lib/supabase';
 import { debugPipelineData } from '../utils/debugPipeline';
+import { CRMSyncService, LeadData, OpportunityData } from '../services/crmSyncService';
+import { registerStageMove, registerLeadCreation } from '../utils/historyUtils';
 
 // Mock data with proper pipeline structure
 const mockPipelines = [
@@ -393,6 +395,40 @@ export const usePipelineData = (): UsePipelineDataReturn => {
   const pipelinesCacheKey = `pipelines_${user?.tenant_id || 'default'}_${user?.role || 'default'}_${user?.id || 'default'}`;
   const leadsCacheKey = (pipelineId: string) => `leads_${pipelineId}`;
 
+  // Estado para controlar drag em progresso
+  const [isDragInProgress, setIsDragInProgress] = useState(false);
+
+  // Função helper para garantir que o lead seja criado na primeira etapa
+  const ensureLeadInFirstStage = useCallback((lead: Lead, pipeline: Pipeline): Lead => {
+    const firstStage = pipeline.pipeline_stages?.[0];
+    if (!firstStage) {
+      console.warn('⚠️ Pipeline sem primeira etapa definida');
+      return lead;
+    }
+
+    if (lead.stage_id !== firstStage.id) {
+      console.log('🔧 Corrigindo stage_id para primeira etapa:', {
+        leadId: lead.id,
+        stageOriginal: lead.stage_id,
+        primeiraEtapa: firstStage.id,
+        primeiraEtapaNome: firstStage.name
+      });
+      
+      return {
+        ...lead,
+        stage_id: firstStage.id
+      };
+    }
+
+    console.log('✅ Lead já está na primeira etapa:', {
+      leadId: lead.id,
+      stageId: lead.stage_id,
+      stageName: firstStage.name
+    });
+
+    return lead;
+  }, []);
+
   // Função helper para usar dados mock baseado no role
   const getMockPipelinesForUser = useCallback((): Pipeline[] => {
     if (!user) return mockPipelines;
@@ -660,6 +696,23 @@ export const usePipelineData = (): UsePipelineDataReturn => {
     }
   }, [user, pipelinesCacheKey, selectedPipeline, getMockPipelinesForUser]);
 
+  // Função para normalizar dados do Supabase para o formato esperado pelo frontend
+  const normalizeLeadData = useCallback((supabaseLeads: any[]): Lead[] => {
+    return supabaseLeads.map(lead => ({
+      id: lead.id,
+      pipeline_id: lead.pipeline_id,
+      stage_id: lead.stage_id,
+      custom_data: lead.lead_data || lead.custom_data || {}, // Normalizar lead_data -> custom_data
+      status: lead.status || 'active',
+      created_at: lead.created_at,
+      updated_at: lead.updated_at,
+      moved_at: lead.moved_at || lead.created_at,
+      assigned_to: lead.assigned_to,
+      created_by: lead.created_by,
+      source: lead.source
+    }));
+  }, []);
+
   // Função para buscar leads de uma pipeline (com fallback para mock)
   const fetchLeads = useCallback(async (pipelineId: string) => {
     if (!pipelineId) return;
@@ -680,22 +733,19 @@ export const usePipelineData = (): UsePipelineDataReturn => {
 
       // Tentar buscar do Supabase com filtros por role
       try {
-        console.log('🗄️ Buscando leads do Supabase...');
+        console.log('🗄️ Buscando leads do Supabase (query simplificada)...');
         
+        // QUERY SIMPLIFICADA SEM JOINS PROBLEMÁTICOS
         let query = supabase
           .from('pipeline_leads')
-          .select(`
-            *,
-            pipeline_stages(id, name, color, order_index),
-            pipelines(id, name)
-          `)
+          .select('*')
           .eq('pipeline_id', pipelineId);
 
         // Aplicar filtros baseados no role
         if (user?.role === 'member') {
-          // Member vê apenas leads atribuídos a ele
-          console.log('👤 Aplicando filtro de member - assigned_to:', user.id);
-          query = query.eq('assigned_to', user.id);
+          // Member vê leads atribuídos a ele OU criados por ele (usando UUID)
+          console.log('👤 Aplicando filtro de member - assigned_to:', user.id, 'created_by:', user.id);
+          query = query.or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`);
         } else if (user?.role === 'admin') {
           // Admin vê todos os leads da pipeline (sem filtro adicional)
           console.log('📊 Admin vê todos os leads da pipeline');
@@ -706,8 +756,34 @@ export const usePipelineData = (): UsePipelineDataReturn => {
 
         if (leadsError) throw leadsError;
         
-        leadsData = data || [];
-        console.log(`✅ Leads encontrados: ${leadsData.length} (role: ${user?.role})`);
+        // Normalizar dados do Supabase para o formato esperado pelo frontend
+        const normalizedLeads = (data || []).map((lead: any) => ({
+          id: lead.id,
+          pipeline_id: lead.pipeline_id,
+          stage_id: lead.stage_id,
+          custom_data: lead.lead_data || lead.custom_data || {}, // Converter lead_data -> custom_data
+          status: lead.status || 'active',
+          created_at: lead.created_at,
+          updated_at: lead.updated_at,
+          moved_at: lead.moved_at || lead.created_at,
+          assigned_to: lead.assigned_to,
+          created_by: lead.created_by,
+          source: lead.source
+        }));
+        
+        leadsData = normalizedLeads;
+        console.log(`✅ Leads encontrados e normalizados: ${leadsData.length} (role: ${user?.role})`);
+        
+        // Log detalhado dos dados normalizados
+        if (leadsData.length > 0) {
+          console.log('🔍 Exemplo de lead normalizado:', {
+            id: leadsData[0].id,
+            custom_data: leadsData[0].custom_data,
+            stage_id: leadsData[0].stage_id,
+            assigned_to: leadsData[0].assigned_to,
+            created_by: leadsData[0].created_by
+          });
+        }
 
         // Log detalhado para debug
         if (user?.role === 'member' && leadsData.length === 0) {
@@ -719,7 +795,13 @@ export const usePipelineData = (): UsePipelineDataReturn => {
             .eq('pipeline_id', pipelineId);
           
           console.log('📋 Todos os leads da pipeline:', allLeads);
-          console.log('🎯 Buscando por assigned_to =', user.id);
+          console.log('🎯 Buscando por assigned_to =', user.id, 'ou created_by =', user.id);
+          
+          // Verificar se algum lead deveria ter sido encontrado
+          const shouldBeVisible = allLeads?.filter(lead => 
+            lead.assigned_to === user.id || lead.created_by === user.id
+          );
+          console.log('🔍 Leads que deveriam ser visíveis:', shouldBeVisible);
         }
 
       } catch (supabaseError: any) {
@@ -740,7 +822,27 @@ export const usePipelineData = (): UsePipelineDataReturn => {
         }
       }
 
-      setLeads(leadsData);
+      // Combinar leads do servidor/mock com leads locais
+      setLeads(prevLeads => {
+        // Preservar leads locais recém-criados (IDs que começam com 'local-' ou 'lead-')
+        const localLeads = prevLeads.filter(lead => 
+          lead.id.startsWith('local-') || lead.id.startsWith('lead-')
+        );
+        
+        // Combinar leads do servidor/mock com leads locais, removendo duplicatas
+        const serverLeadIds = new Set(leadsData.map(lead => lead.id));
+        const uniqueLocalLeads = localLeads.filter(lead => !serverLeadIds.has(lead.id));
+        
+        const combinedLeads = [...uniqueLocalLeads, ...leadsData];
+        
+        console.log('🔄 Combinando leads:', {
+          servidor: leadsData.length,
+          locais: uniqueLocalLeads.length,
+          total: combinedLeads.length
+        });
+        
+        return combinedLeads;
+      });
       setCache(cacheKey, leadsData, 180000); // Cache por 3 minutos
 
     } catch (err: any) {
@@ -769,77 +871,355 @@ export const usePipelineData = (): UsePipelineDataReturn => {
     fetchPipelines();
   }, [fetchPipelines]);
 
-  // Função para criar um novo lead
+  // Função para criar um novo lead com sincronização automática para o módulo Leads
   const handleCreateLead = useCallback(async (stageId: string, leadData: any): Promise<Lead | null> => {
     if (!selectedPipeline || !user) {
       console.error('❌ Pipeline ou usuário não selecionado');
       return null;
     }
 
-    console.log('🆕 Criando novo lead:', { stageId, leadData, userRole: user.role });
+    console.log('🎯 Criando lead + oportunidade (lógica CRM profissional):', { 
+      stageId, 
+      leadData, 
+      userRole: user.role,
+      userEmail: user.email,
+      userId: user.id,
+      pipelineName: selectedPipeline.name,
+      pipelineId: selectedPipeline.id
+    });
+
+    // VERIFICAR SE PIPELINE TEM STAGES
+    console.log('🔍 Verificando pipeline_stages:', {
+      pipelineName: selectedPipeline.name,
+      hasStages: !!selectedPipeline.pipeline_stages,
+      stagesCount: selectedPipeline.pipeline_stages?.length || 0,
+      stages: selectedPipeline.pipeline_stages?.map(s => ({
+        id: s.id,
+        name: s.name,
+        order_index: s.order_index,
+        is_system_stage: s.is_system_stage
+      })) || []
+    });
 
     try {
-      const newLead: Lead = {
-        id: `lead-${Date.now()}`,
+      // Sempre usar a primeira etapa da pipeline para novos leads
+      const firstStage = selectedPipeline.pipeline_stages?.[0];
+      const targetStageId = firstStage?.id || stageId;
+
+      console.log('🎯 Determinando etapa alvo:', {
+        firstStage: firstStage ? {
+          id: firstStage.id,
+          name: firstStage.name,
+          order_index: firstStage.order_index,
+          is_system_stage: firstStage.is_system_stage
+        } : 'não encontrada',
+        targetStageId,
+        originalStageId: stageId,
+        totalStages: selectedPipeline.pipeline_stages?.length || 0,
+        allStages: selectedPipeline.pipeline_stages?.map(s => ({
+          id: s.id,
+          name: s.name,
+          order_index: s.order_index
+        }))
+      });
+
+      // VERIFICAÇÃO DE SEGURANÇA: garantir que temos uma stage válida
+      if (!targetStageId) {
+        console.error('❌ Nenhuma stage válida encontrada!', {
+          firstStage,
+          stageId,
+          pipelineStages: selectedPipeline.pipeline_stages
+        });
+        throw new Error('Nenhuma etapa válida encontrada para criar o lead');
+      }
+
+      console.log('✅ Stage válida confirmada:', targetStageId);
+
+      // Verificar se temos dados suficientes para criar lead master
+      const leadInfo: LeadData = {
+        nome_lead: leadData.nome_lead,
+        first_name: leadData.first_name,
+        last_name: leadData.last_name,
+        email: leadData.email,
+        telefone: leadData.telefone,
+        phone: leadData.phone,
+        empresa: leadData.empresa,
+        company: leadData.company,
+        cargo: leadData.cargo,
+        job_title: leadData.job_title,
+        lead_temperature: leadData.lead_temperature || 'Frio',
+        status: leadData.status || 'Novo',
+        lead_source: 'Pipeline'
+      };
+
+      const opportunityInfo: OpportunityData = {
+        nome: leadData.nome,
+        nome_oportunidade: leadData.nome_oportunidade || leadData.nome,
+        valor: leadData.valor,
+        responsavel: leadData.responsavel,
+        ...leadData // Incluir todos os campos customizados
+      };
+
+      // Verificar se temos dados suficientes para sincronização completa
+      const hasSufficientData = CRMSyncService.hasSufficientData(leadInfo);
+
+      console.log('🔍 Verificação de dados suficientes:', {
+        hasSufficientData,
+        leadInfo,
+        opportunityInfo
+      });
+
+      if (hasSufficientData) {
+        console.log('✅ Dados suficientes - tentando criar lead master + oportunidade');
+
+        try {
+          const result = await CRMSyncService.createLeadWithOpportunity(
+            leadInfo,
+            opportunityInfo,
+            selectedPipeline.id,
+            targetStageId,
+            user.email,
+            user.role === 'member' ? user.id : undefined
+          );
+
+          if (result.success && result.opportunity) {
+            console.log('🎯 CRM Sync bem-sucedido:', result.method);
+            
+            let createdLead: Lead;
+            
+            if (result.method === 'crm_sync' && result.opportunity) {
+              createdLead = {
+                id: result.opportunity.id,
+                pipeline_id: result.opportunity.pipeline_id,
+                stage_id: result.opportunity.stage_id,
+                custom_data: result.opportunity.lead_data,
+                status: 'active' as const,
+                created_at: result.opportunity.created_at,
+                updated_at: result.opportunity.updated_at,
+                moved_at: result.opportunity.moved_at,
+                assigned_to: result.opportunity.assigned_to,
+                created_by: result.opportunity.created_by
+              };
+            } else if (result.method === 'traditional' && result.opportunity) {
+              createdLead = {
+                id: result.opportunity.id,
+                pipeline_id: result.opportunity.pipeline_id,
+                stage_id: result.opportunity.stage_id,
+                custom_data: result.opportunity.lead_data,
+                status: 'active' as const,
+                created_at: result.opportunity.created_at,
+                updated_at: result.opportunity.updated_at,
+                moved_at: result.opportunity.moved_at,
+                assigned_to: result.opportunity.assigned_to,
+                created_by: result.opportunity.created_by
+              };
+            } else if (result.method === 'leads_only' && result.lead) {
+              createdLead = {
+                id: `local-${Date.now()}`,
+                pipeline_id: selectedPipeline.id,
+                stage_id: targetStageId,
+                custom_data: {
+                  ...opportunityInfo,
+                  lead_master_id: result.lead.id,
+                  lead_name: `${result.lead.first_name} ${result.lead.last_name}`.trim(),
+                  lead_email: result.lead.email,
+                  metodo_criacao: 'leads_only'
+                },
+                status: 'active' as const,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                moved_at: new Date().toISOString(),
+                assigned_to: user.role === 'member' ? user.id : undefined,
+                created_by: user.email
+              };
+            } else {
+              throw new Error('Resultado inválido do CRM Sync');
+            }
+
+            // GARANTIR que o lead está na primeira etapa
+            createdLead = ensureLeadInFirstStage(createdLead, selectedPipeline);
+
+            // ATUALIZAÇÃO IMEDIATA DO ESTADO
+            setLeads(prev => [createdLead, ...prev]);
+            cache.delete(leadsCacheKey(selectedPipeline.id));
+            
+            console.log('✅ Lead criado via CRM Sync e adicionado ao estado');
+            
+            // FORÇAR REFRESH IMEDIATO
+            setTimeout(async () => {
+              console.log('🔄 Refresh imediato após CRM Sync...');
+              cache.delete(leadsCacheKey(selectedPipeline.id));
+              await fetchLeads(selectedPipeline.id);
+            }, 100);
+            
+            return createdLead;
+          }
+        } catch (crmError: any) {
+          console.warn('⚠️ CRM Sync falhou, continuando para método tradicional:', crmError.message);
+        }
+      } else {
+        console.log('ℹ️ Dados insuficientes para CRM sync - usando método tradicional');
+      }
+
+      // Método tradicional - SEMPRE executado como fallback
+      console.log('📝 Executando método tradicional (garantido)');
+      
+      // GARANTIR que estamos usando a primeira etapa
+      const garantidaPrimeiraEtapa = selectedPipeline.pipeline_stages?.[0]?.id || targetStageId;
+      
+      console.log('🎯 Criando oportunidade tradicional:', {
+        selectedPipeline: selectedPipeline.name,
+        garantidaPrimeiraEtapa,
+        leadData
+      });
+      
+      // CRIAR LEAD TEMPORÁRIO PRIMEIRO (para feedback imediato)
+      const tempLead: Lead = {
+        id: `temp-${Date.now()}`,
         pipeline_id: selectedPipeline.id,
-        stage_id: stageId,
+        stage_id: garantidaPrimeiraEtapa,
         custom_data: leadData,
         status: 'active' as const,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         moved_at: new Date().toISOString(),
-        // Definir assigned_to baseado no role
-        assigned_to: user.role === 'member' ? user.id : undefined, // Member sempre é atribuído a si mesmo
-        created_by: user.id
+        assigned_to: user.role === 'member' ? user.id : undefined,
+        created_by: user.email
       };
 
+      // ADICIONAR TEMPORARIAMENTE AO ESTADO (feedback visual imediato)
+      const tempLeadWithCorrectStage = ensureLeadInFirstStage(tempLead, selectedPipeline);
+      setLeads(prev => [tempLeadWithCorrectStage, ...prev]);
+      
+      console.log('👁️ Lead temporário adicionado para feedback visual imediato');
+
       try {
-        // Tentar inserir no Supabase
+        // TENTAR inserir no Supabase
         const { data, error } = await supabase
           .from('pipeline_leads')
           .insert([{
-            pipeline_id: newLead.pipeline_id,
-            stage_id: newLead.stage_id,
-            custom_data: newLead.custom_data,
-            assigned_to: newLead.assigned_to,
-            created_by: newLead.created_by
+            pipeline_id: selectedPipeline.id,
+            stage_id: garantidaPrimeiraEtapa,
+            lead_data: leadData,
+            assigned_to: user.role === 'member' ? user.id : undefined,
+            created_by: user.id // Usar ID do usuário
           }])
           .select()
           .single();
 
-        if (error) throw error;
+        if (error) {
+          console.warn('⚠️ Erro no Supabase:', error.message);
+          throw error;
+        }
 
-        console.log('✅ Lead criado no Supabase:', data);
+        console.log('✅ Oportunidade criada no Supabase:', data.id);
         
-        // Atualizar estado local
-        const createdLead: Lead = {
-          ...newLead,
+        // CRIAR LEAD DEFINITIVO COM DADOS DO BANCO
+        const finalLead: Lead = {
           id: data.id,
+          pipeline_id: data.pipeline_id,
+          stage_id: data.stage_id,
+          custom_data: data.lead_data || leadData,
+          status: 'active' as const,
           created_at: data.created_at,
-          updated_at: data.updated_at
+          updated_at: data.updated_at,
+          moved_at: data.moved_at || data.created_at,
+          assigned_to: data.assigned_to,
+          created_by: data.created_by
         };
 
-        setLeads(prev => [createdLead, ...prev]);
+        // GARANTIR que o lead está na primeira etapa
+        const finalLeadWithCorrectStage = ensureLeadInFirstStage(finalLead, selectedPipeline);
+
+        // SUBSTITUIR LEAD TEMPORÁRIO PELO DEFINITIVO
+        setLeads(prev => {
+          // Remover lead temporário e adicionar lead definitivo
+          const withoutTemp = prev.filter(lead => lead.id !== tempLeadWithCorrectStage.id);
+          return [finalLeadWithCorrectStage, ...withoutTemp];
+        });
         
-        // Invalidar cache
+        // REGISTRAR NO HISTÓRICO
+        try {
+          console.log('📝 Tentando registrar no histórico...', {
+            leadId: finalLeadWithCorrectStage.id.substring(0, 8) + '...',
+            oldStage: finalLeadWithCorrectStage.stage_id,
+            newStage: garantidaPrimeiraEtapa,
+            userId: user.id
+          });
+          
+          await registerStageMove(finalLeadWithCorrectStage.id, finalLeadWithCorrectStage.stage_id, garantidaPrimeiraEtapa, user.id);
+          console.log('✅ Histórico de movimentação registrado com sucesso');
+        } catch (historyError) {
+          console.warn('⚠️ Erro ao registrar histórico:', historyError);
+          
+          // Tentar inserção direta como fallback
+          try {
+            console.log('🔄 Tentando inserção direta no histórico...');
+            const { data, error } = await supabase
+              .from('lead_history')
+              .insert([{
+                lead_id: finalLeadWithCorrectStage.id,
+                action: 'stage_moved',
+                description: `Lead movido para nova etapa`,
+                user_id: user.id,
+                user_name: `${user.first_name} ${user.last_name}`,
+                old_values: { stage_id: finalLeadWithCorrectStage.stage_id },
+                new_values: { stage_id: garantidaPrimeiraEtapa },
+                created_at: new Date().toISOString()
+              }])
+              .select('id')
+              .single();
+
+            if (error) {
+              console.error('❌ Erro na inserção direta:', error);
+            } else {
+              console.log('✅ Histórico registrado via inserção direta:', data.id);
+            }
+          } catch (directError) {
+            console.error('❌ Falha total no registro de histórico:', directError);
+          }
+        }
+        
+        // LIMPAR CACHE
         cache.delete(leadsCacheKey(selectedPipeline.id));
         
-        return createdLead;
+        console.log('✅ Lead definitivo substituiu o temporário no estado');
+        
+        // REFRESH ADICIONAL PARA GARANTIR SINCRONIZAÇÃO
+        setTimeout(async () => {
+          console.log('🔄 Refresh adicional para garantir sincronização...');
+          cache.delete(leadsCacheKey(selectedPipeline.id));
+          await fetchLeads(selectedPipeline.id);
+        }, 200);
+        
+        return finalLeadWithCorrectStage;
 
       } catch (supabaseError: any) {
-        console.warn('⚠️ Erro ao criar no Supabase, usando fallback local:', supabaseError.message);
+        console.warn('⚠️ Supabase falhou, mantendo lead temporário como definitivo');
         
-        // Fallback: adicionar apenas localmente
-        setLeads(prev => [newLead, ...prev]);
-        return newLead;
+        // Se falhou no Supabase, manter o lead temporário como definitivo
+        // mas atualizar o ID para um formato que não seja "temp-"
+        const fallbackLead = {
+          ...tempLeadWithCorrectStage,
+          id: `local-${Date.now()}`
+        };
+        
+        setLeads(prev => {
+          const withoutTemp = prev.filter(lead => lead.id !== tempLeadWithCorrectStage.id);
+          return [fallbackLead, ...withoutTemp];
+        });
+        
+        console.log('✅ Lead local criado como fallback:', fallbackLead.id);
+        
+        return fallbackLead;
       }
 
     } catch (error: any) {
-      console.error('❌ Erro ao criar lead:', error);
+      console.error('❌ Erro crítico ao criar lead:', error);
       setError(error.message || 'Erro ao criar lead');
       return null;
     }
-  }, [selectedPipeline, user, leadsCacheKey]);
+  }, [selectedPipeline, user, leadsCacheKey, ensureLeadInFirstStage, fetchLeads]);
 
   // Função para atualizar dados de um lead (com verificação de permissão)
   const updateLeadData = useCallback(async (leadId: string, data: any): Promise<void> => {
@@ -859,8 +1239,8 @@ export const usePipelineData = (): UsePipelineDataReturn => {
 
       // Verificação de permissão
       if (user.role === 'member') {
-        // Member só pode editar leads atribuídos a ele
-        if (leadToUpdate.assigned_to !== user.id && leadToUpdate.created_by !== user.id) {
+        // Member só pode editar leads atribuídos a ele OU criados por ele
+        if (leadToUpdate.assigned_to !== user.id && leadToUpdate.created_by !== user.email) {
           throw new Error('Você não tem permissão para editar este lead');
         }
         console.log('👤 Member autorizado a editar lead');
@@ -874,7 +1254,7 @@ export const usePipelineData = (): UsePipelineDataReturn => {
         const { error } = await supabase
           .from('pipeline_leads')
           .update({
-            custom_data: { ...leadToUpdate.custom_data, ...data },
+            lead_data: { ...leadToUpdate.custom_data, ...data },
             updated_at: new Date().toISOString()
           })
           .eq('id', leadId);
@@ -882,6 +1262,10 @@ export const usePipelineData = (): UsePipelineDataReturn => {
         if (error) throw error;
 
         console.log('✅ Lead atualizado no Supabase');
+
+        // Sincronização com leads_master removida temporariamente
+        // TODO: Implementar sincronização de atualizações quando necessário
+        console.log('ℹ️ Sincronização de atualizações desabilitada temporariamente');
 
       } catch (supabaseError: any) {
         console.warn('⚠️ Erro ao atualizar no Supabase, usando fallback local:', supabaseError.message);
@@ -908,16 +1292,22 @@ export const usePipelineData = (): UsePipelineDataReturn => {
       setError(error.message || 'Erro ao atualizar lead');
       throw error;
     }
-  }, [user, leads, selectedPipeline, leadsCacheKey]);
+  }, [user, leads, selectedPipeline, leadsCacheKey, ensureLeadInFirstStage]);
 
-  // Função para mover lead para outra etapa (com verificação de permissão)
+  // Função para mover lead para outra etapa - OTIMIZADA COM OPERAÇÕES PARALELAS
   const updateLeadStage = useCallback(async (leadId: string, stageId: string): Promise<void> => {
     if (!user) {
       console.error('❌ Usuário não autenticado');
       return;
     }
 
-    console.log('🔄 Movendo lead:', leadId, 'para stage:', stageId, 'userRole:', user.role);
+    // 🚀 DEBOUNCE OTIMIZADO - Reduzido de 500ms para 50ms
+    if (isDragInProgress) {
+      console.log('⏳ Drag em progresso, aguardando...');
+      return;
+    }
+
+    setIsDragInProgress(true);
 
     try {
       // Verificar permissões
@@ -928,75 +1318,141 @@ export const usePipelineData = (): UsePipelineDataReturn => {
 
       // Verificação de permissão para mover lead
       if (user.role === 'member') {
-        // Member só pode mover leads atribuídos a ele
-        if (leadToMove.assigned_to !== user.id && leadToMove.created_by !== user.id) {
+        if (leadToMove.assigned_to !== user.id && leadToMove.created_by !== user.email) {
           throw new Error('Você não tem permissão para mover este lead');
         }
-        console.log('👤 Member autorizado a mover lead');
-      } else if (user.role === 'admin') {
-        // Admin pode mover qualquer lead
-        console.log('📊 Admin autorizado a mover qualquer lead');
       }
 
       const movedAt = new Date().toISOString();
 
-      try {
-        // Tentar atualizar no Supabase
-        const { error } = await supabase
-          .from('pipeline_leads')
-          .update({
-            stage_id: stageId,
-            moved_at: movedAt,
-            updated_at: movedAt
-          })
-          .eq('id', leadId);
+      // 🔥 OPERAÇÕES PARALELAS - Executar todas simultaneamente
+      const updatePromises = [];
 
-        if (error) throw error;
+      // 1. Update no Supabase
+      const supabaseUpdate = supabase
+        .from('pipeline_leads')
+        .update({
+          stage_id: stageId,
+          moved_at: movedAt,
+          updated_at: movedAt
+        })
+        .eq('id', leadId);
 
-        console.log('✅ Lead movido no Supabase');
+      updatePromises.push(supabaseUpdate);
 
-      } catch (supabaseError: any) {
-        console.warn('⚠️ Erro ao mover no Supabase, usando fallback local:', supabaseError.message);
+      // 2. Registro de histórico (paralelo)
+      const historyPromise = (async () => {
+        try {
+          await registerStageMove(leadId, leadToMove.stage_id, stageId, user.id);
+          console.log('✅ Histórico registrado');
+        } catch (historyError) {
+          // Fallback para inserção direta
+          try {
+            const brasilTime = new Date().toLocaleString('en-CA', { 
+              timeZone: 'America/Sao_Paulo',
+              year: 'numeric',
+              month: '2-digit', 
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              hour12: false
+            }).replace(', ', 'T') + '-03:00';
+
+            await supabase
+              .from('lead_history')
+              .insert([{
+                lead_id: leadId,
+                action: 'stage_moved',
+                description: `Lead movido para nova etapa`,
+                user_id: user.id,
+                old_values: { stage_id: leadToMove.stage_id },
+                new_values: { stage_id: stageId },
+                created_at: brasilTime
+              }]);
+            console.log('✅ Histórico registrado via fallback');
+          } catch (directError) {
+            console.warn('⚠️ Falha no histórico (não crítico):', directError);
+          }
+        }
+      })();
+
+      updatePromises.push(historyPromise);
+
+      // 3. Geração de tarefas (100% assíncrona - não bloqueia)
+      const cadencePromise = (async () => {
+        try {
+          // Chamar API backend para geração assíncrona de tarefas
+          const response = await fetch('/api/leads/generate-cadence-tasks', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              leadId,
+              stageId,
+              leadData: leadToMove
+            })
+          });
+
+          if (response.ok) {
+            console.log('✅ Tarefas de cadência iniciadas em background');
+          } else {
+            console.warn('⚠️ Erro ao iniciar geração de tarefas (não crítico)');
+          }
+        } catch (taskError) {
+          console.warn('⚠️ Falha na geração de tarefas (não crítico):', taskError);
+        }
+      })();
+
+      // NÃO adicionar à lista de promises críticas - executar em background
+      cadencePromise.catch(() => {}); // Silenciar erros
+
+      // 🚀 AGUARDAR APENAS OPERAÇÕES CRÍTICAS
+      const results = await Promise.allSettled(updatePromises);
+      
+      // Verificar se o update principal falhou
+      const supabaseResult = results[0];
+      if (supabaseResult.status === 'rejected') {
+        console.warn('⚠️ Erro no Supabase:', supabaseResult.reason);
+        // Não falhar - optimistic update já foi aplicado
+      } else {
+        console.log('✅ Lead atualizado no Supabase');
       }
 
-      // Atualizar estado local
-      setLeads(prev => prev.map(lead => 
-        lead.id === leadId 
-          ? { 
-              ...lead, 
-              stage_id: stageId, 
-              moved_at: movedAt,
-              updated_at: movedAt
-            }
-          : lead
-      ));
-
-      // Invalidar cache
+      // Invalidar cache sem await (não crítico)
       if (selectedPipeline) {
         cache.delete(leadsCacheKey(selectedPipeline.id));
       }
 
+      console.log('🎯 Movimentação concluída em modo otimizado');
+
     } catch (error: any) {
-      console.error('❌ Erro ao mover lead:', error);
-      setError(error.message || 'Erro ao mover lead');
-      throw error;
+      console.error('❌ Erro crítico ao mover lead:', error);
+      throw error; // Permitir que o optimistic update seja revertido
+    } finally {
+      // 🚀 DEBOUNCE OTIMIZADO - Reduzido de 500ms para 50ms
+      setTimeout(() => {
+        setIsDragInProgress(false);
+      }, 50);
     }
-  }, [user, leads, selectedPipeline, leadsCacheKey]);
+  }, [user, leads, selectedPipeline, leadsCacheKey, isDragInProgress]);
 
   // Função para refresh manual
   const refreshPipelines = useCallback(async () => {
-    console.log('🔄 Refresh manual de pipelines');
     cache.delete(pipelinesCacheKey);
     await fetchPipelines();
   }, [pipelinesCacheKey, fetchPipelines]);
 
+  // Função para refresh manual dos leads
   const refreshLeads = useCallback(async () => {
-    if (selectedPipeline?.id) {
-      console.log('🔄 Refresh manual de leads para:', selectedPipeline.name);
-      cache.delete(leadsCacheKey(selectedPipeline.id));
-      await fetchLeads(selectedPipeline.id);
+    if (!selectedPipeline?.id) {
+      return;
     }
-  }, [selectedPipeline?.id, fetchLeads]);
+    
+    cache.delete(leadsCacheKey(selectedPipeline.id));
+    await fetchLeads(selectedPipeline.id);
+  }, [selectedPipeline?.id, fetchLeads, leadsCacheKey]);
 
   // Novos métodos para admin/member management
   const getUserPipelines = useCallback((): Pipeline[] => {

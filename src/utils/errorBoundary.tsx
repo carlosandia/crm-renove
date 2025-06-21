@@ -138,7 +138,7 @@ class ErrorBoundary extends Component<Props, State> {
               <p className="text-sm text-gray-500 bg-gray-100 rounded-lg px-3 py-2">
                 <strong>Tipo:</strong> {errorType}
               </p>
-              {process.env.NODE_ENV === 'development' && (
+              {import.meta.env.DEV && (
                 <details className="mt-4 text-left">
                   <summary className="text-sm text-gray-500 cursor-pointer hover:text-gray-700">
                     Detalhes técnicos

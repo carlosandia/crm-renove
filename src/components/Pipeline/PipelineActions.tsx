@@ -48,25 +48,7 @@ const PipelineActions: React.FC<PipelineActionsProps> = ({
           <Upload className="w-4 h-4" />
         </button>
 
-        {canManage && (
-          <>
-            <button
-              onClick={onManageMembers}
-              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Gerenciar membros"
-            >
-              <Users className="w-4 h-4" />
-            </button>
 
-            <button
-              onClick={onSettings}
-              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Configurações da pipeline"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-          </>
-        )}
 
         {/* Menu de ações extras */}
         <div className="relative">

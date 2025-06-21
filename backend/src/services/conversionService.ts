@@ -1,4 +1,4 @@
-import { supabase } from '../index';
+import { supabase } from '../config/supabase';
 import crypto from 'crypto';
 import axios from 'axios';
 
@@ -103,12 +103,12 @@ export class ConversionService {
         const result = await this.sendMetaConversion(conversion);
         success = result.success;
         responseData = result.response;
-        errorMessage = result.error;
+        errorMessage = result.error || null;
       } else if (conversion.platform === 'google') {
         const result = await this.sendGoogleConversion(conversion);
         success = result.success;
         responseData = result.response;
-        errorMessage = result.error;
+        errorMessage = result.error || null;
       }
 
       // Atualizar status do log
@@ -141,7 +141,7 @@ export class ConversionService {
             conversion.platform,
             conversion.event_name,
             'failed',
-            errorMessage
+            errorMessage || undefined
           );
         }
       }

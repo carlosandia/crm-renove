@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Edit, Trash2, Users, Plus, X, Calendar, GitBranch, TrendingUp, Power } from 'lucide-react';
+import { Edit, Trash2, Users, Plus, X, Calendar, GitBranch, TrendingUp, AlertTriangle } from 'lucide-react';
 import { Pipeline } from '../../hooks/usePipelines';
 import { User } from '../../hooks/useMembers';
 
@@ -30,6 +30,7 @@ const PipelineCard: React.FC<PipelineCardProps> = ({
   onRemoveMember,
 }) => {
   const [showAddMember, setShowAddMember] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const pipelineMembers = pipeline.pipeline_members || [];
   const assignedMemberIds = pipelineMembers.map(pm => pm.member_id);
@@ -57,44 +58,103 @@ const PipelineCard: React.FC<PipelineCardProps> = ({
     onRemoveMember(pipeline.id, memberId);
   };
 
+  const handleDelete = () => {
+    console.log('🗑️ Excluindo pipeline:', pipeline.id);
+    onDelete(pipeline.id);
+    setShowDeleteConfirm(false);
+  };
+
+  const handleEditPipeline = () => {
+    console.log('✏️ Editando pipeline:', pipeline.id);
+    onEdit(pipeline.id);
+  };
+
+  // Verificar se é uma pipeline mock (ID numérico simples)
+  const isMockPipeline = pipeline.id.length <= 2 && /^\d+$/.test(pipeline.id);
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-all duration-200">
+    <div className={`card-modern border p-6 hover:shadow-lg transition-all duration-200 ${
+      isMockPipeline ? 'border-amber-200 bg-amber-50/30' : 'border-border'
+    }`}>
       {/* Header do Card */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-start space-x-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center text-white font-medium flex-shrink-0">
+          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white font-medium flex-shrink-0 shadow-md">
             {pipeline.name.charAt(0).toUpperCase()}
           </div>
           
           <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-medium text-gray-900 mb-1">
-              {pipeline.name}
-            </h3>
+            <div className="flex items-center space-x-2 mb-1">
+              <h3 className="text-lg font-medium text-foreground">
+                {pipeline.name}
+              </h3>
+              {isMockPipeline && (
+                <span className="bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded-full font-medium">
+                  DEMO
+                </span>
+              )}
+            </div>
             {pipeline.description && (
-              <p className="text-gray-600 text-sm">
+              <p className="text-muted-foreground text-sm">
                 {pipeline.description}
               </p>
             )}
           </div>
         </div>
 
+        {/* Botões de Ação */}
         <div className="flex items-center space-x-1 ml-4">
           <button 
-            onClick={() => onEdit(pipeline.id)} 
-            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200"
+            onClick={handleEditPipeline}
+            className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-all duration-200"
             title="Editar pipeline"
           >
             <Edit className="w-4 h-4" />
           </button>
           <button 
-            onClick={() => onDelete(pipeline.id)} 
-            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
-            title="Desativar pipeline"
+            onClick={() => setShowDeleteConfirm(true)}
+            className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all duration-200"
+            title="Excluir pipeline"
           >
-            <Power className="w-4 h-4" />
+            <Trash2 className="w-4 h-4" />
           </button>
         </div>
       </div>
+
+      {/* Modal de Confirmação de Exclusão */}
+      {showDeleteConfirm && (
+        <div className="modal-modern">
+          <div className="card-modern p-6 max-w-md mx-4 shadow-2xl animate-scale-in">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-10 h-10 bg-destructive/10 rounded-full flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-destructive" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Confirmar Exclusão</h3>
+                <p className="text-sm text-muted-foreground">Esta ação não pode ser desfeita</p>
+              </div>
+            </div>
+            <p className="text-foreground mb-6">
+              Tem certeza que deseja excluir a pipeline <strong>"{pipeline.name}"</strong>? 
+              Todos os leads e dados associados serão perdidos.
+            </p>
+            <div className="flex space-x-3">
+              <button
+                onClick={handleDelete}
+                className="flex-1 bg-destructive text-destructive-foreground px-4 py-2 rounded-lg hover:bg-destructive/90 transition-colors font-medium"
+              >
+                Sim, Excluir
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 btn-secondary"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Métricas */}
       <div className="grid grid-cols-2 gap-4 mb-4">
@@ -119,7 +179,7 @@ const PipelineCard: React.FC<PipelineCardProps> = ({
       </div>
 
       {/* Estatísticas Adicionais */}
-      <div className="flex items-center space-x-6 text-sm text-gray-600 mb-4">
+      <div className="flex items-center space-x-6 text-sm text-muted-foreground mb-4">
         <div className="flex items-center space-x-1">
           <Users className="w-4 h-4" />
           <span>{pipelineMembers.length} vendedores</span>
@@ -133,15 +193,19 @@ const PipelineCard: React.FC<PipelineCardProps> = ({
       {/* Membros Atribuídos */}
       <div className="mb-4">
         <div className="flex items-center justify-between mb-3">
-          <h4 className="text-sm font-medium text-gray-700 flex items-center space-x-2">
+          <h4 className="text-sm font-medium text-foreground flex items-center space-x-2">
             <Users className="w-4 h-4" />
             <span>Vendedores Atribuídos</span>
           </h4>
           <button 
             onClick={() => setShowAddMember(!showAddMember)}
-            className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all duration-200"
-            disabled={availableMembers.length === 0}
-            title="Adicionar vendedor"
+            className={`p-1.5 rounded-lg transition-all duration-200 ${
+              isMockPipeline 
+                ? 'text-amber-400 cursor-not-allowed' 
+                : 'text-muted-foreground hover:text-green-600 hover:bg-green-50'
+            }`}
+            disabled={availableMembers.length === 0 || isMockPipeline}
+            title={isMockPipeline ? "Funcionalidade disponível apenas para pipelines reais" : "Adicionar vendedor"}
           >
             <Plus className="w-4 h-4" />
           </button>
@@ -153,7 +217,7 @@ const PipelineCard: React.FC<PipelineCardProps> = ({
             <select 
               onChange={(e) => e.target.value && handleAddMember(e.target.value)}
               defaultValue=""
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="input-modern w-full text-sm"
             >
               <option value="">Selecionar vendedor...</option>
               {availableMembers.map(member => (
@@ -168,7 +232,7 @@ const PipelineCard: React.FC<PipelineCardProps> = ({
         {/* Lista de membros */}
         <div className="space-y-2">
           {pipelineMembers.length === 0 ? (
-            <p className="text-gray-500 text-sm py-2">Nenhum vendedor atribuído</p>
+            <p className="text-muted-foreground text-sm py-2">Nenhum vendedor atribuído</p>
           ) : (
             pipelineMembers.map((pm) => {
               // Buscar dados do membro na lista de members ou usar dados do pipeline_member
@@ -190,20 +254,25 @@ const PipelineCard: React.FC<PipelineCardProps> = ({
                                 };
 
               return (
-                <div key={pm.id || pm.member_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div key={pm.id || pm.member_id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors">
                   <div className="flex items-center space-x-2">
-                    <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
-                      <span className="text-xs font-medium text-blue-600">
+                    <div className="w-6 h-6 bg-primary/10 rounded-full flex items-center justify-center">
+                      <span className="text-xs font-medium text-primary">
                         {(memberData?.first_name || 'V').charAt(0)}{(memberData?.last_name || 'D').charAt(0)}
                       </span>
                     </div>
-                    <span className="text-sm text-gray-700">
-                      {memberData?.first_name || 'Vendedor'} {memberData?.last_name || 'Desconhecido'}
-                    </span>
+                    <div>
+                      <span className="text-sm text-foreground font-medium">
+                        {memberData?.first_name || 'Vendedor'} {memberData?.last_name || 'Desconhecido'}
+                      </span>
+                      {memberData?.email && (
+                        <p className="text-xs text-muted-foreground">{memberData.email}</p>
+                      )}
+                    </div>
                   </div>
                   <button 
                     onClick={() => handleRemoveMember(pm.member_id)}
-                    className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-all duration-200"
+                    className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-all duration-200"
                     title="Remover vendedor"
                   >
                     <X className="w-3 h-3" />
@@ -213,6 +282,17 @@ const PipelineCard: React.FC<PipelineCardProps> = ({
             })
           )}
         </div>
+      </div>
+
+      {/* Botão de Ação Principal */}
+      <div className="pt-4 border-t border-border">
+        <button 
+          onClick={handleEditPipeline}
+          className="btn-primary w-full"
+        >
+          <GitBranch className="w-4 h-4" />
+          <span>Gerenciar Pipeline</span>
+        </button>
       </div>
     </div>
   );

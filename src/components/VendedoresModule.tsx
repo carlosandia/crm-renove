@@ -17,6 +17,9 @@ interface Vendedor {
   is_active: boolean;
   created_at: string;
   tenant_id: string;
+  last_login?: string;
+  last_login_formatted?: string;
+  is_real_login?: boolean;
 }
 
 type GoalType = 'vendas' | 'receita' | 'leads' | 'conversao';
@@ -46,6 +49,31 @@ const VendedoresModule: React.FC = () => {
     tenantId: user?.tenant_id,
     timestamp: new Date().toISOString()
   });
+
+  // Função para gerar último login simulado (usado como fallback)
+  const generateLastLogin = (createdAt: string, userId: string): string => {
+    // Usar o ID do usuário como seed para gerar consistência
+    const seed = parseInt(userId.replace(/\D/g, '')) || 1;
+    const createdDate = new Date(createdAt);
+    const now = new Date();
+    
+    // Gerar um número de dias entre 1 e 7 baseado no seed
+    const daysAgo = (seed % 7) + 1;
+    
+    // Calcular data do último acesso
+    const lastLoginDate = new Date(now.getTime() - (daysAgo * 24 * 60 * 60 * 1000));
+    
+    // Garantir que não seja posterior ao created_at
+    const finalDate = lastLoginDate < createdDate ? createdDate : lastLoginDate;
+    
+    // Gerar horário comercial (8h-19h)
+    const hour = 8 + (seed % 11); // 8 às 18h
+    const minute = (seed * 7) % 60;
+    
+    finalDate.setHours(hour, minute, 0, 0);
+    
+    return finalDate.toISOString();
+  };
 
   // Estados do formulário
   const [formData, setFormData] = useState({
@@ -224,8 +252,99 @@ const VendedoresModule: React.FC = () => {
           throw error;
         }
 
-        logger.success(`Vendedores carregados: ${data?.length || 0}`);
-        setVendedores(data || []);
+        // Aplicar a mesma lógica de last_login que usamos no EmpresasModule
+        const vendedoresComLogin = await Promise.all(
+          (data || []).map(async (vendedor) => {
+            try {
+              // PRIMEIRO: Verificar localStorage (login mais recente)
+              const loginKey = `last_login_${vendedor.id}`;
+              const localStorageLogin = localStorage.getItem(loginKey);
+              
+              if (localStorageLogin) {
+                console.log(`✅ LAST LOGIN REAL (localStorage) para vendedor ${vendedor.first_name} (${vendedor.email}):`, localStorageLogin);
+                
+                return {
+                  ...vendedor,
+                  last_login: localStorageLogin,
+                  last_login_formatted: new Date(localStorageLogin).toLocaleString('pt-BR', {
+                    timeZone: 'America/Sao_Paulo',
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  }),
+                  is_real_login: true
+                };
+              }
+
+              // SEGUNDO: tentar buscar last_login real do banco
+              const { data: loginData, error: loginError } = await supabase
+                .from('users')
+                .select('last_login')
+                .eq('id', vendedor.id)
+                .single();
+              
+              // Se encontrou last_login real e não é null/undefined
+              if (!loginError && loginData && loginData.last_login) {
+                const realLastLogin = loginData.last_login;
+                console.log(`✅ LAST LOGIN REAL (banco) para vendedor ${vendedor.first_name} (${vendedor.email}):`, realLastLogin);
+                
+                return {
+                  ...vendedor,
+                  last_login: realLastLogin,
+                  last_login_formatted: new Date(realLastLogin).toLocaleString('pt-BR', {
+                    timeZone: 'America/Sao_Paulo',
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  }),
+                  is_real_login: true
+                };
+              }
+              
+              // TERCEIRO: Se não tem last_login real, simular baseado no created_at
+              const simulatedLogin = generateLastLogin(vendedor.created_at, vendedor.id);
+              console.log(`🔄 Simulando last login para vendedor ${vendedor.first_name}:`, simulatedLogin);
+              return {
+                ...vendedor,
+                last_login: simulatedLogin,
+                last_login_formatted: new Date(simulatedLogin).toLocaleString('pt-BR', {
+                  timeZone: 'America/Sao_Paulo',
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                }),
+                is_real_login: false
+              };
+              
+            } catch (error) {
+              // Se der erro (coluna não existe), simular último acesso
+              const simulatedLogin = generateLastLogin(vendedor.created_at, vendedor.id);
+              console.log(`⚠️ Erro ao buscar last_login para vendedor ${vendedor.first_name}, simulando:`, simulatedLogin);
+              return {
+                ...vendedor,
+                last_login: simulatedLogin,
+                last_login_formatted: new Date(simulatedLogin).toLocaleString('pt-BR', {
+                  timeZone: 'America/Sao_Paulo',
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                }),
+                is_real_login: false
+              };
+            }
+          })
+        );
+
+        logger.success(`Vendedores carregados: ${vendedoresComLogin?.length || 0}`);
+        setVendedores(vendedoresComLogin || []);
         setLoading(false);
         return;
       } catch (dbError: any) {
@@ -246,7 +365,17 @@ const VendedoresModule: React.FC = () => {
               email: 'joao@empresa.com',
               is_active: true,
               created_at: new Date().toISOString(),
-              tenant_id: user.tenant_id
+              tenant_id: user.tenant_id,
+              last_login: generateLastLogin(new Date().toISOString(), 'mock-1'),
+              last_login_formatted: new Date(generateLastLogin(new Date().toISOString(), 'mock-1')).toLocaleString('pt-BR', {
+                timeZone: 'America/Sao_Paulo',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              }),
+              is_real_login: false
             },
             {
               id: 'mock-2', 
@@ -255,7 +384,17 @@ const VendedoresModule: React.FC = () => {
               email: 'maria@empresa.com',
               is_active: true,
               created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-              tenant_id: user.tenant_id
+              tenant_id: user.tenant_id,
+              last_login: generateLastLogin(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), 'mock-2'),
+              last_login_formatted: new Date(generateLastLogin(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), 'mock-2')).toLocaleString('pt-BR', {
+                timeZone: 'America/Sao_Paulo',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              }),
+              is_real_login: false
             }
           ];
           setVendedores(mockVendedores);
@@ -278,7 +417,17 @@ const VendedoresModule: React.FC = () => {
           email: 'joao@empresa.com',
           is_active: true,
           created_at: new Date().toISOString(),
-          tenant_id: user?.tenant_id || 'mock-tenant'
+          tenant_id: user?.tenant_id || 'mock-tenant',
+          last_login: generateLastLogin(new Date().toISOString(), 'mock-1'),
+          last_login_formatted: new Date(generateLastLogin(new Date().toISOString(), 'mock-1')).toLocaleString('pt-BR', {
+            timeZone: 'America/Sao_Paulo',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          is_real_login: false
         }
       ];
       setVendedores(mockVendedores);
@@ -988,6 +1137,15 @@ const VendedoresModule: React.FC = () => {
                           <Calendar className="w-4 h-4" />
                           <span>Criado em {formatDate(vendedor.created_at)}</span>
                         </div>
+                        {vendedor.last_login && (
+                          <div className="flex items-center space-x-1">
+                            <Shield className="w-4 h-4" />
+                            <span>Último acesso: {vendedor.last_login_formatted || formatDate(vendedor.last_login)}</span>
+                            {vendedor.is_real_login === false && (
+                              <span className="text-xs text-amber-600 ml-1">(simulado)</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

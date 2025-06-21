@@ -165,7 +165,7 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate, onTog
 
   return (
     <>
-      <div className={`sidebar-modern ${collapsed ? 'w-20' : 'w-64'}`}>
+      <div className={`sidebar-modern fixed h-full z-30 ${collapsed ? 'w-20' : 'w-64'}`}>
         {/* Header com branding moderno */}
         <div className="flex items-center justify-between p-4 border-b border-border bg-gradient-to-r from-primary/5 to-primary/10">
           {!collapsed && (

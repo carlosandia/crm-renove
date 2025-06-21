@@ -53,6 +53,8 @@ const LeadsModule: React.FC = () => {
 
     try {
       setLoading(true);
+      console.log('🔍 Carregando leads para tenant_id:', user.tenant_id, 'role:', user.role);
+      
       let query = supabase
         .from('leads_master')
         .select('*')
@@ -60,20 +62,26 @@ const LeadsModule: React.FC = () => {
 
       // Se for member, ver apenas seus leads
       if (user.role === 'member') {
+        console.log('👤 Aplicando filtro de member para assigned_to:', user.id);
         query = query.eq('assigned_to', user.id);
       }
 
       const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Erro ao carregar leads:', error);
+        console.error('❌ Erro ao carregar leads:', error);
         return;
+      }
+
+      console.log('✅ Leads carregados:', data?.length || 0, 'leads encontrados');
+      if (data && data.length > 0) {
+        console.log('📋 Primeiros 3 leads:', data.slice(0, 3));
       }
 
       setLeads(data || []);
       setFilteredLeads(data || []);
     } catch (error) {
-      console.error('Erro ao carregar leads:', error);
+      console.error('❌ Erro ao carregar leads:', error);
     } finally {
       setLoading(false);
     }

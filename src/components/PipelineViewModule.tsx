@@ -1,50 +1,47 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { DndContext, DragEndEvent, DragStartEvent } from '@dnd-kit/core';
+import { DropResult } from '@hello-pangea/dnd';
 import { useAuth } from '../contexts/AuthContext';
+import { useModalContext } from '../contexts/ModalContext';
 import { usePipelineData } from '../hooks/usePipelineData';
 import { usePipelineMetrics } from '../hooks/usePipelineMetrics';
-import PipelineAccessControl from './Pipeline/PipelineAccessControl';
+import PipelineViewHeader from './Pipeline/PipelineViewHeader';
 import PipelineKanbanBoard from './Pipeline/PipelineKanbanBoard';
-import PipelineFilters from './Pipeline/PipelineFilters';
 import LeadModal from './Pipeline/LeadModal';
 import LeadEditModal from './Pipeline/LeadEditModal';
+import PipelineAccessControl from './Pipeline/PipelineAccessControl';
 import { Pipeline, Lead } from '../types/Pipeline';
-import PipelineViewHeader from './Pipeline/PipelineViewHeader';
 
 const PipelineViewModule: React.FC = () => {
   const { user } = useAuth();
-  const { 
-    pipelines, 
-    selectedPipeline, 
-    leads, 
-    loading, 
+  const modalContext = useModalContext();
+  const {
+    pipelines,
+    selectedPipeline,
+    leads,
+    loading,
     error,
-    setSelectedPipeline, 
+    setSelectedPipeline,
     setLeads,
     handleCreateLead,
     updateLeadStage,
     updateLeadData,
+    refreshPipelines,
+    refreshLeads,
     getUserPipelines,
     getAdminCreatedPipelines,
     getMemberLinkedPipelines,
+    linkMemberToPipeline,
+    unlinkMemberFromPipeline,
     getPipelineMembers
   } = usePipelineData();
-  
-  // Debug logging
-  React.useEffect(() => {
-    if (error) {
-      console.log('❌ PipelineViewModule - Erro detectado:', error);
-    }
-  }, [user, pipelines, selectedPipeline, leads, loading, error]);
-  
+
   // Estados locais
   const [showAddLeadModal, setShowAddLeadModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [leadFormData, setLeadFormData] = useState<Record<string, any>>({});
 
-  // Estados de filtros
+  // Estados para filtros
   const [searchFilter, setSearchFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selectedVendorFilter, setSelectedVendorFilter] = useState('');
@@ -53,23 +50,17 @@ const PipelineViewModule: React.FC = () => {
 
   // Obter pipelines baseado no role e filtros
   const getFilteredPipelines = useMemo(() => {
-    let pipelinesToShow: Pipeline[] = [];
+    let filtered = pipelines;
 
-    if (user?.role === 'admin') {
-      if (showOnlyMyPipelines) {
-        pipelinesToShow = getAdminCreatedPipelines();
-      } else {
-        // Admin pode ver todas as pipelines do tenant (implementar se necessário)
-        pipelinesToShow = pipelines;
-      }
-    } else if (user?.role === 'member') {
-      pipelinesToShow = getMemberLinkedPipelines();
-    } else {
-      pipelinesToShow = pipelines;
+    // Filtro por "Minhas Pipelines" apenas para admin
+    if (user?.role === 'admin' && showOnlyMyPipelines) {
+      filtered = filtered.filter(pipeline => 
+        pipeline.created_by === user.id || pipeline.created_by === user.email
+      );
     }
 
-    return pipelinesToShow;
-  }, [user?.role, pipelines, showOnlyMyPipelines, getAdminCreatedPipelines, getMemberLinkedPipelines]);
+    return filtered;
+  }, [pipelines, user, showOnlyMyPipelines]);
 
   // Atualizar vendedores disponíveis quando pipeline selecionada muda
   React.useEffect(() => {
@@ -89,46 +80,42 @@ const PipelineViewModule: React.FC = () => {
     updateAvailableVendors();
   }, [selectedPipeline, user?.role, getPipelineMembers]);
 
-  // Filtrar leads baseado nos filtros ativos
+  // Aplicar filtros aos leads
   const filteredLeads = useMemo(() => {
-    let filtered = [...leads];
+    let filtered = leads;
 
-    // Filtro por busca (nome, email, telefone)
-    if (searchFilter) {
-      const searchLower = searchFilter.toLowerCase();
+    // Filtro de busca
+    if (searchFilter.trim()) {
+      const searchTerm = searchFilter.toLowerCase();
       filtered = filtered.filter(lead => {
         const customData = lead.custom_data || {};
         const searchableFields = [
-          customData.Nome || customData.nome || '',
-          customData.Email || customData.email || '',
-          customData.Telefone || customData.telefone || '',
-          customData.Empresa || customData.empresa || ''
-        ].join(' ').toLowerCase();
+          customData.nome_oportunidade,
+          customData.nome_lead,
+          customData.nome_contato,
+          customData.email,
+          customData.telefone,
+          customData.empresa,
+          customData.descricao
+        ];
         
-        return searchableFields.includes(searchLower);
+        return searchableFields.some(field => 
+          field && field.toString().toLowerCase().includes(searchTerm)
+        );
       });
     }
 
     // Filtro por status
-    if (statusFilter) {
+    if (statusFilter && statusFilter !== 'Todos os Status') {
       filtered = filtered.filter(lead => {
-        if (statusFilter === 'active') {
-          return lead.status === 'active' || (!lead.status && lead.stage_id);
-        }
-        if (statusFilter === 'won') {
-          return lead.status === 'won';
-        }
-        if (statusFilter === 'lost') {
-          return lead.status === 'lost';
-        }
-        return true;
+        const status = lead.status || 'ativo';
+        return status === statusFilter.toLowerCase();
       });
     }
 
     // Filtro por vendedor (apenas para admin)
     if (selectedVendorFilter && user?.role === 'admin') {
-      // TODO: Implementar campo assigned_to na interface Lead ou usar outro critério
-      // Por enquanto, não filtrar por vendedor até implementar corretamente
+      // TODO: Implementar filtro por vendedor quando tivermos o campo assigned_to
       // filtered = filtered.filter(lead => 
       //   lead.assigned_to === selectedVendorFilter
       // );
@@ -138,7 +125,7 @@ const PipelineViewModule: React.FC = () => {
   }, [leads, searchFilter, statusFilter, selectedVendorFilter, user?.role]);
 
   // Calcular métricas usando leads filtrados
-  const metrics = usePipelineMetrics(
+  const pipelineMetrics = usePipelineMetrics(
     filteredLeads,
     selectedPipeline?.pipeline_stages || [],
     selectedPipeline?.id
@@ -161,60 +148,72 @@ const PipelineViewModule: React.FC = () => {
     return stages;
   }, [selectedPipeline?.pipeline_stages]);
 
-  // Debug das pipelines e campos personalizados
-  React.useEffect(() => {
-    if (selectedPipeline) {
-      console.log('🔍 Pipeline selecionada - Debug detalhado:', {
-        id: selectedPipeline.id,
-        name: selectedPipeline.name,
-        created_by: selectedPipeline.created_by,
-        stages: {
-          count: selectedPipeline.pipeline_stages?.length || 0,
-          list: selectedPipeline.pipeline_stages?.map(s => ({
-            id: s.id,
-            name: s.name,
-            order: s.order_index,
-            color: s.color
-          })) || []
-        },
-        customFields: {
-          count: selectedPipeline.pipeline_custom_fields?.length || 0,
-          list: selectedPipeline.pipeline_custom_fields?.map(f => ({
-            id: f.id,
-            name: f.field_name,
-            label: f.field_label,
-            type: f.field_type,
-            order: f.field_order
-          })) || []
-        },
-        userRole: user?.role,
-        userEmail: user?.email
-      });
-    }
-  }, [selectedPipeline, user]);
+  // Handler para drag and drop - OTIMIZADO
+  const handleDragEnd = useCallback((result: DropResult) => {
+    const { destination, source, draggableId } = result;
 
-  // Handlers para drag and drop
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    const { active } = event;
-    const lead = filteredLeads.find(l => l.id === active.id);
-    setActiveLead(lead || null);
-  }, [filteredLeads]);
-
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    
-    if (!over || active.id === over.id) {
-      setActiveLead(null);
+    // Se não foi dropado em lugar válido
+    if (!destination) {
       return;
     }
 
-    const leadId = active.id as string;
-    const newStageId = over.id as string;
+    // Se foi dropado no mesmo lugar
+    if (destination.droppableId === source.droppableId && destination.index === source.index) {
+      return;
+    }
 
-    // Usar a função do hook para atualizar com moved_at
-    updateLeadStage(leadId, newStageId);
-    setActiveLead(null);
-  }, [updateLeadStage]);
+    const leadId = draggableId;
+    const newStageId = destination.droppableId;
+
+    console.log('🚀 DRAG OTIMIZADO - Movendo lead:', {
+      leadId: leadId.substring(0, 8) + '...',
+      from: source.droppableId,
+      to: newStageId
+    });
+
+    // 🎯 OPTIMISTIC UPDATE - Atualizar UI IMEDIATAMENTE
+    const leadToMove = leads.find(lead => lead.id === leadId);
+    if (leadToMove) {
+      const movedAt = new Date().toISOString();
+      setLeads(prev => prev.map(lead => 
+        lead.id === leadId 
+          ? { 
+              ...lead, 
+              stage_id: newStageId, 
+              moved_at: movedAt,
+              updated_at: movedAt
+            }
+          : lead
+      ));
+      
+      console.log('⚡ UI atualizada instantaneamente via optimistic update');
+    }
+
+    // 🔄 BACKGROUND UPDATE - Sincronizar com backend sem bloquear UI
+    updateLeadStage(leadId, newStageId)
+      .then(() => {
+        console.log('✅ Backend sincronizado com sucesso');
+      })
+      .catch((error) => {
+        console.error('❌ Erro no backend - revertendo UI:', error);
+        
+        // Reverter optimistic update em caso de erro
+        if (leadToMove) {
+          setLeads(prev => prev.map(lead => 
+            lead.id === leadId 
+              ? { 
+                  ...lead, 
+                  stage_id: leadToMove.stage_id, 
+                  moved_at: leadToMove.moved_at,
+                  updated_at: leadToMove.updated_at
+                }
+              : lead
+          ));
+        }
+        
+        alert('Erro ao mover lead: ' + error.message);
+      });
+  }, [updateLeadStage, leads]);
 
   // Handlers para adicionar lead
   const handleAddLead = useCallback((stageId?: string) => {
@@ -229,8 +228,15 @@ const PipelineViewModule: React.FC = () => {
     }));
   }, []);
 
+  // Handler para criar lead
   const handleCreateLeadSubmit = useCallback(async () => {
     if (!selectedPipeline) return;
+
+    console.log('🚀 INICIANDO CRIAÇÃO DE OPORTUNIDADE:', {
+      pipeline: selectedPipeline.name,
+      formData: leadFormData,
+      firstStage: selectedPipeline.pipeline_stages?.[0]
+    });
 
     try {
       const newLead = await handleCreateLead(
@@ -239,15 +245,64 @@ const PipelineViewModule: React.FC = () => {
       );
       
       if (newLead) {
+        console.log('✅ OPORTUNIDADE CRIADA COM SUCESSO:', {
+          id: newLead.id,
+          stage_id: newLead.stage_id,
+          pipeline_id: newLead.pipeline_id,
+          custom_data: newLead.custom_data
+        });
+
+        // FECHAR MODAL IMEDIATAMENTE
         setShowAddLeadModal(false);
         setLeadFormData({});
-        console.log('Novo lead criado e salvo:', newLead);
+        
+        // MOSTRAR NOTIFICAÇÃO DE SUCESSO
+        const hasSyncData = leadFormData.nome_lead && leadFormData.email;
+        if (hasSyncData) {
+          alert(`✅ Oportunidade criada com sucesso!\n\n🔄 Lead sincronizado automaticamente:\n• Pipeline: ${newLead.pipeline_id}\n• Stage: ${newLead.stage_id}\n• ID: ${newLead.id}\n\n📋 Verifique o módulo Leads para acompanhamento.`);
+        } else {
+          alert(`✅ Oportunidade criada com sucesso!\n\n📋 ID: ${newLead.id}\n• Pipeline: ${newLead.pipeline_id}\n• Stage: ${newLead.stage_id}\n\n🎯 O card deve aparecer na primeira coluna "Novos Leads"`);
+        }
+
+        // REFRESH INTELIGENTE SEM RELOAD DA PÁGINA
+        console.log('🔄 Executando refresh inteligente...');
+        
+        // 1. Forçar refresh dos leads IMEDIATAMENTE
+        if (selectedPipeline?.id) {
+          console.log('🔄 Primeiro refresh...');
+          await refreshLeads();
+          
+          // 2. Forçar atualização do estado local também
+          setLeads(prevLeads => {
+            // Verificar se o lead já existe no estado
+            const existingLead = prevLeads.find(l => l.id === newLead.id);
+            if (!existingLead) {
+              console.log('➕ Adicionando lead ao estado local:', newLead.id);
+              return [...prevLeads, newLead];
+            }
+            console.log('✅ Lead já existe no estado local');
+            return prevLeads;
+          });
+        }
+        
+        // 3. Segundo refresh após delay para garantir sincronização
+        setTimeout(async () => {
+          console.log('🔄 Segundo refresh para garantir sincronização...');
+          if (selectedPipeline?.id) {
+            await refreshLeads();
+            console.log('✅ Refresh duplo concluído - interface deve estar atualizada');
+          }
+        }, 1500);
+
+      } else {
+        console.error('❌ Lead não foi criado (retornou null)');
+        alert('❌ Erro: Lead não foi criado. Verifique o console para detalhes.');
       }
     } catch (error) {
-      console.error('Erro ao criar lead:', error);
-      alert('Erro ao criar lead. Tente novamente.');
+      console.error('❌ Erro ao criar lead:', error);
+      alert('❌ Erro ao criar oportunidade. Tente novamente.');
     }
-  }, [selectedPipeline, handleCreateLead, leadFormData]);
+  }, [selectedPipeline, handleCreateLead, leadFormData, refreshLeads]);
 
   // Handler para trocar pipeline
   const handlePipelineChange = useCallback((pipeline: Pipeline | null) => {
@@ -261,12 +316,35 @@ const PipelineViewModule: React.FC = () => {
   // Handler para atualizar lead
   const handleUpdateLead = useCallback(async (leadId: string, updatedData: any) => {
     try {
+      console.log('🔄 PipelineViewModule: handleUpdateLead executado', { leadId, updatedData });
       await updateLeadData(leadId, updatedData);
-      console.log('Lead atualizado:', leadId, updatedData);
+      console.log('✅ PipelineViewModule: Lead atualizado no backend:', leadId, updatedData);
+      
+      // Atualizar estado local dos leads de forma mais específica
+      setLeads(prevLeads => {
+        const updatedLeads = prevLeads.map(lead => {
+          if (lead.id === leadId) {
+            const updatedLead = { 
+              ...lead, 
+              ...updatedData, 
+              updated_at: new Date().toISOString() 
+            };
+            console.log('🔄 PipelineViewModule: Lead atualizado no estado local:', updatedLead);
+            return updatedLead;
+          }
+          return lead;
+        });
+        return updatedLeads;
+      });
     } catch (error) {
-      console.error('Erro ao atualizar lead:', error);
+      console.error('❌ PipelineViewModule: Erro ao atualizar lead:', error);
     }
   }, [updateLeadData]);
+
+  // Conectar o handler de atualização ao ModalContext
+  React.useEffect(() => {
+    modalContext.setExternalUpdateHandler(handleUpdateLead);
+  }, [modalContext, handleUpdateLead]);
 
   // Handler para editar lead
   const handleEditLead = useCallback((lead: Lead) => {
@@ -331,83 +409,35 @@ const PipelineViewModule: React.FC = () => {
     );
   }
 
-  if (error) {
-    console.log('❌ PipelineViewModule - Erro detectado:', error);
+  if (!user) {
     return (
-      <div className="pipeline-error">
-        <div className="text-center p-8">
-          <div className="text-6xl mb-4">⚠️</div>
-          <h3 className="text-xl font-semibold text-red-600 mb-2">
-            Erro ao Carregar Pipeline
+      <PipelineAccessControl userRole={undefined} loading={false}>
+        <div className="text-center py-12">
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            Acesso Negado
           </h3>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <button 
-            onClick={() => window.location.reload()}
-            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-          >
-            Tentar Novamente
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  console.log('🔍 PipelineViewModule - Verificando condições de renderização:', {
-    userRole: user?.role,
-    filteredPipelinesCount: getFilteredPipelines.length,
-    isMember: user?.role === 'member',
-    hasSelectedPipeline: !!selectedPipeline,
-    selectedPipelineName: selectedPipeline?.name
-  });
-
-  // Verificação de acesso para members sem pipelines vinculadas
-  if (user?.role === 'member' && getFilteredPipelines.length === 0) {
-    console.log('👤 Member sem pipelines vinculadas - mostrando mensagem');
-    return (
-      <PipelineAccessControl userRole={user?.role} loading={loading}>
-        <div className="h-screen flex items-center justify-center bg-white">
-          <div className="text-center max-w-md">
-            <div className="text-6xl mb-4">🔗</div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              Nenhuma Pipeline Vinculada
-            </h3>
-            <p className="text-gray-600 mb-4">
-              Você ainda não foi vinculado a nenhuma pipeline. Entre em contato com seu administrador para obter acesso.
-            </p>
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm text-blue-700">
-                <strong>Dica:</strong> O administrador pode vincular você a pipelines específicas no módulo "Criador de pipeline".
-              </p>
-            </div>
-          </div>
+          <p className="text-gray-600">
+            Você precisa estar logado para acessar esta página.
+          </p>
         </div>
       </PipelineAccessControl>
     );
   }
 
-  // Se não há pipelines filtradas, mostrar mensagem
-  if (getFilteredPipelines.length === 0) {
-    console.log('📭 Nenhuma pipeline encontrada após filtros');
+  if (pipelines.length === 0) {
     return (
       <PipelineAccessControl userRole={user?.role} loading={loading}>
-        <div className="h-screen flex items-center justify-center bg-white">
-          <div className="text-center max-w-md">
-            <div className="text-6xl mb-4">📊</div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              Nenhuma Pipeline Disponível
-            </h3>
-            <p className="text-gray-600 mb-4">
-              Não há pipelines disponíveis para visualização no momento.
-            </p>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <p className="text-sm text-yellow-700">
-                {user?.role === 'admin' 
-                  ? 'Você pode criar uma nova pipeline no módulo "Criador de pipeline".'
-                  : 'Entre em contato com seu administrador para obter acesso às pipelines.'
-                }
-              </p>
-            </div>
-          </div>
+        <div className="text-center py-12">
+          <div className="text-6xl mb-4">📊</div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">
+            Nenhuma Pipeline Encontrada
+          </h3>
+          <p className="text-gray-600 mb-4">
+            {user?.role === 'admin' 
+              ? 'Você pode criar uma nova pipeline no módulo "Criador de pipeline".'
+              : 'Entre em contato com seu administrador para obter acesso às pipelines.'
+            }
+          </p>
         </div>
       </PipelineAccessControl>
     );
@@ -415,204 +445,84 @@ const PipelineViewModule: React.FC = () => {
 
   console.log('✅ PipelineViewModule - Renderizando componente principal');
 
-  // Componente de debug para development
-  const DebugInfo = () => {
-    if (process.env.NODE_ENV !== 'development') return null;
-    
-    return (
-      <div className="bg-green-50 border border-green-200 rounded p-4 mb-6">
-        <h4 className="font-bold text-green-800 mb-2">🐛 Debug Information - Menu Pipeline</h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-          <div>
-            <p><strong>Usuário:</strong> {user?.email || 'não autenticado'}</p>
-            <p><strong>Role:</strong> {user?.role || 'indefinido'}</p>
-            <p><strong>User ID:</strong> {user?.id || 'não definido'}</p>
-          </div>
-          <div>
-            <p><strong>Pipelines Totais:</strong> {pipelines.length}</p>
-            <p><strong>Pipelines Filtradas:</strong> {getFilteredPipelines.length}</p>
-            <p><strong>Pipeline Selecionada:</strong> {selectedPipeline?.name || 'nenhuma'}</p>
-            <p><strong>Leads:</strong> {leads.length}</p>
-          </div>
-          <div>
-            <p><strong>Etapas da Pipeline:</strong> {selectedPipeline?.pipeline_stages?.length || 0}</p>
-            <p><strong>Campos Personalizados:</strong> {selectedPipeline?.pipeline_custom_fields?.length || 0}</p>
-            <p><strong>Criada por:</strong> {selectedPipeline?.created_by || 'n/a'}</p>
-          </div>
-        </div>
-        
-        {selectedPipeline && (
-          <div className="mt-4 p-3 bg-blue-50 rounded">
-            <h5 className="font-semibold text-blue-800 mb-2">Pipeline Atual: {selectedPipeline.name}</h5>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-              <div>
-                <p className="font-medium text-blue-700">Etapas ({getAllStages.length}):</p>
-                {getAllStages.length > 0 ? (
-                  <ul className="ml-2">
-                    {getAllStages.map(stage => (
-                      <li key={stage.id}>
-                        {stage.order_index}. {stage.name} 
-                        <span className="text-gray-500">({stage.color})</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-red-600">⚠️ Nenhuma etapa encontrada!</p>
-                )}
-              </div>
-              <div>
-                <p className="font-medium text-blue-700">Campos ({selectedPipeline.pipeline_custom_fields?.length || 0}):</p>
-                {selectedPipeline.pipeline_custom_fields && selectedPipeline.pipeline_custom_fields.length > 0 ? (
-                  <ul className="ml-2">
-                    {selectedPipeline.pipeline_custom_fields
-                      .sort((a, b) => a.field_order - b.field_order)
-                      .map(field => (
-                      <li key={field.id}>
-                        {field.field_order}. {field.field_label} 
-                        <span className="text-gray-500">({field.field_type})</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-red-600">⚠️ Nenhum campo encontrado!</p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-        
-        {/* Debug específico para Members */}
-        {user?.role === 'member' && (
-          <div className="mt-4 p-3 bg-purple-50 rounded border border-purple-200">
-            <h5 className="font-semibold text-purple-800 mb-2">👤 Debug Member - Vinculação de Pipelines</h5>
-            <div className="text-xs space-y-1">
-              <p><strong>Email do Member:</strong> {user.email}</p>
-              <p><strong>ID do Member:</strong> {user.id}</p>
-              <p><strong>Pipelines Vinculadas:</strong> {pipelines.length}</p>
-              
-              {pipelines.length === 0 && (
-                <div className="mt-2 p-2 bg-red-100 rounded text-red-700">
-                  <p><strong>⚠️ PROBLEMA:</strong> Nenhuma pipeline vinculada encontrada!</p>
-                  <p className="text-xs mt-1">
-                    Verifique se o member_id na tabela pipeline_members corresponde ao email ({user.email}) ou ID ({user.id})
-                  </p>
-                </div>
-              )}
-              
-              {pipelines.length > 0 && (
-                <div className="mt-2">
-                  <p><strong>Pipelines Encontradas:</strong></p>
-                  {pipelines.map(pipeline => (
-                    <div key={pipeline.id} className="ml-2 text-xs">
-                      • {pipeline.name} (ID: {pipeline.id})
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-        
-        <div className="mt-3 text-xs text-green-700">
-          <p><strong>Estado:</strong> Loading: {loading ? 'sim' : 'não'}, Error: {error || 'nenhum'}</p>
-          <p><strong>Dados sendo usados:</strong> {pipelines.length > 0 && pipelines[0].id.includes('pipeline-') ? 'MOCK' : 'REAIS'}</p>
-          {user?.role === 'member' && (
-            <p><strong>Busca realizada por:</strong> Email ({user.email}) e ID ({user.id})</p>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   return (
     <PipelineAccessControl userRole={user?.role} loading={loading}>
       <div className="pipeline-view-container">
         <PipelineViewHeader
-          pipelines={pipelines}
+          pipelines={getFilteredPipelines}
           selectedPipeline={selectedPipeline}
           onPipelineChange={handlePipelineChange}
           onAddLead={handleAddLead}
-          totalLeads={metrics.totalLeads}
-          totalRevenue={metrics.totalRevenue}
-          closedDeals={metrics.closedDeals}
-          conversionRate={metrics.conversionRate}
-          averageCycleTime={metrics.averageCycleTimeFormatted}
-          loading={metrics.loading}
+          totalLeads={pipelineMetrics.totalLeads}
+          totalRevenue={pipelineMetrics.totalRevenue}
+          closedDeals={pipelineMetrics.closedDeals}
+          conversionRate={pipelineMetrics.conversionRate}
+          averageCycleTime={pipelineMetrics.averageCycleTimeFormatted}
+          loading={pipelineMetrics.loading}
+          // Props para filtros
+          showOnlyMyPipelines={showOnlyMyPipelines}
+          selectedVendorFilter={selectedVendorFilter}
+          searchFilter={searchFilter}
+          statusFilter={statusFilter}
+          availableVendors={availableVendors}
+          onToggleMyPipelines={user?.role === 'admin' ? handleToggleMyPipelines : undefined}
+          onVendorFilterChange={handleVendorFilter}
+          onSearchFilterChange={handleSearchChange}
+          onStatusFilterChange={handleStatusFilter}
+          onClearFilters={handleClearFilters}
+          userRole={user?.role}
         />
 
-        <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <PipelineFilters
-            pipelines={getFilteredPipelines}
-            selectedPipeline={selectedPipeline}
-            onPipelineChange={handlePipelineChange}
-            onSearchChange={handleSearchChange}
-            onStatusFilter={handleStatusFilter}
-            onDateFilter={() => {}} // TODO: Implementar filtro por data
-            onAssigneeFilter={() => {}} // Usar onVendorFilter em vez disso
-            onSortChange={() => {}} // TODO: Implementar ordenação
-            availableVendors={availableVendors}
-            selectedVendorFilter={selectedVendorFilter}
-            searchFilter={searchFilter}
-            statusFilter={statusFilter}
-            showOnlyMyPipelines={showOnlyMyPipelines}
-            onToggleMyPipelines={user?.role === 'admin' ? handleToggleMyPipelines : undefined}
-            onClearFilters={handleClearFilters}
-            onVendorFilter={handleVendorFilter}
-            userRole={user?.role}
-            userId={user?.id}
+        {selectedPipeline && getAllStages.length > 0 ? (
+          <PipelineKanbanBoard
+            stages={getAllStages}
+            leads={filteredLeads}
+            customFields={selectedPipeline?.pipeline_custom_fields || []}
+            onAddLead={handleAddLead}
+            onUpdateLead={handleUpdateLead}
+            onEditLead={handleEditLead}
+            onDragEnd={handleDragEnd}
+            stageMetrics={pipelineMetrics.stageMetrics}
           />
-
-          {selectedPipeline && getAllStages.length > 0 ? (
-            <PipelineKanbanBoard
-              stages={getAllStages}
-              leads={filteredLeads} // Usar leads filtrados
-              customFields={selectedPipeline?.pipeline_custom_fields || []}
-              activeLead={activeLead}
-              onAddLead={handleAddLead}
-              onUpdateLead={handleUpdateLead}
-              onEditLead={handleEditLead}
-              stageMetrics={metrics.stageMetrics}
-            />
-          ) : selectedPipeline ? (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 m-4">
-              <div className="text-center">
-                <div className="text-4xl mb-2">⚠️</div>
-                <h3 className="text-lg font-semibold text-yellow-800 mb-2">
-                  Pipeline sem Estágios
-                </h3>
-                <p className="text-yellow-700">
-                  A pipeline "{selectedPipeline.name}" não possui estágios configurados.
-                </p>
-                <div className="mt-4 text-sm text-yellow-600">
-                  <p>Estágios disponíveis: {selectedPipeline.pipeline_stages?.length || 0}</p>
-                  <p>Campos personalizados: {selectedPipeline.pipeline_custom_fields?.length || 0}</p>
-                </div>
+        ) : selectedPipeline ? (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 m-4">
+            <div className="text-center">
+              <div className="text-4xl mb-2">⚠️</div>
+              <h3 className="text-lg font-semibold text-yellow-800 mb-2">
+                Pipeline sem Estágios
+              </h3>
+              <p className="text-yellow-700">
+                A pipeline "{selectedPipeline.name}" não possui estágios configurados.
+              </p>
+              <div className="mt-4 text-sm text-yellow-600">
+                <p>Estágios disponíveis: {selectedPipeline.pipeline_stages?.length || 0}</p>
+                <p>Campos personalizados: {selectedPipeline.pipeline_custom_fields?.length || 0}</p>
               </div>
             </div>
-          ) : null}
+          </div>
+        ) : null}
 
-          {!selectedPipeline && getFilteredPipelines.length > 0 && (
-            <div className="h-[400px] flex items-center justify-center">
-              <div className="text-center">
-                <div className="text-6xl mb-4">📊</div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  Selecione uma Pipeline
-                </h3>
-                <p className="text-gray-600 mb-4">
-                  Escolha uma pipeline nos filtros acima para visualizar os leads.
+        {!selectedPipeline && getFilteredPipelines.length > 0 && (
+          <div className="h-[400px] flex items-center justify-center">
+            <div className="text-center">
+              <div className="text-6xl mb-4">📊</div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                Selecione uma Pipeline
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Escolha uma pipeline nos filtros acima para visualizar os leads.
+              </p>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md mx-auto">
+                <p className="text-sm text-blue-700">
+                  <strong>Pipelines disponíveis:</strong> {getFilteredPipelines.length}
                 </p>
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md mx-auto">
-                  <p className="text-sm text-blue-700">
-                    <strong>Pipelines disponíveis:</strong> {getFilteredPipelines.length}
-                  </p>
-                </div>
               </div>
             </div>
-          )}
-        </DndContext>
-
+          </div>
+        )}
+        
         {/* Modal de Adicionar Lead */}
-        {showAddLeadModal && selectedPipeline && (
+        {showAddLeadModal && selectedPipeline && user && (
           <LeadModal
             isOpen={showAddLeadModal}
             onClose={handleCloseAddModal}
@@ -620,6 +530,7 @@ const PipelineViewModule: React.FC = () => {
             formData={leadFormData}
             onFieldChange={handleFieldChange}
             onSubmit={handleCreateLeadSubmit}
+            currentUser={user}
           />
         )}
 

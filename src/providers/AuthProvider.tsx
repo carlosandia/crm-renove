@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import AuthContext from '../contexts/AuthContext';
 import { User } from '../types/User';
 import { logger } from '../lib/logger';
-
 import { appConfig } from '../config/app';
 
 // URL da API a partir da configuração centralizada
@@ -166,15 +165,13 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   };
 
   /**
-   * Verificar se usuário está autenticado na inicialização
+   * Verificar se usuário está autenticado na inicialização - VERSÃO SIMPLIFICADA
    */
   useEffect(() => {
-    const checkAuth = async () => {
+    const checkAuth = () => {
       console.log('🔍 AuthProvider - Verificando autenticação...');
       
       try {
-        setLoading(true);
-
         // Verificar se há usuário salvo no localStorage (modo de demonstração)
         const savedUser = localStorage.getItem('crm_user');
         if (savedUser) {
@@ -182,57 +179,26 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
             const parsedUser = JSON.parse(savedUser);
             console.log('✅ Usuário encontrado no localStorage:', parsedUser.email);
             setUser(parsedUser);
-            setLoading(false);
-            return;
           } catch (error) {
             console.error('❌ Erro ao parser usuário do localStorage:', error);
             localStorage.removeItem('crm_user');
-          }
-        }
-
-        // Se não há usuário salvo, verificar tokens
-        const tokens = getStoredTokens();
-        
-        if (!tokens) {
-          console.log('ℹ️ Nenhum token válido encontrado');
-          setLoading(false);
-          return;
-        }
-
-        // Verificar usuário no backend (apenas se backend estiver disponível)
-        try {
-          const response = await authenticatedFetch('/auth/me');
-          const data = await response.json();
-
-          if (response.ok && data.success) {
-            const userData = data.data.user;
-            setUser(userData);
-            
-            // Manter no localStorage para compatibilidade
-            localStorage.setItem('crm_user', JSON.stringify({
-              ...userData,
-              loginTime: new Date().toISOString()
-            }));
-            
-            console.log('✅ Usuário autenticado via backend:', userData.email);
-          } else {
-            console.log('⚠️ Token inválido ou usuário não encontrado no backend');
-            clearTokens();
             setUser(null);
           }
-        } catch (error) {
-          console.log('⚠️ Backend indisponível, usando modo offline');
-          // Em caso de erro de rede, não limpar usuário se existe no localStorage
+        } else {
+          console.log('ℹ️ Nenhum usuário encontrado - redirecionando para login');
+          setUser(null);
         }
 
       } catch (error) {
         console.error('❌ Erro ao verificar autenticação:', error);
+        setUser(null);
       } finally {
         setLoading(false);
         console.log('🏁 AuthProvider - Verificação de autenticação concluída');
       }
     };
 
+    // Executar verificação síncrona para evitar problemas
     checkAuth();
   }, []);
 
@@ -295,12 +261,14 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       if (demoUser) {
         // Login local de demonstração
         const userData = demoUser.user;
+        const loginTime = new Date().toISOString();
+        
         setUser(userData);
 
         // Salvar no localStorage
         localStorage.setItem('crm_user', JSON.stringify({
           ...userData,
-          loginTime: new Date().toISOString()
+          loginTime: loginTime
         }));
 
         console.log('✅ Login de demonstração realizado com sucesso!');
@@ -308,43 +276,79 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
         return true;
       }
 
-      // Tentar login no backend se credenciais não são de demo
+      // Tentar login via Supabase (validação direta no banco)
       try {
-        const response = await fetch(`${API_BASE_URL}/auth/login`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ email, password }),
-        });
+        console.log('🔍 Tentando login via Supabase...');
+        
+        // Importar supabase dinamicamente para evitar problemas de dependência
+        const { supabase } = await import('../lib/supabase');
+        
+        // Buscar usuário pelo email
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', email.toLowerCase().trim())
+          .eq('is_active', true)
+          .single();
 
-        const data: LoginResponse = await response.json();
-
-        if (!response.ok || !data.success) {
-          console.log('❌ Login falhou:', data.message || 'Credenciais inválidas');
+        if (userError || !userData) {
+          console.log('❌ Usuário não encontrado ou inativo:', email);
           setLoading(false);
           return false;
         }
 
-        // Armazenar tokens
-        storeTokens(data.data.tokens);
+        // Verificar senha
+        const storedPassword = userData.password_hash || '';
+        if (storedPassword !== password) {
+          console.log('❌ Senha incorreta para:', email);
+          setLoading(false);
+          return false;
+        }
 
-        // Armazenar dados do usuário
-        const userData = data.data.user;
-        setUser(userData);
+        // Login bem-sucedido - atualizar last_login
+        const loginTime = new Date().toISOString();
+        
+        // Tentar atualizar last_login no banco
+        try {
+          await supabase
+            .from('users')
+            .update({ last_login: loginTime })
+            .eq('id', userData.id);
+          console.log('✅ Last login atualizado no banco para:', userData.email);
+        } catch (updateError) {
+          console.log('⚠️ Erro ao atualizar last_login no banco (coluna pode não existir):', updateError);
+        }
 
-        // Manter no localStorage para compatibilidade
+        // Sempre salvar no localStorage como backup
+        const loginKey = `last_login_${userData.id}`;
+        localStorage.setItem(loginKey, loginTime);
+        console.log('✅ Last login salvo no localStorage para:', userData.email);
+
+        const userObject = {
+          id: userData.id,
+          email: userData.email,
+          first_name: userData.first_name,
+          last_name: userData.last_name,
+          role: userData.role as 'super_admin' | 'admin' | 'member',
+          tenant_id: userData.tenant_id || 'default',
+          is_active: userData.is_active,
+          created_at: userData.created_at
+        };
+
+        setUser(userObject);
+
+        // Salvar no localStorage
         localStorage.setItem('crm_user', JSON.stringify({
-          ...userData,
-          loginTime: new Date().toISOString()
+          ...userObject,
+          loginTime: loginTime
         }));
 
-        console.log('✅ Login via backend realizado com sucesso!');
+        console.log('✅ Login via Supabase realizado com sucesso!', userObject.email);
         setLoading(false);
         return true;
 
-      } catch (error) {
-        console.error('❌ Erro ao conectar com backend:', error);
+      } catch (supabaseError) {
+        console.log('⚠️ Erro no login via Supabase:', supabaseError);
         setLoading(false);
         return false;
       }
@@ -363,16 +367,6 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     console.log('🚪 Fazendo logout...');
     
     try {
-      // Notificar backend sobre logout (se disponível)
-      try {
-        await authenticatedFetch('/auth/logout', {
-          method: 'POST',
-        });
-      } catch (error) {
-        // Ignorar erros de logout no backend
-        console.log('⚠️ Erro ao notificar logout no backend:', error);
-      }
-
       // Limpar dados locais
       clearTokens();
       setUser(null);

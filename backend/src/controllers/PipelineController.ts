@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { PipelineService } from '../services/pipelineService';
 import { MemberService } from '../services/memberService';
 import { CustomFieldService } from '../services/customFieldService';
-import { supabaseAdmin } from '../index';
+import { supabase as supabaseAdmin } from '../config/supabase';
 
 export class PipelineController {
   static async getPipelines(req: Request, res: Response) {

@@ -8,7 +8,8 @@ import { City } from '../data/cities';
 import { 
   Building, Plus, Eye, Edit, Trash2, Mail, Phone, MapPin, Globe,
   TrendingUp, Users, Target, Search, Filter, X, ChevronLeft, ChevronRight,
-  Calendar, DollarSign, Star, ToggleLeft, ToggleRight, User, Clock
+  Calendar, DollarSign, Star, ToggleLeft, ToggleRight, User, Clock, Key,
+  UserCheck, Shield
 } from 'lucide-react';
 
 interface Empresa {
@@ -33,6 +34,8 @@ interface Empresa {
     name: string;
     email: string;
     last_login?: string;
+    last_login_formatted?: string;
+    is_real_login?: boolean;
   };
 }
 
@@ -44,6 +47,12 @@ const EmpresasModule: React.FC = () => {
   const [editingEmpresa, setEditingEmpresa] = useState<Empresa | null>(null);
   const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  
+  // Estados para o modal de edição
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editModalTab, setEditModalTab] = useState<'info' | 'senha' | 'vendedores'>('info');
+  const [vendedores, setVendedores] = useState<any[]>([]);
+  const [loadingVendedores, setLoadingVendedores] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'ativo' | 'desativado'>('all');
   
@@ -62,6 +71,23 @@ const EmpresasModule: React.FC = () => {
   const [passwordValidation, setPasswordValidation] = useState({
     isValid: false,
     message: '',
+    requirements: {
+      length: false,
+      hasLetter: false,
+      hasNumber: false
+    }
+  });
+
+  // Estados para alteração de senha do admin (modo edição)
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [passwordChangeData, setPasswordChangeData] = useState({
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [passwordChangeValidation, setPasswordChangeValidation] = useState({
+    isValid: false,
+    message: '',
+    passwordsMatch: false,
     requirements: {
       length: false,
       hasLetter: false,
@@ -155,6 +181,13 @@ const EmpresasModule: React.FC = () => {
     validateAdminPassword(formData.admin_password);
   }, [formData.admin_password, editingEmpresa]);
 
+  // Effect para validar alteração de senha em tempo real
+  useEffect(() => {
+    if (editingEmpresa && showPasswordChange) {
+      validatePasswordChange(passwordChangeData.newPassword, passwordChangeData.confirmPassword);
+    }
+  }, [passwordChangeData.newPassword, passwordChangeData.confirmPassword, editingEmpresa, showPasswordChange]);
+
   // Função para formatar data no fuso horário de Brasília (GMT-3)
   const formatDateBrasilia = (dateString: string) => {
     try {
@@ -198,37 +231,38 @@ const EmpresasModule: React.FC = () => {
       return;
     }
 
-    setEmailValidation({ isChecking: true, exists: false, message: 'Verificando...' });
+    setEmailValidation({ isChecking: true, exists: false, message: 'Verificando disponibilidade...' });
 
     try {
-      const { data: existingUser, error } = await supabase
+      // Verificar se o email já existe na tabela users
+      const { data, error } = await supabase
         .from('users')
         .select('id, email')
-        .eq('email', email.trim())
+        .eq('email', email.toLowerCase().trim())
         .single();
 
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-        console.error('Erro ao verificar email:', error);
-        setEmailValidation({ isChecking: false, exists: false, message: '' });
-        return;
+      if (error && error.code !== 'PGRST116') {
+        // PGRST116 = No rows found (email disponível)
+        throw error;
       }
 
-      if (existingUser) {
-        setEmailValidation({ 
-          isChecking: false, 
-          exists: true, 
-          message: 'Esse e-mail já existe, favor inserir outro.' 
-        });
-      } else {
-        setEmailValidation({ 
-          isChecking: false, 
-          exists: false, 
-          message: 'E-mail disponível.' 
-        });
-      }
+      const emailExists = !!data;
+
+      setEmailValidation({
+        isChecking: false,
+        exists: emailExists,
+        message: emailExists 
+          ? 'Este email já está sendo usado por outro administrador' 
+          : 'Email disponível para uso'
+      });
+
     } catch (error) {
-      console.error('Erro na validação do email:', error);
-      setEmailValidation({ isChecking: false, exists: false, message: '' });
+      console.error('Erro ao validar email:', error);
+      setEmailValidation({
+        isChecking: false,
+        exists: false,
+        message: 'Erro ao verificar email. Tente novamente.'
+      });
     }
   };
 
@@ -238,24 +272,28 @@ const EmpresasModule: React.FC = () => {
       setPasswordValidation({
         isValid: false,
         message: '',
-        requirements: { length: false, hasLetter: false, hasNumber: false }
+        requirements: {
+          length: false,
+          hasLetter: false,
+          hasNumber: false
+        }
       });
       return;
     }
 
-    // Verificar requisitos
     const hasMinLength = password.length >= 6;
     const hasLetter = /[a-zA-Z]/.test(password);
     const hasNumber = /\d/.test(password);
-    
+
     const isValid = hasMinLength && hasLetter && hasNumber;
-    
+
     let message = '';
     if (!isValid) {
       const missing = [];
       if (!hasMinLength) missing.push('mínimo 6 caracteres');
       if (!hasLetter) missing.push('pelo menos 1 letra');
       if (!hasNumber) missing.push('pelo menos 1 número');
+      
       message = `Senha deve ter: ${missing.join(', ')}`;
     } else {
       message = 'Senha válida!';
@@ -270,6 +308,251 @@ const EmpresasModule: React.FC = () => {
         hasNumber: hasNumber
       }
     });
+  };
+
+  // Função para validar alteração de senha
+  const validatePasswordChange = (newPassword: string, confirmPassword: string) => {
+    if (!newPassword) {
+      setPasswordChangeValidation({
+        isValid: false,
+        message: '',
+        passwordsMatch: false,
+        requirements: {
+          length: false,
+          hasLetter: false,
+          hasNumber: false
+        }
+      });
+      return;
+    }
+
+    const hasMinLength = newPassword.length >= 6;
+    const hasLetter = /[a-zA-Z]/.test(newPassword);
+    const hasNumber = /\d/.test(newPassword);
+    const passwordsMatch = newPassword === confirmPassword && confirmPassword.length > 0;
+
+    const isValid = hasMinLength && hasLetter && hasNumber && passwordsMatch;
+
+    let message = '';
+    if (!isValid) {
+      const missing = [];
+      if (!hasMinLength) missing.push('mínimo 6 caracteres');
+      if (!hasLetter) missing.push('pelo menos 1 letra');
+      if (!hasNumber) missing.push('pelo menos 1 número');
+      if (confirmPassword.length > 0 && !passwordsMatch) missing.push('senhas devem coincidir');
+      
+      message = `Nova senha deve ter: ${missing.join(', ')}`;
+    } else {
+      message = 'Nova senha válida!';
+    }
+
+    setPasswordChangeValidation({
+      isValid,
+      message,
+      passwordsMatch,
+      requirements: {
+        length: hasMinLength,
+        hasLetter: hasLetter,
+        hasNumber: hasNumber
+      }
+    });
+  };
+
+  // Função para fechar modal de edição
+  const handleCloseEditModal = () => {
+    setShowEditModal(false);
+    setEditingEmpresa(null);
+    setEditModalTab('info');
+    setVendedores([]);
+    setShowPasswordChange(false);
+    setPasswordChangeData({
+      newPassword: '',
+      confirmPassword: ''
+    });
+    setPasswordChangeValidation({
+      isValid: false,
+      message: '',
+      passwordsMatch: false,
+      requirements: {
+        length: false,
+        hasLetter: false,
+        hasNumber: false
+      }
+    });
+  };
+
+  // Função para carregar vendedores da empresa
+  const loadVendedores = async (empresaId: string) => {
+    setLoadingVendedores(true);
+    try {
+      // Buscar vendedores sem o campo last_login para evitar erros
+      const { data: vendedoresData, error } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, email, role, is_active, created_at, tenant_id')
+        .eq('role', 'member')
+        .eq('is_active', true)
+        .order('first_name');
+
+      if (error) {
+        console.error('❌ Erro ao carregar vendedores:', error);
+        setVendedores([]);
+        return;
+      }
+
+      // Filtrar vendedores relacionados à empresa específica
+      const vendedoresFiltrados = vendedoresData?.filter(vendedor => {
+        // Filtrar por tenant_id da empresa
+        return vendedor.tenant_id === empresaId;
+      }) || [];
+      
+      // Buscar last_login para cada vendedor com prioridade ABSOLUTA para dados reais
+      const vendedoresComLogin = await Promise.all(
+        vendedoresFiltrados.map(async (vendedor) => {
+          try {
+            // PRIMEIRO: Verificar localStorage (login mais recente)
+            const loginKey = `last_login_${vendedor.id}`;
+            const localStorageLogin = localStorage.getItem(loginKey);
+            
+            if (localStorageLogin) {
+              console.log(`✅ LAST LOGIN REAL (localStorage) para ${vendedor.first_name} (${vendedor.email}):`, localStorageLogin);
+              
+              // Formatar para GMT Brasil
+              const formattedDate = new Date(localStorageLogin).toLocaleString('pt-BR', {
+                timeZone: 'America/Sao_Paulo',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              });
+              
+              return {
+                ...vendedor,
+                last_login: localStorageLogin,
+                last_login_formatted: formattedDate,
+                is_real_login: true
+              };
+            }
+
+            // SEGUNDO: tentar buscar last_login real do banco
+            const { data: loginData, error: loginError } = await supabase
+              .from('users')
+              .select('last_login')
+              .eq('id', vendedor.id)
+              .single();
+            
+            // Se encontrou last_login real e não é null/undefined
+            if (!loginError && loginData && loginData.last_login) {
+              const realLastLogin = loginData.last_login;
+              console.log(`✅ LAST LOGIN REAL (banco) para ${vendedor.first_name} (${vendedor.email}):`, realLastLogin);
+              
+              // Formatar para GMT Brasil
+              const formattedDate = new Date(realLastLogin).toLocaleString('pt-BR', {
+                timeZone: 'America/Sao_Paulo',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              });
+              
+              return {
+                ...vendedor,
+                last_login: realLastLogin,
+                last_login_formatted: formattedDate,
+                is_real_login: true
+              };
+            }
+            
+            // TERCEIRO: Se não tem last_login real, simular baseado no created_at
+            const simulatedLogin = generateLastLogin(vendedor.created_at, vendedor.id);
+            console.log(`🔄 Simulando last login para ${vendedor.first_name}:`, simulatedLogin);
+            return {
+              ...vendedor,
+              last_login: simulatedLogin,
+              last_login_formatted: new Date(simulatedLogin).toLocaleString('pt-BR', {
+                timeZone: 'America/Sao_Paulo',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              }),
+              is_real_login: false
+            };
+            
+          } catch (error) {
+            // Se der erro (coluna não existe), simular último acesso
+            const simulatedLogin = generateLastLogin(vendedor.created_at, vendedor.id);
+            console.log(`⚠️ Erro ao buscar last_login para ${vendedor.first_name}, simulando:`, simulatedLogin);
+            return {
+              ...vendedor,
+              last_login: simulatedLogin,
+              last_login_formatted: new Date(simulatedLogin).toLocaleString('pt-BR', {
+                timeZone: 'America/Sao_Paulo',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              }),
+              is_real_login: false
+            };
+          }
+        })
+      );
+
+
+      setVendedores(vendedoresComLogin);
+
+    } catch (error) {
+      console.error('❌ Erro geral ao carregar vendedores:', error);
+      setVendedores([]);
+    } finally {
+      setLoadingVendedores(false);
+    }
+  };
+
+  // Função para alterar senha do admin
+  const handleChangeAdminPassword = async () => {
+    if (!editingEmpresa?.admin?.id || !passwordChangeValidation.isValid) {
+      alert('Por favor, preencha uma senha válida que atenda aos requisitos.');
+      return;
+    }
+
+    const confirmChange = confirm(
+      `Tem certeza que deseja alterar a senha do administrador "${editingEmpresa.admin.name}"?\n\nEsta ação não pode ser desfeita.`
+    );
+
+    if (!confirmChange) return;
+
+    try {
+      // Atualizar senha no banco de dados
+      const { error } = await supabase
+        .from('users')
+        .update({ password_hash: passwordChangeData.newPassword })
+        .eq('id', editingEmpresa.admin.id);
+
+      if (error) {
+        throw new Error(`Erro ao atualizar senha: ${error.message}`);
+      }
+
+      // Limpar campos de senha
+      setPasswordChangeData({
+        newPassword: '',
+        confirmPassword: ''
+      });
+      setShowPasswordChange(false);
+      
+      alert(`✅ Senha do administrador "${editingEmpresa.admin.name}" alterada com sucesso!\n\nO administrador pode fazer login com a nova senha.`);
+      
+      logger.success('Senha do admin alterada:', editingEmpresa.admin.email);
+
+    } catch (error) {
+      logger.error('Erro ao alterar senha do admin:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      alert(`❌ Erro ao alterar senha: ${errorMessage}`);
+    }
   };
 
   const fetchEmpresas = async () => {
@@ -304,10 +587,101 @@ const EmpresasModule: React.FC = () => {
         }
       }
 
+      // Aplicar a mesma lógica de last_login para admins que usamos para vendedores
+      const adminsComLogin = await Promise.all(
+        adminsData.map(async (admin) => {
+          try {
+            // PRIMEIRO: Verificar localStorage (login mais recente)
+            const loginKey = `last_login_${admin.id}`;
+            const localStorageLogin = localStorage.getItem(loginKey);
+            
+            if (localStorageLogin) {
+              console.log(`✅ LAST LOGIN REAL (localStorage) para admin ${admin.first_name} (${admin.email}):`, localStorageLogin);
+              
+              return {
+                ...admin,
+                last_login: localStorageLogin,
+                last_login_formatted: new Date(localStorageLogin).toLocaleString('pt-BR', {
+                  timeZone: 'America/Sao_Paulo',
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                }),
+                is_real_login: true
+              };
+            }
+
+            // SEGUNDO: tentar buscar last_login real do banco
+            const { data: loginData, error: loginError } = await supabase
+              .from('users')
+              .select('last_login')
+              .eq('id', admin.id)
+              .single();
+            
+            // Se encontrou last_login real e não é null/undefined
+            if (!loginError && loginData && loginData.last_login) {
+              const realLastLogin = loginData.last_login;
+              console.log(`✅ LAST LOGIN REAL (banco) para admin ${admin.first_name} (${admin.email}):`, realLastLogin);
+              
+              return {
+                ...admin,
+                last_login: realLastLogin,
+                last_login_formatted: new Date(realLastLogin).toLocaleString('pt-BR', {
+                  timeZone: 'America/Sao_Paulo',
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                }),
+                is_real_login: true
+              };
+            }
+            
+            // TERCEIRO: Se não tem last_login real, simular baseado no created_at
+            const simulatedLogin = generateLastLogin(admin.created_at, admin.id);
+            console.log(`🔄 Simulando last login para admin ${admin.first_name}:`, simulatedLogin);
+            return {
+              ...admin,
+              last_login: simulatedLogin,
+              last_login_formatted: new Date(simulatedLogin).toLocaleString('pt-BR', {
+                timeZone: 'America/Sao_Paulo',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              }),
+              is_real_login: false
+            };
+            
+          } catch (error) {
+            // Se der erro (coluna não existe), simular último acesso
+            const simulatedLogin = generateLastLogin(admin.created_at, admin.id);
+            console.log(`⚠️ Erro ao buscar last_login para admin ${admin.first_name}, simulando:`, simulatedLogin);
+            return {
+              ...admin,
+              last_login: simulatedLogin,
+              last_login_formatted: new Date(simulatedLogin).toLocaleString('pt-BR', {
+                timeZone: 'America/Sao_Paulo',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              }),
+              is_real_login: false
+            };
+          }
+        })
+      );
+
       // Converter dados para interface Empresa
       const empresasFormatadas = (data || []).map(item => {
-        // Buscar admin da empresa
-        const admin = adminsData.find(admin => admin.tenant_id === item.id);
+        // Buscar admin da empresa (agora com last_login processado)
+        const admin = adminsComLogin.find(admin => admin.tenant_id === item.id);
         
         return {
           id: item.id,
@@ -330,7 +704,9 @@ const EmpresasModule: React.FC = () => {
             id: admin.id,
             name: `${admin.first_name || ''} ${admin.last_name || ''}`.trim() || 'Sem nome',
             email: admin.email,
-            last_login: generateLastLogin(admin.created_at, admin.id)
+            last_login: admin.last_login,
+            last_login_formatted: admin.last_login_formatted,
+            is_real_login: admin.is_real_login
           } : undefined
         };
       });
@@ -516,6 +892,7 @@ const EmpresasModule: React.FC = () => {
         requirements: { length: false, hasLetter: false, hasNumber: false }
       });
       setShowForm(false);
+      setShowEditModal(false);
       setEditingEmpresa(null);
       
     } catch (error) {
@@ -543,17 +920,32 @@ const EmpresasModule: React.FC = () => {
         admin_password: ''
       });
       setEditingEmpresa(empresa);
-      setShowForm(true);
       
-      // Scroll para o formulário
-      setTimeout(() => {
-        const formElement = document.querySelector('form');
-        if (formElement) {
-          formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Resetar estados da alteração de senha
+      setShowPasswordChange(false);
+      setPasswordChangeData({
+        newPassword: '',
+        confirmPassword: ''
+      });
+      setPasswordChangeValidation({
+        isValid: false,
+        message: '',
+        passwordsMatch: false,
+        requirements: {
+          length: false,
+          hasLetter: false,
+          hasNumber: false
         }
-      }, 100);
+      });
       
-      logger.info('Editando empresa:', empresa.name);
+      // Abrir modal ao invés do formulário inline
+      setEditModalTab('info'); // Começar na aba de informações
+      setShowEditModal(true);
+      
+      // Carregar vendedores
+      loadVendedores(empresa.id);
+      
+      logger.info('Abrindo modal de edição para empresa:', empresa.name);
     } catch (error) {
       logger.error('Erro ao preparar edição:', error);
       alert('Erro ao carregar dados da empresa para edição');
@@ -1035,6 +1427,165 @@ const EmpresasModule: React.FC = () => {
               </div>
             )}
 
+            {/* Alteração de Senha do Admin (apenas na edição) */}
+            {editingEmpresa && editingEmpresa.admin && (
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <h4 className="text-lg font-semibold text-slate-900 flex items-center">
+                    <Key className="w-5 h-5 mr-2 text-slate-600" />
+                    Alterar Senha do Administrador
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordChange(!showPasswordChange)}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                      showPasswordChange
+                        ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                        : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                    }`}
+                  >
+                    {showPasswordChange ? 'Cancelar' : 'Alterar Senha'}
+                  </button>
+                </div>
+
+                {/* Informações do Admin Atual */}
+                <div className="bg-slate-50 rounded-lg p-4 mb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-slate-200 rounded-lg flex items-center justify-center">
+                      <User className="w-5 h-5 text-slate-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-slate-900">{editingEmpresa.admin.name}</p>
+                      <p className="text-sm text-slate-600">{editingEmpresa.admin.email}</p>
+                      {editingEmpresa.admin.last_login && (
+                        <p className="text-xs text-slate-500">
+                          Último acesso: {editingEmpresa.admin.last_login_formatted || formatDateBrasilia(editingEmpresa.admin.last_login)}
+                          {editingEmpresa.admin.is_real_login === false && (
+                            <span className="text-xs text-amber-600 ml-1">(simulado)</span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Formulário de Alteração de Senha */}
+                {showPasswordChange && (
+                  <div className="space-y-4 bg-blue-50 rounded-lg p-6 border border-blue-200">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                          Nova Senha *
+                        </label>
+                        <input
+                          type="password"
+                          value={passwordChangeData.newPassword}
+                          onChange={(e) => setPasswordChangeData({
+                            ...passwordChangeData,
+                            newPassword: e.target.value
+                          })}
+                          placeholder="Mínimo 6 caracteres com letras e números"
+                          className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-colors bg-white ${
+                            passwordChangeData.newPassword && !passwordChangeValidation.requirements.length 
+                              ? 'border-red-300 focus:ring-red-500' 
+                              : passwordChangeData.newPassword && passwordChangeValidation.requirements.length
+                              ? 'border-green-300 focus:ring-green-500'
+                              : 'border-gray-200 focus:ring-blue-500'
+                          }`}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                          Confirmar Nova Senha *
+                        </label>
+                        <input
+                          type="password"
+                          value={passwordChangeData.confirmPassword}
+                          onChange={(e) => setPasswordChangeData({
+                            ...passwordChangeData,
+                            confirmPassword: e.target.value
+                          })}
+                          placeholder="Digite a senha novamente"
+                          className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-colors bg-white ${
+                            passwordChangeData.confirmPassword && !passwordChangeValidation.passwordsMatch 
+                              ? 'border-red-300 focus:ring-red-500' 
+                              : passwordChangeData.confirmPassword && passwordChangeValidation.passwordsMatch
+                              ? 'border-green-300 focus:ring-green-500'
+                              : 'border-gray-200 focus:ring-blue-500'
+                          }`}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Validação da nova senha */}
+                    {passwordChangeData.newPassword && passwordChangeValidation.message && (
+                      <div className={`text-sm ${
+                        passwordChangeValidation.isValid ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        <div className="flex items-center space-x-2 mb-2">
+                          {passwordChangeValidation.isValid ? (
+                            <div className="w-5 h-5 bg-green-100 rounded-full flex items-center justify-center">
+                              <div className="w-2 h-2 bg-green-600 rounded-full"></div>
+                            </div>
+                          ) : (
+                            <div className="w-5 h-5 bg-red-100 rounded-full flex items-center justify-center">
+                              <X className="w-3 h-3 text-red-600" />
+                            </div>
+                          )}
+                          <span className="font-medium">{passwordChangeValidation.message}</span>
+                        </div>
+                        
+                        {/* Indicadores de requisitos */}
+                        <div className="ml-7 space-y-1">
+                          <div className={`flex items-center space-x-2 text-xs ${
+                            passwordChangeValidation.requirements.length ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            <div className={`w-3 h-3 rounded-full ${
+                              passwordChangeValidation.requirements.length ? 'bg-green-500' : 'bg-red-500'
+                            }`}></div>
+                            <span>Mínimo 6 caracteres</span>
+                          </div>
+                          <div className={`flex items-center space-x-2 text-xs ${
+                            passwordChangeValidation.requirements.hasLetter ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            <div className={`w-3 h-3 rounded-full ${
+                              passwordChangeValidation.requirements.hasLetter ? 'bg-green-500' : 'bg-red-500'
+                            }`}></div>
+                            <span>Pelo menos 1 letra</span>
+                          </div>
+                          <div className={`flex items-center space-x-2 text-xs ${
+                            passwordChangeValidation.requirements.hasNumber ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            <div className={`w-3 h-3 rounded-full ${
+                              passwordChangeValidation.requirements.hasNumber ? 'bg-green-500' : 'bg-red-500'
+                            }`}></div>
+                            <span>Pelo menos 1 número</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Botão para alterar senha */}
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleChangeAdminPassword}
+                        disabled={!passwordChangeValidation.isValid}
+                        className={`px-6 py-3 rounded-xl font-medium transition-all ${
+                          passwordChangeValidation.isValid
+                            ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow-md transform hover:-translate-y-0.5'
+                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        }`}
+                      >
+                        Alterar Senha do Admin
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex items-center justify-end space-x-4 pt-6 border-t border-gray-100">
               <button
                 type="button"
@@ -1046,6 +1597,22 @@ const EmpresasModule: React.FC = () => {
                     isValid: false,
                     message: '',
                     requirements: { length: false, hasLetter: false, hasNumber: false }
+                  });
+                  // Resetar estados da alteração de senha
+                  setShowPasswordChange(false);
+                  setPasswordChangeData({
+                    newPassword: '',
+                    confirmPassword: ''
+                  });
+                  setPasswordChangeValidation({
+                    isValid: false,
+                    message: '',
+                    passwordsMatch: false,
+                    requirements: {
+                      length: false,
+                      hasLetter: false,
+                      hasNumber: false
+                    }
                   });
                 }}
                 className="px-6 py-3 text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl font-medium transition-colors"
@@ -1213,7 +1780,10 @@ const EmpresasModule: React.FC = () => {
                         {empresa.admin.last_login && (
                           <div className="flex items-center space-x-2 mt-2 text-xs text-slate-500">
                             <Clock className="w-3 h-3" />
-                            <span>Último acesso: {formatDateBrasilia(empresa.admin.last_login)}</span>
+                            <span>Último acesso: {empresa.admin.last_login_formatted || formatDateBrasilia(empresa.admin.last_login)}</span>
+                            {empresa.admin.is_real_login === false && (
+                              <span className="text-xs text-amber-600 ml-1">(simulado)</span>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1285,6 +1855,481 @@ const EmpresasModule: React.FC = () => {
           </>
         )}
       </div>
+
+      {/* Modal de Edição com Abas */}
+      {showEditModal && editingEmpresa && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            {/* Header do Modal */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-700 font-semibold">
+                  {editingEmpresa.name.charAt(0)}
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-slate-900">
+                    Editar Empresa: {editingEmpresa.name}
+                  </h2>
+                  <p className="text-sm text-slate-600">{editingEmpresa.industry}</p>
+                </div>
+              </div>
+              <button
+                onClick={handleCloseEditModal}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Abas do Modal */}
+            <div className="flex border-b border-gray-200">
+              {[
+                { id: 'info', label: 'Informações da Empresa', icon: Building },
+                { id: 'senha', label: 'Alterar Senha', icon: Key, disabled: !editingEmpresa.admin },
+                { id: 'vendedores', label: 'Vendedores', icon: Users }
+              ].map((tab) => {
+                const IconComponent = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => !tab.disabled && setEditModalTab(tab.id as any)}
+                    disabled={tab.disabled}
+                    className={`flex items-center space-x-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                      editModalTab === tab.id
+                        ? 'border-blue-500 text-blue-600 bg-blue-50'
+                        : tab.disabled
+                        ? 'border-transparent text-gray-400 cursor-not-allowed'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <IconComponent className="w-4 h-4" />
+                    <span>{tab.label}</span>
+                    {tab.disabled && <span className="text-xs">(Sem admin)</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Conteúdo das Abas */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Aba: Informações da Empresa */}
+              {editModalTab === 'info' && (
+                <div className="space-y-6">
+                  <form onSubmit={handleSubmit}>
+                    {/* Dados da Empresa */}
+                    <div className="space-y-6">
+                      <h4 className="text-lg font-semibold text-slate-900 mb-6 flex items-center">
+                        <Building className="w-5 h-5 mr-2 text-slate-600" />
+                        Dados da Empresa
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
+                            Nome da Empresa *
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.name}
+                            onChange={(e) => setFormData({...formData, name: e.target.value})}
+                            required
+                            placeholder="Nome completo da empresa"
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
+                            Nicho de Atuação *
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.industry}
+                            onChange={(e) => setFormData({...formData, industry: e.target.value})}
+                            required
+                            placeholder="Ex: Marketing Digital, E-commerce, Consultoria"
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
+                            Website
+                          </label>
+                          <input
+                            type="url"
+                            value={formData.website}
+                            onChange={(e) => setFormData({...formData, website: e.target.value})}
+                            placeholder="https://empresa.com.br"
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
+                            Telefone
+                          </label>
+                          <input
+                            type="tel"
+                            value={formData.phone}
+                            onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                            placeholder="(11) 99999-9999"
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
+                            Email
+                          </label>
+                          <input
+                            type="email"
+                            value={formData.email}
+                            onChange={(e) => setFormData({...formData, email: e.target.value})}
+                            placeholder="contato@empresa.com.br"
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
+                            Cidade e Estado *
+                          </label>
+                          <CityAutocomplete
+                            value={formData.city && formData.state ? `${formData.city}/${formData.state}` : ''}
+                            onChange={handleCityChange}
+                            placeholder="Digite o nome da cidade..."
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                          Endereço Completo
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.address}
+                          onChange={(e) => setFormData({...formData, address: e.target.value})}
+                          placeholder="Rua, número, bairro, CEP"
+                          className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Expectativas Mensais */}
+                    <div className="mt-8">
+                      <h4 className="text-lg font-semibold text-slate-900 mb-6 flex items-center">
+                        <Target className="w-5 h-5 mr-2 text-slate-600" />
+                        Expectativas Mensais
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
+                            Expectativa de Leads *
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={formData.expected_leads_monthly}
+                            onChange={(e) => setFormData({...formData, expected_leads_monthly: e.target.value})}
+                            required
+                            placeholder="Ex: 100"
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
+                            Expectativa de Vendas *
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={formData.expected_sales_monthly}
+                            onChange={(e) => setFormData({...formData, expected_sales_monthly: e.target.value})}
+                            required
+                            placeholder="Ex: 20"
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
+                            Expectativa de Seguidores *
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={formData.expected_followers_monthly}
+                            onChange={(e) => setFormData({...formData, expected_followers_monthly: e.target.value})}
+                            required
+                            placeholder="Ex: 500"
+                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition-colors bg-gray-50 focus:bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Botões */}
+                    <div className="flex items-center justify-end space-x-4 pt-6 border-t border-gray-100 mt-8">
+                      <button
+                        type="button"
+                        onClick={handleCloseEditModal}
+                        className="px-6 py-3 text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl font-medium transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-8 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-medium transition-all shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
+                      >
+                        Atualizar Empresa
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* Aba: Alterar Senha */}
+              {editModalTab === 'senha' && editingEmpresa.admin && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-lg font-semibold text-slate-900 flex items-center">
+                      <Key className="w-5 h-5 mr-2 text-slate-600" />
+                      Alterar Senha do Administrador
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setShowPasswordChange(!showPasswordChange)}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        showPasswordChange
+                          ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                          : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                      }`}
+                    >
+                      {showPasswordChange ? 'Cancelar' : 'Alterar Senha'}
+                    </button>
+                  </div>
+
+                  {/* Informações do Admin Atual */}
+                  <div className="bg-slate-50 rounded-lg p-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-slate-200 rounded-lg flex items-center justify-center">
+                        <User className="w-5 h-5 text-slate-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-slate-900">{editingEmpresa.admin.name}</p>
+                        <p className="text-sm text-slate-600">{editingEmpresa.admin.email}</p>
+                        {editingEmpresa.admin.last_login && (
+                          <p className="text-xs text-slate-500">
+                            Último acesso: {editingEmpresa.admin.last_login_formatted || formatDateBrasilia(editingEmpresa.admin.last_login)}
+                            {editingEmpresa.admin.is_real_login === false && (
+                              <span className="text-xs text-amber-600 ml-1">(simulado)</span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Formulário de Alteração de Senha */}
+                  {showPasswordChange && (
+                    <div className="space-y-4 bg-blue-50 rounded-lg p-6 border border-blue-200">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
+                            Nova Senha *
+                          </label>
+                          <input
+                            type="password"
+                            value={passwordChangeData.newPassword}
+                            onChange={(e) => setPasswordChangeData({
+                              ...passwordChangeData,
+                              newPassword: e.target.value
+                            })}
+                            placeholder="Mínimo 6 caracteres com letras e números"
+                            className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-colors bg-white ${
+                              passwordChangeData.newPassword && !passwordChangeValidation.requirements.length 
+                                ? 'border-red-300 focus:ring-red-500' 
+                                : passwordChangeData.newPassword && passwordChangeValidation.requirements.length
+                                ? 'border-green-300 focus:ring-green-500'
+                                : 'border-gray-200 focus:ring-blue-500'
+                            }`}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
+                            Confirmar Nova Senha *
+                          </label>
+                          <input
+                            type="password"
+                            value={passwordChangeData.confirmPassword}
+                            onChange={(e) => setPasswordChangeData({
+                              ...passwordChangeData,
+                              confirmPassword: e.target.value
+                            })}
+                            placeholder="Digite a senha novamente"
+                            className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:border-transparent transition-colors bg-white ${
+                              passwordChangeData.confirmPassword && !passwordChangeValidation.passwordsMatch 
+                                ? 'border-red-300 focus:ring-red-500' 
+                                : passwordChangeData.confirmPassword && passwordChangeValidation.passwordsMatch
+                                ? 'border-green-300 focus:ring-green-500'
+                                : 'border-gray-200 focus:ring-blue-500'
+                            }`}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Validação da nova senha */}
+                      {passwordChangeData.newPassword && passwordChangeValidation.message && (
+                        <div className={`text-sm ${
+                          passwordChangeValidation.isValid ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          <div className="flex items-center space-x-2 mb-2">
+                            {passwordChangeValidation.isValid ? (
+                              <div className="w-5 h-5 bg-green-100 rounded-full flex items-center justify-center">
+                                <div className="w-2 h-2 bg-green-600 rounded-full"></div>
+                              </div>
+                            ) : (
+                              <div className="w-5 h-5 bg-red-100 rounded-full flex items-center justify-center">
+                                <X className="w-3 h-3 text-red-600" />
+                              </div>
+                            )}
+                            <span className="font-medium">{passwordChangeValidation.message}</span>
+                          </div>
+                          
+                          {/* Indicadores de requisitos */}
+                          <div className="ml-7 space-y-1">
+                            <div className={`flex items-center space-x-2 text-xs ${
+                              passwordChangeValidation.requirements.length ? 'text-green-600' : 'text-red-600'
+                            }`}>
+                              <div className={`w-3 h-3 rounded-full ${
+                                passwordChangeValidation.requirements.length ? 'bg-green-500' : 'bg-red-500'
+                              }`}></div>
+                              <span>Mínimo 6 caracteres</span>
+                            </div>
+                            <div className={`flex items-center space-x-2 text-xs ${
+                              passwordChangeValidation.requirements.hasLetter ? 'text-green-600' : 'text-red-600'
+                            }`}>
+                              <div className={`w-3 h-3 rounded-full ${
+                                passwordChangeValidation.requirements.hasLetter ? 'bg-green-500' : 'bg-red-500'
+                              }`}></div>
+                              <span>Pelo menos 1 letra</span>
+                            </div>
+                            <div className={`flex items-center space-x-2 text-xs ${
+                              passwordChangeValidation.requirements.hasNumber ? 'text-green-600' : 'text-red-600'
+                            }`}>
+                              <div className={`w-3 h-3 rounded-full ${
+                                passwordChangeValidation.requirements.hasNumber ? 'bg-green-500' : 'bg-red-500'
+                              }`}></div>
+                              <span>Pelo menos 1 número</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Botão para alterar senha */}
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={handleChangeAdminPassword}
+                          disabled={!passwordChangeValidation.isValid}
+                          className={`px-6 py-3 rounded-xl font-medium transition-all ${
+                            passwordChangeValidation.isValid
+                              ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow-md transform hover:-translate-y-0.5'
+                              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          }`}
+                        >
+                          Alterar Senha do Admin
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Aba: Vendedores */}
+              {editModalTab === 'vendedores' && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-lg font-semibold text-slate-900 flex items-center">
+                      <Users className="w-5 h-5 mr-2 text-slate-600" />
+                      Vendedores da Empresa
+                    </h4>
+                    <div className="flex items-center space-x-2 text-sm text-slate-500">
+                      <UserCheck className="w-4 h-4" />
+                      <span>{vendedores.length} vendedor(es)</span>
+                    </div>
+                  </div>
+
+                  {loadingVendedores ? (
+                    <div className="text-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3"></div>
+                      <p className="text-slate-500">Carregando vendedores...</p>
+                    </div>
+                  ) : vendedores.length === 0 ? (
+                    <div className="text-center py-12">
+                      <div className="w-16 h-16 bg-slate-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                        <Users className="w-8 h-8 text-slate-400" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-slate-900 mb-2">Nenhum vendedor encontrado</h3>
+                      <p className="text-slate-600">
+                        Não há vendedores (usuários com role 'member') cadastrados no sistema.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {vendedores.map((vendedor) => (
+                        <div key={vendedor.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                <User className="w-5 h-5 text-blue-600" />
+                              </div>
+                              <div>
+                                <h4 className="font-medium text-slate-900">
+                                  {vendedor.first_name} {vendedor.last_name}
+                                </h4>
+                                <p className="text-sm text-slate-600">{vendedor.email}</p>
+                                                                 <div className="flex items-center space-x-4 mt-1">
+                                   <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                     <Shield className="w-3 h-3 mr-1" />
+                                     {vendedor.role}
+                                   </span>
+                                   <span className="text-xs text-slate-500">
+                                     Desde: {new Date(vendedor.created_at).toLocaleDateString('pt-BR')}
+                                     {vendedor.last_login && (
+                                       <> • Último acesso: {vendedor.last_login_formatted || formatDateBrasilia(vendedor.last_login)}</>
+                                     )}
+                                     {vendedor.is_real_login === false && (
+                                       <span className="text-xs text-amber-600 ml-1">(simulado)</span>
+                                     )}
+                                   </span>
+                                 </div>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                                vendedor.is_active 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                {vendedor.is_active ? 'Ativo' : 'Inativo'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,7 +1,6 @@
-import React from 'react';
-import { useDroppable } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { Plus, Clipboard } from 'lucide-react';
+import React, { memo, useMemo } from 'react';
+import { Droppable } from '@hello-pangea/dnd';
+import { Plus } from 'lucide-react';
 import LeadCard from './LeadCard';
 import { CustomField, PipelineStage, Lead } from '../../types/Pipeline';
 
@@ -14,7 +13,7 @@ interface KanbanColumnProps {
   onEditLead?: (lead: Lead) => void;
 }
 
-const KanbanColumn: React.FC<KanbanColumnProps> = ({
+const KanbanColumn: React.FC<KanbanColumnProps> = memo(({
   stage,
   leads,
   customFields,
@@ -22,101 +21,91 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   onUpdateLead,
   onEditLead
 }) => {
-  const { setNodeRef, isOver } = useDroppable({
-    id: stage.id
-  });
+  // 🚀 MEMOIZAÇÃO OTIMIZADA - Calcular valor total apenas quando leads mudam
+  const totalValue = useMemo(() => {
+    return leads.reduce((sum, lead) => {
+      const value = lead.custom_data?.valor || lead.custom_data?.valor_proposta || '0';
+      const numericValue = parseFloat(value.toString().replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+      return sum + numericValue;
+    }, 0);
+  }, [leads]);
 
-  const totalValue = leads.reduce((sum, lead) => {
-    const value = lead.custom_data?.valor || lead.custom_data?.valor_proposta || '0';
-    const numValue = typeof value === 'string' ? parseFloat(value.replace(/[^\d,.-]/g, '').replace(',', '.')) : value;
-    return sum + (isNaN(numValue) ? 0 : numValue);
-  }, 0);
-
-  // Função para formatar valor monetário
-  const formatCurrency = (value: number): string => {
+  // 🚀 FORMATAÇÃO MEMOIZADA
+  const formattedValue = useMemo(() => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL'
-    }).format(value);
-  };
+    }).format(totalValue);
+  }, [totalValue]);
 
-  // Função para obter cor da etapa baseada no nome
-  const getStageBackgroundColor = () => {
-    const stageName = stage.name.toLowerCase();
-    if (stageName.includes('ganho') || stageName.includes('fechado') || stageName.includes('won')) {
-      return 'border-green-200';
-    }
-    if (stageName.includes('perdido') || stageName.includes('lost')) {
-      return 'border-red-200';
-    }
-    return 'border-gray-200';
-  };
+  // 🚀 DROPPABLE ID MEMOIZADO
+  const droppableId = useMemo(() => stage.id, [stage.id]);
+
+  // 🚀 HANDLER OTIMIZADO
+  const handleAddLead = useMemo(() => () => onAddLead(stage.id), [onAddLead, stage.id]);
 
   return (
-    <div
-      ref={setNodeRef}
-      className={`flex flex-col w-80 border border-opacity-50 rounded-xl transition-all duration-300 ${getStageBackgroundColor()} ${
-        isOver ? 'border-blue-300 bg-blue-50 shadow-lg transform scale-105' : 'hover:shadow-md'
-      }`}
-      style={{ minHeight: '600px' }}
-    >
-      {/* Header da Coluna */}
-      <div className={`px-4 py-4 border-b border-gray-200 rounded-t-xl`}>
+    <div className="flex-shrink-0 w-80 h-full flex flex-col bg-gray-50 rounded-lg border border-gray-200">
+      {/* Header da coluna - fixo no topo */}
+      <div className="flex-shrink-0 p-4 border-b border-gray-200 bg-white rounded-t-lg">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="font-semibold text-gray-900 text-base flex items-center gap-2">
-            <div 
-              className="w-3 h-3 rounded-full" 
-              style={{ backgroundColor: stage.color }}
-            ></div>
-            {stage.name}
-          </h3>
-          <div className="text-xs font-semibold text-white bg-gray-600 px-2.5 py-1 rounded-full min-w-[24px] text-center">
+          <h3 className="font-semibold text-gray-900">{stage.name}</h3>
+          <span className="bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded-full">
             {leads.length}
-          </div>
+          </span>
         </div>
-
-        {/* Valor total - logo abaixo do título */}
+        
+        {/* Valor total da coluna */}
         <div className="text-sm font-bold text-green-600">
-          {formatCurrency(totalValue)}
+          {formattedValue}
         </div>
       </div>
-
-      {/* Conteúdo da Coluna */}
-      <div className="flex-1 p-3 space-y-3 overflow-y-auto bg-white">
-        <SortableContext items={leads.map(l => l.id)} strategy={verticalListSortingStrategy}>
-          {leads.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-              <Clipboard className="w-8 h-8 mb-2" />
-              <p className="text-sm font-medium">Nenhum Lead</p>
-            </div>
-          ) : (
-            leads.map((lead) => (
-              <LeadCard
-                key={lead.id}
-                lead={lead}
-                customFields={customFields}
-                onEdit={onEditLead}
-                onUpdate={onUpdateLead}
-              />
-            ))
-          )}
-        </SortableContext>
-      </div>
-
-      {/* Botão Criar Oportunidade - apenas na primeira etapa */}
-      {stage.order_index === 0 && (
-        <div className="p-4 border-t border-gray-200">
-          <button
-            onClick={() => onAddLead(stage.id)}
-            className="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-lg text-sm font-semibold transition-all duration-200 text-blue-700 bg-blue-50 border-2 border-blue-200 hover:bg-blue-100 hover:border-blue-300 hover:shadow-md"
+      
+      {/* Área de conteúdo com scroll */}
+      <Droppable droppableId={droppableId}>
+        {(provided, snapshot) => (
+          <div
+            ref={provided.innerRef}
+            {...provided.droppableProps}
+            className={`flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-3 min-h-0 ${
+              snapshot.isDraggingOver ? 'bg-blue-50 border-2 border-dashed border-blue-300 rounded-lg' : ''
+            }`}
           >
-            <Plus className="w-4 h-4" />
-            <span>Criar Oportunidade</span>
-          </button>
-        </div>
-      )}
+            {leads.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <p className="text-sm">Nenhum lead nesta etapa</p>
+              </div>
+            ) : (
+              leads.map((lead, index) => (
+                <LeadCard
+                  key={lead.id}
+                  lead={lead}
+                  customFields={customFields}
+                  index={index}
+                  onUpdate={onUpdateLead}
+                  onEdit={onEditLead}
+                />
+              ))
+            )}
+            {provided.placeholder}
+          </div>
+        )}
+      </Droppable>
+      
+      {/* Footer da coluna - fixo no rodapé */}
+      <div className="flex-shrink-0 p-3 border-t border-gray-200 bg-white rounded-b-lg">
+        <button
+          onClick={handleAddLead}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Adicionar Lead
+        </button>
+      </div>
     </div>
   );
-};
+});
+
+KanbanColumn.displayName = 'KanbanColumn';
 
 export default KanbanColumn;

@@ -13,6 +13,7 @@ import pipelinesRoutes from './routes/pipelines';
 import vendedoresRoutes from './routes/vendedores';
 import salesGoalsRoutes from './routes/sales-goals';
 import integrationsRoutes from './routes/integrations';
+import integrationsSecureRoutes from './routes/integrations-secure';
 import conversionsRoutes from './routes/conversions';
 import companiesRoutes from './routes/companies';
 import databaseRoutes from './routes/database';
@@ -20,6 +21,9 @@ import healthRoutes from './routes/health';
 import setupRoutes from './routes/setup';
 import mcpRoutes from './routes/mcp';
 import analyticsRoutes from './routes/analytics';
+import formsRoutes from './routes/forms';
+import leadTasksRoutes from './routes/leadTasks';
+import cadenceRoutes from './routes/cadence';
 
 // Middleware de autenticação
 import { authMiddleware } from './middleware/auth';
@@ -141,6 +145,21 @@ app.use('/api/auth', authRoutes);
 // Setup inicial do sistema
 app.use('/api/setup', setupRoutes);
 
+// Teste de cadência (sem autenticação para debug)
+app.post('/api/cadence/test-public', async (req, res) => {
+  try {
+    res.json({
+      message: 'API de cadência funcionando',
+      status: 'OK',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: error.message || 'Erro no teste'
+    });
+  }
+});
+
 // Webhooks (com autenticação própria)
 app.use('/api/webhooks', integrationsRoutes);
 
@@ -165,8 +184,18 @@ app.use('/api/pipelines', pipelinesRoutes);
 // app.use('/api/leads', leadsRoutes); // TODO: Implementar quando estiver pronto
 app.use('/api/sales-goals', salesGoalsRoutes);
 
+// Formulários
+app.use('/api/forms', formsRoutes);
+
+// Tarefas de Leads
+app.use('/api/lead-tasks', leadTasksRoutes);
+
+// Cadência de Leads
+app.use('/api/cadence', cadenceRoutes);
+
 // Integrações
 app.use('/api/integrations', integrationsRoutes);
+app.use('/api/integrations-secure', integrationsSecureRoutes);
 app.use('/api/conversions', conversionsRoutes);
 
 // Gestão de empresas
@@ -178,23 +207,10 @@ app.use('/api/database', databaseRoutes);
 // MCP Integration
 app.use('/api/mcp', mcpRoutes);
 
-// Rotas principais
-app.use('/api/auth', authRoutes);
-app.use('/api/health', healthRoutes);
-app.use('/api/setup', setupRoutes);
-
-// Rotas protegidas com autenticação
-app.use('/api/users', authMiddleware, usersRoutes);
-app.use('/api/companies', authMiddleware, companiesRoutes);
-app.use('/api/pipelines', authMiddleware, pipelinesRoutes);
-// app.use('/api/leads', authMiddleware, leadsRoutes); // TODO: Implementar
-app.use('/api/customers', authMiddleware, customersRoutes);
-app.use('/api/vendedores', authMiddleware, vendedoresRoutes);
-app.use('/api/sales-goals', authMiddleware, salesGoalsRoutes);
-app.use('/api/integrations', authMiddleware, integrationsRoutes);
-app.use('/api/database', authMiddleware, databaseRoutes);
-app.use('/api/mcp', authMiddleware, mcpRoutes);
-app.use('/api/analytics', authMiddleware, analyticsRoutes);
+// ============================================
+// ANALYTICS
+// ============================================
+app.use('/api/analytics', analyticsRoutes);
 
 // ============================================
 // TRATAMENTO DE ERROS

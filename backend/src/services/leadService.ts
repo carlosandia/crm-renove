@@ -1,4 +1,5 @@
-import { supabase } from '../index';
+import { supabase } from '../config/supabase';
+import { LeadTasksService } from './leadTasksService';
 
 export interface Lead {
   id: string;
@@ -117,10 +118,21 @@ export class LeadService {
   }
 
   static async moveLeadToStage(leadId: string, newStageId: string): Promise<Lead> {
-    return this.updateLead(leadId, { 
+    // 🚀 OTIMIZADO - Apenas atualizar o lead, sem gerar tarefas síncronas
+    const updatedLead = await this.updateLead(leadId, { 
       stage_id: newStageId,
       moved_at: new Date().toISOString()
     });
+
+    // 🔥 TAREFAS ASSÍNCRONAS - Não aguardar, executar em background
+    setImmediate(() => {
+      this.generateCadenceTasksForLeadAsync(updatedLead, newStageId)
+        .catch(error => {
+          console.warn('⚠️ Erro na geração assíncrona de tarefas:', error.message);
+        });
+    });
+
+    return updatedLead;
   }
 
   static async getLeadsByMember(memberId: string): Promise<Lead[]> {
@@ -135,5 +147,88 @@ export class LeadService {
     }
 
     return leads || [];
+  }
+
+  /**
+   * 🚀 NOVA FUNÇÃO - Gerar tarefas de forma completamente assíncrona
+   * Não bloqueia o fluxo principal de movimentação
+   */
+  static async generateCadenceTasksForLeadAsync(lead: Lead, newStageId: string): Promise<number> {
+    try {
+      console.log('🔄 Iniciando geração assíncrona de tarefas para lead:', lead.id);
+
+      // Buscar informações da etapa e pipeline em paralelo
+      const [stageResult, pipelineResult] = await Promise.allSettled([
+        supabase
+          .from('pipeline_stages')
+          .select('name, pipeline_id')
+          .eq('id', newStageId)
+          .single(),
+        
+        supabase
+          .from('pipelines')
+          .select('tenant_id')
+          .eq('id', lead.pipeline_id)
+          .single()
+      ]);
+
+      if (stageResult.status === 'rejected') {
+        console.warn('⚠️ Etapa não encontrada:', newStageId);
+        return 0;
+      }
+
+      if (pipelineResult.status === 'rejected') {
+        console.warn('⚠️ Pipeline não encontrada:', lead.pipeline_id);
+        return 0;
+      }
+
+      const stage = stageResult.value.data;
+      const pipeline = pipelineResult.value.data;
+
+      if (!stage || !pipeline) {
+        console.warn('⚠️ Dados insuficientes para geração de tarefas');
+        return 0;
+      }
+
+      // Gerar tarefas usando o serviço
+      const tasksGenerated = await LeadTasksService.generateTasksForLeadStageEntry(
+        lead.id,
+        lead.pipeline_id,
+        newStageId,
+        stage.name,
+        lead.assigned_to,
+        pipeline.tenant_id
+      );
+
+      if (tasksGenerated > 0) {
+        console.log(`✅ ${tasksGenerated} tarefas de cadência geradas assincronamente para lead ${lead.id}`);
+      }
+
+      return tasksGenerated;
+    } catch (error: any) {
+      console.warn('⚠️ Erro na geração assíncrona de tarefas:', error.message);
+      return 0;
+    }
+  }
+
+  /**
+   * 🔥 ENDPOINT PÚBLICO - Para chamadas do frontend
+   */
+  static async generateCadenceTasksForLeadEndpoint(leadId: string, stageId: string): Promise<{ success: boolean; tasksGenerated: number }> {
+    try {
+      // Buscar o lead
+      const lead = await this.getLeadById(leadId);
+      if (!lead) {
+        return { success: false, tasksGenerated: 0 };
+      }
+
+      // Gerar tarefas assincronamente
+      const tasksGenerated = await this.generateCadenceTasksForLeadAsync(lead, stageId);
+      
+      return { success: true, tasksGenerated };
+    } catch (error: any) {
+      console.error('❌ Erro no endpoint de geração de tarefas:', error.message);
+      return { success: false, tasksGenerated: 0 };
+    }
   }
 } 

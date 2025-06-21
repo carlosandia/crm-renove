@@ -1,52 +1,47 @@
-// Utilitário avançado para filtrar erros de extensões do Chrome no console
+// Utilitário robusto para filtrar erros irrelevantes do console
 export const setupConsoleFilter = () => {
   // Salvar referências originais
   const originalError = console.error;
   const originalWarn = console.warn;
-  const originalLog = console.log;
 
-  // Lista abrangente de padrões para filtrar
+  // Lista de padrões para filtrar
   const filterPatterns = [
     // Extensões do Chrome
     'chrome-extension://',
     'background.js',
     'background.html',
-    
-    // Erros de frame e messaging
-    'DelayedMessageSender',
-    'FrameDoesNotExistError',
-    'FrameIsBrowserFrameError',
-    'Frame with ID',
-    'Frame does not exist',
-    'cancelPendingRequests',
-    'readyToReceiveMessages',
-    'frameIsReadyToReceiveMessages',
-    'TabMonitor.frameIsReadyToReceiveMessages',
-    'setupContentScript',
-    'reset',
-    
-    // Runtime errors
-    'Unchecked runtime.lastError',
-    'Could not establish connection',
-    'Receiving end does not exist',
     'The message port closed before a response was received',
-    'Connection closed',
-    'Port error',
     
-    // Tab errors específicos
-    'tab 26603',
-    'tab 26684',
-    'tab 2668',
-    'tab does not exist',
-    'is a browser frame',
-    'showing error page',
+    // React Router v6 warnings conhecidos
+    'React Router Future Flag Warning',
+    'future.v7_startTransition',
+    'future.v7_relativeSplatPath',
     
-    // Outros padrões comuns
-    'Error: Cancelled',
-    'anonymous>',
-    'chunk-UPELNCPK',
-    'js:v=',
-    'net::ERR_FILE_NOT_FOUND'
+    // React DevTools
+    'react-devtools',
+    
+    // Vite/HMR warnings
+    '[vite]',
+    'HMR',
+    
+    // Browser APIs não críticos
+    'ResizeObserver loop limit exceeded',
+    'Non-passive event listener',
+    
+    // Supabase warnings não críticos
+    'Using the user object as returned from supabase.auth.getSession()',
+    
+    // Console warnings de desenvolvimento
+    'Warning: ReactDOM.render is no longer supported',
+    'Warning: validateDOMNesting',
+    
+    // Network errors que são tratados pela aplicação
+    'Failed to fetch',
+    'NetworkError',
+    
+    // Errors de chunk loading (lazy loading)
+    'Loading chunk',
+    'ChunkLoadError'
   ];
 
   // Função para verificar se deve filtrar
@@ -59,51 +54,50 @@ export const setupConsoleFilter = () => {
   // Interceptar console.error
   console.error = (...args) => {
     const message = args.join(' ');
+    
+    // Filtrar erros irrelevantes
     if (shouldFilter(message)) {
-      return; // Suprimir erro
+      return;
     }
+    
+    // Manter apenas erros importantes
     originalError.apply(console, args);
   };
 
-  // Interceptar console.warn
+  // Interceptar console.warn para warnings específicos
   console.warn = (...args) => {
     const message = args.join(' ');
+    
+    // Filtrar warnings irrelevantes
     if (shouldFilter(message)) {
-      return; // Suprimir warning
+      return;
     }
+    
+    // Manter warnings importantes
     originalWarn.apply(console, args);
   };
 
-  // Interceptar console.log para casos específicos
-  console.log = (...args) => {
-    const message = args.join(' ');
-    if (shouldFilter(message)) {
-      return; // Suprimir log
-    }
-    originalLog.apply(console, args);
-  };
-
-  // Interceptar erros não capturados
-  window.addEventListener('error', (event) => {
-    if (shouldFilter(event.message || '')) {
-      event.preventDefault();
-      event.stopPropagation();
-      return false;
-    }
-  });
-
-  // Interceptar promises rejeitadas
-  window.addEventListener('unhandledrejection', (event) => {
-    const message = event.reason?.toString() || '';
-    if (shouldFilter(message)) {
-      event.preventDefault();
-      return false;
-    }
-  });
+  // Log apenas em desenvolvimento
+  if (import.meta.env.DEV) {
+    console.log('🔧 Filtro de console configurado - suprimindo erros irrelevantes');
+  }
 };
 
-// Função para restaurar o console original (se necessário)
+// Função para restaurar o console original (para debugging)
 export const restoreConsole = () => {
-  // Esta função pode ser usada para restaurar o console original se necessário
-  // Por enquanto, deixamos vazia pois queremos manter o filtro ativo
-}; 
+  // Implementação básica - recarregar página para restaurar
+  if (import.meta.env.DEV) {
+    console.log('⚠️ Para restaurar console original, recarregue a página');
+  }
+};
+
+// Função para debug - mostrar todos os logs temporariamente
+export const enableDebugMode = () => {
+  if (import.meta.env.DEV) {
+    console.log('🐛 Modo debug ativado - todos os logs serão exibidos');
+    // Recarregar página para desativar filtros
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
+  }
+};

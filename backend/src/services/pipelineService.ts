@@ -1,4 +1,4 @@
-import { supabase } from '../index';
+import { supabase } from '../config/supabase';
 
 export interface Pipeline {
   id: string;

@@ -74,20 +74,20 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
 
   const getFieldIcon = (fieldType: string, fieldName: string) => {
     // Ícones específicos por nome do campo
-    if (fieldName.includes('nome')) return <User className="w-4 h-4" />;
-    if (fieldName.includes('email')) return <Mail className="w-4 h-4" />;
-    if (fieldName.includes('telefone') || fieldName.includes('phone')) return <Phone className="w-4 h-4" />;
-    if (fieldName.includes('empresa') || fieldName.includes('company')) return <Building className="w-4 h-4" />;
-    if (fieldName.includes('endereco') || fieldName.includes('address')) return <MapPin className="w-4 h-4" />;
-    if (fieldName.includes('valor') || fieldName.includes('value')) return <DollarSign className="w-4 h-4" />;
+    if (fieldName.includes('nome')) return <User className="w-4 h-4 text-gray-500" />;
+    if (fieldName.includes('email')) return <Mail className="w-4 h-4 text-gray-500" />;
+    if (fieldName.includes('telefone') || fieldName.includes('phone')) return <Phone className="w-4 h-4 text-gray-500" />;
+    if (fieldName.includes('empresa') || fieldName.includes('company')) return <Building className="w-4 h-4 text-gray-500" />;
+    if (fieldName.includes('endereco') || fieldName.includes('address')) return <MapPin className="w-4 h-4 text-gray-500" />;
+    if (fieldName.includes('valor') || fieldName.includes('value')) return <DollarSign className="w-4 h-4 text-gray-500" />;
     
     // Ícones por tipo de campo
     switch (fieldType) {
-      case 'email': return <Mail className="w-4 h-4" />;
-      case 'phone': return <Phone className="w-4 h-4" />;
-      case 'number': return <DollarSign className="w-4 h-4" />;
-      case 'date': return <Calendar className="w-4 h-4" />;
-      default: return <User className="w-4 h-4" />;
+      case 'email': return <Mail className="w-4 h-4 text-gray-500" />;
+      case 'phone': return <Phone className="w-4 h-4 text-gray-500" />;
+      case 'number': return <DollarSign className="w-4 h-4 text-gray-500" />;
+      case 'date': return <Calendar className="w-4 h-4 text-gray-500" />;
+      default: return <User className="w-4 h-4 text-gray-500" />;
     }
   };
 
@@ -130,20 +130,20 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[10000] p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden border border-gray-200">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
+        <div className="bg-white border-b border-gray-200 p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
-                <User className="w-5 h-5" />
+              <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                <User className="w-5 h-5 text-gray-600" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold">Editar Lead</h2>
-                <p className="opacity-90 text-sm mt-1">{leadName}</p>
+                <h2 className="text-xl font-semibold text-gray-900">Editar Lead</h2>
+                <p className="text-gray-500 text-sm mt-1">{leadName}</p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-colors"
+              className="text-gray-500 hover:bg-gray-100 rounded-lg p-2 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -157,7 +157,7 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
               onClick={() => setActiveTab('info')}
               className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === 'info'
-                  ? 'border-blue-500 text-blue-600'
+                  ? 'border-gray-900 text-gray-900'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
@@ -170,7 +170,7 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
               onClick={() => setActiveTab('display')}
               className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === 'display'
-                  ? 'border-blue-500 text-blue-600'
+                  ? 'border-gray-900 text-gray-900'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >

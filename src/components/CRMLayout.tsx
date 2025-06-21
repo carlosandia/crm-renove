@@ -29,17 +29,19 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-background flex w-full">
+    <div className="h-screen bg-background flex w-full overflow-hidden">
+      {/* Sidebar fixa */}
       <CRMSidebar 
         activeModule={activeModule}
         onNavigate={onNavigate}
         onToggle={handleSidebarToggle}
       />
       
+      {/* Conteúdo principal com margem para não sobrepor o sidebar */}
       <div className={`flex-1 flex flex-col transition-all duration-300 ${
         sidebarCollapsed ? 'ml-20' : 'ml-64'
-      }`}>
-        <main className="flex-1 bg-background relative">
+      } overflow-hidden`}>
+        <main className="flex-1 bg-background relative overflow-hidden">
           {/* Sistema de notificações interno */}
           <InternalNotifications 
             position="top-right"
@@ -48,13 +50,15 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
           />
           
           {isFullWidth ? (
-            <div className="h-screen bg-background overflow-hidden">
+            <div className="h-full bg-background overflow-x-auto overflow-y-hidden">
               {children}
             </div>
           ) : (
-            <div className="flex flex-col w-full p-6">
-              <div className="card-modern p-6 min-h-[calc(100vh-60px)]">
-                {children}
+            <div className="h-full overflow-y-auto overflow-x-hidden">
+              <div className="p-6">
+                <div className="card-modern p-6 min-h-[calc(100vh-60px)]">
+                  {children}
+                </div>
               </div>
             </div>
           )}

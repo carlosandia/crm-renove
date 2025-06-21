@@ -21,13 +21,17 @@ interface FeedbackModalProps {
   onClose: () => void;
   leadId: string;
   leadName: string;
+  pipelineId?: string;
+  pipelineName?: string;
 }
 
 const FeedbackModal: React.FC<FeedbackModalProps> = ({
   isOpen,
   onClose,
   leadId,
-  leadName
+  leadName,
+  pipelineId,
+  pipelineName
 }) => {
   const { user } = useAuth();
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
@@ -148,14 +152,21 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
       console.log('📤 Enviando feedback para o banco...');
       
       // Tentar inserir no banco primeiro
+      const feedbackData: any = {
+        lead_id: leadId,
+        user_id: user.id,
+        feedback_type: feedbackType,
+        comment: newFeedback.trim()
+      };
+
+      // Incluir pipeline_id se disponível
+      if (pipelineId) {
+        feedbackData.pipeline_id = pipelineId;
+      }
+
       const { data, error } = await supabase
         .from('lead_feedback')
-        .insert({
-          lead_id: leadId,
-          user_id: user.id,
-          feedback_type: feedbackType,
-          comment: newFeedback.trim()
-        })
+        .insert(feedbackData)
         .select()
         .single();
 

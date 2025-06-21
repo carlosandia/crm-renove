@@ -65,42 +65,142 @@ const FeedbackModule: React.FC = () => {
   const loadFeedbacks = async () => {
     setLoading(true);
     try {
-      // Carregar feedbacks do banco
+      console.log('🔍 Carregando feedbacks do banco...');
+      
+      // Tentar carregar da tabela lead_feedback primeiro
       const { data: feedbackData, error: feedbackError } = await supabase
         .from('lead_feedback')
         .select('*')
         .order('created_at', { ascending: false });
 
       if (feedbackError) {
-        console.log('⚠️ Tabela lead_feedback não encontrada, usando dados simulados');
+        console.log('⚠️ Tabela lead_feedback não encontrada:', feedbackError.message);
+        console.log('📋 Usando dados simulados');
         loadMockFeedbacks();
         return;
       }
 
       if (!feedbackData || feedbackData.length === 0) {
-        console.log('📋 Nenhum feedback encontrado, usando dados simulados');
+        console.log('📋 Nenhum feedback encontrado no banco, usando dados simulados');
         loadMockFeedbacks();
         return;
       }
 
-      // Buscar dados relacionados para cada feedback
+      console.log('✅ Feedbacks carregados do banco:', feedbackData.length);
+
+      // Processar feedbacks reais do banco
       const formattedFeedbacks: FeedbackData[] = [];
       
       for (const feedback of feedbackData) {
-        // Simular dados relacionados (em produção, fazer JOINs reais)
-        const mockData = generateMockFeedbackData(feedback);
-        formattedFeedbacks.push(mockData);
+        // Para feedbacks reais, vamos enriquecer com dados simulados por enquanto
+        // Em produção, isso seria feito com JOINs apropriados
+        const enrichedFeedback = await enrichFeedbackWithMockData(feedback);
+        formattedFeedbacks.push(enrichedFeedback);
       }
 
-      setFeedbacks(formattedFeedbacks);
-      extractFiltersFromData(formattedFeedbacks);
+      setFeedbacks([...formattedFeedbacks, ...getMockFeedbacks()]);
+      extractFiltersFromData([...formattedFeedbacks, ...getMockFeedbacks()]);
 
     } catch (error) {
-      console.error('Erro ao carregar feedbacks:', error);
+      console.error('❌ Erro ao carregar feedbacks:', error);
       loadMockFeedbacks();
     } finally {
       setLoading(false);
     }
+  };
+
+  // Função para enriquecer feedback real com dados simulados
+  const enrichFeedbackWithMockData = async (feedback: any): Promise<FeedbackData> => {
+    // Simular dados do vendedor e empresa baseado no user_id
+    const mockVendedores = [
+      { id: 'vendor-1', name: 'Carlos Mendes', email: 'carlos@empresaalpha.com' },
+      { id: 'vendor-2', name: 'Ana Silva', email: 'ana@betacorp.com' },
+      { id: 'vendor-3', name: 'Pedro Costa', email: 'pedro@gammaltda.com' }
+    ];
+
+    const mockEmpresas = [
+      { id: 'admin-1', company_name: 'Empresa Alpha Tecnologia', tenant_id: 'tenant-1' },
+      { id: 'admin-2', company_name: 'Beta Corp Solutions', tenant_id: 'tenant-2' },
+      { id: 'admin-3', company_name: 'Gamma Ltda', tenant_id: 'tenant-3' }
+    ];
+
+    const mockLeads = [
+      { id: 'lead-001', nome: 'João Silva', email: 'joao@clienteabc.com', telefone: '(11) 99999-9999', valor: 15000, source: 'meta' as const },
+      { id: 'lead-002', nome: 'Maria Santos', email: 'maria@empresa.com', telefone: '(11) 88888-8888', valor: 8500, source: 'google' as const },
+      { id: 'lead-003', nome: 'Roberto Oliveira', email: 'roberto@startup.com', telefone: '(11) 77777-7777', valor: 25000, source: 'linkedin' as const }
+    ];
+
+    const mockPipelines = [
+      { id: 'pipeline-1', name: 'Pipeline de Vendas' },
+      { id: 'pipeline-2', name: 'Pipeline Enterprise' }
+    ];
+
+    const mockStages = [
+      { id: 'stage-1', name: 'Novos Leads', color: '#3b82f6' },
+      { id: 'stage-2', name: 'Qualificados', color: '#10b981' },
+      { id: 'stage-3', name: 'Proposta Enviada', color: '#f59e0b' },
+      { id: 'stage-4', name: 'Fechados', color: '#ef4444' }
+    ];
+
+    // Selecionar dados aleatórios baseado no ID
+    const vendedorIndex = Math.abs(feedback.user_id?.charCodeAt(0) || 0) % mockVendedores.length;
+    const empresaIndex = vendedorIndex;
+    const leadIndex = Math.abs(feedback.lead_id?.charCodeAt(0) || 0) % mockLeads.length;
+    const pipelineIndex = Math.abs(feedback.pipeline_id?.charCodeAt(0) || 0) % mockPipelines.length;
+    const stageIndex = Math.abs(feedback.id?.charCodeAt(0) || 0) % mockStages.length;
+
+    return {
+      id: feedback.id,
+      feedback_type: feedback.feedback_type,
+      comment: feedback.comment,
+      created_at: feedback.created_at,
+      lead_id: feedback.lead_id,
+      vendedor: mockVendedores[vendedorIndex],
+      admin_empresa: mockEmpresas[empresaIndex],
+      lead: mockLeads[leadIndex],
+      pipeline: mockPipelines[pipelineIndex],
+      stage: mockStages[stageIndex]
+    };
+  };
+
+  // Função para obter feedbacks mock
+  const getMockFeedbacks = (): FeedbackData[] => {
+    return [
+      {
+        id: 'mock-1',
+        feedback_type: 'positive',
+        comment: 'Lead muito interessado no produto, respondeu rapidamente ao WhatsApp e já solicitou uma proposta comercial. Cliente demonstrou urgência na implementação.',
+        created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+        lead_id: 'lead-001',
+        vendedor: {
+          id: 'vendor-1',
+          name: 'Carlos Mendes',
+          email: 'carlos@empresaalpha.com'
+        },
+        admin_empresa: {
+          id: 'admin-1',
+          company_name: 'Empresa Alpha Tecnologia',
+          tenant_id: 'tenant-1'
+        },
+        lead: {
+          id: 'lead-001',
+          nome: 'João Silva',
+          email: 'joao@clienteabc.com',
+          telefone: '(11) 99999-9999',
+          valor: 15000,
+          source: 'meta'
+        },
+        pipeline: {
+          id: 'pipeline-1',
+          name: 'Pipeline de Vendas'
+        },
+        stage: {
+          id: 'stage-2',
+          name: 'Qualificados',
+          color: '#10b981'
+        }
+      }
+    ];
   };
 
   const loadMockFeedbacks = () => {
@@ -543,114 +643,80 @@ const FeedbackModule: React.FC = () => {
               const shouldTruncate = feedback.comment.length > 120;
               
               return (
-                <div key={feedback.id} className="p-6 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-start space-x-4">
-                    {/* Avatar do Vendedor */}
-                    <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center text-white font-medium flex-shrink-0">
-                      {feedback.vendedor.name.charAt(0)}
-                    </div>
+                <div key={feedback.id} className="p-4 hover:bg-gray-50 transition-colors">
+                  {/* Layout em linha única conforme solicitado */}
+                  <div className="flex items-center space-x-4 text-sm">
                     
-                    <div className="flex-1 min-w-0">
-                      {/* Linha 1: Vendedor e Empresa */}
-                      <div className="flex items-center space-x-3 mb-2">
-                        <h3 className="text-sm font-medium text-gray-900">
-                          {feedback.vendedor.name}
-                        </h3>
-                        <span className="text-xs text-gray-500">(Vendedor)</span>
-                        <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
-                          {feedback.admin_empresa.company_name}
-                        </span>
-                        <div className="flex items-center space-x-1">
-                          {feedback.feedback_type === 'positive' ? (
-                            <ThumbsUp className="w-4 h-4 text-green-600" />
-                          ) : (
-                            <ThumbsDown className="w-4 h-4 text-red-600" />
-                          )}
-                        </div>
+                    {/* 1. Nome do vendedor e empresa + ícone positivo/negativo */}
+                    <div className="flex items-center space-x-2 min-w-0 flex-shrink-0">
+                      <div className="flex items-center space-x-1">
+                        <span className="font-medium text-gray-900">{feedback.vendedor.name}</span>
+                        <span className="text-xs text-gray-500">({feedback.admin_empresa.company_name})</span>
                       </div>
-
-                      {/* Linha 2: Lead e Stage */}
-                      <div className="flex items-center space-x-3 mb-3">
-                        <span className="text-sm font-medium text-gray-700">Lead:</span>
-                        <span className="text-sm text-gray-900">{feedback.lead.nome}</span>
-                        <button
-                          onClick={() => handleStageClick(feedback)}
-                          className="text-xs px-2 py-1 rounded-full text-white font-medium hover:opacity-80 transition-opacity cursor-pointer"
-                          style={{ backgroundColor: feedback.stage.color }}
-                          title="Clique para ver detalhes da oportunidade"
-                        >
-                          {feedback.stage.name}
-                        </button>
-                        {feedback.lead.valor && (
-                          <span className="text-xs text-green-600 font-medium">
-                            {formatCurrency(feedback.lead.valor)}
-                          </span>
+                      <div className="flex items-center">
+                        {feedback.feedback_type === 'positive' ? (
+                          <ThumbsUp className="w-4 h-4 text-green-600" />
+                        ) : (
+                          <ThumbsDown className="w-4 h-4 text-red-600" />
                         )}
-                        {/* Canal de Origem */}
-                        {(() => {
-                          const sourceInfo = getSourceIcon(feedback.lead.source);
-                          const SourceIcon = sourceInfo.icon;
-                          return (
-                            <div 
-                              className={`flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium ${sourceInfo.bg} ${sourceInfo.color}`}
-                              title={`Canal: ${sourceInfo.label}`}
-                            >
-                              <SourceIcon className="w-3 h-3" />
-                              <span>{sourceInfo.label}</span>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                      
-                      {/* Linha 3: Comentário */}
-                      <div className="mb-3">
-                        <p className="text-sm text-gray-700">
-                          {shouldTruncate && !isExpanded 
-                            ? truncateComment(feedback.comment)
-                            : feedback.comment
-                          }
-                        </p>
-                        {shouldTruncate && (
-                          <button
-                            onClick={() => toggleCommentExpansion(feedback.id)}
-                            className="text-xs text-purple-600 hover:text-purple-800 mt-1 flex items-center space-x-1"
-                          >
-                            {isExpanded ? (
-                              <>
-                                <span>Ver menos</span>
-                                <ChevronUp className="w-3 h-3" />
-                              </>
-                            ) : (
-                              <>
-                                <span>Ver mais</span>
-                                <ChevronDown className="w-3 h-3" />
-                              </>
-                            )}
-                          </button>
-                        )}
-                      </div>
-                      
-                      {/* Linha 4: Informações adicionais */}
-                      <div className="flex items-center space-x-4 text-xs text-gray-500">
-                        <div className="flex items-center space-x-1">
-                          <Clock className="w-3 h-3" />
-                          <span>{formatDate(feedback.created_at)}</span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          <Building className="w-3 h-3" />
-                          <span>Pipeline: {feedback.pipeline.name}</span>
-                        </div>
                       </div>
                     </div>
 
-                    {/* Botão Ver Detalhes */}
-                    <button
-                      onClick={() => setSelectedFeedback(feedback)}
-                      className="p-3 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-xl transition-all duration-200 hover:shadow-md"
-                      title="Ver todos os detalhes"
-                    >
-                      <Eye className="w-5 h-5" />
-                    </button>
+                    {/* 2. Nome do lead e canal */}
+                    <div className="flex items-center space-x-2 min-w-0 flex-shrink-0">
+                      <span className="font-medium text-gray-900">{feedback.lead.nome}</span>
+                      {(() => {
+                        const sourceInfo = getSourceIcon(feedback.lead.source);
+                        const SourceIcon = sourceInfo.icon;
+                        return (
+                          <div 
+                            className={`flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium ${sourceInfo.bg} ${sourceInfo.color}`}
+                            title={`Canal: ${sourceInfo.label}`}
+                          >
+                            <SourceIcon className="w-3 h-3" />
+                            <span>{sourceInfo.label}</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* 3. Texto comentado com função ver mais */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-gray-700 truncate">
+                        {shouldTruncate && !isExpanded 
+                          ? truncateComment(feedback.comment)
+                          : feedback.comment
+                        }
+                      </p>
+                      {shouldTruncate && (
+                        <button
+                          onClick={() => toggleCommentExpansion(feedback.id)}
+                          className="text-xs text-purple-600 hover:text-purple-800 flex items-center space-x-1 mt-1"
+                        >
+                          {isExpanded ? (
+                            <>
+                              <span>Ver menos</span>
+                              <ChevronUp className="w-3 h-3" />
+                            </>
+                          ) : (
+                            <>
+                              <span>Ver mais</span>
+                              <ChevronDown className="w-3 h-3" />
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* 4. Nome da pipeline e data/hora */}
+                    <div className="flex items-center space-x-3 text-xs text-gray-500 flex-shrink-0">
+                      <span className="font-medium">{feedback.pipeline.name}</span>
+                      <div className="flex items-center space-x-1">
+                        <Clock className="w-3 h-3" />
+                        <span>{formatDate(feedback.created_at)}</span>
+                      </div>
+                    </div>
+
                   </div>
                 </div>
               );

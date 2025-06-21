@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Clock, User, Send, MessageSquare, Edit, Trash2, FileText, Mail, Phone, Calendar } from 'lucide-react';
+import { X, Clock, User, Send, MessageSquare, Edit, Trash2, FileText, Mail, Phone, Calendar, Plus, RotateCcw, Sparkles } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 
@@ -348,12 +348,12 @@ Atenciosamente,
 
   const getHistoryIcon = (type: string) => {
     switch (type) {
-      case 'created': return '✨';
-      case 'moved': return '🔄';
-      case 'edited': return '✏️';
-      case 'email': return '📧';
-      case 'call': return '📞';
-      default: return '📋';
+      case 'created': return <Plus className="w-4 h-4 text-gray-500" />;
+      case 'moved': return <RotateCcw className="w-4 h-4 text-gray-500" />;
+      case 'edited': return <Edit className="w-4 h-4 text-gray-500" />;
+      case 'email': return <Mail className="w-4 h-4 text-gray-500" />;
+      case 'call': return <Phone className="w-4 h-4 text-gray-500" />;
+      default: return <FileText className="w-4 h-4 text-gray-500" />;
     }
   };
 
@@ -404,7 +404,7 @@ Atenciosamente,
               onClick={() => setActiveTab('history')}
               className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === 'history'
-                  ? 'border-blue-500 text-blue-600'
+                  ? 'border-gray-900 text-gray-900'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -414,7 +414,7 @@ Atenciosamente,
               onClick={() => setActiveTab('email')}
               className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === 'email'
-                  ? 'border-blue-500 text-blue-600'
+                  ? 'border-gray-900 text-gray-900'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -424,7 +424,7 @@ Atenciosamente,
               onClick={() => setActiveTab('annotations')}
               className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === 'annotations'
-                  ? 'border-blue-500 text-blue-600'
+                  ? 'border-gray-900 text-gray-900'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -439,7 +439,7 @@ Atenciosamente,
             <div className="space-y-4">
               {historyItems.map((item) => (
                 <div key={item.id} className="flex items-start space-x-3 p-3 rounded-lg hover:bg-gray-50">
-                  <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-sm">
+                  <div className="flex-shrink-0 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-sm">
                     {getHistoryIcon(item.type)}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -449,7 +449,7 @@ Atenciosamente,
                       <span className="text-xs text-gray-400">•</span>
                       <span className="text-xs text-gray-500">{item.timestamp}</span>
                       <span className="text-xs text-gray-400">•</span>
-                      <span className="text-xs text-blue-600">{item.stage}</span>
+                      <span className="text-xs text-gray-600">{item.stage}</span>
                     </div>
                   </div>
                 </div>
@@ -468,7 +468,7 @@ Atenciosamente,
                       <button
                         key={template.id}
                         onClick={() => applyEmailTemplate(template)}
-                        className="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                        className="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-gray-300 hover:bg-gray-50 transition-colors"
                       >
                         <div className="text-sm font-medium text-gray-900">{template.name}</div>
                         <div className="text-xs text-gray-500 mt-1 truncate">{template.subject}</div>
@@ -487,7 +487,7 @@ Atenciosamente,
                         className="w-full text-left p-2 text-xs text-gray-600 hover:bg-gray-100 rounded transition-colors"
                         title={`Clique para inserir ${variable.value}`}
                       >
-                        <span className="font-mono text-blue-600">{variable.value}</span>
+                        <span className="font-mono text-gray-600">{variable.value}</span>
                         <span className="ml-2">{variable.label}</span>
                       </button>
                     ))}
@@ -505,7 +505,7 @@ Atenciosamente,
                     type="text"
                     value={emailSubject}
                     onChange={(e) => setEmailSubject(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent"
                     placeholder="Assunto do e-mail"
                   />
                 </div>
@@ -519,11 +519,11 @@ Atenciosamente,
                     value={emailContent}
                     onChange={(e) => setEmailContent(e.target.value)}
                     rows={12}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none font-mono text-sm"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent resize-none font-mono text-sm"
                     placeholder="Digite sua mensagem... Use as variáveis disponíveis para personalizar o email."
                   />
                   <div className="mt-2 text-xs text-gray-500">
-                    💡 Dica: Use as variáveis da esquerda para personalizar automaticamente o email com dados do lead
+                    Dica: Use as variáveis da esquerda para personalizar automaticamente o email com dados do lead
                   </div>
                 </div>
                 
@@ -531,7 +531,7 @@ Atenciosamente,
                   <button
                     onClick={handleSendEmail}
                     disabled={!emailSubject.trim() || !emailContent.trim()}
-                    className="flex items-center space-x-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center space-x-2 bg-gray-900 text-white px-6 py-2 rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Send className="w-4 h-4" />
                     <span>Enviar E-mail</span>

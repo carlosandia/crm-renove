@@ -1,0 +1,197 @@
+/* Form.io Styling */
+@import url('https://unpkg.com/@formio/js@latest/dist/formio.full.min.css');
+
+/* Customizações para o tema do CRM */
+.formio-builder {
+  height: 100%;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.formio-builder .formbuilder {
+  height: 100%;
+}
+
+.formio-builder .drag-container {
+  min-height: 400px;
+  background: #f9fafb;
+  border: 2px dashed #d1d5db;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.formio-builder .drag-container.drag-over {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  color: #3b82f6;
+}
+
+/* Componentes do Form.io */
+.formio-component {
+  margin-bottom: 1rem;
+}
+
+.formio-component .form-group {
+  margin-bottom: 1rem;
+}
+
+.formio-component label {
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+
+.formio-component input,
+.formio-component textarea,
+.formio-component select {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+.formio-component input:focus,
+.formio-component textarea:focus,
+.formio-component select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.formio-component .btn {
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.formio-component .btn-primary {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.formio-component .btn-primary:hover {
+  background-color: #2563eb;
+}
+
+.formio-component .btn-success {
+  background-color: #10b981;
+  color: white;
+}
+
+.formio-component .btn-success:hover {
+  background-color: #059669;
+}
+
+/* WhatsApp Button Styling */
+.formio-component .btn-whatsapp {
+  background-color: #25d366;
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.formio-component .btn-whatsapp:hover {
+  background-color: #20ba5a;
+}
+
+.formio-component .btn-whatsapp::before {
+  content: "📱";
+  font-size: 1.2em;
+}
+
+/* Builder Sidebar */
+.formio-builder .formcomponents {
+  background: white;
+  border-right: 1px solid #e5e7eb;
+  padding: 1rem;
+}
+
+.formio-builder .formcomponents .formcomponent {
+  margin-bottom: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  cursor: grab;
+  transition: all 0.2s;
+}
+
+.formio-builder .formcomponents .formcomponent:hover {
+  border-color: #3b82f6;
+  background: #f8fafc;
+}
+
+.formio-builder .formcomponents .formcomponent.formcomponent-dragging {
+  cursor: grabbing;
+  opacity: 0.7;
+}
+
+/* Form Preview */
+.formio-form {
+  background: white;
+  padding: 2rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.formio-form .alert {
+  padding: 1rem;
+  border-radius: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.formio-form .alert-success {
+  background-color: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.formio-form .alert-danger {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .formio-builder {
+    flex-direction: column;
+  }
+  
+  .formio-builder .formcomponents {
+    border-right: none;
+    border-bottom: 1px solid #e5e7eb;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .formio-builder {
+    background: #1f2937;
+    color: #f9fafb;
+  }
+  
+  .formio-builder .formcomponents {
+    background: #374151;
+    border-color: #4b5563;
+  }
+  
+  .formio-component input,
+  .formio-component textarea,
+  .formio-component select {
+    background: #374151;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+} 

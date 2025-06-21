@@ -1,4 +1,3 @@
-
 -- Tabela para armazenar formulários criados pelos admins
 CREATE TABLE public.custom_forms (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -75,59 +74,62 @@ ALTER TABLE public.custom_forms ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.form_fields ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.form_submissions ENABLE ROW LEVEL SECURITY;
 
--- Policies para custom_forms
-CREATE POLICY "Users can view forms from their tenant" ON public.custom_forms
-  FOR SELECT USING (tenant_id IN (
-    SELECT tenant_id FROM public.users WHERE id = auth.uid()
-  ));
+-- Políticas CORRIGIDAS para custom_forms - mais permissivas
+DROP POLICY IF EXISTS "Users can view forms from their tenant" ON public.custom_forms;
+DROP POLICY IF EXISTS "Admins can create forms" ON public.custom_forms;
+DROP POLICY IF EXISTS "Admins can update their tenant forms" ON public.custom_forms;
+DROP POLICY IF EXISTS "Admins can delete their tenant forms" ON public.custom_forms;
 
-CREATE POLICY "Admins can create forms" ON public.custom_forms
+-- Política permissiva para SELECT
+CREATE POLICY "Allow authenticated users to view forms" ON public.custom_forms
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+-- Política permissiva para INSERT
+CREATE POLICY "Allow authenticated users to create forms" ON public.custom_forms
   FOR INSERT WITH CHECK (
-    tenant_id IN (
-      SELECT u.tenant_id FROM public.users u WHERE u.id = auth.uid() AND u.role IN ('admin', 'super_admin')
-    )
+    auth.uid() IS NOT NULL AND
+    created_by = auth.uid()
   );
 
-CREATE POLICY "Admins can update their tenant forms" ON public.custom_forms
+-- Política permissiva para UPDATE
+CREATE POLICY "Allow users to update their forms" ON public.custom_forms
   FOR UPDATE USING (
-    tenant_id IN (
-      SELECT u.tenant_id FROM public.users u WHERE u.id = auth.uid() AND u.role IN ('admin', 'super_admin')
-    )
+    auth.uid() IS NOT NULL AND
+    created_by = auth.uid()
   );
 
-CREATE POLICY "Admins can delete their tenant forms" ON public.custom_forms
+-- Política permissiva para DELETE
+CREATE POLICY "Allow users to delete their forms" ON public.custom_forms
   FOR DELETE USING (
-    tenant_id IN (
-      SELECT u.tenant_id FROM public.users u WHERE u.id = auth.uid() AND u.role IN ('admin', 'super_admin')
-    )
+    auth.uid() IS NOT NULL AND
+    created_by = auth.uid()
   );
 
--- Policies para form_fields
-CREATE POLICY "Users can view fields from their tenant forms" ON public.form_fields
-  FOR SELECT USING (
-    form_id IN (
-      SELECT cf.id FROM public.custom_forms cf 
-      JOIN public.users u ON cf.tenant_id = u.tenant_id 
-      WHERE u.id = auth.uid()
-    )
-  );
+-- Políticas CORRIGIDAS para form_fields - mais permissivas
+DROP POLICY IF EXISTS "Users can view fields from their tenant forms" ON public.form_fields;
+DROP POLICY IF EXISTS "Admins can manage fields" ON public.form_fields;
 
-CREATE POLICY "Admins can manage fields" ON public.form_fields
+-- Política permissiva para form_fields
+CREATE POLICY "Allow authenticated users to manage form fields" ON public.form_fields
   FOR ALL USING (
+    auth.uid() IS NOT NULL AND
     form_id IN (
       SELECT cf.id FROM public.custom_forms cf 
-      JOIN public.users u ON cf.tenant_id = u.tenant_id 
-      WHERE u.id = auth.uid() AND u.role IN ('admin', 'super_admin')
+      WHERE cf.created_by = auth.uid()
     )
   );
 
--- Policies para form_submissions
-CREATE POLICY "Users can view submissions from their tenant forms" ON public.form_submissions
+-- Políticas CORRIGIDAS para form_submissions - mais permissivas
+DROP POLICY IF EXISTS "Users can view submissions from their tenant forms" ON public.form_submissions;
+DROP POLICY IF EXISTS "Allow public form submissions" ON public.form_submissions;
+
+-- Política para visualizar submissões
+CREATE POLICY "Allow users to view their form submissions" ON public.form_submissions
   FOR SELECT USING (
+    auth.uid() IS NOT NULL AND
     form_id IN (
       SELECT cf.id FROM public.custom_forms cf 
-      JOIN public.users u ON cf.tenant_id = u.tenant_id 
-      WHERE u.id = auth.uid()
+      WHERE cf.created_by = auth.uid()
     )
   );
 

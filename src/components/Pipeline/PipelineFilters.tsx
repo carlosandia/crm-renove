@@ -112,91 +112,11 @@ const PipelineFilters: React.FC<PipelineFiltersProps> = ({
     : availableVendors;
 
   return (
-    <div className="px-4 pb-2">
-      {/* Container principal com design moderno */}
-      <div className="border border-gray-200 rounded-xl p-4 bg-white shadow-sm hover:shadow-md transition-shadow duration-200">
-        
-        {/* Seção de controle para Admin */}
-        {userRole === 'admin' && (
-          <div className="mb-4 pb-4 border-b border-gray-100">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center space-x-2">
-                <Settings className="w-4 h-4 text-blue-600" />
-                <span className="text-sm font-semibold text-gray-900">Controles de Admin</span>
-              </div>
-              
-              {activeFiltersCount > 0 && (
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs text-gray-500">
-                    {activeFiltersCount} filtro{activeFiltersCount > 1 ? 's' : ''} ativo{activeFiltersCount > 1 ? 's' : ''}
-                  </span>
-                  <button
-                    onClick={handleClearAllFilters}
-                    className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-1"
-                  >
-                    <X className="w-3 h-3" />
-                    <span>Limpar Tudo</span>
-                  </button>
-                </div>
-              )}
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Toggle: Minhas vs Todas as Pipelines */}
-              {onToggleMyPipelines && (
-                <div className="space-y-2">
-                  <label className="flex items-center space-x-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={showOnlyMyPipelines}
-                      onChange={onToggleMyPipelines}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    />
-                    <div>
-                      <span className="text-sm font-medium text-gray-700">
-                        Mostrar apenas minhas pipelines
-                      </span>
-                      <p className="text-xs text-gray-500">
-                        {showOnlyMyPipelines 
-                          ? 'Exibindo apenas pipelines criadas por você' 
-                          : 'Exibindo todas as pipelines do tenant'
-                        }
-                      </p>
-                    </div>
-                  </label>
-                </div>
-              )}
-
-              {/* Seletor de Pipeline Aprimorado */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  <Layers className="w-4 h-4" />
-                  Pipeline Ativa
-                </label>
-                <div className="relative">
-                  <select 
-                    value={selectedPipeline?.id || ''} 
-                    onChange={(e) => {
-                      const pipeline = pipelines.find(p => p.id === e.target.value);
-                      onPipelineChange(pipeline || null);
-                    }}
-                    className="appearance-none bg-white border border-gray-200 rounded-lg px-3 py-2.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full transition-colors"
-                  >
-                    {pipelines.map(pipeline => (
-                      <option key={pipeline.id} value={pipeline.id}>
-                        {pipeline.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-        
+    <div className="px-6 py-3">
+      {/* Container principal em uma linha única */}
+      <div className="border border-gray-200 rounded-lg p-3 bg-white shadow-sm">
         <div className="flex items-center justify-between gap-4">
-          {/* Barra de busca aprimorada */}
+          {/* Barra de busca */}
           <div className="flex-1 max-w-md">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -205,7 +125,7 @@ const PipelineFilters: React.FC<PipelineFiltersProps> = ({
                 value={searchTerm}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 placeholder="Buscar leads por nome, email, telefone..."
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-colors"
+                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-colors"
               />
               {searchTerm && (
                 <button
@@ -218,95 +138,138 @@ const PipelineFilters: React.FC<PipelineFiltersProps> = ({
             </div>
           </div>
 
-          {/* Filtros rápidos */}
+          {/* Filtros em linha única */}
           <div className="flex items-center space-x-3">
-            {/* Filtro por Vendedor (para admin) */}
-            {userRole === 'admin' && vendorsToShow.length > 0 && (
-              <div className="relative">
-                <select 
-                  value={selectedVendor}
-                  onChange={(e) => handleVendorChange(e.target.value)}
-                  className="appearance-none bg-white border border-gray-200 rounded-lg px-3 py-2.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[160px] transition-colors"
-                >
-                  <option value="">Todos os Vendedores</option>
-                  {vendorsToShow.map(vendor => (
-                    <option key={vendor.id} value={vendor.id}>
-                      {vendor.first_name} {vendor.last_name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              </div>
+            {/* Filtros para Admin */}
+            {userRole === 'admin' && (
+              <>
+                {/* Toggle Minhas Pipelines */}
+                {onToggleMyPipelines && pipelines.length > 1 && (
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showOnlyMyPipelines}
+                      onChange={onToggleMyPipelines}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">Minhas Pipelines</span>
+                  </label>
+                )}
+
+                {/* Seletor de Pipeline */}
+                {pipelines.length > 1 && (
+                  <div className="relative">
+                    <select 
+                      value={selectedPipeline?.id || ''} 
+                      onChange={(e) => {
+                        const pipeline = pipelines.find(p => p.id === e.target.value);
+                        onPipelineChange(pipeline || null);
+                      }}
+                      className="appearance-none bg-white border border-gray-200 rounded-lg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[160px] transition-colors"
+                    >
+                      {pipelines.map(pipeline => (
+                        <option key={pipeline.id} value={pipeline.id}>
+                          {pipeline.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  </div>
+                )}
+
+                {/* Filtro por Vendedor */}
+                {vendorsToShow.length > 0 && (
+                  <div className="relative">
+                    <select 
+                      value={selectedVendor}
+                      onChange={(e) => handleVendorChange(e.target.value)}
+                      className="appearance-none bg-white border border-gray-200 rounded-lg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[140px] transition-colors"
+                    >
+                      <option value="">Todos Vendedores</option>
+                      {vendorsToShow.map(vendor => (
+                        <option key={vendor.id} value={vendor.id}>
+                          {vendor.first_name} {vendor.last_name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  </div>
+                )}
+              </>
             )}
 
-            {/* Seletor de Pipeline (para member - compacto) */}
-            {userRole === 'member' && pipelines.length > 1 && (
-              <div className="relative">
-                <select 
-                  value={selectedPipeline?.id || ''} 
-                  onChange={(e) => {
-                    const pipeline = pipelines.find(p => p.id === e.target.value);
-                    onPipelineChange(pipeline || null);
-                  }}
-                  className="appearance-none bg-white border border-gray-200 rounded-lg px-3 py-2.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[180px] transition-colors"
-                >
-                  {pipelines.map(pipeline => (
-                    <option key={pipeline.id} value={pipeline.id}>
-                      {pipeline.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              </div>
+            {/* Filtros para Member */}
+            {userRole === 'member' && (
+              <>
+                {/* Seletor de Pipeline para Member */}
+                {pipelines.length > 1 && (
+                  <div className="relative">
+                    <select 
+                      value={selectedPipeline?.id || ''} 
+                      onChange={(e) => {
+                        const pipeline = pipelines.find(p => p.id === e.target.value);
+                        onPipelineChange(pipeline || null);
+                      }}
+                      className="appearance-none bg-white border border-gray-200 rounded-lg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[160px] transition-colors"
+                    >
+                      {pipelines.map(pipeline => (
+                        <option key={pipeline.id} value={pipeline.id}>
+                          {pipeline.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  </div>
+                )}
+              </>
             )}
 
+            {/* Filtro de Status - para todos */}
             <select 
               value={statusFilter}
               onChange={(e) => onStatusFilter(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white transition-colors"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white transition-colors"
             >
               <option value="">Todos os Status</option>
-              <option value="active">Ativos (Novo → Negociação)</option>
-              <option value="won">Ganhos</option>
-              <option value="lost">Perdidos</option>
-            </select>
-
-            <button
-              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-              className={`flex items-center space-x-2 px-3 py-2.5 border rounded-lg text-sm transition-all duration-200 ${
-                showAdvancedFilters 
-                  ? 'border-blue-300 bg-blue-50 text-blue-700' 
-                  : 'border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300'
-              }`}
-            >
-              <Filter className="w-4 h-4" />
-              <span>Filtros</span>
-              {activeFiltersCount > 0 && (
-                <span className="bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                  {activeFiltersCount}
-                </span>
+              {userRole === 'admin' ? (
+                <>
+                  <option value="active">Ativos (Novo → Negociação)</option>
+                  <option value="won">Ganhos</option>
+                  <option value="lost">Perdidos</option>
+                </>
+              ) : (
+                <>
+                  <option value="active">Em Andamento</option>
+                  <option value="won">Ganhos</option>
+                  <option value="lost">Perdidos</option>
+                </>
               )}
-            </button>
-
-            <select 
-              onChange={(e) => {
-                const [sortBy, direction] = e.target.value.split(':');
-                onSortChange(sortBy, direction as 'asc' | 'desc');
-              }}
-              className="border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white transition-colors"
-            >
-              <option value="created_at:desc">Mais Recentes</option>
-              <option value="created_at:asc">Mais Antigos</option>
-              <option value="value:desc">Maior Valor</option>
-              <option value="value:asc">Menor Valor</option>
-              <option value="name:asc">Nome A-Z</option>
-              <option value="name:desc">Nome Z-A</option>
             </select>
+
+            {/* Filtros avançados apenas para Admin */}
+            {userRole === 'admin' && (
+              <button
+                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                className={`flex items-center space-x-2 px-3 py-2 border rounded-lg text-sm transition-all duration-200 ${
+                  showAdvancedFilters 
+                    ? 'border-blue-300 bg-blue-50 text-blue-700' 
+                    : 'border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300'
+                }`}
+              >
+                <Filter className="w-4 h-4" />
+                <span>Filtros</span>
+                {activeFiltersCount > 0 && (
+                  <span className="bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    {activeFiltersCount}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Filtros avançados (expandidos) */}
-        {showAdvancedFilters && (
+        {/* Filtros avançados (expandidos) - apenas para admin */}
+        {showAdvancedFilters && userRole === 'admin' && (
           <div className="border-t border-gray-100 pt-4 mt-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Filtro por data */}
@@ -390,34 +353,7 @@ const PipelineFilters: React.FC<PipelineFiltersProps> = ({
           </div>
         )}
 
-        {/* Indicadores de filtros ativos */}
-        {activeFiltersCount > 0 && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <div className="flex items-center space-x-2 text-xs text-gray-600">
-              <span>Filtros ativos:</span>
-              {searchTerm && (
-                <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-md">
-                  Busca: "{searchTerm}"
-                </span>
-              )}
-              {statusFilter && (
-                <span className="bg-green-100 text-green-800 px-2 py-1 rounded-md">
-                  Status: {statusFilter}
-                </span>
-              )}
-              {selectedVendor && (
-                <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-md">
-                  Vendedor: {vendorsToShow.find(v => v.id === selectedVendor)?.first_name}
-                </span>
-              )}
-              {showOnlyMyPipelines && (
-                <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded-md">
-                  Minhas Pipelines
-                </span>
-              )}
-            </div>
-          </div>
-        )}
+
       </div>
     </div>
   );

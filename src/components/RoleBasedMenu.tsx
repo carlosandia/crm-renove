@@ -12,8 +12,10 @@ const LeadsModule = lazy(() => import('./LeadsModule'));
 const FormBuilderModule = lazy(() => import('./FormBuilder/FormBuilderModule'));
 const FeedbackModule = lazy(() => import('./FeedbackModule'));
 const SequenceModule = lazy(() => import('./SequenceModule'));
+const CadenceModule = lazy(() => import('./CadenceModule'));
 const IntegrationsModule = lazy(() => import('./IntegrationsModule'));
 const ReportsModule = lazy(() => import('./ReportsModule'));
+const AcompanhamentoModule = lazy(() => import('./AcompanhamentoModule'));
 
 interface RoleBasedMenuProps {
   activeModule?: string;
@@ -147,7 +149,7 @@ const RoleBasedMenu: React.FC<RoleBasedMenuProps> = ({
         return (
           <ErrorBoundary fallback={<ModuleErrorFallback moduleName="Cadências" />}>
             <Suspense fallback={<ModuleLoader moduleName="Cadências" />}>
-              <SequenceModule />
+              <CadenceModule />
             </Suspense>
           </ErrorBoundary>
         );
@@ -157,6 +159,15 @@ const RoleBasedMenu: React.FC<RoleBasedMenuProps> = ({
           <ErrorBoundary fallback={<ModuleErrorFallback moduleName="Integrações" />}>
             <Suspense fallback={<ModuleLoader moduleName="Integrações" />}>
               <IntegrationsModule />
+            </Suspense>
+          </ErrorBoundary>
+        );
+
+      case 'Acompanhamento':
+        return (
+          <ErrorBoundary fallback={<ModuleErrorFallback moduleName="Acompanhamento" />}>
+            <Suspense fallback={<ModuleLoader moduleName="Acompanhamento" />}>
+              <AcompanhamentoModule />
             </Suspense>
           </ErrorBoundary>
         );

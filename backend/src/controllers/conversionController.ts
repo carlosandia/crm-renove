@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { supabase } from '../index';
+import { supabase } from '../config/supabase';
 import ConversionService from '../services/conversionService';
 
 export class ConversionController {

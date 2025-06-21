@@ -2,7 +2,8 @@ import express, { Router, Request, Response } from 'express';
 import { PipelineController } from '../controllers/PipelineController';
 import { CustomFieldController } from '../controllers/customFieldController';
 import { LeadController } from '../controllers/leadController';
-import { supabase, supabaseAdmin } from '../index';
+import { supabase } from '../config/supabase';
+const supabaseAdmin = supabase;
 
 const router = express.Router();
 

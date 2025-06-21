@@ -35,13 +35,16 @@ export default defineConfig(({ mode }) => ({
           router: ['react-router-dom'],
           query: ['@tanstack/react-query'],
           supabase: ['@supabase/supabase-js'],
-          dndkit: ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities']
+          dnd: ['@hello-pangea/dnd']
         }
       }
     }
   },
   define: {
     global: 'globalThis',
+    // Definir variáveis de ambiente como fallback para evitar erros de process.env
+    'process.env.NODE_ENV': JSON.stringify(mode),
+    'process.env.REACT_APP_API_URL': JSON.stringify(process.env.VITE_API_URL || 'http://localhost:3001'),
   },
   optimizeDeps: {
     include: [
@@ -49,9 +52,7 @@ export default defineConfig(({ mode }) => ({
       'react-dom', 
       'react-router-dom', 
       '@tanstack/react-query',
-      '@dnd-kit/core',
-      '@dnd-kit/sortable',
-      '@dnd-kit/utilities'
+      '@hello-pangea/dnd'
     ]
   }
 }))
