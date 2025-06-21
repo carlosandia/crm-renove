@@ -18,6 +18,7 @@ interface CustomForm {
   pipeline_id?: string;
   assigned_to?: string;
   qualification_rules: any;
+  formio_schema?: any;
   created_at: string;
   updated_at: string;
 }
@@ -61,8 +62,9 @@ const FormBuilderModule: React.FC = () => {
         return;
       }
 
-      setForms(data || []);
-      await loadStats(data || []);
+      const formsData = data || [];
+      setForms(formsData);
+      await loadStats(formsData);
     } catch (error) {
       console.error('Erro ao carregar formulários:', error);
     } finally {
