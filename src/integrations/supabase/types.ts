@@ -9,6 +9,162 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      cadence_config: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_active: boolean | null
+          pipeline_id: string
+          stage_name: string
+          stage_order: number
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          pipeline_id: string
+          stage_name: string
+          stage_order: number
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          pipeline_id?: string
+          stage_name?: string
+          stage_order?: number
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      cadence_executions: {
+        Row: {
+          assigned_to: string | null
+          cadence_task_id: string
+          created_at: string | null
+          due_date: string
+          executed_at: string | null
+          execution_notes: string | null
+          id: string
+          lead_id: string | null
+          pipeline_id: string | null
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          cadence_task_id: string
+          created_at?: string | null
+          due_date: string
+          executed_at?: string | null
+          execution_notes?: string | null
+          id?: string
+          lead_id?: string | null
+          pipeline_id?: string | null
+          status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          cadence_task_id?: string
+          created_at?: string | null
+          due_date?: string
+          executed_at?: string | null
+          execution_notes?: string | null
+          id?: string
+          lead_id?: string | null
+          pipeline_id?: string | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cadence_executions_cadence_task_id_fkey"
+            columns: ["cadence_task_id"]
+            isOneToOne: false
+            referencedRelation: "cadence_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_cadence_executions_task"
+            columns: ["cadence_task_id"]
+            isOneToOne: false
+            referencedRelation: "cadence_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cadence_tasks: {
+        Row: {
+          action_type: string
+          cadence_config_id: string
+          channel: string
+          created_at: string | null
+          day_offset: number
+          id: string
+          is_active: boolean | null
+          task_description: string | null
+          task_order: number
+          task_title: string
+          template_content: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          action_type: string
+          cadence_config_id: string
+          channel: string
+          created_at?: string | null
+          day_offset: number
+          id?: string
+          is_active?: boolean | null
+          task_description?: string | null
+          task_order?: number
+          task_title: string
+          template_content?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          action_type?: string
+          cadence_config_id?: string
+          channel?: string
+          created_at?: string | null
+          day_offset?: number
+          id?: string
+          is_active?: boolean | null
+          task_description?: string | null
+          task_order?: number
+          task_title?: string
+          template_content?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cadence_tasks_cadence_config_id_fkey"
+            columns: ["cadence_config_id"]
+            isOneToOne: false
+            referencedRelation: "cadence_config"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_cadence_tasks_config"
+            columns: ["cadence_config_id"]
+            isOneToOne: false
+            referencedRelation: "cadence_config"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       companies: {
         Row: {
           address: string | null
@@ -75,6 +231,7 @@ export type Database = {
           created_at: string | null
           created_by: string
           description: string | null
+          formio_schema: Json | null
           id: string
           is_active: boolean | null
           name: string
@@ -92,6 +249,7 @@ export type Database = {
           created_at?: string | null
           created_by: string
           description?: string | null
+          formio_schema?: Json | null
           id?: string
           is_active?: boolean | null
           name: string
@@ -109,6 +267,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string
           description?: string | null
+          formio_schema?: Json | null
           id?: string
           is_active?: boolean | null
           name?: string
@@ -186,6 +345,41 @@ export type Database = {
         }
         Relationships: []
       }
+      form_analytics: {
+        Row: {
+          conversion_rate: number | null
+          form_id: string | null
+          id: string
+          last_updated: string | null
+          submissions: number | null
+          views: number | null
+        }
+        Insert: {
+          conversion_rate?: number | null
+          form_id?: string | null
+          id?: string
+          last_updated?: string | null
+          submissions?: number | null
+          views?: number | null
+        }
+        Update: {
+          conversion_rate?: number | null
+          form_id?: string | null
+          id?: string
+          last_updated?: string | null
+          submissions?: number | null
+          views?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "form_analytics_form_id_fkey"
+            columns: ["form_id"]
+            isOneToOne: false
+            referencedRelation: "custom_forms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       form_fields: {
         Row: {
           created_at: string | null
@@ -245,37 +439,91 @@ export type Database = {
       form_submissions: {
         Row: {
           form_id: string
+          form_version: number | null
           id: string
           ip_address: unknown | null
+          is_mql: boolean | null
           is_qualified: boolean | null
           lead_id: string | null
+          mql_score: number | null
           submission_data: Json
           submitted_at: string | null
           user_agent: string | null
+          whatsapp_redirect: boolean | null
         }
         Insert: {
           form_id: string
+          form_version?: number | null
           id?: string
           ip_address?: unknown | null
+          is_mql?: boolean | null
           is_qualified?: boolean | null
           lead_id?: string | null
+          mql_score?: number | null
           submission_data: Json
           submitted_at?: string | null
           user_agent?: string | null
+          whatsapp_redirect?: boolean | null
         }
         Update: {
           form_id?: string
+          form_version?: number | null
           id?: string
           ip_address?: unknown | null
+          is_mql?: boolean | null
           is_qualified?: boolean | null
           lead_id?: string | null
+          mql_score?: number | null
           submission_data?: Json
           submitted_at?: string | null
           user_agent?: string | null
+          whatsapp_redirect?: boolean | null
         }
         Relationships: [
           {
             foreignKeyName: "form_submissions_form_id_fkey"
+            columns: ["form_id"]
+            isOneToOne: false
+            referencedRelation: "custom_forms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      form_versions: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          form_id: string | null
+          formio_schema: Json
+          id: string
+          version_number: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          form_id?: string | null
+          formio_schema: Json
+          id?: string
+          version_number?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          form_id?: string | null
+          formio_schema?: Json
+          id?: string
+          version_number?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "form_versions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "form_versions_form_id_fkey"
             columns: ["form_id"]
             isOneToOne: false
             referencedRelation: "custom_forms"
@@ -315,7 +563,7 @@ export type Database = {
           {
             foreignKeyName: "integrations_company_id_fkey"
             columns: ["company_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "companies"
             referencedColumns: ["id"]
           },
@@ -368,6 +616,30 @@ export type Database = {
           },
         ]
       }
+      lead_comments: {
+        Row: {
+          created_at: string | null
+          id: string
+          lead_id: string
+          message: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          lead_id: string
+          message: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          lead_id?: string
+          message?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       lead_feedback: {
         Row: {
           comment: string
@@ -395,6 +667,66 @@ export type Database = {
           lead_id?: string
           updated_at?: string | null
           user_id?: string
+        }
+        Relationships: []
+      }
+      lead_feedbacks: {
+        Row: {
+          created_at: string | null
+          id: string
+          lead_id: string
+          message: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          lead_id: string
+          message: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          lead_id?: string
+          message?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      lead_history: {
+        Row: {
+          action: string
+          created_at: string | null
+          description: string
+          id: string
+          lead_id: string
+          new_values: Json | null
+          old_values: Json | null
+          user_id: string | null
+          user_name: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          description: string
+          id?: string
+          lead_id: string
+          new_values?: Json | null
+          old_values?: Json | null
+          user_id?: string | null
+          user_name?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          description?: string
+          id?: string
+          lead_id?: string
+          new_values?: Json | null
+          old_values?: Json | null
+          user_id?: string | null
+          user_name?: string | null
         }
         Relationships: []
       }
@@ -497,6 +829,113 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      lead_scoring_rules: {
+        Row: {
+          condition_type: string | null
+          created_at: string | null
+          field_key: string
+          field_value: string | null
+          form_id: string | null
+          id: string
+          score_points: number | null
+        }
+        Insert: {
+          condition_type?: string | null
+          created_at?: string | null
+          field_key: string
+          field_value?: string | null
+          form_id?: string | null
+          id?: string
+          score_points?: number | null
+        }
+        Update: {
+          condition_type?: string | null
+          created_at?: string | null
+          field_key?: string
+          field_value?: string | null
+          form_id?: string | null
+          id?: string
+          score_points?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_scoring_rules_form_id_fkey"
+            columns: ["form_id"]
+            isOneToOne: false
+            referencedRelation: "custom_forms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_tasks: {
+        Row: {
+          assigned_to: string | null
+          cadence_task_id: string | null
+          canal: string
+          created_at: string | null
+          created_by: string | null
+          data_programada: string
+          day_offset: number | null
+          descricao: string
+          etapa_id: string
+          executed_at: string | null
+          execution_notes: string | null
+          id: string
+          lead_id: string
+          pipeline_id: string
+          status: string | null
+          task_order: number | null
+          template_content: string | null
+          tenant_id: string
+          tipo: string
+          updated_at: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          cadence_task_id?: string | null
+          canal: string
+          created_at?: string | null
+          created_by?: string | null
+          data_programada: string
+          day_offset?: number | null
+          descricao: string
+          etapa_id: string
+          executed_at?: string | null
+          execution_notes?: string | null
+          id?: string
+          lead_id: string
+          pipeline_id: string
+          status?: string | null
+          task_order?: number | null
+          template_content?: string | null
+          tenant_id: string
+          tipo: string
+          updated_at?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          cadence_task_id?: string | null
+          canal?: string
+          created_at?: string | null
+          created_by?: string | null
+          data_programada?: string
+          day_offset?: number | null
+          descricao?: string
+          etapa_id?: string
+          executed_at?: string | null
+          execution_notes?: string | null
+          id?: string
+          lead_id?: string
+          pipeline_id?: string
+          status?: string | null
+          task_order?: number | null
+          template_content?: string | null
+          tenant_id?: string
+          tipo?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       leads_master: {
         Row: {
@@ -657,6 +1096,7 @@ export type Database = {
           created_by: string
           id: string
           lead_data: Json
+          lead_id: string | null
           moved_at: string | null
           pipeline_id: string
           stage_id: string
@@ -668,6 +1108,7 @@ export type Database = {
           created_by: string
           id?: string
           lead_data?: Json
+          lead_id?: string | null
           moved_at?: string | null
           pipeline_id: string
           stage_id: string
@@ -679,12 +1120,21 @@ export type Database = {
           created_by?: string
           id?: string
           lead_data?: Json
+          lead_id?: string | null
           moved_at?: string | null
           pipeline_id?: string
           stage_id?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_master"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pipeline_members: {
         Row: {
@@ -1225,6 +1675,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           last_name: string | null
+          password_hash: string | null
           role: string
           tenant_id: string | null
         }
@@ -1236,6 +1687,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           last_name?: string | null
+          password_hash?: string | null
           role: string
           tenant_id?: string | null
         }
@@ -1247,6 +1699,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           last_name?: string | null
+          password_hash?: string | null
           role?: string
           tenant_id?: string | null
         }
@@ -1302,6 +1755,14 @@ export type Database = {
         Args: { p_goal_id: string }
         Returns: Json
       }
+      calculate_mql_score: {
+        Args: { form_id_param: string; submission_data_param: Json }
+        Returns: number
+      }
+      cancel_lead_task: {
+        Args: { p_task_id: string; p_reason?: string }
+        Returns: boolean
+      }
       cleanup_expired_cache: {
         Args: Record<PropertyKey, never>
         Returns: undefined
@@ -1309,6 +1770,10 @@ export type Database = {
       cleanup_old_data: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      complete_lead_task: {
+        Args: { p_task_id: string; p_execution_notes?: string }
+        Returns: boolean
       }
       create_client_with_salesperson: {
         Args: {
@@ -1343,6 +1808,26 @@ export type Database = {
             }
         Returns: Json
       }
+      create_default_integration: {
+        Args: { p_company_id: string }
+        Returns: string
+      }
+      create_lead_with_opportunity: {
+        Args: {
+          p_lead_data: Json
+          p_opportunity_data: Json
+          p_pipeline_id: string
+          p_stage_id: string
+          p_created_by: string
+          p_assigned_to?: string
+        }
+        Returns: {
+          lead_id: string
+          opportunity_id: string
+          success: boolean
+          message: string
+        }[]
+      }
       create_notification: {
         Args: {
           p_tenant_id: string
@@ -1374,12 +1859,34 @@ export type Database = {
         Args: { p_email: string; p_password: string }
         Returns: Json
       }
+      generate_api_keys: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          public_key: string
+          secret_key: string
+        }[]
+      }
+      generate_lead_tasks_on_stage_entry: {
+        Args: {
+          p_lead_id: string
+          p_pipeline_id: string
+          p_stage_id: string
+          p_stage_name: string
+          p_assigned_to?: string
+          p_tenant_id?: string
+        }
+        Returns: number
+      }
       generate_temp_password_for_admin: {
         Args: { p_admin_email: string }
         Returns: Json
       }
       generate_unique_slug: {
         Args: { base_name: string }
+        Returns: string
+      }
+      generate_webhook_url: {
+        Args: { p_company_id: string }
         Returns: string
       }
       get_client_stats: {
@@ -1458,6 +1965,35 @@ export type Database = {
         Args: { p_client_id: string }
         Returns: Json
       }
+      get_leads_with_opportunities: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          lead_id: string
+          lead_name: string
+          email: string
+          phone: string
+          company: string
+          lead_temperature: string
+          status: string
+          opportunities_count: number
+          total_value: number
+          created_at: string
+        }[]
+      }
+      get_or_create_integration: {
+        Args: { p_company_id: string }
+        Returns: {
+          id: string
+          company_id: string
+          meta_ads_token: string
+          google_ads_token: string
+          webhook_url: string
+          api_key_public: string
+          api_key_secret: string
+          created_at: string
+          updated_at: string
+        }[]
+      }
       get_pending_admin_users: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -1471,9 +2007,41 @@ export type Database = {
           has_auth_user: boolean
         }[]
       }
+      get_pending_tasks_for_user: {
+        Args: { p_user_id: string; p_tenant_id?: string }
+        Returns: {
+          task_id: string
+          lead_id: string
+          pipeline_id: string
+          etapa_id: string
+          data_programada: string
+          canal: string
+          tipo: string
+          descricao: string
+          day_offset: number
+          task_order: number
+          template_content: string
+        }[]
+      }
       get_performance_stats: {
         Args: { p_tenant_id: string; p_hours?: number }
         Returns: Json
+      }
+      get_pipeline_opportunities_with_leads: {
+        Args: { p_pipeline_id: string }
+        Returns: {
+          opportunity_id: string
+          lead_id: string
+          stage_id: string
+          lead_name: string
+          lead_email: string
+          lead_phone: string
+          company: string
+          opportunity_data: Json
+          created_at: string
+          updated_at: string
+          assigned_to: string
+        }[]
       }
       mark_notification_read: {
         Args: { p_notification_id: string }
@@ -1491,6 +2059,23 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      regenerate_api_keys: {
+        Args: { p_company_id: string }
+        Returns: {
+          public_key: string
+          secret_key: string
+        }[]
+      }
+      register_history_entry: {
+        Args: {
+          p_lead_id: string
+          p_action: string
+          p_description: string
+          p_user_id?: string
+          p_user_name?: string
+        }
+        Returns: string
+      }
       setup_test_user: {
         Args: { user_email: string }
         Returns: Json
@@ -1506,6 +2091,14 @@ export type Database = {
           p_new_status: boolean
         }
         Returns: Json
+      }
+      validate_google_ads_token: {
+        Args: { p_token: string }
+        Returns: boolean
+      }
+      validate_meta_ads_token: {
+        Args: { p_token: string }
+        Returns: boolean
       }
     }
     Enums: {
