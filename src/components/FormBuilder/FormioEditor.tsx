@@ -245,9 +245,8 @@ const FormioEditor: React.FC<FormioEditorProps> = ({ form, onSave, onPreview, te
         <div className={`${showMQLEditor ? 'w-3/4' : 'w-full'} transition-all duration-300`}>
           <div className="h-full p-4">
             <FormBuilder
-              form={formSchema}
-              onChange={handleFormChange}
               options={builderOptions}
+              onChange={handleFormChange}
             />
           </div>
         </div>

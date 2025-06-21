@@ -103,7 +103,7 @@ const FormioPreview: React.FC<FormioPreviewProps> = ({ formSchema, form, onClose
             <div className={`bg-white rounded-lg shadow-lg transition-all duration-300 ${getPreviewClass()}`}>
               <div className="h-full p-6 overflow-auto">
                 <Form
-                  form={formSchema}
+                  src={formSchema}
                   onSubmit={(submission: any) => {
                     console.log('Form submitted:', submission);
                     alert('Formulário enviado com sucesso! (Preview Mode)');
