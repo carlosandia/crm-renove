@@ -1,7 +1,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { FormBuilder } from '@formio/react';
-import { Save, Eye, Settings, Zap } from 'lucide-react';
+import { Save, Eye, Settings, Zap, AlertCircle } from 'lucide-react';
 import FormBuilderWrapper from './FormBuilderWrapper';
 
 interface FormioEditorProps {
@@ -19,6 +19,7 @@ const FormioEditor: React.FC<FormioEditorProps> = ({ form, onSave, onPreview, te
   });
   const [saving, setSaving] = useState(false);
   const [showMQLEditor, setShowMQLEditor] = useState(false);
+  const [builderReady, setBuilderReady] = useState(false);
 
   // Configurações otimizadas do Form.io Builder
   const builderOptions = {
@@ -131,6 +132,18 @@ const FormioEditor: React.FC<FormioEditorProps> = ({ form, onSave, onPreview, te
     }
   };
 
+  useEffect(() => {
+    // Verificar se o Form.io está carregado
+    const checkFormioReady = () => {
+      if (typeof window !== 'undefined' && window.Formio) {
+        setBuilderReady(true);
+      } else {
+        setTimeout(checkFormioReady, 100);
+      }
+    };
+    checkFormioReady();
+  }, []);
+
   const handleFormChange = (newSchema: any) => {
     console.log('Form schema changed:', newSchema);
     setFormSchema(newSchema);
@@ -151,28 +164,35 @@ const FormioEditor: React.FC<FormioEditorProps> = ({ form, onSave, onPreview, te
   return (
     <FormBuilderWrapper>
       <div className="h-full flex flex-col bg-gray-50">
-        {/* Toolbar Superior Melhorado */}
+        {/* Toolbar Superior Premium */}
         <div className="bg-white border-b border-gray-200 p-4 flex items-center justify-between shadow-sm">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
+          <div className="flex items-center space-x-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
               <Settings className="text-white" size={20} />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">
-                Editor de Formulário Avançado
+              <h3 className="text-xl font-bold text-gray-900">
+                Form.io Builder
               </h3>
-              <p className="text-sm text-gray-500">
-                Arraste e solte componentes para criar seu formulário
+              <p className="text-sm text-gray-600">
+                Construa formulários profissionais com drag & drop
               </p>
             </div>
           </div>
           
           <div className="flex items-center space-x-3">
+            {!builderReady && (
+              <div className="flex items-center space-x-2 px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg">
+                <AlertCircle size={16} />
+                <span className="text-sm">Carregando Form.io...</span>
+              </div>
+            )}
+            
             <button
               onClick={() => setShowMQLEditor(!showMQLEditor)}
-              className={`flex items-center space-x-2 px-3 py-2 text-sm rounded-lg transition-colors ${
+              className={`flex items-center space-x-2 px-4 py-2 text-sm rounded-lg transition-all duration-200 ${
                 showMQLEditor 
-                  ? 'bg-purple-600 text-white' 
+                  ? 'bg-purple-600 text-white shadow-lg' 
                   : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
               }`}
             >
@@ -182,7 +202,7 @@ const FormioEditor: React.FC<FormioEditorProps> = ({ form, onSave, onPreview, te
             
             <button
               onClick={onPreview}
-              className="flex items-center space-x-2 px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+              className="flex items-center space-x-2 px-4 py-2 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all duration-200 shadow-sm"
             >
               <Eye size={16} />
               <span>Preview</span>
@@ -191,7 +211,7 @@ const FormioEditor: React.FC<FormioEditorProps> = ({ form, onSave, onPreview, te
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors shadow-sm"
+              className="flex items-center space-x-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-all duration-200 shadow-lg"
             >
               <Save size={16} />
               <span>{saving ? 'Salvando...' : 'Salvar'}</span>
@@ -200,47 +220,56 @@ const FormioEditor: React.FC<FormioEditorProps> = ({ form, onSave, onPreview, te
         </div>
 
         <div className="flex-1 flex min-h-0">
-          {/* Editor Principal com Layout Otimizado */}
-          <div className={`${showMQLEditor ? 'w-3/4' : 'w-full'} transition-all duration-300 p-4`}>
-            <div className="h-full bg-white rounded-lg shadow-sm border border-gray-200">
-              <FormBuilder
-                src={formSchema}
-                options={builderOptions}
-                onChange={handleFormChange}
-              />
+          {/* Editor Principal Maximizado */}
+          <div className={`${showMQLEditor ? 'w-3/4' : 'w-full'} transition-all duration-300 p-6`}>
+            <div className="h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              {builderReady ? (
+                <FormBuilder
+                  form={formSchema}
+                  options={builderOptions}
+                  onChange={handleFormChange}
+                />
+              ) : (
+                <div className="h-full flex items-center justify-center bg-gray-50">
+                  <div className="text-center">
+                    <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-gray-600">Carregando Form.io Builder...</p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Painel MQL Scoring Melhorado */}
+          {/* Painel MQL Scoring Premium */}
           {showMQLEditor && (
-            <div className="w-1/4 bg-white border-l border-gray-200 p-4 shadow-sm">
+            <div className="w-1/4 bg-white border-l border-gray-200 p-6 shadow-sm">
               <div className="sticky top-0">
-                <div className="flex items-center space-x-3 mb-4">
-                  <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center">
-                    <Zap className="text-white" size={16} />
+                <div className="flex items-center space-x-3 mb-6">
+                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center">
+                    <Zap className="text-white" size={18} />
                   </div>
-                  <h4 className="text-md font-semibold text-gray-900">
-                    Sistema de Pontuação MQL
+                  <h4 className="text-lg font-bold text-gray-900">
+                    Sistema MQL
                   </h4>
                 </div>
                 
-                <div className="space-y-4">
-                  <div className="bg-gradient-to-br from-gray-50 to-gray-100 p-4 rounded-lg border border-gray-200">
-                    <h5 className="text-sm font-medium text-gray-700 mb-2">
+                <div className="space-y-6">
+                  <div className="bg-gradient-to-br from-gray-50 to-gray-100 p-5 rounded-xl border border-gray-200">
+                    <h5 className="text-sm font-semibold text-gray-700 mb-3">
                       Threshold de Qualificação
                     </h5>
                     <input
                       type="number"
                       placeholder="70"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500 mt-2">
                       Pontos mínimos para ser considerado MQL
                     </p>
                   </div>
 
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
-                    <h5 className="text-sm font-medium text-blue-800 mb-2">
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-xl border border-blue-200">
+                    <h5 className="text-sm font-semibold text-blue-800 mb-3">
                       Regras Ativas
                     </h5>
                     <div className="text-xs text-blue-700">
@@ -248,11 +277,11 @@ const FormioEditor: React.FC<FormioEditorProps> = ({ form, onSave, onPreview, te
                     </div>
                   </div>
 
-                  <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
-                    <h5 className="text-sm font-medium text-green-800 mb-2">
+                  <div className="bg-gradient-to-br from-green-50 to-green-100 p-5 rounded-xl border border-green-200">
+                    <h5 className="text-sm font-semibold text-green-800 mb-3">
                       Dicas de Pontuação
                     </h5>
-                    <ul className="text-xs text-green-700 space-y-1">
+                    <ul className="text-xs text-green-700 space-y-2">
                       <li>• Campos básicos: 5-15 pontos</li>
                       <li>• Cargo/Empresa: 20-30 pontos</li>
                       <li>• Orçamento: 25-40 pontos</li>

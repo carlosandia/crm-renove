@@ -152,6 +152,11 @@ const FormBuilderModule: React.FC = () => {
     setShowModal(false);
   };
 
+  const handleCancelForm = () => {
+    setShowModal(false);
+    setEditingForm(null);
+  };
+
   if (!user || user.role !== 'admin') {
     return (
       <div className="flex items-center justify-center h-64">
@@ -273,9 +278,11 @@ const FormBuilderModule: React.FC = () => {
       {/* Modal de Criação/Edição */}
       {showModal && (
         <FormBuilderModal
+          isOpen={showModal}
+          onClose={handleCancelForm}
+          onCancel={handleCancelForm}
           form={editingForm}
           onSave={handleSaveForm}
-          onCancel={() => setShowModal(false)}
           tenantId={user.tenant_id}
         />
       )}
