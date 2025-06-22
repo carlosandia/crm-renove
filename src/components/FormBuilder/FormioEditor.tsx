@@ -4,6 +4,13 @@ import { FormBuilder } from '@formio/react';
 import { Save, Eye, Settings, Zap, AlertCircle } from 'lucide-react';
 import FormBuilderWrapper from './FormBuilderWrapper';
 
+// Declaração de tipos para Form.io
+declare global {
+  interface Window {
+    Formio?: any;
+  }
+}
+
 interface FormioEditorProps {
   form: any;
   onSave: (formioSchema: any) => void;
