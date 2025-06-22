@@ -12,7 +12,7 @@ interface MQLRule {
 
 interface MQLScoringManagerProps {
   form: any;
-  onSave: (rules: MQLRule[]) => void;
+  onSave: (scoringConfig: { mql_rules: MQLRule[]; mql_threshold: number }) => void;
 }
 
 const MQLScoringManager: React.FC<MQLScoringManagerProps> = ({ form, onSave }) => {

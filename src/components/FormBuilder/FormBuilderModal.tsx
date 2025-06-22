@@ -146,9 +146,11 @@ const FormBuilderModal: React.FC<FormBuilderModalProps> = ({ form, onSave, onCan
       case 'mql':
         return form?.id ? (
           <MQLScoringManager
-            formId={form.id}
-            formSchema={formData.formio_schema}
-            onSave={() => {}}
+            form={{ ...form, ...formData }}
+            onSave={(scoringConfig) => {
+              console.log('Scoring config received:', scoringConfig);
+              // Aqui podemos salvar as configurações MQL no formulário
+            }}
           />
         ) : (
           <div className="flex items-center justify-center h-64 text-gray-500">
