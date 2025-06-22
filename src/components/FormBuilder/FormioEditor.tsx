@@ -19,7 +19,7 @@ const FormioEditor: React.FC<FormioEditorProps> = ({ form, onSave, onPreview, te
   const [saving, setSaving] = useState(false);
   const [showMQLEditor, setShowMQLEditor] = useState(false);
 
-  // Configurações avançadas do Form.io Builder
+  // Configurações básicas do Form.io Builder
   const builderOptions = {
     builder: {
       basic: {
@@ -59,146 +59,22 @@ const FormioEditor: React.FC<FormioEditorProps> = ({ form, onSave, onPreview, te
           editgrid: true,
           tree: true
         }
-      },
-      whatsapp: {
-        title: 'Integração WhatsApp',
-        weight: 20,
-        components: {
-          whatsappButton: {
-            title: 'Botão WhatsApp',
-            key: 'whatsappButton',
-            icon: 'fa fa-whatsapp',
-            schema: {
-              label: 'Entrar em contato via WhatsApp',
-              type: 'button',
-              key: 'whatsappButton',
-              action: 'custom',
-              custom: `
-                // Redirecionar para WhatsApp e cadastrar lead
-                const phoneNumber = '5511999999999'; // Configurável
-                const message = 'Olá! Vim através do formulário e gostaria de mais informações.';
-                const whatsappUrl = 'https://wa.me/' + phoneNumber + '?text=' + encodeURIComponent(message);
-                
-                // Cadastrar lead no CRM antes de redirecionar
-                const formData = form.submission.data;
-                fetch('/api/leads/whatsapp-lead', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    formData,
-                    source: 'whatsapp_button',
-                    tenantId: '${tenantId}'
-                  })
-                }).then(() => {
-                  window.open(whatsappUrl, '_blank');
-                });
-              `,
-              theme: 'success',
-              size: 'md',
-              block: false,
-              leftIcon: 'fa fa-whatsapp',
-              customClass: 'btn-whatsapp'
-            }
-          }
-        }
-      },
-      scoring: {
-        title: 'Sistema MQL',
-        weight: 30,
-        components: {
-          mqlField: {
-            title: 'Campo com Pontuação MQL',
-            key: 'mqlField',
-            icon: 'fa fa-star',
-            schema: {
-              type: 'textfield',
-              key: 'mqlField',
-              label: 'Campo MQL',
-              mqlScoring: {
-                enabled: true,
-                rules: []
-              }
-            }
-          }
-        }
       }
-    },
-    editForm: {
-      textfield: [
-        {
-          key: 'display',
-          components: [
-            {
-              key: 'label',
-              type: 'textfield',
-              label: 'Rótulo do Campo'
-            },
-            {
-              key: 'placeholder',
-              type: 'textfield',
-              label: 'Placeholder'
-            },
-            {
-              key: 'description',
-              type: 'textarea',
-              label: 'Descrição'
-            }
-          ]
-        },
-        {
-          key: 'validation',
-          components: [
-            {
-              key: 'required',
-              type: 'checkbox',
-              label: 'Campo Obrigatório'
-            },
-            {
-              key: 'minLength',
-              type: 'number',
-              label: 'Comprimento Mínimo'
-            },
-            {
-              key: 'maxLength',
-              type: 'number',
-              label: 'Comprimento Máximo'
-            }
-          ]
-        },
-        {
-          key: 'mqlScoring',
-          label: 'Pontuação MQL',
-          components: [
-            {
-              key: 'mqlScoring.enabled',
-              type: 'checkbox',
-              label: 'Ativar Pontuação MQL'
-            },
-            {
-              key: 'mqlScoring.baseScore',
-              type: 'number',
-              label: 'Pontos Base (por preencher)',
-              defaultValue: 10,
-              conditional: {
-                show: true,
-                when: 'mqlScoring.enabled',
-                eq: true
-              }
-            }
-          ]
-        }
-      ]
     }
   };
 
   const handleFormChange = (newSchema: any) => {
+    console.log('Form schema changed:', newSchema);
     setFormSchema(newSchema);
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
+      console.log('Saving form schema:', formSchema);
       await onSave(formSchema);
+    } catch (error) {
+      console.error('Error saving form:', error);
     } finally {
       setSaving(false);
     }
@@ -244,10 +120,12 @@ const FormioEditor: React.FC<FormioEditorProps> = ({ form, onSave, onPreview, te
         {/* Editor Principal */}
         <div className={`${showMQLEditor ? 'w-3/4' : 'w-full'} transition-all duration-300`}>
           <div className="h-full p-4">
-            <FormBuilder
-              options={builderOptions}
-              onChange={handleFormChange}
-            />
+            <div className="h-full bg-white rounded-lg border border-gray-200">
+              <FormBuilder
+                options={builderOptions}
+                onChange={handleFormChange}
+              />
+            </div>
           </div>
         </div>
 

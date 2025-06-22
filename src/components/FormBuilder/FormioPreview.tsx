@@ -36,7 +36,7 @@ const FormioPreview: React.FC<FormioPreviewProps> = ({ formSchema, form, onClose
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    // Aqui você pode adicionar uma notificação de sucesso
+    console.log('Copied to clipboard:', text);
   };
 
   return (
@@ -102,13 +102,15 @@ const FormioPreview: React.FC<FormioPreviewProps> = ({ formSchema, form, onClose
           <div className="flex-1 p-6 bg-gray-50 flex items-start justify-center overflow-auto">
             <div className={`bg-white rounded-lg shadow-lg transition-all duration-300 ${getPreviewClass()}`}>
               <div className="h-full p-6 overflow-auto">
-                <Form
-                  src={formSchema}
-                  onSubmit={(submission: any) => {
-                    console.log('Form submitted:', submission);
-                    alert('Formulário enviado com sucesso! (Preview Mode)');
-                  }}
-                />
+                {formSchema && (
+                  <Form
+                    src={formSchema}
+                    onSubmit={(submission: any) => {
+                      console.log('Form submitted:', submission);
+                      alert('Formulário enviado com sucesso! (Preview Mode)');
+                    }}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -163,27 +165,6 @@ const FormioPreview: React.FC<FormioPreviewProps> = ({ formSchema, form, onClose
                   </div>
                 </div>
 
-                {/* Opções de Embed */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Opções de Incorporação
-                  </label>
-                  <div className="space-y-2">
-                    <label className="flex items-center">
-                      <input type="checkbox" className="rounded" defaultChecked />
-                      <span className="ml-2 text-sm text-gray-600">Responsivo</span>
-                    </label>
-                    <label className="flex items-center">
-                      <input type="checkbox" className="rounded" />
-                      <span className="ml-2 text-sm text-gray-600">Ocultar cabeçalho</span>
-                    </label>
-                    <label className="flex items-center">
-                      <input type="checkbox" className="rounded" />
-                      <span className="ml-2 text-sm text-gray-600">Auto redimensionar</span>
-                    </label>
-                  </div>
-                </div>
-
                 {/* Analytics */}
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <h4 className="text-sm font-medium text-blue-800 mb-2">
@@ -192,11 +173,11 @@ const FormioPreview: React.FC<FormioPreviewProps> = ({ formSchema, form, onClose
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div className="text-blue-700">
                       <div className="font-medium">Visualizações</div>
-                      <div className="text-lg">1,234</div>
+                      <div className="text-lg">0</div>
                     </div>
                     <div className="text-blue-700">
                       <div className="font-medium">Conversões</div>
-                      <div className="text-lg">45</div>
+                      <div className="text-lg">0</div>
                     </div>
                   </div>
                 </div>
