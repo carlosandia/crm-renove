@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -12,8 +11,14 @@ import {
   Eye,
   Clock,
   AlertTriangle,
-  BarChart3
+  BarChart3,
+  Calendar,
+  Building2,
+  Download,
+  RefreshCw
 } from 'lucide-react';
+import { BlurFade } from './ui/blur-fade';
+import { ShimmerButton } from './ui/shimmer-button';
 
 interface ConsolidatedMetrics {
   total_companies: number;
@@ -438,84 +443,94 @@ const ReportsModule: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredCompanies.map((company) => (
-                <tr key={company.company_id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
+              {filteredCompanies.map((company, index) => (
+                <BlurFade key={company.company_id} delay={index * 0.05}>
+                  <tr className="hover:bg-gray-50 transition-colors duration-200">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className="flex-shrink-0 w-10 h-10">
+                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <Building2 className="w-5 h-5 text-blue-600" />
+                          </div>
+                        </div>
+                        <div className="ml-4">
+                          <div className="text-sm font-medium text-gray-900">{company.company_name}</div>
+                          <div className="text-sm text-gray-500">ID: {company.company_id}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{company.city}</div>
+                      <div className="text-sm text-gray-500">{company.state}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
                       <div className="text-sm font-medium text-gray-900">
-                        {company.company_name}
+                        {company.expected_leads_monthly} / {company.leads_received}
+                      </div>
+                      <div className={`text-xs ${
+                        company.leads_received >= company.expected_leads_monthly ? 'text-green-600' : 'text-orange-600'
+                      }`}>
+                        {company.leads_received >= company.expected_leads_monthly ? 'Meta atingida' : 'Abaixo da meta'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <div className="text-sm font-medium text-gray-900">
+                        {company.expected_sales_monthly} / {company.sales_closed}
+                      </div>
+                      <div className={`text-xs ${
+                        company.sales_closed >= company.expected_sales_monthly ? 'text-green-600' : 'text-orange-600'
+                      }`}>
+                        {company.sales_closed >= company.expected_sales_monthly ? 'Meta atingida' : 'Abaixo da meta'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <div className="text-lg font-bold text-gray-900">
+                        {formatPercentage(company.conversion_rate)}
+                      </div>
+                      <div className={`text-xs ${
+                        company.conversion_rate >= 20 ? 'text-green-600' : 
+                        company.conversion_rate >= 10 ? 'text-yellow-600' : 'text-red-600'
+                      }`}>
+                        {company.conversion_rate >= 20 ? 'Excelente' : 
+                         company.conversion_rate >= 10 ? 'Bom' : 'Precisa melhorar'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <div className="text-sm font-medium text-gray-900">
+                        {formatCurrency(company.avg_ticket)}
                       </div>
                       <div className="text-sm text-gray-500">
-                        {company.industry}
+                        Total: {formatCurrency(company.expected_sales_monthly * company.avg_ticket)}
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {company.city}/{company.state}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      {company.expected_leads_monthly} / {company.leads_received}
-                    </div>
-                    <div className={`text-xs ${
-                      company.leads_received >= company.expected_leads_monthly 
-                        ? 'text-green-600' 
-                        : 'text-red-600'
-                    }`}>
-                      {company.leads_received >= company.expected_leads_monthly ? '✓ Meta atingida' : '⚠ Abaixo da meta'}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      {company.expected_sales_monthly} / {company.sales_closed}
-                    </div>
-                    <div className={`text-xs ${
-                      company.sales_closed >= company.expected_sales_monthly 
-                        ? 'text-green-600' 
-                        : 'text-red-600'
-                    }`}>
-                      {company.sales_closed >= company.expected_sales_monthly ? '✓ Meta atingida' : '⚠ Abaixo da meta'}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      company.conversion_rate >= 20 
-                        ? 'bg-green-100 text-green-800'
-                        : company.conversion_rate >= 10
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {formatPercentage(company.conversion_rate)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatCurrency(company.avg_ticket)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex flex-wrap gap-1">
-                      {Object.entries(company.origem_breakdown || {})
-                        .sort(([,a], [,b]) => b - a)
-                        .slice(0, 2)
-                        .map(([origem, count]) => (
-                          <span 
-                            key={origem}
-                            className="inline-flex items-center px-2 py-1 rounded-md text-xs bg-blue-100 text-blue-800"
-                          >
-                            {getOrigemLabel(origem)}: {count}
-                          </span>
-                        ))}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button
-                      onClick={() => openCompanyDetail(company)}
-                      className="text-blue-600 hover:text-blue-900 inline-flex items-center space-x-1"
-                    >
-                      <Eye className="w-4 h-4" />
-                      <span>Detalhes</span>
-                    </button>
-                  </td>
-                </tr>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex flex-wrap gap-1">
+                        {Object.entries(company.origem_breakdown || {})
+                          .sort(([,a], [,b]) => b - a)
+                          .slice(0, 2)
+                          .map(([origem, count]) => (
+                            <span 
+                              key={origem}
+                              className="inline-flex items-center px-2 py-1 rounded-md text-xs bg-blue-100 text-blue-800"
+                            >
+                              {getOrigemLabel(origem)}: {count}
+                            </span>
+                          ))}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <ShimmerButton
+                        onClick={() => openCompanyDetail(company)}
+                        className="h-8 px-3 text-xs"
+                        background="rgb(59 130 246)"
+                        shimmerColor="#ffffff"
+                      >
+                        <Eye className="w-3 h-3 mr-1" />
+                        Detalhes
+                      </ShimmerButton>
+                    </td>
+                  </tr>
+                </BlurFade>
               ))}
             </tbody>
           </table>

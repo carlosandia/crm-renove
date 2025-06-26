@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import LeadsList from './Leads/LeadsList';
+import { useStatePersistence, MODULE_PERSISTENCE_CONFIGS } from '../lib/statePersistence';
+import LeadsListEnhanced from './Leads/LeadsListEnhanced';
 import LeadDetailsModal from './Leads/LeadDetailsModal';
 import LeadFormModal from './Leads/LeadFormModal';
 import PendingLeadsTab from './Pipeline/PendingLeadsTab';
@@ -36,19 +37,55 @@ interface LeadMaster {
 
 const LeadsModuleWithTabs: React.FC = () => {
   const { user } = useAuth();
+  
+  // 🔄 PERSISTÊNCIA: Estados com persistência automática
+  const { state: persistedState, updateState: updatePersistedState } = useStatePersistence(
+    MODULE_PERSISTENCE_CONFIGS.LEADS_MODULE_WITH_TABS
+  );
+  
   const [leads, setLeads] = useState<LeadMaster[]>([]);
   const [filteredLeads, setFilteredLeads] = useState<LeadMaster[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [temperatureFilter, setTemperatureFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState(persistedState.searchTerm || '');
+  const [statusFilter, setStatusFilter] = useState(persistedState.statusFilter || 'all');
+  const [temperatureFilter, setTemperatureFilter] = useState(persistedState.temperatureFilter || 'all');
   const [selectedLead, setSelectedLead] = useState<LeadMaster | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<LeadMaster | null>(null);
 
-  // Estado para controle de abas (apenas para admin)
-  const [activeTab, setActiveTab] = useState<'leads' | 'pending'>('leads');
+  // 🔄 PERSISTÊNCIA: Estado para controle de abas com persistência
+  const [activeTab, setActiveTab] = useState<'leads' | 'pending'>(persistedState.activeTab || 'leads');
+
+  // ✅ Estado local para leads atualizados (sincronização com LeadDetailsModal)
+  const [localLeads, setLocalLeads] = useState<LeadMaster[]>([]);
+
+  // ✅ Sincronizar leads locais com estado principal
+  useEffect(() => {
+    setLocalLeads(leads);
+  }, [leads]);
+
+  // ✅ Callback para atualizar lead específico
+  const handleLeadUpdated = useCallback((updatedLead: LeadMaster) => {
+    console.log('📡 [LeadsModuleWithTabs] Recebido lead atualizado:', updatedLead.id);
+    setLocalLeads(prevLeads => 
+      prevLeads.map(lead => 
+        lead.id === updatedLead.id ? updatedLead : lead
+      )
+    );
+    
+    // Atualizar também o estado principal para persistir mudanças
+    setLeads(prevLeads => 
+      prevLeads.map(lead => 
+        lead.id === updatedLead.id ? updatedLead : lead
+      )
+    );
+    
+    // Se o lead selecionado foi atualizado, atualizar também
+    if (selectedLead?.id === updatedLead.id) {
+      setSelectedLead(updatedLead);
+    }
+  }, [selectedLead]);
 
   // Carregar leads
   const loadLeads = async () => {
@@ -84,7 +121,7 @@ const LeadsModuleWithTabs: React.FC = () => {
 
   // Filtrar leads
   useEffect(() => {
-    let filtered = leads;
+    let filtered = localLeads;
 
     // Filtro por busca
     if (searchTerm) {
@@ -107,7 +144,7 @@ const LeadsModuleWithTabs: React.FC = () => {
     }
 
     setFilteredLeads(filtered);
-  }, [leads, searchTerm, statusFilter, temperatureFilter]);
+  }, [localLeads, searchTerm, statusFilter, temperatureFilter]);
 
   // Carregar leads ao montar componente
   useEffect(() => {
@@ -235,7 +272,10 @@ const LeadsModuleWithTabs: React.FC = () => {
           <div className="border-b border-gray-200">
             <nav className="flex space-x-8 px-6" aria-label="Tabs">
               <button
-                onClick={() => setActiveTab('leads')}
+                onClick={() => {
+                  setActiveTab('leads');
+                  updatePersistedState({ activeTab: 'leads' });
+                }}
                 className={`py-4 px-1 border-b-2 font-medium text-sm ${
                   activeTab === 'leads'
                     ? 'border-blue-500 text-blue-600'
@@ -248,7 +288,10 @@ const LeadsModuleWithTabs: React.FC = () => {
                 </div>
               </button>
               <button
-                onClick={() => setActiveTab('pending')}
+                onClick={() => {
+                  setActiveTab('pending');
+                  updatePersistedState({ activeTab: 'pending' });
+                }}
                 className={`py-4 px-1 border-b-2 font-medium text-sm ${
                   activeTab === 'pending'
                     ? 'border-blue-500 text-blue-600'
@@ -277,7 +320,10 @@ const LeadsModuleWithTabs: React.FC = () => {
                         type="text"
                         placeholder="Buscar por nome, email, telefone ou empresa..."
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onChange={(e) => {
+                          setSearchTerm(e.target.value);
+                          updatePersistedState({ searchTerm: e.target.value });
+                        }}
                         className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
                     </div>
@@ -286,7 +332,10 @@ const LeadsModuleWithTabs: React.FC = () => {
                     <div className="flex gap-4">
                       <select
                         value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
+                        onChange={(e) => {
+                          setStatusFilter(e.target.value);
+                          updatePersistedState({ statusFilter: e.target.value });
+                        }}
                         className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="all">Todos os Status</option>
@@ -297,7 +346,10 @@ const LeadsModuleWithTabs: React.FC = () => {
 
                       <select
                         value={temperatureFilter}
-                        onChange={(e) => setTemperatureFilter(e.target.value)}
+                        onChange={(e) => {
+                          setTemperatureFilter(e.target.value);
+                          updatePersistedState({ temperatureFilter: e.target.value });
+                        }}
                         className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="all">Todas Temperaturas</option>
@@ -315,13 +367,14 @@ const LeadsModuleWithTabs: React.FC = () => {
                 </div>
 
                 {/* Lista de Leads */}
-                <LeadsList
+                <LeadsListEnhanced
                   leads={filteredLeads}
                   loading={loading}
                   onViewDetails={handleViewDetails}
                   onEditLead={handleEditLead}
                   onDeleteLead={handleDeleteLead}
                   currentUserRole={user.role}
+                  onLeadUpdate={loadLeads}
                 />
               </>
             )}
@@ -346,7 +399,10 @@ const LeadsModuleWithTabs: React.FC = () => {
                   type="text"
                   placeholder="Buscar por nome, email, telefone ou empresa..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    updatePersistedState({ searchTerm: e.target.value });
+                  }}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -355,7 +411,10 @@ const LeadsModuleWithTabs: React.FC = () => {
               <div className="flex gap-4">
                 <select
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value);
+                    updatePersistedState({ statusFilter: e.target.value });
+                  }}
                   className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="all">Todos os Status</option>
@@ -385,13 +444,14 @@ const LeadsModuleWithTabs: React.FC = () => {
 
           {/* Lista de Leads */}
           <div className="bg-white rounded-xl border border-gray-200">
-            <LeadsList
+            <LeadsListEnhanced
               leads={filteredLeads}
               loading={loading}
               onViewDetails={handleViewDetails}
               onEditLead={handleEditLead}
               onDeleteLead={handleDeleteLead}
               currentUserRole={user.role}
+              onLeadUpdate={loadLeads}
             />
           </div>
         </>
@@ -404,6 +464,7 @@ const LeadsModuleWithTabs: React.FC = () => {
           isOpen={isDetailsModalOpen}
           onClose={() => setIsDetailsModalOpen(false)}
           onEdit={handleEditLead}
+          onLeadUpdated={handleLeadUpdated}
         />
       )}
 

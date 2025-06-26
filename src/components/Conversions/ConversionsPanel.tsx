@@ -9,9 +9,13 @@ import {
   Send,
   BarChart3,
   Filter,
-  Download
+  Download,
+  X
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
+import { BlurFade } from '../ui/blur-fade';
+import { ShimmerButton } from '../ui/shimmer-button';
 
 interface ConversionLog {
   id: string;
@@ -23,6 +27,9 @@ interface ConversionLog {
   sent_at?: string;
   error_message?: string;
   retry_count: number;
+  lead_name?: string;
+  event_type?: string;
+  event_data?: any;
 }
 
 interface ConversionStats {
@@ -77,7 +84,10 @@ const ConversionsPanel: React.FC = () => {
         status: 'sent',
         created_at: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
         sent_at: new Date(Date.now() - 1000 * 60 * 25).toISOString(),
-        retry_count: 0
+        retry_count: 0,
+        lead_name: 'Lead 001',
+        event_type: 'Purchase',
+        event_data: { amount: 100 }
       },
       {
         id: '2',
@@ -87,7 +97,10 @@ const ConversionsPanel: React.FC = () => {
         status: 'sent',
         created_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
         sent_at: new Date(Date.now() - 1000 * 60 * 40).toISOString(),
-        retry_count: 0
+        retry_count: 0,
+        lead_name: 'Lead 002',
+        event_type: 'Lead',
+        event_data: { source: 'Google Ads' }
       },
       {
         id: '3',
@@ -96,7 +109,10 @@ const ConversionsPanel: React.FC = () => {
         event_name: 'Lead',
         status: 'pending',
         created_at: new Date(Date.now() - 1000 * 60 * 10).toISOString(),
-        retry_count: 0
+        retry_count: 0,
+        lead_name: 'Lead 003',
+        event_type: 'Lead',
+        event_data: { source: 'Meta Ads' }
       },
       {
         id: '4',
@@ -106,7 +122,10 @@ const ConversionsPanel: React.FC = () => {
         status: 'failed',
         created_at: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
         error_message: 'Token inválido',
-        retry_count: 2
+        retry_count: 2,
+        lead_name: 'Lead 004',
+        event_type: 'Purchase',
+        event_data: { error: 'Invalid token' }
       },
       {
         id: '5',
@@ -115,7 +134,10 @@ const ConversionsPanel: React.FC = () => {
         event_name: 'Lead',
         status: 'retry',
         created_at: new Date(Date.now() - 1000 * 60 * 20).toISOString(),
-        retry_count: 1
+        retry_count: 1,
+        lead_name: 'Lead 005',
+        event_type: 'Lead',
+        event_data: { source: 'Meta Ads' }
       }
     ];
 
@@ -402,36 +424,68 @@ const ConversionsPanel: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {log.lead_id}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        log.platform === 'meta' 
-                          ? 'bg-blue-100 text-blue-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {log.platform === 'meta' ? 'Meta Ads' : 'Google Ads'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {log.event_name}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(log.status)}`}>
-                        {getStatusIcon(log.status)}
-                        <span className="ml-1 capitalize">{log.status}</span>
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDateTime(log.created_at)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {log.sent_at ? formatDateTime(log.sent_at) : '-'}
-                    </td>
-                  </tr>
+                {logs.map((log, index) => (
+                  <BlurFade key={log.id} delay={index * 0.05}>
+                    <tr className="hover:bg-gray-50 transition-colors duration-200">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                            <span className="text-sm font-medium text-purple-600">
+                              {log.lead_name?.charAt(0) || 'L'}
+                            </span>
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {log.lead_name || 'Lead não identificado'}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              ID: {log.lead_id?.substring(0, 8) || 'N/A'}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center space-x-2">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                                         log.platform === 'meta' ? 'bg-blue-100 text-blue-800' :
+                             log.platform === 'google' ? 'bg-green-100 text-green-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {log.platform}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{log.event_type}</div>
+                        {log.event_data && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            {JSON.stringify(log.event_data)}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          log.status === 'sent' ? 'bg-green-100 text-green-800' :
+                          log.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                          log.status === 'failed' ? 'bg-red-100 text-red-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {log.status === 'sent' && <CheckCircle className="w-3 h-3 mr-1" />}
+                          {log.status === 'pending' && <Clock className="w-3 h-3 mr-1" />}
+                          {log.status === 'failed' && <X className="w-3 h-3 mr-1" />}
+                          {log.status === 'sent' ? 'Enviado' :
+                           log.status === 'pending' ? 'Pendente' :
+                           log.status === 'failed' ? 'Falhou' : log.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {new Date(log.created_at).toLocaleString('pt-BR')}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {log.sent_at ? new Date(log.sent_at).toLocaleString('pt-BR') : '-'}
+                      </td>
+                    </tr>
+                  </BlurFade>
                 ))}
               </tbody>
             </table>

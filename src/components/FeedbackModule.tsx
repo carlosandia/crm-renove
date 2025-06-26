@@ -15,6 +15,7 @@ interface FeedbackData {
     name: string;
     email: string;
     avatar?: string;
+    role?: string;
   };
   admin_empresa: {
     id: string;
@@ -65,39 +66,149 @@ const FeedbackModule: React.FC = () => {
   const loadFeedbacks = async () => {
     setLoading(true);
     try {
-      console.log('🔍 Carregando feedbacks do banco...');
+      console.log('🔍 🎯 IMPLEMENTAÇÃO DADOS REAIS: Carregando feedbacks com JOINs...');
       
-      // Tentar carregar da tabela lead_feedback primeiro
+      // ✅ QUERY REAL COM JOINS PARA TRAZER DADOS REAIS
       const { data: feedbackData, error: feedbackError } = await supabase
         .from('lead_feedback')
-        .select('*')
+        .select(`
+          id,
+          feedback_type,
+          comment,
+          created_at,
+          lead_id,
+          user_id,
+          users!lead_feedback_user_id_fkey (
+            id,
+            first_name,
+            last_name,
+            email,
+            role,
+            tenant_id
+          ),
+          pipeline_leads!lead_feedback_lead_id_fkey (
+            id,
+            custom_data,
+            lead_data,
+            pipeline_id,
+            pipelines!pipeline_leads_pipeline_id_fkey (
+              id,
+              name,
+              created_by,
+              users!pipelines_created_by_fkey (
+                id,
+                first_name,
+                last_name,
+                email,
+                role,
+                tenant_id
+              )
+            )
+          )
+        `)
         .order('created_at', { ascending: false });
 
       if (feedbackError) {
-        console.log('⚠️ Tabela lead_feedback não encontrada:', feedbackError.message);
-        console.log('📋 Usando dados simulados');
-        loadMockFeedbacks();
+        console.log('⚠️ Erro na query com JOINs:', feedbackError.message);
+        console.log('📋 Fallback: Usando método simplificado...');
+        
+        // Fallback: buscar dados básicos e enriquecer separadamente
+        const { data: simpleFeedback, error: simpleError } = await supabase
+          .from('lead_feedback')
+          .select('*')
+          .order('created_at', { ascending: false });
+          
+        if (simpleError) {
+          console.log('📋 Usando dados mock como fallback final');
+          loadMockFeedbacks();
+          return;
+        }
+        
+        // Enriquecer com dados reais através de queries separadas
+        const enrichedFeedbacks = await enrichFeedbacksWithRealData(simpleFeedback || []);
+        setFeedbacks([...enrichedFeedbacks, ...getMockFeedbacks()]);
+        extractFiltersFromData([...enrichedFeedbacks, ...getMockFeedbacks()]);
         return;
       }
 
       if (!feedbackData || feedbackData.length === 0) {
-        console.log('📋 Nenhum feedback encontrado no banco, usando dados simulados');
-        loadMockFeedbacks();
+        console.log('📋 Nenhum feedback encontrado no banco, incluindo dados mock');
+        setFeedbacks(getMockFeedbacks());
+        extractFiltersFromData(getMockFeedbacks());
         return;
       }
 
-      console.log('✅ Feedbacks carregados do banco:', feedbackData.length);
+      console.log('✅ Feedbacks carregados com sucesso:', feedbackData.length);
 
-      // Processar feedbacks reais do banco
-      const formattedFeedbacks: FeedbackData[] = [];
-      
-      for (const feedback of feedbackData) {
-        // Para feedbacks reais, vamos enriquecer com dados simulados por enquanto
-        // Em produção, isso seria feito com JOINs apropriados
-        const enrichedFeedback = await enrichFeedbackWithMockData(feedback);
-        formattedFeedbacks.push(enrichedFeedback);
-      }
+      // ✅ PROCESSAR DADOS REAIS DO BANCO
+      let formattedFeedbacks: FeedbackData[] = feedbackData.map((feedback: any) => {
+        const userData = feedback.users;
+        const leadDataArray = feedback.pipeline_leads;
+        const leadData = Array.isArray(leadDataArray) ? leadDataArray[0] : leadDataArray;
+        const pipelineDataArray = leadData?.pipelines;
+        const pipelineData = Array.isArray(pipelineDataArray) ? pipelineDataArray[0] : pipelineDataArray;
+        const adminDataArray = pipelineData?.users;
+        const adminData = Array.isArray(adminDataArray) ? adminDataArray[0] : adminDataArray;
+        
+        // Extrair dados do lead (custom_data ou lead_data)
+        const leadInfo = leadData?.custom_data || leadData?.lead_data || {};
+        
+        // ✅ UTM SOURCE REAL do banco
+        const utmSource = leadInfo.utm_source || leadInfo.source || leadInfo.traffic_source || 'manual';
+        
+        // ✅ NOME REAL DO USUÁRIO QUE REGISTROU O FEEDBACK
+        const nomeRealUsuario = userData ? 
+          `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || 
+          userData.email?.split('@')[0] || 
+          'Usuário' 
+          : 'Usuário Não Encontrado';
 
+        console.log('✅ Processando feedback - Nome real:', nomeRealUsuario, `(${userData?.role || 'unknown'})`);
+
+        // ✅ BUSCAR NOME DA EMPRESA VIA TENANT_ID → COMPANIES.NAME (será buscado depois)
+        let companyNameFromDB = 'Empresa';
+        
+        return {
+          id: feedback.id,
+          feedback_type: feedback.feedback_type,
+          comment: feedback.comment,
+          created_at: feedback.created_at,
+          lead_id: feedback.lead_id,
+          vendedor: {
+            id: userData?.id || feedback.user_id,
+            name: nomeRealUsuario, // ✅ NOME REAL DO USUÁRIO DO BANCO
+            email: userData?.email || '',
+            role: userData?.role || 'member'
+          },
+          admin_empresa: {
+            id: adminData?.id || pipelineData?.created_by || '',
+            company_name: companyNameFromDB, // ✅ SERÁ SUBSTITUÍDO POR NOME REAL DA EMPRESA
+            tenant_id: adminData?.tenant_id || userData?.tenant_id || ''
+          },
+          lead: {
+            id: leadData?.id || feedback.lead_id,
+            nome: leadInfo.nome || leadInfo.name || leadInfo.full_name || 'Lead sem nome',
+            email: leadInfo.email || leadInfo.email_address || '',
+            telefone: leadInfo.telefone || leadInfo.phone || leadInfo.whatsapp || '',
+            valor: parseFloat(leadInfo.valor || leadInfo.value || leadInfo.valor_oportunidade || '0') || 0,
+            source: mapUtmToSource(utmSource) // ✅ MAPPING UTM REAL
+          },
+          pipeline: {
+            id: pipelineData?.id || leadData?.pipeline_id || '',
+            name: pipelineData?.name || 'Pipeline'
+          },
+          stage: {
+            id: 'stage-default',
+            name: 'Ativa',
+            color: '#3b82f6'
+          }
+        };
+      });
+
+      // ✅ BUSCAR NOMES REAIS DAS EMPRESAS PARA SUBSTITUIR "Empresa"
+      formattedFeedbacks = await enrichWithCompanyNames(formattedFeedbacks);
+
+      // Combinar dados reais com mock para demonstração
       setFeedbacks([...formattedFeedbacks, ...getMockFeedbacks()]);
       extractFiltersFromData([...formattedFeedbacks, ...getMockFeedbacks()]);
 
@@ -107,6 +218,237 @@ const FeedbackModule: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // ✅ FUNÇÃO PARA ENRIQUECER FEEDBACKS COM NOMES REAIS DAS EMPRESAS
+  const enrichWithCompanyNames = async (feedbacks: FeedbackData[]): Promise<FeedbackData[]> => {
+    const enrichedFeedbacks = [...feedbacks];
+    
+    for (let i = 0; i < enrichedFeedbacks.length; i++) {
+      const feedback = enrichedFeedbacks[i];
+      
+      // Se já tem nome da empresa diferente de "Empresa", pular
+      if (feedback.admin_empresa.company_name !== 'Empresa') {
+        continue;
+      }
+      
+      // Buscar nome real da empresa via tenant_id
+      if (feedback.admin_empresa.tenant_id) {
+        try {
+          const { data: companyData } = await supabase
+            .from('companies')
+            .select('name')
+            .eq('id', feedback.admin_empresa.tenant_id)
+            .single();
+          
+          if (companyData?.name) {
+            enrichedFeedbacks[i] = {
+              ...feedback,
+              admin_empresa: {
+                ...feedback.admin_empresa,
+                company_name: companyData.name
+              }
+            };
+            console.log('✅ Empresa encontrada:', companyData.name, 'para tenant:', feedback.admin_empresa.tenant_id);
+          }
+        } catch (error) {
+          console.warn('⚠️ Erro ao buscar empresa para tenant:', feedback.admin_empresa.tenant_id, error);
+        }
+      }
+    }
+    
+    return enrichedFeedbacks;
+  };
+
+  // ✅ FUNÇÃO PARA MAPEAR UTM SOURCE REAL
+  const mapUtmToSource = (utmSource: string): 'meta' | 'google' | 'linkedin' | 'webhook' | 'manual' | 'form' => {
+    const source = utmSource.toLowerCase();
+    if (source.includes('meta') || source.includes('facebook') || source.includes('instagram')) {
+      return 'meta';
+    }
+    if (source.includes('google') || source.includes('gads') || source.includes('adwords')) {
+      return 'google';
+    }
+    if (source.includes('linkedin') || source.includes('linked')) {
+      return 'linkedin';
+    }
+    if (source.includes('webhook') || source.includes('api')) {
+      return 'webhook';
+    }
+    if (source.includes('form') || source.includes('formulario')) {
+      return 'form';
+    }
+    return 'manual';
+  };
+
+  // ✅ FUNÇÃO PARA ENRIQUECER FEEDBACKS COM DADOS REAIS DO USUÁRIO
+  const enrichFeedbacksWithRealData = async (feedbacks: any[]): Promise<FeedbackData[]> => {
+    const enrichedFeedbacks: FeedbackData[] = [];
+    
+    for (const feedback of feedbacks) {
+      try {
+        console.log('🔍 Buscando dados reais do usuário:', feedback.user_id);
+        
+        // ✅ BUSCAR DADOS REAIS DO USUÁRIO QUE REGISTROU O FEEDBACK
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('id, first_name, last_name, email, role, tenant_id')
+          .eq('id', feedback.user_id)
+          .single();
+
+        if (userError) {
+          console.warn('⚠️ Erro ao buscar usuário:', feedback.user_id, userError.message);
+        }
+
+        // ✅ BUSCAR NOME DA EMPRESA VIA TENANT_ID → COMPANIES.NAME
+        let companyName = 'Empresa';
+        if (userData?.tenant_id) {
+          const { data: companyData } = await supabase
+            .from('companies')
+            .select('name')
+            .eq('id', userData.tenant_id)
+            .single();
+          
+          if (companyData?.name) {
+            companyName = companyData.name;
+          }
+        }
+
+        // Buscar dados do lead
+        const { data: leadData } = await supabase
+          .from('pipeline_leads')
+          .select('id, custom_data, lead_data, pipeline_id')
+          .eq('id', feedback.lead_id)
+          .single();
+
+        // Buscar dados da pipeline e admin
+        let pipelineData = null;
+        let adminData = null;
+        if (leadData?.pipeline_id) {
+          const { data: pipeline } = await supabase
+            .from('pipelines')
+            .select('id, name, created_by')
+            .eq('id', leadData.pipeline_id)
+            .single();
+          
+          pipelineData = pipeline;
+          
+          if (pipeline?.created_by) {
+            const { data: admin } = await supabase
+              .from('users')
+              .select('id, first_name, last_name, email, tenant_id')
+              .eq('id', pipeline.created_by)
+              .single();
+            adminData = admin;
+          }
+        }
+
+        const leadInfo = leadData?.custom_data || leadData?.lead_data || {};
+        const utmSource = leadInfo.utm_source || leadInfo.source || leadInfo.traffic_source || 'manual';
+
+        // ✅ NOME REAL DO USUÁRIO DO BANCO
+        const nomeReal = userData ? 
+          `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || 
+          userData.email?.split('@')[0] || 
+          'Usuário' 
+          : 'Usuário Não Encontrado';
+
+        console.log('✅ Nome real encontrado:', nomeReal, `(${userData?.role || 'unknown'})`);
+
+        enrichedFeedbacks.push({
+          id: feedback.id,
+          feedback_type: feedback.feedback_type,
+          comment: feedback.comment,
+          created_at: feedback.created_at,
+          lead_id: feedback.lead_id,
+          vendedor: {
+            id: userData?.id || feedback.user_id,
+            name: nomeReal, // ✅ NOME REAL DO BANCO
+            email: userData?.email || '',
+            role: userData?.role || 'member'
+          },
+          admin_empresa: {
+            id: adminData?.id || pipelineData?.created_by || '',
+            company_name: companyName, // ✅ NOME REAL DA EMPRESA VIA COMPANIES.NAME
+            tenant_id: adminData?.tenant_id || userData?.tenant_id || ''
+          },
+          lead: {
+            id: leadData?.id || feedback.lead_id,
+            nome: leadInfo.nome || leadInfo.name || leadInfo.full_name || 'Lead sem nome',
+            email: leadInfo.email || leadInfo.email_address || '',
+            telefone: leadInfo.telefone || leadInfo.phone || leadInfo.whatsapp || '',
+            valor: parseFloat(leadInfo.valor || leadInfo.value || leadInfo.valor_oportunidade || '0') || 0,
+            source: mapUtmToSource(utmSource)
+          },
+          pipeline: {
+            id: pipelineData?.id || leadData?.pipeline_id || '',
+            name: pipelineData?.name || 'Pipeline'
+          },
+          stage: {
+            id: 'stage-default',
+            name: 'Ativa',
+            color: '#3b82f6'
+          }
+        });
+      } catch (error) {
+        console.warn('⚠️ Erro ao enriquecer feedback:', feedback.id, error);
+        // Em caso de erro, tentar buscar pelo menos o nome do usuário
+        let nomeUsuario = 'Usuário';
+        try {
+          const { data: basicUser } = await supabase
+            .from('users')
+            .select('first_name, last_name, email, role')
+            .eq('id', feedback.user_id)
+            .single();
+          
+          if (basicUser) {
+            nomeUsuario = `${basicUser.first_name || ''} ${basicUser.last_name || ''}`.trim() || 
+                         basicUser.email?.split('@')[0] || 
+                         'Usuário';
+          }
+        } catch (e) {
+          console.warn('⚠️ Erro ao buscar dados básicos do usuário');
+        }
+
+        enrichedFeedbacks.push({
+          id: feedback.id,
+          feedback_type: feedback.feedback_type,
+          comment: feedback.comment,
+          created_at: feedback.created_at,
+          lead_id: feedback.lead_id,
+          vendedor: {
+            id: feedback.user_id,
+            name: nomeUsuario, // ✅ NOME REAL MESMO EM FALLBACK
+            email: '',
+            role: 'member'
+          },
+          admin_empresa: {
+            id: '',
+            company_name: 'Empresa',
+            tenant_id: ''
+          },
+          lead: {
+            id: feedback.lead_id,
+            nome: 'Lead',
+            email: '',
+            telefone: '',
+            valor: 0,
+            source: 'manual'
+          },
+          pipeline: {
+            id: '',
+            name: 'Pipeline'
+          },
+          stage: {
+            id: 'stage-default',
+            name: 'Ativa',
+            color: '#3b82f6'
+          }
+        });
+      }
+    }
+    
+    return enrichedFeedbacks;
   };
 
   // Função para enriquecer feedback real com dados simulados
@@ -644,34 +986,27 @@ const FeedbackModule: React.FC = () => {
               
               return (
                 <div key={feedback.id} className="p-4 hover:bg-gray-50 transition-colors">
-                  {/* Layout em linha única conforme solicitado */}
+                  {/* 🎯 LAYOUT AJUSTADO CONFORME SOLICITADO */}
                   <div className="flex items-center space-x-4 text-sm">
                     
-                    {/* 1. Nome do vendedor e empresa + ícone positivo/negativo */}
-                    <div className="flex items-center space-x-2 min-w-0 flex-shrink-0">
-                      <div className="flex items-center space-x-1">
-                        <span className="font-medium text-gray-900">{feedback.vendedor.name}</span>
-                        <span className="text-xs text-gray-500">({feedback.admin_empresa.company_name})</span>
-                      </div>
-                      <div className="flex items-center">
-                        {feedback.feedback_type === 'positive' ? (
-                          <ThumbsUp className="w-4 h-4 text-green-600" />
-                        ) : (
-                          <ThumbsDown className="w-4 h-4 text-red-600" />
-                        )}
-                      </div>
+                    {/* 1. ✅ ÍCONE POSITIVO/NEGATIVO */}
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full flex-shrink-0" title={feedback.feedback_type === 'positive' ? 'Feedback Positivo' : 'Feedback Negativo'}>
+                      {feedback.feedback_type === 'positive' ? (
+                        <ThumbsUp className="w-5 h-5 text-green-600" />
+                      ) : (
+                        <ThumbsDown className="w-5 h-5 text-red-600" />
+                      )}
                     </div>
 
-                    {/* 2. Nome do lead e canal */}
+                    {/* 2. ✅ UTM SOURCE (Google, Meta, LinkedIn) */}
                     <div className="flex items-center space-x-2 min-w-0 flex-shrink-0">
-                      <span className="font-medium text-gray-900">{feedback.lead.nome}</span>
                       {(() => {
                         const sourceInfo = getSourceIcon(feedback.lead.source);
                         const SourceIcon = sourceInfo.icon;
                         return (
                           <div 
-                            className={`flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium ${sourceInfo.bg} ${sourceInfo.color}`}
-                            title={`Canal: ${sourceInfo.label}`}
+                            className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs font-medium ${sourceInfo.bg} ${sourceInfo.color}`}
+                            title={`UTM Source: ${sourceInfo.label}`}
                           >
                             <SourceIcon className="w-3 h-3" />
                             <span>{sourceInfo.label}</span>
@@ -680,9 +1015,24 @@ const FeedbackModule: React.FC = () => {
                       })()}
                     </div>
 
-                    {/* 3. Texto comentado com função ver mais */}
+                    {/* 3. ✅ USUÁRIO REAL QUE REGISTROU O FEEDBACK */}
+                    <div className="flex items-center space-x-2 min-w-0 flex-shrink-0">
+                      <span className="font-medium text-gray-900">{feedback.vendedor.name}</span>
+                      {feedback.vendedor.role === 'admin' && (
+                        <span className="text-xs px-2 py-1 rounded-full font-medium bg-purple-100 text-purple-800">
+                          Admin
+                        </span>
+                      )}
+                      {feedback.vendedor.role === 'member' && (
+                        <span className="text-xs px-2 py-1 rounded-full font-medium bg-blue-100 text-blue-800">
+                          Member
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 4. ✅ COMENTÁRIO DEIXADO NO FEEDBACK */}
                     <div className="flex-1 min-w-0">
-                      <p className="text-gray-700 truncate">
+                      <p className="text-gray-700 leading-relaxed">
                         {shouldTruncate && !isExpanded 
                           ? truncateComment(feedback.comment)
                           : feedback.comment
@@ -708,9 +1058,9 @@ const FeedbackModule: React.FC = () => {
                       )}
                     </div>
 
-                    {/* 4. Nome da pipeline e data/hora */}
+                    {/* 5. ✅ NOME DA EMPRESA E DATA/HORA (lado direito) */}
                     <div className="flex items-center space-x-3 text-xs text-gray-500 flex-shrink-0">
-                      <span className="font-medium">{feedback.pipeline.name}</span>
+                      <span className="font-medium">{feedback.admin_empresa.company_name}</span>
                       <div className="flex items-center space-x-1">
                         <Clock className="w-3 h-3" />
                         <span>{formatDate(feedback.created_at)}</span>

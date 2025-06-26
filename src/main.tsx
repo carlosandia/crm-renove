@@ -5,10 +5,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App'
 import './index.css'
 import './styles/formio.css'
-import { setupConsoleFilter } from './utils/consoleFilter'
+import './utils/consoleFilter' // Filtro automático - importar apenas para executar
 
-// Configurar filtro de console para suprimir erros de extensões do Chrome
-setupConsoleFilter()
+// Importar diagnóstico do Supabase (apenas em desenvolvimento)
+if (import.meta.env.DEV) {
+  import('./utils/supabaseDiagnostic');
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,6 +20,35 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+// Registrar Service Worker para cache offline-first
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then((registration) => {
+        console.log('SW registered: ', registration);
+        
+        // Verificar por atualizações
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                // Nova versão disponível
+                if (confirm('Nova versão disponível! Recarregar para atualizar?')) {
+                  newWorker.postMessage({ type: 'SKIP_WAITING' });
+                  window.location.reload();
+                }
+              }
+            });
+          }
+        });
+      })
+      .catch((registrationError) => {
+        console.log('SW registration failed: ', registrationError);
+      });
+  });
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <QueryClientProvider client={queryClient}>

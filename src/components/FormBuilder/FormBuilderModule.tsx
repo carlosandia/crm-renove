@@ -1,10 +1,12 @@
-
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import FormBuilderList from './FormBuilderList';
+import FormBuilderEditor from './FormBuilderEditor';
+import { Plus, FileText, Eye, Settings, TrendingUp, ArrowLeft, Zap, Edit3, Trash2, ExternalLink, Copy, MoreVertical } from 'lucide-react';
 import FormBuilderModal from './FormBuilderModal';
-import { Plus, FileText, Eye, Settings, TrendingUp } from 'lucide-react';
+import ModernFormBuilder from './ModernFormBuilder';
+import PublicFormRenderer from './PublicFormRenderer';
 
 interface CustomForm {
   id: string;
@@ -42,8 +44,11 @@ const FormBuilderModule: React.FC = () => {
     conversion_rate: 0
   });
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [editorMode, setEditorMode] = useState<'list' | 'editor'>('list');
   const [editingForm, setEditingForm] = useState<CustomForm | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [currentView, setCurrentView] = useState<'list' | 'builder' | 'preview'>('list');
+  const [selectedForm, setSelectedForm] = useState<CustomForm | null>(null);
 
   // Carregar formulários
   const loadForms = async () => {
@@ -116,12 +121,19 @@ const FormBuilderModule: React.FC = () => {
 
   const handleCreateForm = () => {
     setEditingForm(null);
-    setShowModal(true);
+    setSelectedForm(null);
+    setCurrentView('builder');
   };
 
   const handleEditForm = (form: CustomForm) => {
     setEditingForm(form);
-    setShowModal(true);
+    setSelectedForm(form);
+    setCurrentView('builder');
+  };
+
+  const handlePreviewForm = (form: CustomForm) => {
+    setSelectedForm(form);
+    setCurrentView('preview');
   };
 
   const handleDeleteForm = async (formId: string) => {
@@ -149,12 +161,51 @@ const FormBuilderModule: React.FC = () => {
 
   const handleSaveForm = async () => {
     await loadForms();
-    setShowModal(false);
+    setCurrentView('list');
+    setEditingForm(null);
   };
 
-  const handleCancelForm = () => {
-    setShowModal(false);
+  const handleCancelEdit = () => {
+    setCurrentView('list');
+    setSelectedForm(null);
     setEditingForm(null);
+  };
+
+  const copyFormUrl = (form: CustomForm) => {
+    const baseUrl = window.location.origin;
+    const url = `${baseUrl}/form/${form.slug}`;
+    navigator.clipboard.writeText(url);
+    // Aqui você pode adicionar uma notificação de sucesso
+  };
+
+  const openFormInNewTab = (form: CustomForm) => {
+    const baseUrl = window.location.origin;
+    const url = `${baseUrl}/form/${form.slug}`;
+    window.open(url, '_blank');
+  };
+
+  const handleDuplicateForm = async (form: CustomForm) => {
+    try {
+      const { data, error } = await supabase
+        .from('custom_forms')
+        .insert({
+          name: `${form.name} (Cópia)`,
+          description: form.description,
+          slug: `${form.slug}-copy-${Date.now()}`,
+          is_active: false,
+          formio_schema: form.formio_schema,
+          tenant_id: user?.tenant_id
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      await loadForms();
+    } catch (error) {
+      console.error('Erro ao duplicar formulário:', error);
+      alert('Erro ao duplicar formulário');
+    }
   };
 
   if (!user || user.role !== 'admin') {
@@ -165,6 +216,75 @@ const FormBuilderModule: React.FC = () => {
     );
   }
 
+  // Renderização condicional baseada na view atual
+  if (currentView === 'builder') {
+    return (
+      <ModernFormBuilder
+        form={selectedForm}
+        onSave={handleSaveForm}
+        onCancel={handleCancelEdit}
+        tenantId={user.tenant_id}
+      />
+    );
+  }
+
+  if (currentView === 'preview' && selectedForm) {
+    return (
+      <div className="h-screen flex flex-col bg-gray-50">
+        {/* Header do Preview */}
+        <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={() => setCurrentView('list')}
+              className="flex items-center space-x-2 text-gray-600 hover:text-gray-800 transition-colors"
+            >
+              <span>← Voltar para Lista</span>
+            </button>
+            
+            <div className="h-6 w-px bg-gray-300"></div>
+            
+            <div>
+              <h1 className="text-xl font-semibold text-gray-900">
+                Preview: {selectedForm.name}
+              </h1>
+              <p className="text-sm text-gray-500">
+                Visualização do formulário público
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => copyFormUrl(selectedForm)}
+              className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <Copy size={16} />
+              <span>Copiar Link</span>
+            </button>
+            
+            <button
+              onClick={() => openFormInNewTab(selectedForm)}
+              className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <ExternalLink size={16} />
+              <span>Abrir em Nova Aba</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Área do Preview */}
+        <div className="flex-1 overflow-hidden">
+          <PublicFormRenderer
+            formId={selectedForm.id}
+            formSlug={selectedForm.slug}
+            embedded={true}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // View padrão: Lista de formulários
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -177,18 +297,26 @@ const FormBuilderModule: React.FC = () => {
             <div>
               <h1 className="text-2xl font-semibold text-gray-900">Formulários Avançados</h1>
               <p className="text-sm text-gray-500 mt-1">
-                Crie e gerencie formulários personalizados para captura de leads
+                Crie e gerencie formulários personalizados com editor drag & drop profissional
               </p>
             </div>
           </div>
           
-          <button
-            onClick={handleCreateForm}
-            className="flex items-center space-x-2 bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-900 transition-colors"
-          >
-            <Plus size={16} />
-            <span>Novo Formulário</span>
-          </button>
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2 bg-gradient-to-r from-purple-100 to-blue-100 px-3 py-2 rounded-lg">
+              <Zap className="text-purple-600" size={16} />
+              <span className="text-sm font-medium text-purple-700">
+                Editor Avançado Ativo
+              </span>
+            </div>
+            <button
+              onClick={handleCreateForm}
+              className="flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+            >
+              <Plus size={16} />
+              <span>Novo Formulário Avançado</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -262,6 +390,18 @@ const FormBuilderModule: React.FC = () => {
               <option>Inativo</option>
             </select>
           </div>
+          
+          <div className="flex items-center space-x-2 text-sm text-gray-600">
+            <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full">
+              ✨ Editor Drag & Drop
+            </span>
+            <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+              🎨 23+ Componentes
+            </span>
+            <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full">
+              🚀 MQL Scoring
+            </span>
+          </div>
         </div>
       </div>
 
@@ -275,15 +415,15 @@ const FormBuilderModule: React.FC = () => {
         />
       </div>
 
-      {/* Modal de Criação/Edição */}
+      {/* Modal antigo mantido para compatibilidade */}
       {showModal && (
         <FormBuilderModal
           isOpen={showModal}
-          onClose={handleCancelForm}
-          onCancel={handleCancelForm}
+          onClose={() => setShowModal(false)}
           form={editingForm}
-          onSave={handleSaveForm}
-          tenantId={user.tenant_id}
+          onSave={loadForms}
+          onCancel={() => setShowModal(false)}
+          tenantId={user?.tenant_id || 'default'}
         />
       )}
     </div>

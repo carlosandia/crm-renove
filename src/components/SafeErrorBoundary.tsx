@@ -11,6 +11,7 @@ interface State {
   hasError: boolean
   error?: Error
   errorInfo?: React.ErrorInfo
+  errorId?: string
 }
 
 class SafeErrorBoundary extends Component<Props, State> {
@@ -34,6 +35,12 @@ class SafeErrorBoundary extends Component<Props, State> {
       'ChunkLoadError',
       'Script error',
       'Network request failed',
+      'Rendered more hooks than during the previous render',
+      'Cannot update a component while rendering a different component',
+      'Warning: Each child in a list should have a unique',
+      'Warning: Failed prop type',
+      'Warning: componentWillReceiveProps has been renamed',
+      'Warning: componentWillMount has been renamed'
     ]
 
     const shouldIgnore = ignoredErrors.some(pattern => 
@@ -42,18 +49,32 @@ class SafeErrorBoundary extends Component<Props, State> {
     )
 
     if (shouldIgnore) {
-      console.log('🔕 Erro ignorado pelo SafeErrorBoundary:', error.message)
+      if (import.meta.env.DEV) {
+        console.warn('🔕 Erro ignorado pelo SafeErrorBoundary:', error.message)
+      }
       return { hasError: false }
     }
 
+    // Gerar ID único para evitar loops
+    const errorId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    
     console.error('🚨 SafeErrorBoundary capturou erro:', error)
-    return { hasError: true, error }
+    return { hasError: true, error, errorId }
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // Evitar loops de componentDidCatch
+    if (this.state.hasError) {
+      return
+    }
+
     // Chamar callback de erro se fornecido
     if (this.props.onError) {
-      this.props.onError(error, errorInfo)
+      try {
+        this.props.onError(error, errorInfo)
+      } catch (callbackError) {
+        console.error('🚨 Erro no callback onError:', callbackError)
+      }
     }
 
     // Salvar informações do erro
@@ -68,16 +89,17 @@ class SafeErrorBoundary extends Component<Props, State> {
       console.groupEnd()
     }
 
-    // Auto-reset após 5 segundos (apenas em desenvolvimento)
-    if (import.meta.env.DEV) {
+    // Auto-reset após 3 segundos (apenas em desenvolvimento)
+    if (import.meta.env.DEV && !this.resetTimeoutId) {
       this.resetTimeoutId = window.setTimeout(() => {
         console.log('🔄 Auto-reset do SafeErrorBoundary')
-        this.setState({ hasError: false, error: undefined, errorInfo: undefined })
-      }, 5000)
+        this.setState({ hasError: false, error: undefined, errorInfo: undefined, errorId: undefined })
+        this.resetTimeoutId = null
+      }, 3000)
     }
   }
 
-  componentDidUpdate(prevProps: Props) {
+  componentDidUpdate(prevProps: Props, prevState: State) {
     const { resetKeys } = this.props
     const { hasError } = this.state
 
@@ -89,7 +111,16 @@ class SafeErrorBoundary extends Component<Props, State> {
 
       if (hasResetKeyChanged) {
         console.log('🔄 Reset por mudança de resetKeys')
-        this.setState({ hasError: false, error: undefined, errorInfo: undefined })
+        this.setState({ hasError: false, error: undefined, errorInfo: undefined, errorId: undefined })
+      }
+    }
+
+    // Evitar loops de erro
+    if (prevState.errorId !== this.state.errorId && this.state.hasError) {
+      console.log('🔄 Novo erro detectado, resetando timeout')
+      if (this.resetTimeoutId) {
+        clearTimeout(this.resetTimeoutId)
+        this.resetTimeoutId = null
       }
     }
   }
@@ -97,12 +128,17 @@ class SafeErrorBoundary extends Component<Props, State> {
   componentWillUnmount() {
     if (this.resetTimeoutId) {
       clearTimeout(this.resetTimeoutId)
+      this.resetTimeoutId = null
     }
   }
 
   private handleRetry = () => {
     console.log('🔄 Tentativa manual de reset')
-    this.setState({ hasError: false, error: undefined, errorInfo: undefined })
+    this.setState({ hasError: false, error: undefined, errorInfo: undefined, errorId: undefined })
+    if (this.resetTimeoutId) {
+      clearTimeout(this.resetTimeoutId)
+      this.resetTimeoutId = null
+    }
   }
 
   private handleReload = () => {
@@ -145,10 +181,13 @@ class SafeErrorBoundary extends Component<Props, State> {
                   <div className="mb-2">
                     <strong>Mensagem:</strong> {this.state.error.message}
                   </div>
+                  <div className="mb-2">
+                    <strong>Error ID:</strong> {this.state.errorId}
+                  </div>
                   {this.state.error.stack && (
                     <div className="mb-2">
                       <strong>Stack:</strong>
-                      <pre className="whitespace-pre-wrap mt-1 bg-white p-2 rounded border text-xs">
+                      <pre className="whitespace-pre-wrap mt-1 bg-white p-2 rounded border text-xs max-h-32 overflow-y-auto">
                         {this.state.error.stack}
                       </pre>
                     </div>
@@ -176,7 +215,7 @@ class SafeErrorBoundary extends Component<Props, State> {
             {/* Auto-reset info apenas em desenvolvimento */}
             {import.meta.env.DEV && (
               <p className="mt-4 text-xs text-gray-500">
-                🔄 Auto-reset em 5 segundos (modo desenvolvimento)
+                🔄 Auto-reset em 3 segundos (modo desenvolvimento)
               </p>
             )}
           </div>

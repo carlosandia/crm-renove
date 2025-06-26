@@ -1,9 +1,21 @@
+// CRITICAL: Load environment variables FIRST, before any other imports
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from "express";
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import dotenv from 'dotenv';
 import { createServer } from 'http';
+import compression from 'compression';
+import rateLimit from 'express-rate-limit';
+import { createClient } from '@supabase/supabase-js';
+
+// FASE 1: Cache Redis Integration
+import { initializeCache } from './services/cacheService';
+import { getCacheConfig } from './config/cache';
+import { cacheHealthCheck } from './middleware/cacheMiddleware';
+import { performanceMiddleware } from './services/performanceService';
 
 // Importar rotas
 import authRoutes from './routes/auth';
@@ -24,6 +36,10 @@ import analyticsRoutes from './routes/analytics';
 import formsRoutes from './routes/forms';
 import leadTasksRoutes from './routes/leadTasks';
 import cadenceRoutes from './routes/cadence';
+import notificationsRoutes from './routes/notifications';
+import adminRoutes from './routes/admin';
+import emailRoutes from './routes/email';
+// import modernLeadsRoutes from './routes/modernLeads'; // Removed - not needed for Phase 2
 
 // Middleware de autenticação
 import { authMiddleware } from './middleware/auth';
@@ -31,11 +47,46 @@ import { errorHandler } from './middleware/errorHandler';
 import { validateRequest } from './middleware/validation';
 import { rateLimiter } from './middleware/rateLimiter';
 
-// Configurar variáveis de ambiente
-dotenv.config();
+// Import new automation routes
+import automationRoutes from './routes/automation';
+
+// FASE 4A: Admin Dashboard Routes
+import adminDashboardRoutes from './routes/adminDashboard';
+
+// FASE 4B: Member Tools Routes
+import { memberToolsRoutes } from './routes/memberTools';
+
+// Platform Integrations Routes (Enterprise Architecture)
+import platformIntegrationsRoutes from './routes/platformIntegrations';
+
+// Import services
+import { getCache } from './services/cacheService';
+import { performanceService } from './services/performanceService';
+import { rulesEngine } from './services/rulesEngine';
+import { eventService } from './services/eventService';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// ============================================
+// FASE 1: INITIALIZE CACHE SYSTEM
+// ============================================
+
+// Initialize Redis Cache
+let cacheInitialized = false;
+try {
+  const cacheConfig = getCacheConfig();
+  initializeCache(cacheConfig);
+  cacheInitialized = true;
+  console.log('✅ Redis Cache initialized successfully');
+} catch (error) {
+  console.warn('⚠️  Redis Cache initialization failed:', error);
+  console.warn('📝 Continuing without cache - performance may be impacted');
+}
+
+// Initialize Performance Monitoring
+app.use(performanceMiddleware());
+console.log('✅ Performance monitoring initialized');
 
 // ============================================
 // CONFIGURAÇÕES DE SEGURANÇA
@@ -46,49 +97,34 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "https://marajvabdwkpgopytvhh.supabase.co"],
-      fontSrc: ["'self'"],
-      objectSrc: ["'none'"],
-      mediaSrc: ["'self'"],
-      frameSrc: ["'none'"],
-    },
-  },
-  crossOriginEmbedderPolicy: false
+      scriptSrc: ["'self'"],
+      connectSrc: ["'self'", "https://*.supabase.co", "wss://*.supabase.co"]
+    }
+  }
 }));
 
 // CORS configurado de forma segura
 app.use(cors({
-  origin: function (origin, callback) {
-    // Lista de origens permitidas
-    const allowedOrigins = [
-      'http://localhost:8080',
-      'http://localhost:8081', 
-      'http://localhost:8082',
-      'http://localhost:3000',
-      'http://localhost:3001',
-      process.env.FRONTEND_URL
-    ].filter(Boolean);
-
-    // Permitir requests sem origin (mobile apps, Postman, etc)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Não permitido pelo CORS'));
-    }
-  },
+  origin: process.env.NODE_ENV === 'production' 
+    ? ['https://your-domain.com'] 
+    : ['http://localhost:3000', 'http://localhost:3001'],
   credentials: true, // Permitir cookies
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
-  exposedHeaders: ['X-Total-Count', 'X-Page-Count']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
 // Rate limiting
-app.use(rateLimiter);
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // limit each IP to 1000 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(limiter);
 
 // Logging de requests
 app.use(morgan('combined', {
@@ -123,6 +159,73 @@ app.use((req, res, next) => {
 
 // Health check básico (sem autenticação)
 app.use('/health', healthRoutes);
+
+// FASE 1: Performance Monitoring Endpoints
+app.get('/api/performance/metrics', async (req, res) => {
+  try {
+    const summary = performanceService.getPerformanceSummary();
+    const trends = performanceService.getPerformanceTrends();
+    const health = performanceService.getHealthStatus();
+    
+    res.json({
+      summary,
+      trends,
+      health,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    const err = error as Error;
+    res.status(500).json({
+      error: 'Failed to get performance metrics',
+      details: err.message
+    });
+  }
+});
+
+app.get('/api/performance/health', async (req, res) => {
+  try {
+    const health = performanceService.getHealthStatus();
+    const statusCode = health.status === 'healthy' ? 200 : 
+                      health.status === 'warning' ? 200 : 503;
+    
+    res.status(statusCode).json(health);
+  } catch (error) {
+    const err = error as Error;
+    res.status(503).json({
+      status: 'critical',
+      score: 0,
+      error: err.message
+    });
+  }
+});
+
+// Cache Health Check Endpoint
+app.get('/api/cache/health', async (req, res) => {
+  try {
+    if (!cacheInitialized) {
+      return res.status(503).json({
+        status: 'unhealthy',
+        message: 'Cache not initialized',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const healthStatus = await cacheHealthCheck();
+    const statusCode = healthStatus.status === 'healthy' ? 200 : 503;
+    
+    res.status(statusCode).json({
+      ...healthStatus,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    const err = error as Error;
+    res.status(503).json({
+      status: 'unhealthy',
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
 
 // API Info
 app.get('/api', (req, res) => {
@@ -182,6 +285,10 @@ app.use('/api/vendedores', vendedoresRoutes);
 app.use('/api/customers', customersRoutes);
 app.use('/api/pipelines', pipelinesRoutes);
 // app.use('/api/leads', leadsRoutes); // TODO: Implementar quando estiver pronto
+
+// API V2 - Leads Modernos (com visão gerencial)
+// app.use('/api/v2/leads', modernLeadsRoutes); // Removed - not needed for Phase 2
+
 app.use('/api/sales-goals', salesGoalsRoutes);
 
 // Formulários
@@ -193,41 +300,59 @@ app.use('/api/lead-tasks', leadTasksRoutes);
 // Cadência de Leads
 app.use('/api/cadence', cadenceRoutes);
 
+// Notificações
+app.use('/api/notifications', notificationsRoutes);
+
+// E-mail pessoal
+app.use('/api/email', emailRoutes);
+
 // Integrações
-app.use('/api/integrations', integrationsRoutes);
-app.use('/api/integrations-secure', integrationsSecureRoutes);
+app.use('/api/integrations', integrationsSecureRoutes);
+
+// Analytics
+app.use('/api/analytics', analyticsRoutes);
+
+// Conversões
 app.use('/api/conversions', conversionsRoutes);
 
-// Gestão de empresas
+// Empresas
 app.use('/api/companies', companiesRoutes);
 
-// Banco de dados e admin
+// Database utilities
 app.use('/api/database', databaseRoutes);
 
-// MCP Integration
+// MCP Services
 app.use('/api/mcp', mcpRoutes);
 
-// ============================================
-// ANALYTICS
-// ============================================
-app.use('/api/analytics', analyticsRoutes);
+// Supabase Admin API
+app.use('/api/admin', adminRoutes);
+
+// FASE 4A: Admin Dashboard & Sales Management
+app.use('/api/admin-dashboard', adminDashboardRoutes);
+
+// FASE 4B: Member Tools & Integrations
+app.use('/api/member-tools', memberToolsRoutes);
+
+// Platform Integrations (Enterprise Architecture)
+app.use('/api/platform-integrations', platformIntegrationsRoutes);
 
 // ============================================
 // TRATAMENTO DE ERROS
 // ============================================
 
-// Rota não encontrada
+// Middleware de tratamento de erro
+app.use(errorHandler);
+
+// 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
-    error: 'Endpoint não encontrado',
+    success: false,
+    error: 'Rota não encontrada',
     path: req.originalUrl,
     method: req.method,
     timestamp: new Date().toISOString()
   });
 });
-
-// Error handler global
-app.use(errorHandler);
 
 // ============================================
 // INICIALIZAÇÃO DO SERVIDOR
@@ -235,46 +360,98 @@ app.use(errorHandler);
 
 const server = createServer(app);
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('🔄 SIGTERM recebido, fechando servidor...');
-  server.close(() => {
-    console.log('✅ Servidor fechado com sucesso');
-    process.exit(0);
-  });
-});
-
-process.on('SIGINT', () => {
-  console.log('🔄 SIGINT recebido, fechando servidor...');
-  server.close(() => {
-    console.log('✅ Servidor fechado com sucesso');
-    process.exit(0);
-  });
-});
-
-// Error handling não capturado
+// Tratamento de erros não capturados
 process.on('uncaughtException', (error) => {
-  console.error('❌ Uncaught Exception:', error);
+  console.error('🚨 Erro não capturado:', error);
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  console.error('🚨 Promise rejeitada não tratada:', reason);
   process.exit(1);
 });
 
-// Iniciar servidor
-server.listen(PORT, () => {
-  console.log(`
-🚀 ===================================
-📡 CRM Marketing API Server
-📍 Porta: ${PORT}
-🌍 Ambiente: ${process.env.NODE_ENV || 'development'}
-📅 Iniciado: ${new Date().toISOString()}
-🔒 Segurança: Ativada
-📊 Monitoramento: Ativo
-===================================
-  `);
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM recebido. Fechando servidor...');
+  server.close(() => {
+    console.log('✅ Servidor fechado com sucesso');
+    process.exit(0);
+  });
 });
+
+// Initialize services
+async function initializeServices() {
+  try {
+    console.log('🚀 Initializing services...');
+    
+    // Initialize cache service
+    const cacheService = getCache();
+    console.log('✅ Cache service initialized');
+    
+    // Performance service is already initialized as singleton
+    console.log('✅ Performance service initialized');
+    
+    // Initialize automation services
+    console.log('✅ Rules engine initialized');
+    console.log('✅ Event service initialized');
+    
+    // Set up event listeners for automation
+    eventService.on('*', async (event: any) => {
+      try {
+        console.log(`📨 Event received: ${event.type} for ${event.entityType}:${event.entityId}`);
+        
+        // Process event through rules engine
+        await rulesEngine.processEvent(event);
+      } catch (error) {
+        console.error('Error processing event:', error);
+      }
+    });
+    
+    rulesEngine.on('ruleExecuted', ({ rule, event, execution }: any) => {
+      console.log(`✅ Rule executed: ${rule.name} for event ${event.type} in ${execution.executionTime}ms`);
+    });
+    
+    rulesEngine.on('ruleExecutionFailed', ({ rule, event, execution, error }: any) => {
+      console.error(`❌ Rule execution failed: ${rule.name} for event ${event.type} - ${error.message}`);
+    });
+    
+    console.log('✅ All services initialized successfully');
+  } catch (error) {
+    const err = error as Error;
+    console.error('❌ Service initialization failed:', err.message);
+    throw error;
+  }
+}
+
+// Start server
+async function startServer() {
+  try {
+    // Initialize all services first
+    await initializeServices();
+    
+    // Start the server
+    server.listen(PORT, () => {
+      console.log(`🌟 CRM Marketing API Server running on port ${PORT}`);
+      console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+      console.log(`🔗 API docs: http://localhost:${PORT}/api`);
+      console.log(`🎯 Automation API: http://localhost:${PORT}/api/automation`);
+      console.log(`📊 System health: http://localhost:${PORT}/api/system/health`);
+      console.log(`🚀 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`📈 Performance monitoring: ENABLED`);
+      console.log(`🔄 Cache system: ENABLED`);
+      console.log(`⚡ Automation system: ENABLED`);
+      console.log('');
+      console.log('🎉 FASE 2: Workflow Automation System is LIVE!');
+      console.log('');
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+// Start the server
+startServer();
 
 export default app;

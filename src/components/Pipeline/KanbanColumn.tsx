@@ -41,9 +41,6 @@ const KanbanColumn: React.FC<KanbanColumnProps> = memo(({
   // 🚀 DROPPABLE ID MEMOIZADO
   const droppableId = useMemo(() => stage.id, [stage.id]);
 
-  // 🚀 HANDLER OTIMIZADO
-  const handleAddLead = useMemo(() => () => onAddLead(stage.id), [onAddLead, stage.id]);
-
   return (
     <div className="flex-shrink-0 w-80 h-full flex flex-col bg-gray-50 rounded-lg border border-gray-200">
       {/* Header da coluna - fixo no topo */}
@@ -91,17 +88,6 @@ const KanbanColumn: React.FC<KanbanColumnProps> = memo(({
           </div>
         )}
       </Droppable>
-      
-      {/* Footer da coluna - fixo no rodapé */}
-      <div className="flex-shrink-0 p-3 border-t border-gray-200 bg-white rounded-b-lg">
-        <button
-          onClick={handleAddLead}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Adicionar Lead
-        </button>
-      </div>
     </div>
   );
 });

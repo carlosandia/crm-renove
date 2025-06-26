@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import LeadsList from './Leads/LeadsList';
+import LeadsListEnhanced from './Leads/LeadsListEnhanced';
 import LeadDetailsModal from './Leads/LeadDetailsModal';
 import LeadFormModal from './Leads/LeadFormModal';
 import PendingLeadsTab from './Pipeline/PendingLeadsTab';
@@ -47,6 +47,36 @@ const LeadsModule: React.FC = () => {
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<LeadMaster | null>(null);
 
+  // ✅ Estado local para leads atualizados (sincronização com LeadDetailsModal)
+  const [localLeads, setLocalLeads] = useState<LeadMaster[]>([]);
+
+  // ✅ Sincronizar leads locais com estado principal
+  useEffect(() => {
+    setLocalLeads(leads);
+  }, [leads]);
+
+  // ✅ Callback para atualizar lead específico
+  const handleLeadUpdated = useCallback((updatedLead: LeadMaster) => {
+    console.log('📡 [LeadsModule] Recebido lead atualizado:', updatedLead.id);
+    setLocalLeads(prevLeads => 
+      prevLeads.map(lead => 
+        lead.id === updatedLead.id ? updatedLead : lead
+      )
+    );
+    
+    // Atualizar também o estado principal para persistir mudanças
+    setLeads(prevLeads => 
+      prevLeads.map(lead => 
+        lead.id === updatedLead.id ? updatedLead : lead
+      )
+    );
+    
+    // Se o lead selecionado foi atualizado, atualizar também
+    if (selectedLead?.id === updatedLead.id) {
+      setSelectedLead(updatedLead);
+    }
+  }, [selectedLead]);
+
   // Carregar leads
   const loadLeads = async () => {
     if (!user?.tenant_id) return;
@@ -89,7 +119,7 @@ const LeadsModule: React.FC = () => {
 
   // Filtrar leads
   useEffect(() => {
-    let filtered = leads;
+    let filtered = localLeads;
 
     // Filtro por busca
     if (searchTerm) {
@@ -112,7 +142,7 @@ const LeadsModule: React.FC = () => {
     }
 
     setFilteredLeads(filtered);
-  }, [leads, searchTerm, statusFilter, temperatureFilter]);
+  }, [localLeads, searchTerm, statusFilter, temperatureFilter]);
 
   // Carregar leads ao montar componente
   useEffect(() => {
@@ -283,13 +313,14 @@ const LeadsModule: React.FC = () => {
 
       {/* Lista de Leads */}
       <div className="bg-white rounded-xl border border-gray-200">
-        <LeadsList
+        <LeadsListEnhanced
           leads={filteredLeads}
           loading={loading}
           onViewDetails={handleViewDetails}
           onEditLead={handleEditLead}
           onDeleteLead={handleDeleteLead}
           currentUserRole={user.role}
+          onLeadUpdate={loadLeads}
         />
       </div>
 
@@ -300,6 +331,7 @@ const LeadsModule: React.FC = () => {
           isOpen={isDetailsModalOpen}
           onClose={() => setIsDetailsModalOpen(false)}
           onEdit={handleEditLead}
+          onLeadUpdated={handleLeadUpdated}
         />
       )}
 

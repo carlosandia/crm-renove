@@ -1,0 +1,252 @@
+/* ============================================ */
+/* COMPONENTES BASE - DESIGN SYSTEM UNIFICADO */
+/* ============================================ */
+
+/* Cards Modernos */
+.card-modern {
+  @apply bg-background border border-border rounded-lg shadow-sm transition-all duration-200;
+  @apply hover:shadow-md hover:-translate-y-0.5;
+}
+
+.card-modern-hover {
+  @apply card-modern hover:border-primary/30 hover:shadow-lg;
+}
+
+.card-glass {
+  @apply bg-background/80 backdrop-blur-sm border border-border/50;
+  @apply rounded-lg shadow-sm;
+}
+
+/* Botões Base */
+.btn-base {
+  @apply inline-flex items-center justify-center rounded-md text-sm font-medium;
+  @apply ring-offset-background transition-colors duration-200;
+  @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+  @apply disabled:pointer-events-none disabled:opacity-50;
+}
+
+.btn-primary {
+  @apply btn-base bg-primary text-primary-foreground hover:bg-primary/90;
+  @apply px-4 py-2;
+}
+
+.btn-secondary {
+  @apply btn-base bg-secondary text-secondary-foreground hover:bg-secondary/80;
+  @apply px-4 py-2;
+}
+
+.btn-outline {
+  @apply btn-base border border-input bg-background hover:bg-accent hover:text-accent-foreground;
+  @apply px-4 py-2;
+}
+
+.btn-ghost {
+  @apply btn-base hover:bg-accent hover:text-accent-foreground;
+  @apply px-4 py-2;
+}
+
+.btn-sm {
+  @apply px-3 py-1.5 text-xs;
+}
+
+.btn-lg {
+  @apply px-6 py-3 text-base;
+}
+
+/* Inputs Modernos */
+.input-modern {
+  @apply flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm;
+  @apply ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium;
+  @apply placeholder:text-muted-foreground;
+  @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+  @apply disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.input-error {
+  @apply input-modern border-destructive focus-visible:ring-destructive;
+}
+
+.input-success {
+  @apply input-modern border-green-500 focus-visible:ring-green-500;
+}
+
+/* Layouts */
+.layout-main {
+  @apply min-h-screen bg-background;
+}
+
+.layout-container {
+  @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+}
+
+.layout-section {
+  @apply py-8 space-y-6;
+}
+
+/* Stats Cards */
+.stat-card-base {
+  @apply card-modern p-6 relative overflow-hidden cursor-pointer;
+  @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-1;
+}
+
+.stat-card-icon {
+  @apply w-12 h-12 rounded-lg flex items-center justify-center;
+  @apply transition-all duration-300 group-hover:scale-110;
+}
+
+.stat-card-value {
+  @apply text-2xl font-bold text-foreground;
+  @apply transition-colors duration-300 group-hover:text-primary;
+}
+
+.stat-card-label {
+  @apply text-sm font-medium text-muted-foreground;
+}
+
+.stat-card-trend {
+  @apply inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border;
+}
+
+.stat-card-trend-positive {
+  @apply stat-card-trend text-green-600 bg-green-50 border-green-200;
+}
+
+.stat-card-trend-negative {
+  @apply stat-card-trend text-red-600 bg-red-50 border-red-200;
+}
+
+.stat-card-trend-neutral {
+  @apply stat-card-trend text-blue-600 bg-blue-50 border-blue-200;
+}
+
+/* Pipeline específico */
+.pipeline-stage {
+  @apply bg-muted/30 rounded-lg p-4 min-h-[500px];
+  @apply border-2 border-dashed border-border;
+  @apply transition-colors duration-200;
+}
+
+.pipeline-stage-active {
+  @apply pipeline-stage border-primary/50 bg-primary/5;
+}
+
+.pipeline-stage-header {
+  @apply flex items-center justify-between mb-4 pb-2 border-b border-border;
+}
+
+.pipeline-stage-title {
+  @apply text-sm font-semibold text-foreground;
+}
+
+.pipeline-stage-count {
+  @apply text-xs bg-primary text-primary-foreground px-2 py-1 rounded-full;
+}
+
+/* Form Elements */
+.form-group {
+  @apply space-y-2;
+}
+
+.form-label {
+  @apply text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70;
+}
+
+.form-description {
+  @apply text-sm text-muted-foreground;
+}
+
+.form-error {
+  @apply text-sm font-medium text-destructive;
+}
+
+/* Modals e Overlays */
+.modal-overlay {
+  @apply fixed inset-0 z-50 bg-background/80 backdrop-blur-sm;
+  @apply animate-fade-in;
+}
+
+.modal-content {
+  @apply fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg;
+  @apply translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg;
+  @apply duration-200 animate-scale-in sm:rounded-lg;
+}
+
+/* Utilities */
+.text-gradient {
+  @apply bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent;
+}
+
+.bg-gradient-primary {
+  @apply bg-gradient-to-r from-primary to-primary/90;
+}
+
+.bg-gradient-secondary {
+  @apply bg-gradient-to-r from-secondary to-secondary/90;
+}
+
+.shadow-modern {
+  @apply shadow-sm hover:shadow-md transition-shadow duration-200;
+}
+
+.shadow-modern-lg {
+  @apply shadow-md hover:shadow-lg transition-shadow duration-200;
+}
+
+/* Animações */
+.animate-shimmer {
+  @apply relative overflow-hidden;
+}
+
+.animate-shimmer::before {
+  content: '';
+  @apply absolute inset-0 -translate-x-full;
+  @apply bg-gradient-to-r from-transparent via-white/10 to-transparent;
+  @apply transition-transform duration-700;
+}
+
+.animate-shimmer:hover::before {
+  @apply translate-x-full;
+}
+
+/* Estados de Loading */
+.loading-skeleton {
+  @apply animate-pulse bg-muted rounded;
+}
+
+.loading-dot {
+  @apply w-2 h-2 bg-primary rounded-full animate-pulse;
+}
+
+.loading-spinner {
+  @apply animate-spin rounded-full border-2 border-muted border-t-primary;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .card-modern {
+    @apply p-4;
+  }
+  
+  .stat-card-base {
+    @apply p-4;
+  }
+  
+  .layout-container {
+    @apply px-3;
+  }
+  
+  .btn-base {
+    @apply text-xs px-3 py-2;
+  }
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .card-glass {
+    @apply bg-background/90;
+  }
+  
+  .animate-shimmer::before {
+    @apply via-white/5;
+  }
+} 

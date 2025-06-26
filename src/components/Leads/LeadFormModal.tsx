@@ -1,7 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { X, Save, Loader } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { showSuccessToast, showErrorToast } from '../../lib/toast';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 
 interface Lead {
   id: string;
@@ -9,16 +20,22 @@ interface Lead {
   last_name: string;
   email: string;
   phone?: string;
-  company?: string;
-  job_title?: string;
-  lead_temperature?: string;
-  status?: string;
   lead_source?: string;
-  estimated_value?: number;
-  lead_score?: number;
   utm_source?: string;
   utm_medium?: string;
   utm_campaign?: string;
+}
+
+interface Pipeline {
+  id: string;
+  name: string;
+}
+
+interface TeamMember {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
 }
 
 interface LeadFormModalProps {
@@ -36,25 +53,32 @@ const LeadFormModal: React.FC<LeadFormModalProps> = ({
   onSave,
   tenantId
 }) => {
+  const { user } = useAuth();
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
     email: '',
     phone: '',
-    company: '',
-    job_title: '',
-    lead_temperature: 'cold',
-    status: 'active',
     lead_source: '',
-    estimated_value: '',
-    lead_score: '',
     utm_source: '',
     utm_medium: '',
-    utm_campaign: ''
+    utm_campaign: '',
+    pipeline_id: '',
+    assigned_to: ''
   });
 
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [userPipelines, setUserPipelines] = useState<Pipeline[]>([]);
+
+  // Carregar dados quando modal abrir
+  useEffect(() => {
+    if (isOpen && user) {
+      loadInitialData();
+    }
+  }, [isOpen, user]);
 
   // Preencher formulário quando lead for fornecido
   useEffect(() => {
@@ -64,16 +88,12 @@ const LeadFormModal: React.FC<LeadFormModalProps> = ({
         last_name: lead.last_name || '',
         email: lead.email || '',
         phone: lead.phone || '',
-        company: lead.company || '',
-        job_title: lead.job_title || '',
-        lead_temperature: lead.lead_temperature || 'cold',
-        status: lead.status || 'active',
         lead_source: lead.lead_source || '',
-        estimated_value: lead.estimated_value?.toString() || '',
-        lead_score: lead.lead_score?.toString() || '',
         utm_source: lead.utm_source || '',
         utm_medium: lead.utm_medium || '',
-        utm_campaign: lead.utm_campaign || ''
+        utm_campaign: lead.utm_campaign || '',
+        pipeline_id: '',
+        assigned_to: ''
       });
     } else {
       // Reset form for new lead
@@ -82,20 +102,108 @@ const LeadFormModal: React.FC<LeadFormModalProps> = ({
         last_name: '',
         email: '',
         phone: '',
-        company: '',
-        job_title: '',
-        lead_temperature: 'cold',
-        status: 'active',
         lead_source: '',
-        estimated_value: '',
-        lead_score: '',
         utm_source: '',
         utm_medium: '',
-        utm_campaign: ''
+        utm_campaign: '',
+        pipeline_id: '',
+        assigned_to: ''
       });
     }
     setErrors({});
   }, [lead, isOpen]);
+
+  const loadInitialData = async () => {
+    try {
+      if (user?.role === 'admin' || user?.role === 'super_admin') {
+        // Admin: carregar todas pipelines do tenant e todos members
+        await Promise.all([
+          loadAdminPipelines(),
+          loadTeamMembers()
+        ]);
+      } else {
+        // Member: carregar apenas pipelines vinculadas
+        await loadMemberPipelines();
+      }
+    } catch (error) {
+      console.error('Erro ao carregar dados iniciais:', error);
+    }
+  };
+
+  const loadAdminPipelines = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('pipelines')
+        .select('id, name')
+        .eq('tenant_id', user?.tenant_id)
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) throw error;
+      setPipelines(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar pipelines admin:', error);
+    }
+  };
+
+  const loadMemberPipelines = async () => {
+    try {
+      // Primeiro buscar os pipeline_ids onde o member está vinculado
+      const { data: memberPipelineIds, error: memberError } = await supabase
+        .from('pipeline_members')
+        .select('pipeline_id')
+        .eq('member_id', user?.id);
+
+      if (memberError) throw memberError;
+
+      if (!memberPipelineIds || memberPipelineIds.length === 0) {
+        setUserPipelines([]);
+        return;
+      }
+
+      // Depois buscar as pipelines ativas com esses IDs
+      const pipelineIds = memberPipelineIds.map(pm => pm.pipeline_id);
+      const { data: pipelines, error: pipelineError } = await supabase
+        .from('pipelines')
+        .select('id, name')
+        .in('id', pipelineIds)
+        .eq('is_active', true)
+        .order('name');
+
+      if (pipelineError) throw pipelineError;
+
+      const pipelineList = pipelines || [];
+      setUserPipelines(pipelineList);
+      
+      // Auto-selecionar primeira pipeline se houver apenas uma
+      if (pipelineList.length === 1) {
+        setFormData(prev => ({
+          ...prev,
+          pipeline_id: pipelineList[0].id,
+          assigned_to: user?.id || '' // Auto-atribuir ao member
+        }));
+      }
+    } catch (error) {
+      console.error('Erro ao carregar pipelines member:', error);
+    }
+  };
+
+  const loadTeamMembers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, email')
+        .eq('tenant_id', user?.tenant_id)
+        .eq('role', 'member')
+        .eq('is_active', true)
+        .order('first_name');
+
+      if (error) throw error;
+      setTeamMembers(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar membros da equipe:', error);
+    }
+  };
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -117,12 +225,19 @@ const LeadFormModal: React.FC<LeadFormModalProps> = ({
       newErrors.email = 'E-mail inválido';
     }
 
-    if (formData.estimated_value && isNaN(Number(formData.estimated_value))) {
-      newErrors.estimated_value = 'Valor deve ser um número';
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Telefone é obrigatório';
     }
 
-    if (formData.lead_score && (isNaN(Number(formData.lead_score)) || Number(formData.lead_score) < 0 || Number(formData.lead_score) > 100)) {
-      newErrors.lead_score = 'Score deve ser um número entre 0 e 100';
+    if (!formData.lead_source.trim()) {
+      newErrors.lead_source = 'Origem é obrigatória';
+    }
+
+    // Validações por role
+    if (user?.role === 'admin' || user?.role === 'super_admin') {
+      if (pipelines.length > 1 && !formData.pipeline_id) {
+        newErrors.pipeline_id = 'Selecione uma pipeline';
+      }
     }
 
     setErrors(newErrors);
@@ -140,14 +255,8 @@ const LeadFormModal: React.FC<LeadFormModalProps> = ({
         first_name: formData.first_name.trim(),
         last_name: formData.last_name.trim(),
         email: formData.email.trim(),
-        phone: formData.phone.trim() || null,
-        company: formData.company.trim() || null,
-        job_title: formData.job_title.trim() || null,
-        lead_temperature: formData.lead_temperature,
-        status: formData.status,
-        lead_source: formData.lead_source.trim() || null,
-        estimated_value: formData.estimated_value ? Number(formData.estimated_value) : null,
-        lead_score: formData.lead_score ? Number(formData.lead_score) : null,
+        phone: formData.phone.trim(),
+        lead_source: formData.lead_source.trim(),
         utm_source: formData.utm_source.trim() || null,
         utm_medium: formData.utm_medium.trim() || null,
         utm_campaign: formData.utm_campaign.trim() || null,
@@ -163,48 +272,53 @@ const LeadFormModal: React.FC<LeadFormModalProps> = ({
           .eq('id', lead.id);
 
         if (error) throw error;
-        alert('Lead atualizado com sucesso!');
+        showSuccessToast('Lead atualizado', 'Lead atualizado com sucesso!');
       } else {
         // Criar novo lead
+        let assignedTo = user?.id; // Padrão: auto-atribuir ao usuário logado
+        
+        // Para admin: usar o vendedor selecionado se especificado
+        if ((user?.role === 'admin' || user?.role === 'super_admin') && formData.assigned_to) {
+          assignedTo = formData.assigned_to;
+        }
+
         const { error } = await supabase
           .from('leads_master')
           .insert({
             ...leadData,
-            created_by: tenantId, // Usando tenant_id temporariamente
+            created_by: user?.id,
+            assigned_to: assignedTo,
+            status: 'active',
+            lead_temperature: 'cold',
             created_at: new Date().toISOString()
           });
 
         if (error) throw error;
-        alert('Lead criado com sucesso!');
+        showSuccessToast('Lead criado', 'Lead criado com sucesso!');
       }
 
       onSave();
     } catch (error) {
       console.error('Erro ao salvar lead:', error);
-      alert('Erro ao salvar lead. Tente novamente.');
+      showErrorToast('Erro ao salvar', 'Erro ao salvar lead. Tente novamente.');
     } finally {
       setLoading(false);
     }
   };
 
-  if (!isOpen) return null;
+  const availablePipelines = user?.role === 'member' ? userPipelines : pipelines;
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
-  return createPortal(
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[10000]">
-      <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden p-0">
         {/* Header */}
         <div className="bg-blue-600 text-white p-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-white">
               {lead ? 'Editar Lead' : 'Novo Lead'}
-            </h2>
-            <button
-              onClick={onClose}
-              className="bg-white bg-opacity-20 hover:bg-opacity-30 text-white p-2 rounded-lg transition-colors"
-            >
-              <X size={16} />
-            </button>
-          </div>
+            </DialogTitle>
+          </DialogHeader>
         </div>
 
         {/* Form */}
@@ -215,16 +329,13 @@ const LeadFormModal: React.FC<LeadFormModalProps> = ({
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Informações Básicas</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Nome *
-                  </label>
-                  <input
+                  <Label htmlFor="first_name">Nome *</Label>
+                  <Input
+                    id="first_name"
                     type="text"
                     value={formData.first_name}
                     onChange={(e) => handleInputChange('first_name', e.target.value)}
-                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      errors.first_name ? 'border-red-500' : 'border-gray-300'
-                    }`}
+                    className={errors.first_name ? 'border-red-500' : ''}
                     placeholder="Nome do lead"
                   />
                   {errors.first_name && (
@@ -233,29 +344,24 @@ const LeadFormModal: React.FC<LeadFormModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Sobrenome
-                  </label>
-                  <input
+                  <Label htmlFor="last_name">Sobrenome</Label>
+                  <Input
+                    id="last_name"
                     type="text"
                     value={formData.last_name}
                     onChange={(e) => handleInputChange('last_name', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Sobrenome do lead"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    E-mail *
-                  </label>
-                  <input
+                  <Label htmlFor="email">E-mail *</Label>
+                  <Input
+                    id="email"
                     type="email"
                     value={formData.email}
                     onChange={(e) => handleInputChange('email', e.target.value)}
-                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      errors.email ? 'border-red-500' : 'border-gray-300'
-                    }`}
+                    className={errors.email ? 'border-red-500' : ''}
                     placeholder="email@exemplo.com"
                   />
                   {errors.email && (
@@ -264,174 +370,130 @@ const LeadFormModal: React.FC<LeadFormModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Telefone
-                  </label>
-                  <input
+                  <Label htmlFor="phone">Telefone *</Label>
+                  <Input
+                    id="phone"
                     type="tel"
                     value={formData.phone}
                     onChange={(e) => handleInputChange('phone', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className={errors.phone ? 'border-red-500' : ''}
                     placeholder="(11) 99999-9999"
                   />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Empresa
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.company}
-                    onChange={(e) => handleInputChange('company', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Nome da empresa"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Cargo
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.job_title}
-                    onChange={(e) => handleInputChange('job_title', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Cargo na empresa"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Status e Qualificação */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Status e Qualificação</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Status
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => handleInputChange('status', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="active">Ativo</option>
-                    <option value="converted">Convertido</option>
-                    <option value="lost">Perdido</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Temperatura
-                  </label>
-                  <select
-                    value={formData.lead_temperature}
-                    onChange={(e) => handleInputChange('lead_temperature', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="cold">Frio</option>
-                    <option value="warm">Morno</option>
-                    <option value="hot">Quente</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Valor Estimado (R$)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={formData.estimated_value}
-                    onChange={(e) => handleInputChange('estimated_value', e.target.value)}
-                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      errors.estimated_value ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    placeholder="0.00"
-                  />
-                  {errors.estimated_value && (
-                    <p className="text-red-500 text-sm mt-1">{errors.estimated_value}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Score (0-100)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={formData.lead_score}
-                    onChange={(e) => handleInputChange('lead_score', e.target.value)}
-                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      errors.lead_score ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    placeholder="0"
-                  />
-                  {errors.lead_score && (
-                    <p className="text-red-500 text-sm mt-1">{errors.lead_score}</p>
+                  {errors.phone && (
+                    <p className="text-red-500 text-sm mt-1">{errors.phone}</p>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Origem e UTM */}
+            {/* Configurações por Role */}
+            {isAdmin && !lead && (
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Configurações Administrativas</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {availablePipelines.length > 1 && (
+                    <div>
+                      <Label htmlFor="pipeline_id">Pipeline</Label>
+                      <Select value={formData.pipeline_id} onValueChange={(value) => handleInputChange('pipeline_id', value)}>
+                        <SelectTrigger className={errors.pipeline_id ? 'border-red-500' : ''}>
+                          <SelectValue placeholder="Selecione uma pipeline" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availablePipelines.map((pipeline) => (
+                            <SelectItem key={pipeline.id} value={pipeline.id}>
+                              {pipeline.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.pipeline_id && (
+                        <p className="text-red-500 text-sm mt-1">{errors.pipeline_id}</p>
+                      )}
+                    </div>
+                  )}
+
+                  <div>
+                    <Label htmlFor="assigned_to">Atribuir a Vendedor</Label>
+                    <Select value={formData.assigned_to} onValueChange={(value) => handleInputChange('assigned_to', value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um vendedor (opcional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {teamMembers.map((member) => (
+                          <SelectItem key={member.id} value={member.id}>
+                            {member.first_name} {member.last_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Member: Mostrar pipeline selecionada (readonly) */}
+            {!isAdmin && userPipelines.length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Pipeline</h3>
+                <div className="bg-gray-50 p-3 rounded-md">
+                  <p className="text-sm text-gray-600">
+                    Pipeline: <span className="font-medium">{userPipelines.find(p => p.id === formData.pipeline_id)?.name || userPipelines[0]?.name}</span>
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    Responsável: <span className="font-medium">Você</span>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Origem e Rastreamento */}
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Origem e Rastreamento</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Origem do Lead
-                  </label>
-                  <input
+                  <Label htmlFor="lead_source">Origem do Lead *</Label>
+                  <Input
+                    id="lead_source"
                     type="text"
                     value={formData.lead_source}
                     onChange={(e) => handleInputChange('lead_source', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className={errors.lead_source ? 'border-red-500' : ''}
                     placeholder="Ex: Google Ads, Facebook, Indicação, etc."
                   />
+                  {errors.lead_source && (
+                    <p className="text-red-500 text-sm mt-1">{errors.lead_source}</p>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    UTM Source
-                  </label>
-                  <input
+                  <Label htmlFor="utm_source">UTM Source</Label>
+                  <Input
+                    id="utm_source"
                     type="text"
                     value={formData.utm_source}
                     onChange={(e) => handleInputChange('utm_source', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="google, facebook, etc."
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    UTM Medium
-                  </label>
-                  <input
+                  <Label htmlFor="utm_medium">UTM Medium</Label>
+                  <Input
+                    id="utm_medium"
                     type="text"
                     value={formData.utm_medium}
                     onChange={(e) => handleInputChange('utm_medium', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="cpc, social, email, etc."
                   />
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    UTM Campaign
-                  </label>
-                  <input
+                  <Label htmlFor="utm_campaign">UTM Campaign</Label>
+                  <Input
+                    id="utm_campaign"
                     type="text"
                     value={formData.utm_campaign}
                     onChange={(e) => handleInputChange('utm_campaign', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Nome da campanha"
                   />
                 </div>
@@ -441,18 +503,18 @@ const LeadFormModal: React.FC<LeadFormModalProps> = ({
 
           {/* Actions */}
           <div className="flex justify-end space-x-4 mt-8 pt-6 border-t border-gray-200">
-            <button
+            <Button
               type="button"
+              variant="outline"
               onClick={onClose}
-              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
               disabled={loading}
             >
               Cancelar
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               disabled={loading}
-              className="flex items-center space-x-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              className="flex items-center space-x-2"
             >
               {loading ? (
                 <Loader size={16} className="animate-spin" />
@@ -460,12 +522,11 @@ const LeadFormModal: React.FC<LeadFormModalProps> = ({
                 <Save size={16} />
               )}
               <span>{loading ? 'Salvando...' : 'Salvar'}</span>
-            </button>
+            </Button>
           </div>
         </form>
-      </div>
-    </div>,
-    document.body
+      </DialogContent>
+    </Dialog>
   );
 };
 

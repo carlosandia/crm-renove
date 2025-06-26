@@ -1,87 +1,98 @@
-// Utilitário robusto para filtrar erros irrelevantes do console
-export const setupConsoleFilter = () => {
-  // Salvar referências originais
-  const originalError = console.error;
+// Filtro avançado de console para reduzir ruído de logs
+
+// Flag para controlar se deve aplicar filtros de console
+const SHOULD_FILTER_CONSOLE = import.meta.env.VITE_DEBUG_MODE !== 'true';
+
+// Lista de padrões de mensagens para filtrar
+const FILTERED_PATTERNS = [
+  // Warnings do React/Browser que não são críticos
+  'Warning: ReactDOM.render is deprecated',
+  'Warning: findDOMNode is deprecated',
+  'validateDOMNesting',
+  
+  // Mensagens de extensões do browser
+  'extension',
+  'Extension',
+  'chrome-extension',
+  
+  // Warnings específicos do sistema (NÃO filtrar erros de resource)
+  'AuthProvider',
+  'Renderizando contexto',
+  'Estado atual do usePipelineData',
+  
+  // Avisos não críticos do Supabase (mas não erros de query)
+  'supabase-js: realtime',
+  'realtime connection',
+  
+  // Avisos de performance que não são críticos
+  'performanceMonitoring'
+];
+
+// Função para verificar se uma mensagem deve ser filtrada
+function shouldFilterMessage(message: string): boolean {
+  if (!SHOULD_FILTER_CONSOLE) return false;
+  
+  // 🔒 ANTI-LOOP: Nunca filtrar mensagens relacionadas ao próprio filtro
+  if (message.toLowerCase().includes('consolefilter')) {
+    return false;
+  }
+  
+  return FILTERED_PATTERNS.some(pattern => 
+    message.toLowerCase().includes(pattern.toLowerCase())
+  );
+}
+
+// Aplicar filtros apenas se não estivermos em modo debug
+if (SHOULD_FILTER_CONSOLE) {
+  // Backup das funções originais
   const originalWarn = console.warn;
+  const originalError = console.error;
+  const originalLog = console.log;
 
-  // Lista de padrões para filtrar
-  const filterPatterns = [
-    // Extensões do Chrome
-    'chrome-extension://',
-    'background.js',
-    'background.html',
-    'The message port closed before a response was received',
-    
-    // React Router v6 warnings conhecidos
-    'React Router Future Flag Warning',
-    'future.v7_startTransition',
-    'future.v7_relativeSplatPath',
-    
-    // React DevTools
-    'react-devtools',
-    
-    // Vite/HMR warnings
-    '[vite]',
-    'HMR',
-    
-    // Browser APIs não críticos
-    'ResizeObserver loop limit exceeded',
-    'Non-passive event listener',
-    
-    // Supabase warnings não críticos
-    'Using the user object as returned from supabase.auth.getSession()',
-    
-    // Console warnings de desenvolvimento
-    'Warning: ReactDOM.render is no longer supported',
-    'Warning: validateDOMNesting',
-    
-    // Network errors que são tratados pela aplicação
-    'Failed to fetch',
-    'NetworkError',
-    
-    // Errors de chunk loading (lazy loading)
-    'Loading chunk',
-    'ChunkLoadError'
-  ];
+  // Interceptar console.warn
+  console.warn = (...args: any[]) => {
+    const message = args.join(' ');
+    if (!shouldFilterMessage(message)) {
+      originalWarn.apply(console, args);
+    }
+  };
 
-  // Função para verificar se deve filtrar
-  const shouldFilter = (message: string): boolean => {
-    return filterPatterns.some(pattern => 
+  // Interceptar console.error (apenas para warnings não críticos)
+  console.error = (...args: any[]) => {
+    const message = args.join(' ');
+    // Só filtrar erros específicos que sabemos que não são críticos
+    const nonCriticalErrorPatterns = [
+      'AuthProvider',
+      'Renderizando contexto'
+    ];
+    
+    // ✅ NUNCA filtrar erros do Supabase - são críticos para debug
+    if (message.toLowerCase().includes('supabase') || 
+        message.toLowerCase().includes('could not embed') ||
+        message.toLowerCase().includes('relationship')) {
+      originalError.apply(console, args);
+      return;
+    }
+    
+    const isNonCritical = nonCriticalErrorPatterns.some(pattern =>
       message.toLowerCase().includes(pattern.toLowerCase())
     );
-  };
-
-  // Interceptar console.error
-  console.error = (...args) => {
-    const message = args.join(' ');
     
-    // Filtrar erros irrelevantes
-    if (shouldFilter(message)) {
-      return;
+    if (!isNonCritical) {
+      originalError.apply(console, args);
     }
-    
-    // Manter apenas erros importantes
-    originalError.apply(console, args);
   };
 
-  // Interceptar console.warn para warnings específicos
-  console.warn = (...args) => {
+  // Interceptar console.log para reduzir spam
+  console.log = (...args: any[]) => {
     const message = args.join(' ');
-    
-    // Filtrar warnings irrelevantes
-    if (shouldFilter(message)) {
-      return;
+    if (!shouldFilterMessage(message)) {
+      originalLog.apply(console, args);
     }
-    
-    // Manter warnings importantes
-    originalWarn.apply(console, args);
   };
+}
 
-  // Log apenas em desenvolvimento
-  if (import.meta.env.DEV) {
-    console.log('🔧 Filtro de console configurado - suprimindo erros irrelevantes');
-  }
-};
+export { shouldFilterMessage };
 
 // Função para restaurar o console original (para debugging)
 export const restoreConsole = () => {

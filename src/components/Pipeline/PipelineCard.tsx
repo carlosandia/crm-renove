@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Edit, Trash2, Users, Plus, X, Calendar, GitBranch, TrendingUp, AlertTriangle } from 'lucide-react';
-import { Pipeline } from '../../hooks/usePipelines';
+import { Pipeline } from '../../types/Pipeline';
 import { User } from '../../hooks/useMembers';
 
 interface Member {
@@ -244,7 +244,7 @@ const PipelineCard: React.FC<PipelineCardProps> = ({
                                   email: (pm as any).users.email,
                                   is_active: true
                                 }) ||
-                                pm.member || 
+ 
                                 {
                                   id: pm.member_id,
                                   first_name: 'Vendedor',

@@ -31,17 +31,52 @@ interface Lead {
   created_at: string;
   updated_at: string;
   status?: 'active' | 'won' | 'lost';
+  // Additional fields for compatibility
+  owner_id?: string;
+  assigned_to?: string;
+  created_by?: string;
+}
+
+interface Pipeline {
+  id: string;
+  name: string;
+  pipeline_stages?: PipelineStage[];
+  stages?: PipelineStage[];
+  pipeline_custom_fields?: CustomField[];
+  custom_fields?: CustomField[];
+}
+
+interface LeadFilters {
+  owner_id?: string;
+  team_id?: string;
+  stage_id?: string;
+  pipeline_id?: string;
+  temperature?: 'cold' | 'warm' | 'hot';
+  date_from?: string;
+  date_to?: string;
+  search?: string;
 }
 
 interface PipelineKanbanBoardProps {
+  // Core props
   stages: PipelineStage[];
   leads: Lead[];
   customFields: CustomField[];
   onAddLead: (stageId?: string) => void;
+  onDragEnd: (result: DropResult) => void;
+  
+  // Optional props for backward compatibility
   onUpdateLead?: (leadId: string, updatedData: any) => void;
   onEditLead?: (lead: Lead) => void;
-  onDragEnd: (result: DropResult) => void;
   stageMetrics?: any;
+  
+  // New props for V2 components
+  pipeline?: Pipeline;
+  filters?: LeadFilters;
+  onLeadUpdate?: (leadId: string, data: any) => Promise<void>;
+  onLeadMove?: (leadId: string, stageId: string) => Promise<void>;
+  onLeadCreate?: (data: any) => Promise<void>;
+  canEdit?: boolean;
 }
 
 const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = memo(({
@@ -52,7 +87,14 @@ const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = memo(({
   onUpdateLead,
   onEditLead,
   onDragEnd,
-  stageMetrics
+  stageMetrics,
+  // V2 props
+  pipeline,
+  filters,
+  onLeadUpdate,
+  onLeadMove,
+  onLeadCreate,
+  canEdit = true
 }) => {
   // Ref para evitar re-renders desnecessários
   const dragContextRef = useRef<HTMLDivElement>(null);
@@ -90,8 +132,26 @@ const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = memo(({
       return;
     }
 
+    // Call onLeadMove if available (V2 components)
+    if (onLeadMove && result.destination) {
+      const leadId = result.draggableId;
+      const newStageId = result.destination.droppableId;
+      onLeadMove(leadId, newStageId);
+    }
+
+    // Call legacy onDragEnd
     onDragEnd(result);
-  }, [onDragEnd]);
+  }, [onDragEnd, onLeadMove]);
+
+  // ✅ HANDLER ATUALIZAR LEAD UNIFICADO
+  const handleUpdateLead = useCallback((leadId: string, data: any) => {
+    console.log('📝 PipelineKanbanBoard: Atualizando lead', { leadId: leadId.substring(0, 8) + '...', data });
+    if (onLeadUpdate) {
+      onLeadUpdate(leadId, data);
+    } else if (onUpdateLead) {
+      onUpdateLead(leadId, data);
+    }
+  }, [onLeadUpdate, onUpdateLead]);
 
   // Verificar se há dados suficientes para renderizar
   if (stages.length === 0) {
@@ -117,7 +177,7 @@ const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = memo(({
               leads={getLeadsByStage(stage.id)}
               customFields={customFields}
               onAddLead={onAddLead}
-              onUpdateLead={onUpdateLead}
+              onUpdateLead={handleUpdateLead}
               onEditLead={onEditLead}
             />
           ))}

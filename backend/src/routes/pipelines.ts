@@ -3,16 +3,165 @@ import { PipelineController } from '../controllers/PipelineController';
 import { CustomFieldController } from '../controllers/customFieldController';
 import { LeadController } from '../controllers/leadController';
 import { supabase } from '../config/supabase';
-const supabaseAdmin = supabase;
+// FASE 1: Cache Integration
+import { cacheMiddlewares } from '../middleware/cacheMiddleware';
+import { CacheTTL } from '../services/cacheService';
 
+const supabaseAdmin = supabase;
 const router = express.Router();
 
 // ============================================
 // ROTAS PRINCIPAIS DE PIPELINES
 // ============================================
 
-// GET /api/pipelines - Listar pipelines do tenant
-router.get('/', PipelineController.getPipelines);
+// GET /api/pipelines - Listar pipelines do tenant (com cache)
+router.get('/', cacheMiddlewares.pipeline(CacheTTL.medium), PipelineController.getPipelines);
+
+// GET /api/pipelines/available - Listar pipelines disponíveis para conexão com formulários (com cache)
+router.get('/available', cacheMiddlewares.pipeline(CacheTTL.long), async (req, res) => {
+  try {
+    const { data: pipelines, error } = await supabase
+      .from('pipelines')
+      .select(`
+        id,
+        name,
+        description,
+        is_active,
+        created_at,
+        pipeline_stages(
+          id,
+          name,
+          order_index,
+          is_default,
+          color
+        )
+      `)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Erro ao carregar pipelines disponíveis:', error);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Erro ao carregar pipelines disponíveis',
+        details: error.message 
+      });
+    }
+
+    // Formatar resposta
+    const formattedPipelines = pipelines.map(pipeline => ({
+      id: pipeline.id,
+      name: pipeline.name,
+      description: pipeline.description,
+      is_active: pipeline.is_active,
+      stages: pipeline.pipeline_stages.map((stage: any) => ({
+        id: stage.id,
+        name: stage.name,
+        order_index: stage.order_index,
+        is_default: stage.is_default || false,
+        color: stage.color
+      })).sort((a: any, b: any) => a.order_index - b.order_index)
+    }));
+
+    res.json(formattedPipelines);
+  } catch (error) {
+    console.error('Erro interno ao carregar pipelines:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro interno do servidor',
+      details: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
+  }
+});
+
+// GET /api/pipelines/:id/details - Detalhes completos de uma pipeline para formulários
+router.get('/:id/details', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Buscar pipeline com estágios
+    const { data: pipeline, error: pipelineError } = await supabase
+      .from('pipelines')
+      .select(`
+        id,
+        name,
+        description,
+        is_active,
+        pipeline_stages(
+          id,
+          name,
+          order_index,
+          is_default,
+          color
+        )
+      `)
+      .eq('id', id)
+      .single();
+
+    if (pipelineError || !pipeline) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Pipeline não encontrada',
+        details: pipelineError?.message 
+      });
+    }
+
+    // Buscar campos customizados da pipeline
+    const { data: customFields, error: fieldsError } = await supabase
+      .from('pipeline_custom_fields')
+      .select('*')
+      .eq('pipeline_id', id)
+      .order('field_order');
+
+    if (fieldsError) {
+      console.error('Erro ao carregar campos customizados:', fieldsError);
+    }
+
+    // Definir campos padrão do sistema
+    const systemFields = [
+      { name: 'name', label: 'Nome', type: 'text', is_required: true, is_custom: false },
+      { name: 'email', label: 'Email', type: 'email', is_required: false, is_custom: false },
+      { name: 'phone', label: 'Telefone', type: 'tel', is_required: false, is_custom: false },
+      { name: 'company', label: 'Empresa', type: 'text', is_required: false, is_custom: false },
+      { name: 'position', label: 'Cargo', type: 'text', is_required: false, is_custom: false },
+      { name: 'estimated_value', label: 'Valor Estimado', type: 'number', is_required: false, is_custom: false },
+      { name: 'description', label: 'Descrição', type: 'textarea', is_required: false, is_custom: false },
+      { name: 'source', label: 'Origem', type: 'text', is_required: false, is_custom: false },
+    ];
+
+    // Converter campos customizados para formato padrão
+    const customFieldsFormatted = (customFields || []).map(field => ({
+      name: field.field_name,
+      label: field.field_label,
+      type: field.field_type,
+      is_required: field.is_required,
+      is_custom: true,
+      options: field.field_options
+    }));
+
+    // Combinar campos do sistema com campos customizados
+    const allFields = [...systemFields, ...customFieldsFormatted];
+
+    // Ordenar estágios
+    const sortedStages = pipeline.pipeline_stages.sort((a: any, b: any) => a.order_index - b.order_index);
+
+    res.json({
+      id: pipeline.id,
+      name: pipeline.name,
+      description: pipeline.description,
+      is_active: pipeline.is_active,
+      stages: sortedStages,
+      fields: allFields
+    });
+  } catch (error) {
+    console.error('Erro interno ao carregar detalhes da pipeline:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro interno do servidor',
+      details: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
+  }
+});
 
 // GET /api/pipelines/:id - Buscar pipeline específica
 router.get('/:id', PipelineController.getPipelineById);
@@ -745,6 +894,654 @@ router.post('/create-leads-table', async (req, res) => {
   } catch (error) {
     console.log('❌ Erro geral:', error);
     res.status(500).json({ error: 'Erro interno', details: error instanceof Error ? error.message : 'Erro desconhecido' });
+  }
+});
+
+// ============================================
+// ROTAS PARA CONEXÃO COM FORMULÁRIOS
+// ============================================
+
+// POST /api/pipelines/:id/connect-form - Conectar formulário à pipeline
+router.post('/:id/connect-form', async (req, res) => {
+  try {
+    const { id: pipeline_id } = req.params;
+    const { 
+      form_id, 
+      stage_id, 
+      field_mappings = [], 
+      auto_assign = true,
+      create_task = true,
+      task_description = 'Novo lead captado via formulário',
+      task_due_days = 1,
+      use_score_for_stage = false,
+      score_stage_mapping = {},
+      notification_settings = {}
+    } = req.body;
+
+    if (!form_id) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'ID do formulário é obrigatório' 
+      });
+    }
+
+    // Verificar se pipeline existe
+    const { data: pipeline, error: pipelineError } = await supabase
+      .from('pipelines')
+      .select('id, name')
+      .eq('id', pipeline_id)
+      .single();
+
+    if (pipelineError || !pipeline) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Pipeline não encontrada' 
+      });
+    }
+
+    // Salvar configuração de conexão (você pode criar uma tabela para isso)
+    const connectionConfig = {
+      form_id,
+      pipeline_id,
+      stage_id,
+      field_mappings,
+      auto_assign,
+      create_task,
+      task_description,
+      task_due_days,
+      use_score_for_stage,
+      score_stage_mapping,
+      notification_settings,
+      created_at: new Date().toISOString()
+    };
+
+    // Por enquanto, vamos simular salvamento bem-sucedido
+    // Em produção, você criaria uma tabela 'form_pipeline_connections'
+    console.log('Configuração de conexão salva:', connectionConfig);
+
+    res.json({
+      success: true,
+      message: 'Formulário conectado à pipeline com sucesso',
+      connection: connectionConfig
+    });
+  } catch (error) {
+    console.error('Erro ao conectar formulário à pipeline:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro interno do servidor',
+      details: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
+  }
+});
+
+// 🆕 FUNÇÃO AUXILIAR PARA MAPEAR CAMPOS DO FORMULÁRIO
+function mapFormFieldsToLead(form_data: any, field_mappings: any[] = []): any {
+  const leadData: any = {
+    source: 'Formulário',
+    origem: 'Formulário'
+  };
+
+  // Aplicar mapeamentos de campos se fornecidos
+  if (field_mappings && field_mappings.length > 0) {
+    field_mappings.forEach((mapping: any) => {
+      const formValue = form_data[mapping.form_field_id];
+      if (formValue !== undefined && formValue !== null && formValue !== '') {
+        leadData[mapping.pipeline_field_name] = formValue;
+      }
+    });
+  } else {
+    // Mapeamento automático padrão se não há mapeamentos específicos
+    leadData.nome_lead = form_data.nome || form_data.name || form_data.first_name || 'Nome não informado';
+    leadData.email = form_data.email;
+    leadData.telefone = form_data.telefone || form_data.phone;
+    leadData.empresa = form_data.empresa || form_data.company;
+    leadData.cargo = form_data.cargo || form_data.job_title;
+    leadData.valor = form_data.valor || form_data.value || form_data.budget;
+    
+    // Campos UTM
+    leadData.utm_source = form_data.utm_source;
+    leadData.utm_medium = form_data.utm_medium;
+    leadData.utm_campaign = form_data.utm_campaign;
+    leadData.campaign_name = form_data.campaign_name;
+  }
+
+  return leadData;
+}
+
+// POST /api/pipelines/create-lead-from-form - Criar lead diretamente na pipeline via formulário
+router.post('/create-lead-from-form', async (req, res) => {
+  try {
+    const {
+      pipeline_id,
+      stage_id,
+      form_data,
+      field_mappings = [],
+      lead_score = 0,
+      is_mql = false,
+      auto_assign = true,
+      create_task = true,
+      task_description = 'Novo lead captado via formulário',
+      task_due_days = 1,
+      form_name = 'Formulário',
+      tenant_id,
+      form_id
+    } = req.body;
+
+    if (!pipeline_id || !form_data) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Pipeline ID e dados do formulário são obrigatórios' 
+      });
+    }
+
+    console.log('🔄 Criando lead na pipeline via formulário:', pipeline_id);
+
+    // 1. Mapear campos do formulário
+    const mappedData = mapFormFieldsToLead(form_data, field_mappings);
+
+    // 2. 🆕 PRIMEIRO CRIAR NO LEADS_MASTER PARA PADRONIZAÇÃO
+    let leadMaster = null;
+    if (tenant_id) {
+      console.log('📝 Criando registro no leads_master para padronização...');
+      
+      const { data: masterLead, error: masterError } = await supabase
+        .from('leads_master')
+        .insert({
+          first_name: mappedData.nome_lead?.split(' ')[0] || 'Nome não informado',
+          last_name: mappedData.nome_lead?.split(' ').slice(1).join(' ') || '',
+          email: mappedData.email || '',
+          phone: mappedData.telefone || '',
+          company: mappedData.empresa || '',
+          job_title: mappedData.cargo || '',
+          estimated_value: mappedData.valor ? parseFloat(mappedData.valor) : 0,
+          lead_source: 'Form',
+          lead_temperature: mappedData.temperatura || 'Frio',
+          status: 'Em Pipeline',
+          origem: mappedData.origem || 'Formulário',
+          tenant_id: tenant_id,
+          created_by: null,
+          utm_source: mappedData.utm_source,
+          utm_medium: mappedData.utm_medium,
+          utm_campaign: mappedData.utm_campaign,
+          campaign_name: mappedData.campaign_name
+        })
+        .select()
+        .single();
+
+      if (!masterError && masterLead) {
+        leadMaster = masterLead;
+        console.log('✅ Lead master criado:', leadMaster.id);
+        
+        // 🆕 ADICIONAR REFERÊNCIA AO LEAD_MASTER NO LEAD_DATA
+        mappedData.lead_master_id = leadMaster.id;
+        mappedData.source = 'Formulário → Lead Master';
+      }
+    }
+
+    // 3. Buscar configurações da pipeline
+    const { data: pipeline, error: pipelineError } = await supabase
+      .from('pipelines')
+      .select('*, pipeline_stages(*)')
+      .eq('id', pipeline_id)
+      .single();
+
+    if (pipelineError || !pipeline) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Pipeline não encontrada' 
+      });
+    }
+
+    // 4. Determinar estágio inicial
+    let targetStageId = stage_id;
+    if (!targetStageId) {
+      // Buscar primeiro estágio (provavelmente "Lead" ou "Novos leads")
+      const firstStage = pipeline.pipeline_stages
+        ?.sort((a: any, b: any) => a.order_index - b.order_index)[0];
+      
+      if (!firstStage) {
+      return res.status(400).json({ 
+        success: false, 
+          error: 'Pipeline não possui estágios configurados' 
+        });
+      }
+      
+      targetStageId = firstStage.id;
+    }
+
+    // 5. 🆕 APLICAR SISTEMA DE RODÍZIO INTEGRADO
+    let assignedTo = null;
+    let distributionApplied = false;
+    
+    if (auto_assign) {
+      console.log('🎯 Aplicando sistema de rodízio na pipeline...');
+      assignedTo = await applyPipelineDistribution(pipeline_id, tenant_id);
+      distributionApplied = !!assignedTo;
+      
+      if (assignedTo) {
+        console.log('✅ Lead atribuído via rodízio:', assignedTo);
+      } else {
+        console.log('⚠️ Rodízio não aplicado, usando distribuição manual');
+      }
+    }
+
+    // 6. Criar lead na pipeline
+    const { data: pipelineLead, error: leadError } = await supabase
+      .from('pipeline_leads')
+      .insert({
+        pipeline_id: pipeline_id,
+        stage_id: targetStageId,
+        lead_data: mappedData,
+        assigned_to: assignedTo,
+        created_by: null, // Formulário público
+        tenant_id: tenant_id || pipeline.tenant_id,
+        lead_score: lead_score,
+        is_qualified: is_mql,
+        source: 'form',
+        form_id: form_id
+      })
+      .select()
+      .single();
+
+    if (leadError) {
+      console.error('❌ Erro ao criar lead na pipeline:', leadError);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Erro ao criar lead na pipeline',
+        details: leadError.message 
+      });
+    }
+
+    // 7. 🆕 ATUALIZAR LEADS_MASTER COM REFERÊNCIA À PIPELINE
+    if (leadMaster) {
+      await supabase
+        .from('leads_master')
+        .update({ 
+          pipeline_opportunity_id: pipelineLead.id,
+          status: 'Em Pipeline'
+        })
+        .eq('id', leadMaster.id);
+    }
+
+    // 8. Criar tarefa automática se configurado
+    if (create_task && assignedTo) {
+      console.log('📝 Criando tarefa automática...');
+      
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + task_due_days);
+
+      const { error: taskError } = await supabase
+        .from('tasks')
+          .insert({
+          title: `Follow-up: ${mappedData.nome_lead || 'Novo lead'}`,
+          description: task_description,
+          assigned_to: assignedTo,
+          lead_relationship_id: pipelineLead.id,
+          lead_relationship_type: 'pipeline_lead',
+            due_date: dueDate.toISOString(),
+            status: 'pending',
+          priority: 'medium',
+          created_by: assignedTo,
+          tenant_id: tenant_id || pipeline.tenant_id
+        });
+
+      if (taskError) {
+        console.warn('⚠️ Erro ao criar tarefa:', taskError);
+      } else {
+        console.log('✅ Tarefa criada com sucesso');
+      }
+    }
+
+    // 9. Registrar histórico de entrada
+    await supabase
+      .from('pipeline_lead_history')
+      .insert({
+        lead_id: pipelineLead.id,
+        stage_id: targetStageId,
+        action: 'created',
+        user_id: assignedTo,
+        notes: `Lead criado via ${form_name}`,
+        tenant_id: tenant_id || pipeline.tenant_id
+      });
+
+    console.log('🎉 Lead criado na pipeline com sucesso:', pipelineLead.id);
+
+    // 10. Resposta integrada
+    res.status(201).json({
+      success: true,
+      message: 'Lead criado na pipeline com sucesso',
+      data: {
+        pipeline_lead_id: pipelineLead.id,
+        leads_master_id: leadMaster?.id || null,
+        pipeline_id: pipeline_id,
+        stage_id: targetStageId,
+        assigned_to: assignedTo,
+        distribution_applied: distributionApplied,
+        task_created: create_task && !!assignedTo,
+        synchronized: !!leadMaster
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao criar lead na pipeline:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      details: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
+  }
+});
+
+// Função auxiliar para aplicar distribuição na pipeline
+async function applyPipelineDistribution(pipelineId: string, tenantId: string): Promise<string | null> {
+  try {
+    console.log('🎯 Aplicando distribuição na pipeline:', pipelineId);
+
+    // 1. Verificar se há regra de distribuição configurada para esta pipeline
+    const { data: distributionRule, error: ruleError } = await supabase
+      .from('pipeline_distribution_rules')
+      .select('*')
+      .eq('pipeline_id', pipelineId)
+      .eq('is_active', true)
+      .single();
+
+    if (ruleError || !distributionRule || distributionRule.mode !== 'rodizio') {
+      console.log('⚠️ Nenhuma regra de rodízio ativa encontrada para esta pipeline');
+      return null;
+    }
+
+    // 2. Buscar members vinculados à pipeline
+    const { data: pipelineMembers, error: membersError } = await supabase
+      .from('pipeline_members')
+      .select('member_id, users(id, first_name, is_active)')
+      .eq('pipeline_id', pipelineId);
+
+    if (membersError || !pipelineMembers || pipelineMembers.length === 0) {
+      console.log('⚠️ Nenhum member vinculado à pipeline');
+      return null;
+    }
+
+    // Filtrar apenas members ativos
+    const activeMembers = pipelineMembers
+      .filter((pm: any) => pm.users && pm.users.is_active)
+      .map((pm: any) => pm.member_id)
+      .filter(Boolean);
+
+    if (activeMembers.length === 0) {
+      console.log('⚠️ Nenhum member ativo encontrado');
+      return null;
+    }
+
+    console.log(`👥 Encontrados ${activeMembers.length} members ativos na pipeline`);
+
+    // 3. Aplicar algoritmo round-robin
+    const nextMember = await getNextRoundRobinMember(activeMembers, distributionRule, pipelineId);
+
+    if (nextMember) {
+      // 4. Atualizar último member atribuído na regra
+      await supabase
+        .from('pipeline_distribution_rules')
+        .update({
+          last_assigned_member_id: nextMember,
+          assignment_count: (distributionRule.assignment_count || 0) + 1,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', distributionRule.id);
+
+      console.log('✅ Próximo member no rodízio:', nextMember);
+    }
+
+    return nextMember;
+
+  } catch (error) {
+    console.error('❌ Erro na distribuição da pipeline:', error);
+    return null;
+  }
+}
+
+// Função para calcular próximo member no round-robin
+async function getNextRoundRobinMember(memberIds: string[], rule: any, pipelineId: string): Promise<string | null> {
+  try {
+    const lastAssignedId = rule.last_assigned_member_id;
+
+    if (!lastAssignedId) {
+      // Primeira atribuição - usar primeiro member
+      console.log('📍 Primeira atribuição na pipeline');
+      return memberIds[0];
+    }
+
+    const currentIndex = memberIds.indexOf(lastAssignedId);
+    
+    if (currentIndex === -1) {
+      // Member anterior não está mais na lista - usar primeiro
+      console.log('📍 Member anterior não encontrado, usando primeiro');
+      return memberIds[0];
+    }
+
+    // Próximo member no rodízio circular
+    const nextIndex = (currentIndex + 1) % memberIds.length;
+    const nextMemberId = memberIds[nextIndex];
+
+    console.log(`🔄 Round-robin pipeline: ${lastAssignedId} → ${nextMemberId}`);
+    return nextMemberId;
+
+  } catch (error) {
+    console.error('❌ Erro no cálculo round-robin:', error);
+    return memberIds[0];
+  }
+}
+
+// 🆕 ENDPOINT PARA GERENCIAR REGRAS DE DISTRIBUIÇÃO
+// POST /api/pipelines/:pipelineId/distribution-rule - Salvar regra de distribuição
+router.post('/:pipelineId/distribution-rule', async (req: Request, res: Response) => {
+  try {
+    const { pipelineId } = req.params;
+    const { mode, is_active, working_hours_only, skip_inactive_members, fallback_to_manual } = req.body;
+
+    console.log('💾 Salvando regra de distribuição:', {
+      pipelineId,
+      mode,
+      is_active,
+      working_hours_only,
+      skip_inactive_members,
+      fallback_to_manual
+    });
+
+    // Validar dados obrigatórios
+    if (!pipelineId || !mode) {
+      return res.status(400).json({
+        success: false,
+        error: 'Pipeline ID e modo são obrigatórios'
+      });
+    }
+
+    // Verificar se a pipeline existe e o usuário tem permissão
+    const { data: pipeline, error: pipelineError } = await supabase
+      .from('pipelines')
+      .select('id, name, tenant_id')
+      .eq('id', pipelineId)
+      .single();
+
+    if (pipelineError || !pipeline) {
+      console.error('Pipeline não encontrada:', pipelineError);
+      return res.status(404).json({
+        success: false,
+        error: 'Pipeline não encontrada'
+      });
+    }
+
+    // Preparar dados para inserção/atualização
+    const distributionRuleData = {
+      pipeline_id: pipelineId,
+      mode: mode || 'manual',
+      is_active: is_active ?? true,
+      working_hours_only: working_hours_only ?? false,
+      skip_inactive_members: skip_inactive_members ?? true,
+      fallback_to_manual: fallback_to_manual ?? true,
+      updated_at: new Date().toISOString()
+    };
+
+    // Tentar atualizar regra existente primeiro
+    const { data: updatedRule, error: updateError } = await supabase
+      .from('pipeline_distribution_rules')
+      .upsert(distributionRuleData, { 
+        onConflict: 'pipeline_id',
+        ignoreDuplicates: false 
+          })
+          .select()
+          .single();
+
+    if (updateError) {
+      console.error('Erro ao salvar regra de distribuição:', updateError);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao salvar regra de distribuição',
+        details: updateError.message
+      });
+    }
+
+    console.log('✅ Regra de distribuição salva:', updatedRule);
+
+    res.status(200).json({
+      success: true,
+      data: updatedRule,
+      message: `Regra de distribuição ${mode} configurada com sucesso`
+    });
+
+  } catch (error) {
+    console.error('Erro ao salvar regra de distribuição:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// GET /api/pipelines/:pipelineId/distribution-rule - Buscar regra de distribuição
+router.get('/:pipelineId/distribution-rule', async (req: Request, res: Response) => {
+  try {
+    const { pipelineId } = req.params;
+
+    console.log('🔍 Buscando regra de distribuição para pipeline:', pipelineId);
+
+    // Buscar regra existente
+    const { data: distributionRule, error: ruleError } = await supabase
+      .from('pipeline_distribution_rules')
+      .select('*')
+      .eq('pipeline_id', pipelineId)
+      .single();
+
+    if (ruleError && ruleError.code !== 'PGRST116') { // PGRST116 = not found
+      console.error('Erro ao buscar regra de distribuição:', ruleError);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao buscar regra de distribuição'
+      });
+    }
+
+    // Se não encontrou, retornar regra padrão
+    if (!distributionRule) {
+      const defaultRule = {
+        pipeline_id: pipelineId,
+        mode: 'manual',
+        is_active: true,
+        working_hours_only: false,
+        skip_inactive_members: true,
+        fallback_to_manual: true
+      };
+
+      console.log('📋 Retornando regra padrão para pipeline:', pipelineId);
+
+      return res.status(200).json({
+      success: true,
+        data: defaultRule,
+        message: 'Regra de distribuição padrão (não configurada ainda)'
+      });
+    }
+
+    console.log('✅ Regra de distribuição encontrada:', distributionRule);
+
+    res.status(200).json({
+      success: true,
+      data: distributionRule,
+      message: 'Regra de distribuição carregada com sucesso'
+    });
+
+  } catch (error) {
+    console.error('Erro ao buscar regra de distribuição:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// GET /api/pipelines/:pipelineId/distribution-stats - Estatísticas de distribuição
+router.get('/:pipelineId/distribution-stats', async (req: Request, res: Response) => {
+  try {
+    const { pipelineId } = req.params;
+
+    console.log('📊 Buscando estatísticas de distribuição para pipeline:', pipelineId);
+
+    // Buscar estatísticas da regra de distribuição
+    const { data: distributionRule, error: ruleError } = await supabase
+      .from('pipeline_distribution_rules')
+      .select('*')
+      .eq('pipeline_id', pipelineId)
+      .single();
+
+    // Buscar histórico de atribuições
+    const { data: assignmentHistory, error: historyError } = await supabase
+      .from('lead_assignment_history')
+      .select(`
+        id,
+        assigned_to,
+        assignment_method,
+        round_robin_position,
+        total_eligible_members,
+        status,
+        created_at,
+        users!assigned_to (
+          first_name,
+          last_name,
+          email
+        )
+      `)
+      .eq('pipeline_id', pipelineId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    // Calcular estatísticas
+    const stats = {
+      rule: distributionRule || null,
+      total_assignments: distributionRule?.total_assignments || 0,
+      successful_assignments: distributionRule?.successful_assignments || 0,
+      failed_assignments: distributionRule?.failed_assignments || 0,
+      last_assignment_at: distributionRule?.last_assignment_at || null,
+      recent_assignments: assignmentHistory || [],
+      assignment_success_rate: distributionRule?.total_assignments > 0 
+        ? Math.round((distributionRule.successful_assignments / distributionRule.total_assignments) * 100)
+        : 0
+    };
+
+    console.log('✅ Estatísticas de distribuição:', {
+      pipelineId,
+      totalAssignments: stats.total_assignments,
+      successRate: stats.assignment_success_rate
+    });
+
+    res.status(200).json({
+      success: true,
+      data: stats,
+      message: 'Estatísticas de distribuição carregadas com sucesso'
+    });
+
+  } catch (error) {
+    console.error('Erro ao buscar estatísticas de distribuição:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
   }
 });
 

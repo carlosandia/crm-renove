@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { X, Save, Settings, Info, User, Building, Mail, Phone, MapPin, Calendar, DollarSign, Eye, EyeOff } from 'lucide-react';
+import { showSuccessToast, showErrorToast } from '../../lib/toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
 
 interface CustomField {
   id: string;
@@ -113,41 +122,33 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
       if (onUpdate) onUpdate(updatedData); if (onSave) onSave(updatedData);
       
       // Mostrar feedback de sucesso
-      alert('Alterações salvas com sucesso!');
+      showSuccessToast('Alterações salvas', 'Alterações salvas com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar:', error);
-      alert('Erro ao salvar alterações');
+      showErrorToast('Erro ao salvar', 'Erro ao salvar alterações');
     } finally {
       setSaving(false);
     }
   };
 
-  if (!isOpen) return null;
-
   const leadName = formData?.nome || formData?.nome_cliente || formData?.name || 'Lead sem nome';
 
-  return createPortal(
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[10000] p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden border border-gray-200">
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden p-0">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 p-6">
-          <div className="flex items-center justify-between">
+          <DialogHeader>
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
                 <User className="w-5 h-5 text-gray-600" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">Editar Lead</h2>
+                <DialogTitle className="text-xl font-semibold text-gray-900">Editar Lead</DialogTitle>
                 <p className="text-gray-500 text-sm mt-1">{leadName}</p>
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="text-gray-500 hover:bg-gray-100 rounded-lg p-2 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+          </DialogHeader>
         </div>
 
         {/* Tabs */}
@@ -193,15 +194,15 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
                     .sort((a, b) => a.field_order - b.field_order)
                     .map((field) => (
                       <div key={field.id} className={field.field_type === 'textarea' ? 'md:col-span-2' : ''}>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          <div className="flex items-center space-x-2">
+                        <Label>
+                          <div className="flex items-center space-x-2 mb-2">
                             <span className="text-gray-400">
                               {getFieldIcon(field.field_type, field.field_name)}
                             </span>
                             <span>{field.field_label}</span>
                             {field.is_required && <span className="text-red-500">*</span>}
                           </div>
-                        </label>
+                        </Label>
                         
                         {field.field_type === 'textarea' ? (
                           <textarea
@@ -216,7 +217,7 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
                             value={formData[field.field_name] || ''}
                             onChange={(e) => handleFieldChange(field.field_name, e.target.value)}
                             required={field.is_required}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <option value="">Selecione...</option>
                             {(field.field_options || []).map((option, index) => (
@@ -226,12 +227,11 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
                             ))}
                           </select>
                         ) : (
-                          <input
+                          <Input
                             type={field.field_type}
                             value={formData[field.field_name] || ''}
                             onChange={(e) => handleFieldChange(field.field_name, e.target.value)}
                             required={field.is_required}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           />
                         )}
                       </div>
@@ -294,17 +294,17 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
 
         {/* Footer */}
         <div className="bg-gray-50 px-6 py-4 flex items-center justify-end space-x-3 border-t border-gray-200">
-          <button
+          <Button
             type="button"
+            variant="outline"
             onClick={onClose}
-            className="px-6 py-2.5 text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 text-sm font-medium"
           >
             Cancelar
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={handleSave}
             disabled={loading}
-            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-200 text-sm font-medium flex items-center space-x-2 shadow-sm hover:shadow-md disabled:opacity-50"
+            className="flex items-center space-x-2"
           >
             {loading ? (
               <>
@@ -317,11 +317,10 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
                 <span>Salvar Alterações</span>
               </>
             )}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>,
-    document.body
+      </DialogContent>
+    </Dialog>
   );
 };
 

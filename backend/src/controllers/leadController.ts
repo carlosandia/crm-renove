@@ -36,8 +36,8 @@ export class LeadController {
     }
   }
 
-  // Função auxiliar para garantir que existe uma etapa "Novos Leads" na primeira posição
-  static async ensureNewLeadsStage(pipeline_id: string) {
+  // Função auxiliar para garantir que existe uma etapa inicial ("Lead" ou "Novos Leads") na primeira posição
+  static async ensureLeadStage(pipeline_id: string) {
     try {
       // Verificar se já existe uma etapa com order_index = 0
       const { data: firstStage, error: checkError } = await supabase
@@ -52,37 +52,37 @@ export class LeadController {
         return null;
       }
 
-      // Se existe uma etapa com order_index = 0, verificar se é "Novos Leads"
+      // Se existe uma etapa com order_index = 0, verificar se é "Lead" ou "Novos Leads" (compatibilidade)
       if (firstStage) {
-        if (firstStage.name === 'Novos Leads') {
+        if (firstStage.name === 'Lead' || firstStage.name === 'Novos Leads') {
           return firstStage.id;
         } else {
-          // Existe uma etapa no índice 0, mas não é "Novos Leads"
+          // Existe uma etapa no índice 0, mas não é a etapa inicial padrão
           // Vamos usar essa etapa existente
           return firstStage.id;
         }
       }
 
-      // Se não existe etapa com order_index = 0, verificar se existe "Novos Leads" em outro índice
-      const { data: existingNewLeadsStage, error: existingError } = await supabase
+      // Se não existe etapa com order_index = 0, verificar se existe "Lead" ou "Novos Leads" em outro índice
+      const { data: existingLeadStage, error: existingError } = await supabase
         .from('pipeline_stages')
         .select('*')
         .eq('pipeline_id', pipeline_id)
-        .eq('name', 'Novos Leads')
+        .or('name.eq.Lead,name.eq.Novos Leads')
         .single();
 
-      if (existingNewLeadsStage && !existingError) {
-        // Existe "Novos Leads" mas em outro índice, vamos atualizar para order_index = 0
+      if (existingLeadStage && !existingError) {
+        // Existe "Lead" ou "Novos Leads" mas em outro índice, vamos atualizar para order_index = 0
         const { error: updateError } = await supabase
           .from('pipeline_stages')
           .update({ order_index: 0 })
-          .eq('id', existingNewLeadsStage.id);
+          .eq('id', existingLeadStage.id);
 
         if (updateError) {
-          console.error('Erro ao atualizar ordem da etapa Novos Leads:', updateError);
+          console.error('Erro ao atualizar ordem da etapa inicial:', updateError);
         }
         
-        return existingNewLeadsStage.id;
+        return existingLeadStage.id;
       }
 
       // Não existe "Novos Leads", vamos criar uma nova etapa
@@ -116,8 +116,8 @@ export class LeadController {
   // Função auxiliar para obter a primeira etapa da pipeline
   static async getFirstStage(pipeline_id: string) {
     try {
-      // Primeiro, garantir que existe uma etapa "Novos Leads"
-      let firstStageId = await LeadController.ensureNewLeadsStage(pipeline_id);
+      // Primeiro, garantir que existe uma etapa inicial
+      let firstStageId = await LeadController.ensureLeadStage(pipeline_id);
       
       if (firstStageId) {
         return firstStageId;

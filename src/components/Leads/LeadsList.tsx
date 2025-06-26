@@ -1,6 +1,11 @@
-
-import React from 'react';
-import { Eye, Edit, Trash2, Phone, Mail, Building, Thermometer } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Eye, Edit, Trash2, Phone, Mail, Building, Thermometer, Target } from 'lucide-react';
+import { BlurFade } from '../ui/blur-fade';
+import LeadStatusTag from './LeadStatusTag';
+import LeadAssignmentDropdown from './LeadAssignmentDropdown';
+import CreateOpportunityModal from './CreateOpportunityModal';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface LeadMaster {
   id: string;
@@ -36,6 +41,7 @@ interface LeadsListProps {
   onEditLead: (lead: LeadMaster) => void;
   onDeleteLead: (leadId: string) => void;
   currentUserRole: string;
+  onLeadUpdate?: () => void;
 }
 
 const LeadsList: React.FC<LeadsListProps> = ({
@@ -44,8 +50,98 @@ const LeadsList: React.FC<LeadsListProps> = ({
   onViewDetails,
   onEditLead,
   onDeleteLead,
-  currentUserRole
+  currentUserRole,
+  onLeadUpdate
 }) => {
+  const { user } = useAuth();
+  const [opportunityModal, setOpportunityModal] = useState<{
+    isOpen: boolean;
+    leadId: string;
+    leadName: string;
+  }>({
+    isOpen: false,
+    leadId: '',
+    leadName: ''
+  });
+  const [leadsWithOpportunities, setLeadsWithOpportunities] = useState<Set<string>>(new Set());
+
+  // Verificar quais leads já têm oportunidades
+  useEffect(() => {
+    if (leads.length > 0) {
+      checkLeadsWithOpportunities();
+    }
+  }, [leads]);
+
+  const checkLeadsWithOpportunities = async () => {
+    try {
+      const leadIds = leads.map(lead => lead.id);
+      
+      // Buscar leads que já foram convertidos ou têm oportunidades na pipeline
+      const { data: pipelineLeads, error } = await supabase
+        .from('pipeline_leads')
+        .select('custom_data')
+        .not('custom_data->lead_master_id', 'is', null);
+
+      if (error) throw error;
+
+      const leadsWithOpps = new Set<string>();
+      
+      // Verificar leads convertidos
+      leads.forEach(lead => {
+        if (lead.status === 'converted') {
+          leadsWithOpps.add(lead.id);
+        }
+      });
+
+      // Verificar leads com oportunidades na pipeline
+      pipelineLeads?.forEach(pipelineLead => {
+        const leadMasterId = pipelineLead.custom_data?.lead_master_id;
+        if (leadMasterId) {
+          leadsWithOpps.add(leadMasterId);
+        }
+      });
+
+      setLeadsWithOpportunities(leadsWithOpps);
+    } catch (error) {
+      console.error('Erro ao verificar oportunidades:', error);
+    }
+  };
+
+  const handleAssignLead = async (leadId: string, memberId: string) => {
+    try {
+      const { error } = await supabase
+        .from('leads_master')
+        .update({ 
+          assigned_to: memberId || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', leadId);
+
+      if (error) throw error;
+      
+      if (onLeadUpdate) {
+        onLeadUpdate();
+      }
+    } catch (error) {
+      console.error('Erro ao atribuir lead:', error);
+    }
+  };
+
+  const handleCreateOpportunity = (lead: LeadMaster) => {
+    setOpportunityModal({
+      isOpen: true,
+      leadId: lead.id,
+      leadName: `${lead.first_name} ${lead.last_name}`
+    });
+  };
+
+  const handleOpportunitySuccess = () => {
+    if (onLeadUpdate) {
+      onLeadUpdate();
+    }
+    checkLeadsWithOpportunities();
+  };
+
   const getTemperatureBadge = (temperature?: string) => {
     const colors = {
       hot: 'bg-red-100 text-red-800 border-red-200',
@@ -157,81 +253,84 @@ const LeadsList: React.FC<LeadsListProps> = ({
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
-          {leads.map((lead) => (
-            <tr key={lead.id} className="hover:bg-gray-50">
-              <td className="px-6 py-4 whitespace-nowrap">
-                <div>
-                  <div className="text-sm font-medium text-gray-900">
-                    {lead.first_name} {lead.last_name}
+          {leads.map((lead, index) => (
+            <BlurFade key={lead.id} delay={index * 0.05}>
+              <tr className="hover:bg-gray-50 transition-colors duration-200">
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0 h-10 w-10">
+                      <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
+                        <span className="text-sm font-medium text-gray-700">
+                          {lead.first_name.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="ml-4">
+                      <div className="text-sm font-medium text-gray-900">
+                        {lead.first_name} {lead.last_name}
+                      </div>
+                      {lead.company && (
+                        <div className="text-sm text-gray-500">
+                          {lead.company}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  {lead.company && (
-                    <div className="flex items-center text-sm text-gray-500 mt-1">
-                      <Building size={12} className="mr-1" />
-                      {lead.company}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="space-y-1">
+                    <div className="text-sm text-gray-900">
+                      {lead.email}
                     </div>
-                  )}
-                  {lead.lead_source && (
-                    <div className="text-xs text-gray-400 mt-1">
-                      Origem: {lead.lead_source}
-                    </div>
-                  )}
-                </div>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap">
-                <div className="space-y-1">
-                  <div className="flex items-center text-sm text-gray-900">
-                    <Mail size={12} className="mr-1 text-gray-400" />
-                    {lead.email}
+                    {lead.phone && (
+                      <div className="text-sm text-gray-500">
+                        {lead.phone}
+                      </div>
+                    )}
                   </div>
-                  {lead.phone && (
-                    <div className="flex items-center text-sm text-gray-500">
-                      <Phone size={12} className="mr-1 text-gray-400" />
-                      {lead.phone}
-                    </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {getStatusBadge(lead.status)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {getTemperatureBadge(lead.lead_temperature)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  {formatCurrency(lead.estimated_value)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {formatDate(lead.created_at)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                  <button
+                    onClick={() => onViewDetails(lead)}
+                    className="text-blue-600 hover:text-blue-900 p-1 rounded transition-colors hover:bg-blue-50"
+                    title="Ver detalhes"
+                  >
+                    <Eye size={16} />
+                  </button>
+                  
+                  {(currentUserRole === 'admin' || currentUserRole === 'super_admin') && (
+                    <>
+                      <button
+                        onClick={() => onEditLead(lead)}
+                        className="text-green-600 hover:text-green-900 p-1 rounded transition-colors hover:bg-green-50"
+                        title="Editar"
+                      >
+                        <Edit size={16} />
+                      </button>
+                      <button
+                        onClick={() => onDeleteLead(lead.id)}
+                        className="text-red-600 hover:text-red-900 p-1 rounded transition-colors hover:bg-red-50"
+                        title="Excluir"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </>
                   )}
-                </div>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap">
-                {getStatusBadge(lead.status)}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap">
-                {getTemperatureBadge(lead.lead_temperature)}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                {formatCurrency(lead.estimated_value)}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                {formatDate(lead.created_at)}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                <button
-                  onClick={() => onViewDetails(lead)}
-                  className="text-blue-600 hover:text-blue-900 p-1 rounded transition-colors"
-                  title="Ver detalhes"
-                >
-                  <Eye size={16} />
-                </button>
-                
-                {(currentUserRole === 'admin' || currentUserRole === 'super_admin') && (
-                  <>
-                    <button
-                      onClick={() => onEditLead(lead)}
-                      className="text-green-600 hover:text-green-900 p-1 rounded transition-colors"
-                      title="Editar"
-                    >
-                      <Edit size={16} />
-                    </button>
-                    <button
-                      onClick={() => onDeleteLead(lead.id)}
-                      className="text-red-600 hover:text-red-900 p-1 rounded transition-colors"
-                      title="Excluir"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </>
-                )}
-              </td>
-            </tr>
+                </td>
+              </tr>
+            </BlurFade>
           ))}
         </tbody>
       </table>

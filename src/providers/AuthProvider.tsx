@@ -337,13 +337,13 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
         setUser(userObject);
 
-        // Salvar no localStorage
+        // Salvar no localStorage com os dados corretos
         localStorage.setItem('crm_user', JSON.stringify({
           ...userObject,
           loginTime: loginTime
         }));
 
-        console.log('✅ Login via Supabase realizado com sucesso!', userObject.email);
+        console.log('✅ Login via Supabase realizado com sucesso!', userObject.email, 'ID:', userObject.id);
         setLoading(false);
         return true;
 

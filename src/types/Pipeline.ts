@@ -20,6 +20,7 @@ export interface PipelineStage {
   color: string;
   is_system_stage?: boolean;
   is_system?: boolean;
+  description?: string;
 }
 
 export interface Lead {
@@ -34,14 +35,22 @@ export interface Lead {
   assigned_to?: string;
   created_by?: string;
   source?: 'meta' | 'google' | 'linkedin' | 'webhook' | 'manual' | 'form';
+  
+  // ✅ ETAPA 3: CAMPO PARA SINCRONIZAÇÃO COM LEADS_MASTER
+  lead_master_id?: string;
+  
+  // 🌡️ SISTEMA DE TEMPERATURA AUTOMÁTICO
+  temperature_level?: 'hot' | 'warm' | 'cold' | 'frozen';
+  temperature_updated_at?: string;
+  initial_stage_entry_time?: string;
 }
 
 export interface PipelineMember {
   id: string;
   pipeline_id: string;
-  user_id: string;
+  member_id: string;
   assigned_at: string;
-  users: {
+  users?: {
     id: string;
     first_name: string;
     last_name: string;

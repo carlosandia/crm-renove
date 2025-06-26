@@ -22,6 +22,8 @@ import {
   CheckCircle2,
   X
 } from 'lucide-react';
+import { BlurFade } from './ui/blur-fade';
+import { ShimmerButton } from './ui/shimmer-button';
 
 const AcompanhamentoModule: React.FC = () => {
   const { user } = useAuth();
@@ -330,71 +332,73 @@ const AcompanhamentoModule: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredTasks.map((task) => (
-                  <tr key={task.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0">
-                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                            <User className="w-4 h-4 text-blue-600" />
+                {filteredTasks.map((task, index) => (
+                  <BlurFade key={task.id} delay={index * 0.05}>
+                    <tr className="hover:bg-gray-50 transition-colors duration-200">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <User className="w-5 h-5 text-blue-600" />
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {task.lead_name || 'Lead sem nome'}
+                            </div>
+                                                         <div className="text-sm text-gray-500">
+                               ID: {task.lead_id?.substring(0, 8) || 'N/A'}
+                             </div>
                           </div>
                         </div>
-                        <div className="ml-3">
-                          <div className="text-sm font-medium text-gray-900">
-                            {task.lead_name || `Lead ${task.lead_id.substring(0, 8)}`}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            ID: {task.lead_id.substring(0, 8)}...
-                          </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center space-x-2">
+                          {getChannelIcon(task.canal)}
+                          <span className="text-sm text-gray-900 capitalize">{task.canal}</span>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className={`inline-flex items-center space-x-2 px-2 py-1 rounded-full text-xs font-medium ${getChannelColor(task.canal)}`}>
-                        {getChannelIcon(task.canal)}
-                        <span className="capitalize">{task.canal}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900 font-medium">{task.descricao}</div>
-                      <div className="text-sm text-gray-500 capitalize">{task.tipo}</div>
-                      {task.day_offset !== undefined && (
-                        <div className="text-xs text-blue-600 mt-1">D+{task.day_offset}</div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{formatDate(task.data_programada)}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center space-x-2">
-                        <Building2 className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-900">{task.stage_name || 'N/A'}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {getStatusBadge(task)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      {task.status === 'pendente' && (
-                        <button
-                          onClick={() => setExecutingTask(task)}
-                          className="text-green-600 hover:text-green-900 inline-flex items-center space-x-1"
-                        >
-                          <CheckCircle className="w-4 h-4" />
-                          <span>Marcar como Feito</span>
-                        </button>
-                      )}
-                      {task.status === 'concluida' && task.execution_notes && (
-                        <button
-                          className="text-blue-600 hover:text-blue-900 inline-flex items-center space-x-1"
-                          title={task.execution_notes}
-                        >
-                          <Eye className="w-4 h-4" />
-                          <span>Ver Notas</span>
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-6 py-4">
+                                                 <div className="text-sm font-medium text-gray-900">{task.descricao}</div>
+                         <div className="text-sm text-gray-500 capitalize">{task.tipo}</div>
+                         {task.day_offset !== undefined && (
+                           <div className="text-xs text-blue-600 mt-1">D+{task.day_offset}</div>
+                         )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{formatDate(task.data_programada)}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center space-x-2">
+                          <Building2 className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm text-gray-900">{task.stage_name || 'N/A'}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {getStatusBadge(task)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        {task.status === 'pendente' && (
+                          <ShimmerButton
+                            onClick={() => setExecutingTask(task)}
+                            className="h-8 px-3 text-xs"
+                            background="rgb(34 197 94)"
+                            shimmerColor="#ffffff"
+                          >
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Marcar como Feito
+                          </ShimmerButton>
+                        )}
+                        {task.status === 'concluida' && task.execution_notes && (
+                          <button
+                            className="text-blue-600 hover:text-blue-900 inline-flex items-center space-x-1"
+                            title={task.execution_notes}
+                          >
+                            <Eye className="w-4 h-4" />
+                            <span>Ver Notas</span>
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  </BlurFade>
                 ))}
               </tbody>
             </table>

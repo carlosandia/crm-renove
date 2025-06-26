@@ -1,6 +1,6 @@
 import React from 'react';
 import { Settings, Plus, GitBranch } from 'lucide-react';
-import { Pipeline } from '../../hooks/usePipelines';
+import { Pipeline } from '../../types/Pipeline';
 import { User } from '../../hooks/useMembers';
 import PipelineCard from './PipelineCard';
 

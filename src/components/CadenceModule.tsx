@@ -144,11 +144,9 @@ const CadenceModule: React.FC = () => {
     initializeData();
   }, [user]);
 
-  // Atualizar configurações quando pipelines forem carregadas
+  // Atualizar configurações quando pipelines forem carregadas (OTIMIZADO)
   useEffect(() => {
     if (pipelines.length > 0 && cadenceConfigs.length > 0) {
-      console.log('🔄 [DEBUG] Atualizando configurações com dados das pipelines');
-      
       const updatedConfigs = cadenceConfigs.map(config => ({
         ...config,
         pipeline: pipelines.find(p => p.id === config.pipeline_id)
@@ -156,14 +154,14 @@ const CadenceModule: React.FC = () => {
       
       // Só atualizar se realmente mudou algo
       const hasChanges = updatedConfigs.some((config, index) => 
-        config.pipeline !== cadenceConfigs[index]?.pipeline
+        config.pipeline?.id !== cadenceConfigs[index]?.pipeline?.id
       );
       
       if (hasChanges) {
         setCadenceConfigs(updatedConfigs);
       }
     }
-  }, [pipelines.length]); // Usar apenas o length para evitar loop
+  }, [pipelines.length, cadenceConfigs.length]); // OTIMIZADO: Apenas lengths
 
   // Carregar pipelines do usuário
   const loadPipelines = async () => {

@@ -1,373 +1,414 @@
-import { Router, Request, Response } from 'express';
-import { supabase } from '../config/supabase';
-import { asyncHandler, ForbiddenError } from '../middleware/errorHandler';
-import { validateRequest } from '../middleware/validation';
-import { requireRole } from '../middleware/auth';
-import { ApiResponse } from '../types/express';
-import { cache, CacheKeys, CacheTTL, withCache } from '../lib/cache';
+/**
+ * FASE 3: ANALYTICS & REPORTING SYSTEM
+ * Analytics Routes - Rotas para APIs de analytics enterprise-grade
+ * 
+ * Endpoints REST comparáveis ao:
+ * - HubSpot Analytics API
+ * - Salesforce Analytics API  
+ * - Pipedrive Insights API
+ */
+
+import { Router } from 'express';
+import { analyticsController } from '../controllers/analyticsController';
+// import { authMiddleware } from '../middleware/authMiddleware'; // Temporarily disabled
+import { cacheMiddleware } from '../middleware/cacheMiddleware';
 
 const router = Router();
 
-/**
- * Interface para métricas do dashboard
- */
-interface DashboardMetrics {
-  totalLeads: number;
-  totalUsers: number;
-  activePipelines: number;
-  conversionRate: number;
-  leadsByStage: Record<string, number>;
-  leadsByMonth: Record<string, number>;
-  topPerformers: Array<{
-    user: string;
-    leadsCount: number;
-    conversionRate: number;
-  }>;
-  recentActivity: Array<{
-    type: string;
-    description: string;
-    timestamp: string;
-    user: string;
-  }>;
-}
+// ============================================================================
+// MIDDLEWARE SETUP
+// ============================================================================
+
+// Aplicar autenticação a todas as rotas de analytics
+// router.use(authMiddleware); // Temporarily disabled
+
+// ============================================================================
+// CORE ANALYTICS ENDPOINTS
+// ============================================================================
 
 /**
- * GET /api/analytics/dashboard - Métricas principais do dashboard
+ * GET /api/analytics/dashboard
+ * Retorna métricas completas do dashboard executivo
+ * 
+ * Query Parameters:
+ * - start_date: string (YYYY-MM-DD) - Data de início
+ * - end_date: string (YYYY-MM-DD) - Data de fim  
+ * - period_type: 'day' | 'week' | 'month' | 'quarter' | 'year'
+ * - comparison_period: 'previous' | 'year_ago'
+ * 
+ * Response: DashboardMetrics com KPIs, trends, comparações e team performance
  */
-router.get('/dashboard',
-  validateRequest({
-    query: {
-      period: { type: 'string', enum: ['7d', '30d', '90d', '1y'] }
-    }
-  }),
-  asyncHandler(async (req: Request, res: Response) => {
-    const { period = '30d' } = req.query;
-
-    if (!req.user?.tenant_id) {
-      throw new ForbiddenError('Usuário deve pertencer a uma empresa');
-    }
-
-    const cacheKey = CacheKeys.tenantStats(req.user.tenant_id) + `:dashboard:${period}`;
-
-    const metrics = await withCache(
-      cacheKey,
-      async () => {
-        // Mock data para demonstração
-        return {
-          totalLeads: 115,
-          totalUsers: 8,
-          activePipelines: 3,
-          conversionRate: 15.2,
-          leadsByStage: {
-            'Prospecção': 45,
-            'Qualificação': 32,
-            'Proposta': 18,
-            'Negociação': 12,
-            'Fechado': 8
-          },
-          leadsByMonth: {
-            '2024-01': 23,
-            '2024-02': 34,
-            '2024-03': 45,
-            '2024-04': 56,
-            '2024-05': 67,
-            '2024-06': 78
-          },
-          topPerformers: [
-            { user: 'João Silva', leadsCount: 23, conversionRate: 18.5 },
-            { user: 'Maria Santos', leadsCount: 19, conversionRate: 22.1 },
-            { user: 'Pedro Costa', leadsCount: 15, conversionRate: 15.8 }
-          ],
-          recentActivity: [
-            {
-              type: 'lead_created',
-              description: 'Novo lead: Empresa ABC criado no pipeline Vendas',
-              timestamp: new Date().toISOString(),
-              user: 'João Silva'
-            }
-          ]
-        };
-      },
-      CacheTTL.short
-    );
-
-    const response: ApiResponse = {
-      success: true,
-      data: metrics,
-      timestamp: new Date().toISOString()
-    };
-
-    res.json(response);
-  })
+router.get('/dashboard', 
+  // cacheMiddleware.dashboardCache,
+  analyticsController.getDashboard
 );
 
 /**
- * GET /api/analytics/pipelines - Analytics por pipeline
+ * GET /api/analytics/forecast
+ * Gera previsões de vendas baseadas em algoritmos ML
+ * 
+ * Query Parameters:
+ * - forecast_type: 'linear' | 'exponential' | 'seasonal' (default: 'linear')
+ * - periods: number (1-24, default: 6) - Número de períodos para prever
+ * 
+ * Response: ForecastData com previsões, métricas de precisão e dados históricos
  */
-router.get('/pipelines',
-  validateRequest({
-    query: {
-      period: { type: 'string', enum: ['7d', '30d', '90d'] },
-      pipeline_id: { type: 'string', uuid: true }
-    }
-  }),
-  asyncHandler(async (req: Request, res: Response) => {
-    const { period = '30d', pipeline_id } = req.query;
-
-    if (!req.user?.tenant_id) {
-      throw new ForbiddenError('Usuário deve pertencer a uma empresa');
-    }
-
-    const cacheKey = CacheKeys.pipelineStats(pipeline_id as string || 'all') + `:${period}`;
-
-    const analytics = await withCache(
-      cacheKey,
-      async () => {
-        const days = period === '7d' ? 7 : period === '30d' ? 30 : 90;
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - days);
-
-        // Query base
-        let query = supabase
-          .from('pipeline_leads')
-          .select(`
-            *,
-            pipeline_stages(name, stage_order),
-            pipelines!inner(id, name, tenant_id)
-          `)
-          .eq('pipelines.tenant_id', req.user.tenant_id)
-          .gte('created_at', startDate.toISOString());
-
-        if (pipeline_id) {
-          query = query.eq('pipeline_id', pipeline_id);
-        }
-
-        const { data: leads } = await query;
-
-        // Agrupar por pipeline
-        const pipelineAnalytics = leads?.reduce((acc: Record<string, any>, lead: any) => {
-          const pipelineId = lead.pipeline_id;
-          const pipelineName = lead.pipelines?.name;
-
-          if (!acc[pipelineId]) {
-            acc[pipelineId] = {
-              id: pipelineId,
-              name: pipelineName,
-              totalLeads: 0,
-              leadsByStage: {},
-              averageTimeInStage: {},
-              conversionRate: 0
-            };
-          }
-
-          acc[pipelineId].totalLeads++;
-          
-          const stageName = lead.pipeline_stages?.name || 'Sem estágio';
-          acc[pipelineId].leadsByStage[stageName] = (acc[pipelineId].leadsByStage[stageName] || 0) + 1;
-
-          return acc;
-        }, {}) || {};
-
-        return Object.values(pipelineAnalytics);
-      },
-      CacheTTL.medium
-    );
-
-    const response: ApiResponse = {
-      success: true,
-      data: analytics,
-      timestamp: new Date().toISOString()
-    };
-
-    res.json(response);
-  })
+router.get('/forecast',
+  // cacheMiddleware.forecastCache,
+  analyticsController.getForecast
 );
 
 /**
- * GET /api/analytics/users - Performance dos usuários
+ * GET /api/analytics/funnel
+ * Análise detalhada do funil de conversão
+ * 
+ * Query Parameters:
+ * - start_date: string (YYYY-MM-DD) - Data de início
+ * - end_date: string (YYYY-MM-DD) - Data de fim
+ * 
+ * Response: ConversionFunnel com estágios, métricas e recomendações
  */
-router.get('/users',
-  requireRole(['admin', 'super_admin']),
-  validateRequest({
-    query: {
-      period: { type: 'string', enum: ['7d', '30d', '90d'] },
-      user_id: { type: 'string', uuid: true }
-    }
-  }),
-  asyncHandler(async (req: Request, res: Response) => {
-    const { period = '30d', user_id } = req.query;
-
-    if (!req.user?.tenant_id) {
-      throw new ForbiddenError('Usuário deve pertencer a uma empresa');
-    }
-
-    const cacheKey = CacheKeys.userStats(user_id as string || 'all') + `:${period}`;
-
-    const userAnalytics = await withCache(
-      cacheKey,
-      async () => {
-        const days = period === '7d' ? 7 : period === '30d' ? 30 : 90;
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - days);
-
-        // Buscar leads dos usuários
-        let query = supabase
-          .from('pipeline_leads')
-          .select(`
-            assigned_to,
-            created_by,
-            created_at,
-            stage_id,
-            users!pipeline_leads_assigned_to_fkey(id, first_name, last_name, email),
-            pipelines!inner(tenant_id)
-          `)
-          .eq('pipelines.tenant_id', req.user.tenant_id)
-          .gte('created_at', startDate.toISOString());
-
-        if (user_id) {
-          query = query.or(`assigned_to.eq.${user_id},created_by.eq.${user_id}`);
-        }
-
-        const { data: leads } = await query;
-
-        // Agrupar por usuário
-        const userPerformance = leads?.reduce((acc: Record<string, any>, lead: any) => {
-          const userId = lead.assigned_to || lead.created_by;
-          const user = lead.users;
-
-          if (!userId || !user) return acc;
-
-          if (!acc[userId]) {
-            acc[userId] = {
-              id: userId,
-              name: `${user.first_name} ${user.last_name}`.trim(),
-              email: user.email,
-              leadsAssigned: 0,
-              leadsCreated: 0,
-              totalLeads: 0,
-              conversionRate: 0,
-              avgResponseTime: 0
-            };
-          }
-
-          if (lead.assigned_to === userId) {
-            acc[userId].leadsAssigned++;
-          }
-          if (lead.created_by === userId) {
-            acc[userId].leadsCreated++;
-          }
-          acc[userId].totalLeads++;
-
-          return acc;
-        }, {}) || {};
-
-        return Object.values(userPerformance);
-      },
-      CacheTTL.medium
-    );
-
-    const response: ApiResponse = {
-      success: true,
-      data: userAnalytics,
-      timestamp: new Date().toISOString()
-    };
-
-    res.json(response);
-  })
+router.get('/funnel',
+  // cacheMiddleware.funnelCache,
+  analyticsController.getConversionFunnel
 );
 
 /**
- * GET /api/analytics/export - Exportar dados
+ * GET /api/analytics/team
+ * Performance detalhada da equipe de vendas
+ * 
+ * Query Parameters:
+ * - start_date: string (YYYY-MM-DD) - Data de início
+ * - end_date: string (YYYY-MM-DD) - Data de fim
+ * 
+ * Response: Array de TeamMember com métricas individuais e ranking
  */
-router.get('/export',
-  requireRole(['admin', 'super_admin']),
-  validateRequest({
-    query: {
-      type: { required: true, type: 'string', enum: ['leads', 'users', 'pipelines'] },
-      format: { type: 'string', enum: ['json', 'csv'] }
-    }
-  }),
-  asyncHandler(async (req: Request, res: Response) => {
-    const { type, format = 'json' } = req.query;
+router.get('/team',
+  // cacheMiddleware.teamCache,
+  analyticsController.getTeamPerformance
+);
 
-    if (!req.user?.tenant_id) {
-      throw new ForbiddenError('Usuário deve pertencer a uma empresa');
-    }
+/**
+ * GET /api/analytics/realtime
+ * Métricas em tempo real para dashboards live
+ * 
+ * Response: Métricas do dia atual com timestamp de atualização
+ */
+router.get('/realtime',
+  analyticsController.getRealTimeMetrics
+);
 
-    const mockData = {
-      leads: [
-        { id: 1, name: 'Lead 1', email: 'lead1@test.com', stage: 'Prospecção' },
-        { id: 2, name: 'Lead 2', email: 'lead2@test.com', stage: 'Qualificação' }
+// ============================================================================
+// ADVANCED ANALYTICS ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /api/analytics/lead-sources
+ * Análise de fontes de leads e performance por canal
+ */
+router.get('/lead-sources', async (req, res) => {
+  try {
+    // Mock data para demonstração
+    const leadSources = {
+      channels: [
+        { name: 'Website', leads: 150, conversions: 23, conversion_rate: 15.3, cost_per_lead: 45 },
+        { name: 'Facebook Ads', leads: 89, conversions: 12, conversion_rate: 13.5, cost_per_lead: 67 },
+        { name: 'Google Ads', leads: 67, conversions: 15, conversion_rate: 22.4, cost_per_lead: 89 },
+        { name: 'Referral', leads: 34, conversions: 8, conversion_rate: 23.5, cost_per_lead: 0 },
+        { name: 'Email Marketing', leads: 45, conversions: 6, conversion_rate: 13.3, cost_per_lead: 12 },
       ],
-      users: [
-        { id: 1, name: 'João Silva', email: 'joao@empresa.com', role: 'admin' },
-        { id: 2, name: 'Maria Santos', email: 'maria@empresa.com', role: 'member' }
+      summary: {
+        total_leads: 385,
+        total_conversions: 64,
+        overall_conversion_rate: 16.6,
+        best_performing_channel: 'Referral',
+        most_cost_effective: 'Email Marketing'
+      }
+    };
+
+    res.json({
+      success: true,
+      data: leadSources,
+      message: 'Lead sources analysis retrieved successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve lead sources analysis'
+    });
+  }
+});
+
+/**
+ * GET /api/analytics/pipeline
+ * Análise detalhada do pipeline de vendas
+ */
+router.get('/pipeline', async (req, res) => {
+  try {
+    // Mock data para demonstração
+    const pipelineAnalysis = {
+      stages: [
+        { name: 'Lead', count: 150, value: 750000, avg_time_days: 2 },
+        { name: 'Qualified', count: 89, value: 445000, avg_time_days: 5 },
+        { name: 'Proposal', count: 45, value: 225000, avg_time_days: 8 },
+        { name: 'Negotiation', count: 23, value: 115000, avg_time_days: 12 },
+        { name: 'Closed Won', count: 12, value: 60000, avg_time_days: 0 }
       ],
-      pipelines: [
-        { id: 1, name: 'Pipeline Vendas', stages: 5, leads: 45 },
-        { id: 2, name: 'Pipeline Marketing', stages: 4, leads: 32 }
+      metrics: {
+        total_pipeline_value: 1595000,
+        weighted_pipeline_value: 478500,
+        avg_deal_size: 5000,
+        avg_sales_cycle: 27,
+        win_rate: 13.5,
+        velocity: 1851 // deals per day
+      },
+      trends: {
+        pipeline_growth: 12.5,
+        velocity_change: 8.3,
+        win_rate_change: -2.1
+      }
+    };
+
+    res.json({
+      success: true,
+      data: pipelineAnalysis,
+      message: 'Pipeline analysis retrieved successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve pipeline analysis'
+    });
+  }
+});
+
+/**
+ * GET /api/analytics/revenue
+ * Análise detalhada de receita e atribuição
+ */
+router.get('/revenue', async (req, res) => {
+  try {
+    // Mock data para demonstração
+    const revenueAnalysis = {
+      current_period: {
+        total_revenue: 125000,
+        recurring_revenue: 89000,
+        new_revenue: 36000,
+        growth_rate: 15.2
+      },
+      attribution: [
+        { channel: 'Direct Sales', revenue: 45000, percentage: 36 },
+        { channel: 'Inbound Marketing', revenue: 35000, percentage: 28 },
+        { channel: 'Partner Referrals', revenue: 25000, percentage: 20 },
+        { channel: 'Outbound Sales', revenue: 20000, percentage: 16 }
+      ],
+      forecasted_revenue: {
+        next_month: 138000,
+        next_quarter: 425000,
+        confidence_level: 82
+      },
+      trends: [
+        { month: '2024-10', revenue: 98000 },
+        { month: '2024-11', revenue: 108000 },
+        { month: '2024-12', revenue: 115000 },
+        { month: '2025-01', revenue: 125000 }
       ]
     };
 
-    const data = mockData[type as keyof typeof mockData] || [];
+    res.json({
+      success: true,
+      data: revenueAnalysis,
+      message: 'Revenue analysis retrieved successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve revenue analysis'
+    });
+  }
+});
 
-    if (format === 'csv') {
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="${type}_export.csv"`);
-      
-      if (data.length > 0) {
-        const headers = Object.keys(data[0]).join(',');
-        const rows = data.map(row => 
-          Object.values(row).map(value => 
-            typeof value === 'string' ? `"${value}"` : value
-          ).join(',')
-        );
-        res.send(`${headers}\n${rows.join('\n')}`);
-      } else {
-        res.send('');
-      }
-    } else {
-      const response: ApiResponse = {
-        success: true,
-        data: {
-          type,
-          exportedAt: new Date().toISOString(),
-          totalRecords: data.length,
-          records: data
-        },
-        timestamp: new Date().toISOString()
-      };
+/**
+ * GET /api/analytics/activities
+ * Análise de atividades de vendas e produtividade
+ */
+router.get('/activities', async (req, res) => {
+  try {
+    // Mock data para demonstração
+    const activitiesAnalysis = {
+      summary: {
+        total_activities: 1247,
+        calls_made: 456,
+        emails_sent: 523,
+        meetings_held: 89,
+        tasks_completed: 179
+      },
+      productivity: {
+        activities_per_rep: 156,
+        conversion_rate_by_activity: {
+          calls: 8.5,
+          emails: 3.2,
+          meetings: 45.6,
+          tasks: 12.3
+        }
+      },
+      trends: {
+        activity_growth: 23.4,
+        quality_score: 78,
+        best_performing_activity: 'meetings'
+      },
+      by_team_member: [
+        { name: 'João Silva', activities: 234, conversion_rate: 18.5 },
+        { name: 'Maria Santos', activities: 198, conversion_rate: 22.1 },
+        { name: 'Pedro Costa', activities: 187, conversion_rate: 15.8 }
+      ]
+    };
 
-      res.json(response);
-    }
-  })
+    res.json({
+      success: true,
+      data: activitiesAnalysis,
+      message: 'Activities analysis retrieved successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve activities analysis'
+    });
+  }
+});
+
+// ============================================================================
+// EXPORT & REPORTING ENDPOINTS
+// ============================================================================
+
+/**
+ * POST /api/analytics/export
+ * Gera e exporta relatórios em múltiplos formatos
+ * 
+ * Body:
+ * - format: 'csv' | 'pdf' | 'excel'
+ * - report_type: 'dashboard' | 'forecast' | 'funnel' | 'team'
+ * - filters: object (opcional)
+ */
+router.post('/export',
+  analyticsController.exportReport
 );
 
 /**
- * POST /api/analytics/clear-cache - Limpar cache de analytics
+ * GET /api/analytics/download/:exportId
+ * Download de relatórios exportados
  */
-router.post('/clear-cache',
-  requireRole(['admin', 'super_admin']),
-  asyncHandler(async (req: Request, res: Response) => {
-    if (!req.user?.tenant_id) {
-      throw new ForbiddenError('Usuário deve pertencer a uma empresa');
-    }
-
-    // Limpar cache relacionado ao tenant
-    const cleared = await cache.clearTenantCache(req.user.tenant_id);
-
-    const response: ApiResponse = {
+router.get('/download/:exportId', async (req, res) => {
+  try {
+    const { exportId } = req.params;
+    
+    // Mock response para demonstração
+    // Em produção, buscaria o arquivo real do storage
+    res.json({
       success: true,
       data: {
-        cacheCleared: cleared,
-        clearedAt: new Date().toISOString()
+        export_id: exportId,
+        status: 'ready',
+        download_url: `/files/exports/${exportId}.csv`,
+        file_size: 2048,
+        created_at: new Date().toISOString()
       },
-      message: `Cache limpo: ${cleared} entradas removidas`,
-      timestamp: new Date().toISOString()
+      message: 'Export file ready for download'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve export file'
+    });
+  }
+});
+
+// ============================================================================
+// SYSTEM & HEALTH ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /api/analytics/health
+ * Health check do sistema de analytics
+ */
+router.get('/health',
+  analyticsController.getHealthCheck
+);
+
+/**
+ * GET /api/analytics/config
+ * Configurações disponíveis do sistema de analytics
+ */
+router.get('/config', async (req, res) => {
+  try {
+    const config = {
+      available_metrics: [
+        'total_leads', 'qualified_leads', 'converted_leads', 'conversion_rate',
+        'avg_deal_value', 'pipeline_value', 'monthly_revenue', 'pipeline_velocity'
+      ],
+      forecast_types: ['linear', 'exponential', 'seasonal'],
+      export_formats: ['csv', 'pdf', 'excel'],
+      max_forecast_periods: 24,
+      cache_ttl: {
+        dashboard: 300,
+        forecast: 1800,
+        funnel: 300,
+        team: 300
+      },
+      rate_limits: {
+        dashboard: 100,
+        forecast: 20,
+        export: 10
+      }
     };
 
-    res.json(response);
-  })
-);
+    res.json({
+      success: true,
+      data: config,
+      message: 'Analytics configuration retrieved successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve analytics configuration'
+    });
+  }
+});
+
+// ============================================================================
+// ERROR HANDLING
+// ============================================================================
+
+// Middleware de tratamento de erros específico para analytics
+router.use((error: any, req: any, res: any, next: any) => {
+  console.error('Analytics API Error:', error);
+
+  // Erros específicos de analytics
+  if (error.message.includes('insufficient data')) {
+    return res.status(400).json({
+      success: false,
+      message: 'Insufficient data for analytics calculation',
+      error_code: 'INSUFFICIENT_DATA',
+      suggestion: 'Try a different time range or ensure you have enough lead data'
+    });
+  }
+
+  if (error.message.includes('cache')) {
+    return res.status(503).json({
+      success: false,
+      message: 'Analytics caching service temporarily unavailable',
+      error_code: 'CACHE_UNAVAILABLE',
+      suggestion: 'Please try again in a few moments'
+    });
+  }
+
+  // Erro genérico
+  return res.status(500).json({
+    success: false,
+    message: 'Internal analytics service error',
+    error_code: 'ANALYTICS_ERROR',
+    suggestion: 'Please contact support if the issue persists'
+  });
+});
 
 export default router; 

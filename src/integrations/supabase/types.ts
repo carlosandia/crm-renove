@@ -2222,3 +2222,533 @@ export const Constants = {
     },
   },
 } as const
+
+// =====================================================
+// ENTERPRISE CRM TYPES (PHASE 1A)
+// =====================================================
+
+export interface Contact {
+  id: string;
+  company_id: string;
+  
+  // Standard contact fields (Salesforce pattern)
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
+  mobile_phone?: string;
+  title?: string; // Job title
+  department?: string;
+  
+  // Company information
+  account_name?: string; // Company name
+  website?: string;
+  
+  // Address information
+  mailing_street?: string;
+  mailing_city?: string;
+  mailing_state?: string;
+  mailing_postal_code?: string;
+  mailing_country?: string;
+  
+  // Social and additional info
+  linkedin_url?: string;
+  lead_source?: string;
+  
+  // Status and lifecycle
+  contact_status?: 'active' | 'inactive' | 'bounced' | 'opted_out';
+  lifecycle_stage?: 'lead' | 'prospect' | 'customer' | 'evangelist';
+  
+  // Ownership and assignment
+  owner_id?: string;
+  created_by?: string;
+  
+  // Custom data storage
+  custom_fields?: Record<string, any>;
+  
+  // Audit fields
+  created_at?: string;
+  updated_at?: string;
+  last_activity_at?: string;
+
+  // Relationships (when populated)
+  owner?: User;
+  created_by_user?: User;
+  deals?: Deal[];
+  activities?: Activity[];
+}
+
+export interface Deal {
+  id: string;
+  company_id: string;
+  
+  // Deal identification
+  deal_name: string;
+  deal_type?: 'new_business' | 'existing_business' | 'renewal';
+  
+  // Pipeline and stage
+  pipeline_id: string;
+  stage_id: string;
+  
+  // Financial information
+  amount?: number;
+  currency?: string;
+  probability?: number;
+  
+  // Dates
+  expected_close_date?: string;
+  actual_close_date?: string;
+  created_date?: string;
+  
+  // Contact and company association
+  primary_contact_id?: string;
+  account_name?: string; // Company/Account name
+  
+  // Status tracking
+  deal_stage?: string;
+  deal_status?: 'open' | 'won' | 'lost';
+  
+  // Win/Loss tracking
+  win_loss_reason?: string;
+  competitor?: string;
+  
+  // Source and campaign
+  lead_source?: string;
+  campaign_id?: string;
+  
+  // Ownership
+  owner_id: string;
+  created_by?: string;
+  
+  // Notes and description
+  description?: string;
+  next_step?: string;
+  
+  // Custom data
+  custom_fields?: Record<string, any>;
+  
+  // Audit fields
+  created_at?: string;
+  updated_at?: string;
+  last_activity_at?: string;
+  stage_changed_at?: string;
+
+  // Relationships (when populated)
+  owner?: User;
+  created_by_user?: User;
+  pipeline?: Pipeline;
+  stage?: PipelineStage;
+  primary_contact?: Contact;
+  activities?: Activity[];
+}
+
+export interface Activity {
+  id: string;
+  company_id: string;
+  
+  // Activity type and subject
+  activity_type: 'call' | 'email' | 'meeting' | 'task' | 'note' | 'demo';
+  subject: string;
+  description?: string;
+  
+  // Status and priority
+  status?: 'planned' | 'in_progress' | 'completed' | 'cancelled';
+  priority?: 'low' | 'normal' | 'high' | 'urgent';
+  
+  // Dates and duration
+  activity_date?: string;
+  due_date?: string;
+  duration_minutes?: number;
+  
+  // Relationships (polymorphic - can relate to contacts or deals)
+  related_to_type?: 'contact' | 'deal';
+  related_to_id?: string; // Can be contact_id or deal_id
+  contact_id?: string;
+  deal_id?: string;
+  
+  // Ownership
+  assigned_to: string;
+  created_by?: string;
+  
+  // Communication tracking
+  email_thread_id?: string;
+  call_duration?: number;
+  call_outcome?: string;
+  
+  // Meeting specifics
+  meeting_location?: string;
+  meeting_url?: string;
+  attendees?: any[];
+  
+  // Custom data
+  custom_fields?: Record<string, any>;
+  
+  // Audit fields
+  created_at?: string;
+  updated_at?: string;
+
+  // Relationships (when populated)
+  assigned_user?: User;
+  created_by_user?: User;
+  contact?: Contact;
+  deal?: Deal;
+}
+
+export interface ContactDealRelationship {
+  id: string;
+  contact_id: string;
+  deal_id: string;
+  relationship_type?: 'primary' | 'stakeholder' | 'decision_maker' | 'influencer';
+  created_at?: string;
+
+  // Relationships (when populated)
+  contact?: Contact;
+  deal?: Deal;
+}
+
+export interface ActivityParticipant {
+  id: string;
+  activity_id: string;
+  contact_id?: string;
+  user_id?: string;
+  participation_type?: 'organizer' | 'attendee' | 'optional';
+  response_status?: 'pending' | 'accepted' | 'declined' | 'tentative';
+  created_at?: string;
+
+  // Relationships (when populated)
+  activity?: Activity;
+  contact?: Contact;
+  user?: User;
+}
+
+// =====================================================
+// ENHANCED EXISTING TYPES
+// =====================================================
+
+export interface Company {
+  id: string;
+  name: string;
+  domain?: string;
+  settings?: Record<string, any>;
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
+
+  // Relationships (when populated)
+  users?: User[];
+  pipelines?: Pipeline[];
+  contacts?: Contact[];
+  deals?: Deal[];
+  activities?: Activity[];
+}
+
+// Enhanced User interface
+export interface User {
+  id: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  name?: string; // Combined name field
+  avatar_url?: string;
+  is_active?: boolean;
+  role: 'super_admin' | 'admin' | 'member';
+  tenant_id?: string;
+  company_id?: string; // New company association
+  manager_id?: string; // Hierarchy support
+  team_id?: string; // Team grouping
+  created_at?: string;
+
+  // Relationships (when populated)
+  company?: Company;
+  manager?: User;
+  team_members?: User[];
+  owned_contacts?: Contact[];
+  owned_deals?: Deal[];
+  assigned_activities?: Activity[];
+}
+
+// Enhanced Pipeline interface
+export interface Pipeline {
+  id: string;
+  name: string;
+  description?: string;
+  tenant_id?: string;
+  company_id?: string; // New company association
+  is_active?: boolean;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+
+  // Relationships (when populated)
+  company?: Company;
+  created_by_user?: User;
+  stages?: PipelineStage[];
+  deals?: Deal[];
+  leads?: Lead[]; // Legacy support
+  custom_fields?: PipelineCustomField[];
+  members?: User[];
+}
+
+// PipelineStage interface
+export interface PipelineStage {
+  id: string;
+  pipeline_id: string;
+  name: string;
+  order_index: number;
+  color: string;
+  temperature_score?: number;
+  max_days_allowed?: number;
+  is_system_stage?: boolean;
+  created_at: string;
+  
+  // Relations
+  pipeline?: Pipeline;
+  leads?: Lead[];
+}
+
+// Lead interface (Legacy support)
+export interface Lead {
+  id: string;
+  company_id: string;
+  pipeline_id: string;
+  stage_id: string;
+  owner_id: string;
+  
+  // Lead data
+  title: string;
+  value: number;
+  currency: string;
+  probability: number;
+  expected_close_date?: string;
+  
+  // Contact information
+  contact_name?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  company_name?: string;
+  
+  // Metadata
+  source: string;
+  custom_data: Record<string, any>;
+  
+  // Audit fields
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  last_activity_at: string;
+  
+  // Legacy fields (for backward compatibility)
+  assigned_to?: string;
+  moved_at?: string;
+  status?: 'active' | 'won' | 'lost';
+  
+  // Relations
+  company?: Company;
+  pipeline?: Pipeline;
+  stage?: PipelineStage;
+  owner?: User;
+  creator?: User;
+}
+
+// Enhanced PipelineCustomField interface
+export interface PipelineCustomField {
+  id: string;
+  pipeline_id: string;
+  field_name: string;
+  field_label: string;
+  field_type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'multiselect' | 'number' | 'decimal' | 'date' | 'datetime' | 'boolean' | 'url' | 'currency';
+  field_options?: Record<string, any>;
+  is_required?: boolean;
+  field_order?: number;
+  placeholder?: string;
+  validation_rules?: Record<string, any>; // New validation support
+  help_text?: string; // New help text
+  visibility_rules?: Record<string, any>; // New visibility rules
+  created_at?: string;
+  updated_at?: string;
+
+  // Relationships (when populated)
+  pipeline?: Pipeline;
+}
+
+// =====================================================
+// API RESPONSE TYPES
+// =====================================================
+
+export interface ContactsResponse {
+  contacts: Contact[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
+}
+
+export interface DealsResponse {
+  deals: Deal[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
+}
+
+export interface ActivitiesResponse {
+  activities: Activity[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
+}
+
+export interface ContactStatsResponse {
+  totalContacts: number;
+  activeContacts: number;
+  byLifecycleStage: {
+    leads: number;
+    prospects: number;
+    customers: number;
+  };
+  conversionRate: string;
+}
+
+export interface ContactStats {
+  active_count: number;
+  new_this_month: number;
+  conversion_rate: number;
+  total_count?: number;
+}
+
+export interface DealStatsResponse {
+  summary: {
+    totalDeals: number;
+    openDeals: number;
+    wonDeals: number;
+    lostDeals: number;
+    recentDeals: number;
+  };
+  values: {
+    totalValue: string;
+    openValue: string;
+    wonValue: string;
+    lostValue: string;
+    forecastValue: string;
+  };
+  metrics: {
+    winRate: string;
+    lossRate: string;
+    avgDealSize: string;
+    avgWonDealSize: string;
+  };
+  period: string;
+}
+
+export interface ActivityStatsResponse {
+  summary: {
+    totalActivities: number;
+    completedActivities: number;
+    pendingActivities: number;
+    overdueActivities: number;
+    recentActivities: number;
+  };
+  metrics: {
+    completionRate: string;
+    avgActivitiesPerDay: string;
+  };
+  breakdown: {
+    byType: Record<string, number>;
+    byStatus: Record<string, number>;
+  };
+  period: string;
+}
+
+export interface PipelineForecastResponse {
+  pipelineId: string;
+  period: string;
+  summary: {
+    totalDeals: number;
+    totalPipelineValue: string;
+    totalForecastValue: string;
+    avgProbability: string;
+  };
+  stageForecasts: Array<{
+    stageId: string;
+    stageName: string;
+    stageOrder: number;
+    dealCount: number;
+    totalValue: string;
+    weightedValue: string;
+    avgProbability: number;
+  }>;
+}
+
+export interface TimelineResponse {
+  timeline: Activity[];
+  type: 'contact' | 'deal';
+  relatedId: string;
+  pagination: {
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
+}
+
+// =====================================================
+// FILTER TYPES
+// =====================================================
+
+export interface ContactFilters {
+  search?: string;
+  owner_id?: string;
+  contact_status?: 'active' | 'inactive' | 'bounced' | 'opted_out';
+  lifecycle_stage?: 'lead' | 'prospect' | 'customer' | 'evangelist';
+  lead_source?: string;
+  company_name?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface DealFilters {
+  search?: string;
+  pipeline_id?: string;
+  stage_id?: string;
+  owner_id?: string;
+  deal_status?: 'open' | 'won' | 'lost';
+  deal_type?: 'new_business' | 'existing_business' | 'renewal';
+  lead_source?: string;
+  amount_min?: number;
+  amount_max?: number;
+  expected_close_date_from?: string;
+  expected_close_date_to?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ActivityFilters {
+  search?: string;
+  activity_type?: 'call' | 'email' | 'meeting' | 'task' | 'note' | 'demo';
+  status?: 'planned' | 'in_progress' | 'completed' | 'cancelled';
+  priority?: 'low' | 'normal' | 'high' | 'urgent';
+  assigned_to?: string;
+  contact_id?: string;
+  deal_id?: string;
+  related_to_type?: 'contact' | 'deal';
+  related_to_id?: string;
+  activity_date_from?: string;
+  activity_date_to?: string;
+  due_date_from?: string;
+  due_date_to?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ContactStats {
+  active_count: number;
+  new_this_month: number;
+  conversion_rate: number;
+  total_count?: number;
+}

@@ -1,5 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Lead, PipelineStage } from '../types/Pipeline';
+import { useAuth } from './useAuth';
+import { supabase } from '../lib/supabase';
+
+// Sistema de logs condicionais
+const LOG_LEVEL = import.meta.env.VITE_LOG_LEVEL || 'warn';
+const isDebugMode = LOG_LEVEL === 'debug';
 
 interface StageMetrics {
   stageId: string;
@@ -27,7 +33,9 @@ export const usePipelineMetrics = (
   stages: PipelineStage[],
   pipelineId?: string
 ): PipelineMetrics => {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Memoizar funções auxiliares para evitar recriações
   const calculateAverageCycleTime = useCallback((wonLeads: Lead[], stages: PipelineStage[]): number => {
@@ -84,19 +92,27 @@ export const usePipelineMetrics = (
     try {
       setLoading(true);
 
-      // Identificar etapas de ganho e perdido pelas etapas fixas
+      // Identificar etapas de ganho e perdido pelas etapas fixas (compatibilidade com ambas nomenclaturas)
       const winStages = stages.filter(stage => 
         stage.name.toLowerCase().includes('ganho') ||
         stage.name.toLowerCase().includes('fechado') ||
         stage.name.toLowerCase().includes('won') ||
         stage.name.toLowerCase().includes('vendido') ||
-        stage.is_system_stage === true && stage.name.toLowerCase() === 'ganho'
+        stage.name.toLowerCase() === 'closed won' ||
+        (stage.is_system_stage === true && (
+          stage.name.toLowerCase() === 'ganho' || 
+          stage.name.toLowerCase() === 'closed won'
+        ))
       );
 
       const lostStages = stages.filter(stage =>
         stage.name.toLowerCase().includes('perdido') ||
         stage.name.toLowerCase().includes('lost') ||
-        stage.is_system_stage === true && stage.name.toLowerCase() === 'perdido'
+        stage.name.toLowerCase() === 'closed lost' ||
+        (stage.is_system_stage === true && (
+          stage.name.toLowerCase() === 'perdido' ||
+          stage.name.toLowerCase() === 'closed lost'
+        ))
       );
 
       // Leads ganhos (na etapa de ganho)
@@ -177,7 +193,136 @@ export const usePipelineMetrics = (
         loading: false,
       };
     }
-  }, [leads, stages, pipelineId, calculateAverageCycleTime, calculateAvgTimeInStage, formatTime]);
+  }, [leads, stages, calculateAverageCycleTime, calculateAvgTimeInStage, formatTime]);
 
   return { ...metrics, loading };
-}; 
+};
+
+interface SimplePipelineMetrics {
+  totalLeads: number;
+  totalValue: number;
+  conversionRate: number;
+  averageTicket: number;
+  stageMetrics: {
+    [stageId: string]: {
+      count: number;
+      value: number;
+      conversionRate: number;
+    };
+  };
+}
+
+export function usePipelineMetricsNew(pipelineId?: string) {
+  const { user } = useAuth();
+  const [metrics, setMetrics] = useState<SimplePipelineMetrics>({
+    totalLeads: 0,
+    totalValue: 0,
+    conversionRate: 0,
+    averageTicket: 0,
+    stageMetrics: {}
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchMetrics = useCallback(async () => {
+    if (!user || !pipelineId) {
+      if (isDebugMode) {
+        console.log('📊 Métricas: Aguardando user/pipeline');
+      }
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const startTime = performance.now();
+
+      // Buscar leads da pipeline
+      const { data: leads, error: leadsError } = await supabase
+        .from('pipeline_leads')
+        .select(`
+          *,
+          pipeline_stages!inner(
+            id,
+            name,
+            position,
+            pipeline_id
+          )
+        `)
+        .eq('pipeline_stages.pipeline_id', pipelineId);
+
+      if (leadsError) {
+        throw leadsError;
+      }
+
+      // Calcular métricas
+      const totalLeads = leads?.length || 0;
+      const totalValue = leads?.reduce((sum, lead) => sum + (lead.value || 0), 0) || 0;
+      const averageTicket = totalLeads > 0 ? totalValue / totalLeads : 0;
+
+      // Métricas por estágio
+      const stageMetrics: { [stageId: string]: any } = {};
+      
+      leads?.forEach(lead => {
+        const stageId = lead.stage_id;
+        if (!stageMetrics[stageId]) {
+          stageMetrics[stageId] = {
+            count: 0,
+            value: 0,
+            conversionRate: 0
+          };
+        }
+        stageMetrics[stageId].count++;
+        stageMetrics[stageId].value += lead.value || 0;
+      });
+
+      // Calcular taxa de conversão (simplificada)
+      const conversionRate = totalLeads > 0 ? 
+        ((stageMetrics['won']?.count || 0) / totalLeads) * 100 : 0;
+
+      const newMetrics = {
+        totalLeads,
+        totalValue,
+        conversionRate,
+        averageTicket,
+        stageMetrics
+      };
+
+      setMetrics(newMetrics);
+
+      const duration = performance.now() - startTime;
+      
+      // Log apenas se lento ou em modo debug
+      if (duration > 300 || isDebugMode) {
+        const logLevel = duration > 1000 ? 'warn' : 'log';
+        console[logLevel](`📊 Métricas calculadas: ${duration.toFixed(2)}ms (${totalLeads} leads)`);
+      }
+
+    } catch (err: any) {
+      console.error('❌ Erro ao buscar métricas:', err.message);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [user, pipelineId]);
+
+  useEffect(() => {
+    fetchMetrics();
+  }, [fetchMetrics]);
+
+  // Função para atualizar métricas sem logs excessivos
+  const refreshMetrics = useCallback(() => {
+    if (isDebugMode) {
+      console.log('🔄 Atualizando métricas...');
+    }
+    fetchMetrics();
+  }, [fetchMetrics]);
+
+  return {
+    metrics,
+    loading,
+    error,
+    refreshMetrics
+  };
+} 

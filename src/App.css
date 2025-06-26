@@ -6,7 +6,7 @@
 @import './styles/menu.css';
 @import './styles/clientes.css';
 @import './styles/vendedores.css';
-@import './styles/PipelineModule.css';
+@import './styles/components/pipeline.css';
 @import './styles/responsive.css';
 @import './styles/modern-theme.css';
 @import './styles/modern-sidebar.css';

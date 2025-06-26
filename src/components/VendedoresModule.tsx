@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
+import { showSuccessToast, showErrorToast, showWarningToast } from '../lib/toast';
 import { 
   Users, User, Mail, Shield, Plus, Eye, EyeOff, CheckCircle, XCircle, 
   Target, Edit, Trash2, Calendar, Phone, Building
@@ -34,7 +35,8 @@ interface SalesGoal {
   status: 'ativa' | 'pausada' | 'concluida' | 'cancelada';
 }
 
-const VendedoresModule: React.FC = () => {
+// 🚀 OTIMIZAÇÃO: Memoização do componente principal
+const VendedoresModule: React.FC = React.memo(() => {
   const { user } = useAuth();
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,38 +44,6 @@ const VendedoresModule: React.FC = () => {
   const [editingVendedor, setEditingVendedor] = useState<Vendedor | null>(null);
   const [showGoalsModal, setShowGoalsModal] = useState(false);
   const [selectedVendedor, setSelectedVendedor] = useState<Vendedor | null>(null);
-
-  // Log de inicialização silencioso
-  console.info('📊 VendedoresModule inicializado', { 
-    userRole: user?.role, 
-    tenantId: user?.tenant_id,
-    timestamp: new Date().toISOString()
-  });
-
-  // Função para gerar último login simulado (usado como fallback)
-  const generateLastLogin = (createdAt: string, userId: string): string => {
-    // Usar o ID do usuário como seed para gerar consistência
-    const seed = parseInt(userId.replace(/\D/g, '')) || 1;
-    const createdDate = new Date(createdAt);
-    const now = new Date();
-    
-    // Gerar um número de dias entre 1 e 7 baseado no seed
-    const daysAgo = (seed % 7) + 1;
-    
-    // Calcular data do último acesso
-    const lastLoginDate = new Date(now.getTime() - (daysAgo * 24 * 60 * 60 * 1000));
-    
-    // Garantir que não seja posterior ao created_at
-    const finalDate = lastLoginDate < createdDate ? createdDate : lastLoginDate;
-    
-    // Gerar horário comercial (8h-19h)
-    const hour = 8 + (seed % 11); // 8 às 18h
-    const minute = (seed * 7) % 60;
-    
-    finalDate.setHours(hour, minute, 0, 0);
-    
-    return finalDate.toISOString();
-  };
 
   // Estados do formulário
   const [formData, setFormData] = useState({
@@ -114,81 +84,76 @@ const VendedoresModule: React.FC = () => {
     target_date: ''
   });
 
-  useEffect(() => {
-    try {
-      if (user?.role === 'admin' || user?.role === 'super_admin') {
-        fetchVendedores();
-      } else {
-        setLoading(false);
-      }
-    } catch (error) {
-      console.info('Erro no useEffect do VendedoresModule:', error);
-      setLoading(false);
-    }
-  }, [user]);
+  // 🚀 OTIMIZAÇÃO: Função para gerar último login simulado memoizada
+  const generateLastLogin = useCallback((createdAt: string, userId: string): string => {
+    const seed = parseInt(userId.replace(/\D/g, '')) || 1;
+    const createdDate = new Date(createdAt);
+    const now = new Date();
+    
+    const daysAgo = (seed % 7) + 1;
+    const lastLoginDate = new Date(now.getTime() - (daysAgo * 24 * 60 * 60 * 1000));
+    const finalDate = lastLoginDate < createdDate ? createdDate : lastLoginDate;
+    
+    const hour = 8 + (seed % 11);
+    const minute = (seed * 7) % 60;
+    
+    finalDate.setHours(hour, minute, 0, 0);
+    
+    return finalDate.toISOString();
+  }, []);
 
-  // Effect para validar email com debounce
-  useEffect(() => {
-    if (!formData.email || editingVendedor) {
-      setEmailValidation({ isChecking: false, exists: false, message: '' });
-      return;
-    }
+  // 🚀 OTIMIZAÇÃO: Debouncing para validação de email
+  const validateEmail = useCallback(
+    (() => {
+      let timeoutId: NodeJS.Timeout;
+      return async (email: string) => {
+        if (!email || !email.includes('@') || editingVendedor) {
+          setEmailValidation({ isChecking: false, exists: false, message: '' });
+          return;
+        }
 
-    const timeoutId = setTimeout(() => {
-      validateEmail(formData.email);
-    }, 800); // Aguarda 800ms após o usuário parar de digitar
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(async () => {
+          setEmailValidation({ isChecking: true, exists: false, message: 'Verificando...' });
 
-    return () => clearTimeout(timeoutId);
-  }, [formData.email, editingVendedor]);
+          try {
+            const { data: existingUser, error } = await supabase
+              .from('users')
+              .select('id, email')
+              .eq('email', email.trim())
+              .single();
 
-  // Effect para validar senha em tempo real
-  useEffect(() => {
-    validatePassword(formData.password);
-  }, [formData.password, editingVendedor]);
+            if (error && error.code !== 'PGRST116') {
+              logger.error('Erro ao verificar email:', error);
+              setEmailValidation({ isChecking: false, exists: false, message: '' });
+              return;
+            }
 
-  // Função para validar email em tempo real
-  const validateEmail = async (email: string) => {
-    if (!email || !email.includes('@') || editingVendedor) {
-      setEmailValidation({ isChecking: false, exists: false, message: '' });
-      return;
-    }
+            if (existingUser) {
+              setEmailValidation({ 
+                isChecking: false, 
+                exists: true, 
+                message: 'Esse e-mail já existe, favor inserir outro.' 
+              });
+            } else {
+              setEmailValidation({ 
+                isChecking: false, 
+                exists: false, 
+                message: 'E-mail disponível.' 
+              });
+            }
+          } catch (error) {
+            logger.error('Erro na validação do email:', error);
+            setEmailValidation({ isChecking: false, exists: false, message: '' });
+          }
+        }, 800);
+      };
+    })(),
+    [editingVendedor]
+  );
 
-    setEmailValidation({ isChecking: true, exists: false, message: 'Verificando...' });
-
-    try {
-      const { data: existingUser, error } = await supabase
-        .from('users')
-        .select('id, email')
-        .eq('email', email.trim())
-        .single();
-
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-        console.error('Erro ao verificar email:', error);
-        setEmailValidation({ isChecking: false, exists: false, message: '' });
-        return;
-      }
-
-      if (existingUser) {
-        setEmailValidation({ 
-          isChecking: false, 
-          exists: true, 
-          message: 'Esse e-mail já existe, favor inserir outro.' 
-        });
-      } else {
-        setEmailValidation({ 
-          isChecking: false, 
-          exists: false, 
-          message: 'E-mail disponível.' 
-        });
-      }
-    } catch (error) {
-      console.error('Erro na validação do email:', error);
-      setEmailValidation({ isChecking: false, exists: false, message: '' });
-    }
-  };
-
-  // Função para validar senha em tempo real
-  const validatePassword = (password: string) => {
+  // 🚀 OTIMIZAÇÃO: Validação de senha memoizada
+  const validatePassword = useCallback((password: string) => {
     if (!password || editingVendedor) {
       setPasswordValidation({
         isValid: false,
@@ -198,7 +163,6 @@ const VendedoresModule: React.FC = () => {
       return;
     }
 
-    // Verificar requisitos
     const hasMinLength = password.length >= 6;
     const hasLetter = /[a-zA-Z]/.test(password);
     const hasNumber = /\d/.test(password);
@@ -225,13 +189,13 @@ const VendedoresModule: React.FC = () => {
         hasNumber: hasNumber
       }
     });
-  };
+  }, [editingVendedor]);
 
-  const fetchVendedores = async () => {
+  // 🚀 OTIMIZAÇÃO: Fetch vendedores memoizado
+  const fetchVendedores = useCallback(async () => {
     try {
       logger.info('Carregando vendedores...');
       
-      // Verificar se o usuário tem permissão
       if (!user?.tenant_id) {
         logger.error('Usuário sem tenant_id definido');
         setVendedores([]);
@@ -239,7 +203,6 @@ const VendedoresModule: React.FC = () => {
         return;
       }
 
-      // Tentar carregar do banco de dados
       try {
         const { data, error } = await supabase
           .from('users')
@@ -252,17 +215,13 @@ const VendedoresModule: React.FC = () => {
           throw error;
         }
 
-        // Aplicar a mesma lógica de last_login que usamos no EmpresasModule
         const vendedoresComLogin = await Promise.all(
           (data || []).map(async (vendedor) => {
             try {
-              // PRIMEIRO: Verificar localStorage (login mais recente)
               const loginKey = `last_login_${vendedor.id}`;
               const localStorageLogin = localStorage.getItem(loginKey);
               
               if (localStorageLogin) {
-                console.log(`✅ LAST LOGIN REAL (localStorage) para vendedor ${vendedor.first_name} (${vendedor.email}):`, localStorageLogin);
-                
                 return {
                   ...vendedor,
                   last_login: localStorageLogin,
@@ -278,17 +237,14 @@ const VendedoresModule: React.FC = () => {
                 };
               }
 
-              // SEGUNDO: tentar buscar last_login real do banco
               const { data: loginData, error: loginError } = await supabase
                 .from('users')
                 .select('last_login')
                 .eq('id', vendedor.id)
                 .single();
               
-              // Se encontrou last_login real e não é null/undefined
               if (!loginError && loginData && loginData.last_login) {
                 const realLastLogin = loginData.last_login;
-                console.log(`✅ LAST LOGIN REAL (banco) para vendedor ${vendedor.first_name} (${vendedor.email}):`, realLastLogin);
                 
                 return {
                   ...vendedor,
@@ -305,9 +261,7 @@ const VendedoresModule: React.FC = () => {
                 };
               }
               
-              // TERCEIRO: Se não tem last_login real, simular baseado no created_at
               const simulatedLogin = generateLastLogin(vendedor.created_at, vendedor.id);
-              console.log(`🔄 Simulando last login para vendedor ${vendedor.first_name}:`, simulatedLogin);
               return {
                 ...vendedor,
                 last_login: simulatedLogin,
@@ -323,9 +277,7 @@ const VendedoresModule: React.FC = () => {
               };
               
             } catch (error) {
-              // Se der erro (coluna não existe), simular último acesso
               const simulatedLogin = generateLastLogin(vendedor.created_at, vendedor.id);
-              console.log(`⚠️ Erro ao buscar last_login para vendedor ${vendedor.first_name}, simulando:`, simulatedLogin);
               return {
                 ...vendedor,
                 last_login: simulatedLogin,
@@ -350,7 +302,6 @@ const VendedoresModule: React.FC = () => {
       } catch (dbError: any) {
         logger.error('Erro na consulta ao banco:', dbError);
         
-        // Se a tabela não existir ou houver erro de permissão, usar dados mock
         if (dbError.message?.includes('does not exist') || 
             dbError.message?.includes('permission denied') ||
             dbError.message?.includes('relation') ||
@@ -408,7 +359,6 @@ const VendedoresModule: React.FC = () => {
     } catch (error) {
       logger.error('Erro geral ao carregar vendedores:', error);
       
-      // Fallback final: dados mock básicos
       const mockVendedores: Vendedor[] = [
         {
           id: 'mock-1',
@@ -432,30 +382,28 @@ const VendedoresModule: React.FC = () => {
       ];
       setVendedores(mockVendedores);
       
-      // Log silencioso - não usar console.warn
       logger.info('Usando dados simulados devido a erro na consulta');
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.tenant_id, generateLastLogin]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // 🚀 OTIMIZAÇÃO: Handler de submit memoizado
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!formData.first_name || !formData.last_name || !formData.email) {
-      alert('Preencha todos os campos obrigatórios');
+      showWarningToast('Campos obrigatórios', 'Preencha todos os campos obrigatórios');
       return;
     }
 
-    // Validar se email já existe (apenas para criação)
     if (!editingVendedor && emailValidation.exists) {
-      alert('O e-mail informado já está em uso. Por favor, use um e-mail diferente.');
+      showErrorToast('Email em uso', 'O e-mail informado já está em uso. Use um e-mail diferente.');
       return;
     }
 
-    // Validar senha (apenas para criação e se senha foi informada)
     if (!editingVendedor && formData.password && !passwordValidation.isValid) {
-      alert('A senha não atende aos requisitos mínimos:\n- Mínimo 6 caracteres\n- Pelo menos 1 letra\n- Pelo menos 1 número');
+      showWarningToast('Senha inválida', 'A senha deve ter: mínimo 6 caracteres, pelo menos 1 letra e 1 número');
       return;
     }
 
@@ -469,11 +417,10 @@ const VendedoresModule: React.FC = () => {
         role: 'member',
         tenant_id: user?.tenant_id,
         is_active: true,
-        password_hash: formData.password || '123456' // Usar senha personalizada ou padrão
+        password_hash: formData.password || '123456'
       };
 
       if (editingVendedor) {
-        // Simular atualização se for dados mock
         if (editingVendedor.id.startsWith('mock-')) {
           logger.info('Simulando atualização de vendedor mock');
           const updatedVendedores = vendedores.map(v => 
@@ -486,9 +433,8 @@ const VendedoresModule: React.FC = () => {
             } : v
           );
           setVendedores(updatedVendedores);
-          alert('✅ Vendedor atualizado com sucesso (simulado)!');
+          showSuccessToast('Vendedor atualizado', 'Vendedor atualizado com sucesso (simulado)!');
         } else {
-          // Atualizar vendedor existente no banco
           const { data, error } = await supabase
             .from('users')
             .update(vendedorData)
@@ -497,75 +443,44 @@ const VendedoresModule: React.FC = () => {
             .single();
 
           if (error) {
-            logger.error('Erro ao atualizar vendedor:', error);
             throw error;
           }
 
-          logger.success('Vendedor atualizado com sucesso');
           await fetchVendedores();
-          alert('✅ Vendedor atualizado com sucesso!');
+          showSuccessToast('Vendedor atualizado', `Vendedor "${data.first_name} ${data.last_name}" foi atualizado com sucesso!`);
         }
       } else {
-        // Simular criação se não houver conexão com banco
-        try {
-          const { data, error } = await supabase
-            .from('users')
-            .insert([vendedorData])
-            .select()
-            .single();
+        const { data, error } = await supabase
+          .from('users')
+          .insert([vendedorData])
+          .select()
+          .single();
 
-          if (error) throw error;
-
-          logger.success('Vendedor criado com sucesso');
-          await fetchVendedores();
-          alert('✅ Vendedor criado com sucesso!');
-        } catch (error) {
-          // Fallback: adicionar localmente
-          logger.info('Simulando criação de vendedor');
-          const newVendedor: Vendedor = {
-            id: `mock-${Date.now()}`,
-            first_name: vendedorData.first_name,
-            last_name: vendedorData.last_name,
-            email: vendedorData.email,
-            is_active: vendedorData.is_active,
-            created_at: new Date().toISOString(),
-            tenant_id: user?.tenant_id || 'mock-tenant'
-          };
-          setVendedores(prev => [newVendedor, ...prev]);
-          alert('✅ Vendedor criado com sucesso (simulado)!');
+        if (error) {
+          throw error;
         }
+
+        await fetchVendedores();
+        showSuccessToast('Vendedor criado', `Vendedor "${data.first_name} ${data.last_name}" foi criado com sucesso! Senha padrão: ${vendedorData.password_hash}`);
       }
 
-      // Limpar formulário
-      setFormData({ first_name: '', last_name: '', email: '', password: '' });
-      setEmailValidation({ isChecking: false, exists: false, message: '' });
-      setPasswordValidation({
-        isValid: false,
-        message: '',
-        requirements: { length: false, hasLetter: false, hasNumber: false }
+      setFormData({
+        first_name: '',
+        last_name: '',
+        email: '',
+        password: ''
       });
-      setShowForm(false);
       setEditingVendedor(null);
+      setShowForm(false);
 
     } catch (error) {
       logger.error('Erro ao salvar vendedor:', error);
-      
-      // Tratamento de erros específicos
-      if (error instanceof Error) {
-        if (error.message.includes('duplicate key')) {
-          alert('Erro: Este email já está sendo usado por outro usuário.');
-        } else if (error.message.includes('invalid input')) {
-          alert('Erro: Dados inválidos. Verifique se todos os campos estão preenchidos corretamente.');
-        } else {
-          alert(`Erro ao salvar vendedor: ${error.message}`);
-        }
-      } else {
-        alert('Erro desconhecido ao salvar vendedor. Tente novamente.');
-      }
+      showErrorToast('Erro ao salvar', 'Erro ao salvar vendedor: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
     }
-  };
+  }, [formData, editingVendedor, emailValidation.exists, passwordValidation.isValid, user?.tenant_id, vendedores, fetchVendedores]);
 
-  const handleEdit = (vendedor: Vendedor) => {
+  // 🚀 OTIMIZAÇÃO: Handlers memoizados
+  const handleEdit = useCallback((vendedor: Vendedor) => {
     setFormData({
       first_name: vendedor.first_name,
       last_name: vendedor.last_name,
@@ -574,69 +489,101 @@ const VendedoresModule: React.FC = () => {
     });
     setEditingVendedor(vendedor);
     setShowForm(true);
-  };
+  }, []);
 
-  const handleDelete = async (vendedorId: string) => {
-    if (!confirm('Tem certeza que deseja excluir este vendedor?')) return;
+  const handleDelete = useCallback(async (vendedorId: string) => {
+    if (!confirm('Tem certeza que deseja excluir este vendedor?')) {
+      return;
+    }
 
     try {
-      // Se for dados mock, simular exclusão
       if (vendedorId.startsWith('mock-')) {
         logger.info('Simulando exclusão de vendedor mock');
-        setVendedores(prev => prev.filter(v => v.id !== vendedorId));
-        alert('✅ Vendedor excluído com sucesso (simulado)!');
-        return;
+        const updatedVendedores = vendedores.filter(v => v.id !== vendedorId);
+        setVendedores(updatedVendedores);
+        showSuccessToast('Vendedor excluído', 'Vendedor foi excluído com sucesso (simulado)!');
+      } else {
+        const { error } = await supabase
+          .from('users')
+          .delete()
+          .eq('id', vendedorId);
+
+        if (error) {
+          throw error;
+        }
+
+        await fetchVendedores();
+        showSuccessToast('Vendedor excluído', 'Vendedor foi excluído com sucesso!');
       }
-
-      const { error } = await supabase
-        .from('users')
-        .delete()
-        .eq('id', vendedorId);
-
-      if (error) throw error;
-
-      logger.success('Vendedor excluído com sucesso');
-      await fetchVendedores();
-      alert('✅ Vendedor excluído com sucesso!');
     } catch (error) {
       logger.error('Erro ao excluir vendedor:', error);
-      alert('Erro ao excluir vendedor.');
+      showErrorToast('Erro ao excluir', 'Erro ao excluir vendedor: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
     }
-  };
+  }, [vendedores, fetchVendedores]);
 
-  const toggleVendedorStatus = async (vendedorId: string, currentStatus: boolean) => {
+  const toggleVendedorStatus = useCallback(async (vendedorId: string, currentStatus: boolean) => {
+    const newStatus = !currentStatus;
+    const action = newStatus ? 'ativar' : 'desativar';
+
     try {
-      // Se for dados mock, simular alteração
       if (vendedorId.startsWith('mock-')) {
-        logger.info('Simulando alteração de status de vendedor mock');
-        setVendedores(prev => prev.map(v => 
-          v.id === vendedorId ? { ...v, is_active: !currentStatus } : v
-        ));
-        alert(`✅ Status alterado para ${!currentStatus ? 'Ativo' : 'Inativo'} (simulado)!`);
-        return;
+        logger.info(`Simulando ${action} vendedor mock`);
+        const updatedVendedores = vendedores.map(v => 
+          v.id === vendedorId ? { ...v, is_active: newStatus } : v
+        );
+        setVendedores(updatedVendedores);
+        showSuccessToast(`Vendedor ${action}do`, `Vendedor foi ${action}do com sucesso (simulado)!`);
+      } else {
+        const { error } = await supabase
+          .from('users')
+          .update({ is_active: newStatus })
+          .eq('id', vendedorId);
+
+        if (error) {
+          throw error;
+        }
+
+        await fetchVendedores();
+        showSuccessToast(`Vendedor ${action}do`, `Vendedor foi ${action}do com sucesso!`);
       }
-
-      const { error } = await supabase
-        .from('users')
-        .update({ is_active: !currentStatus })
-        .eq('id', vendedorId);
-
-      if (error) throw error;
-
-      logger.success('Status alterado com sucesso');
-      await fetchVendedores();
-      alert(`✅ Status alterado para ${!currentStatus ? 'Ativo' : 'Inativo'}!`);
     } catch (error) {
-      logger.error('Erro ao alterar status:', error);
-      alert('Erro ao alterar status do vendedor.');
+      logger.error(`Erro ao ${action} vendedor:`, error);
+      showErrorToast(`Erro ao ${action}`, `Erro ao ${action} vendedor: ` + (error instanceof Error ? error.message : 'Erro desconhecido'));
     }
-  };
+  }, [vendedores, fetchVendedores]);
+
+  // 🚀 OTIMIZAÇÃO: useEffects memoizados
+  useEffect(() => {
+    try {
+      if (user?.role === 'admin' || user?.role === 'super_admin') {
+        fetchVendedores();
+      } else {
+        setLoading(false);
+      }
+    } catch (error) {
+      logger.info('Erro no useEffect do VendedoresModule:', error);
+      setLoading(false);
+    }
+  }, [user, fetchVendedores]);
+
+  useEffect(() => {
+    if (!formData.email || editingVendedor) {
+      setEmailValidation({ isChecking: false, exists: false, message: '' });
+      return;
+    }
+
+    validateEmail(formData.email);
+  }, [formData.email, editingVendedor, validateEmail]);
+
+  useEffect(() => {
+    validatePassword(formData.password);
+  }, [formData.password, editingVendedor, validatePassword]);
 
   const handleCreateGoal = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!selectedVendedor || !goalData.goal_value || !goalData.target_date) {
-      alert('Preencha todos os campos da meta');
+      showWarningToast('Campos obrigatórios', 'Preencha todos os campos da meta');
       return;
     }
 
@@ -663,14 +610,12 @@ const VendedoresModule: React.FC = () => {
           .single();
 
         if (error) {
-          // Tratamento de erros específicos
           if (error.message.includes('duplicate key') || error.message.includes('unique constraint')) {
-            alert('Erro: Já existe uma meta similar para este vendedor neste período.');
+            showWarningToast('Meta duplicada', 'Já existe uma meta similar para este vendedor neste período.');
             return;
           }
           
           if (error.message.includes('does not exist')) {
-            // Tabela não existe, simular criação
             throw new Error('table_not_exists');
           }
           
@@ -679,7 +624,6 @@ const VendedoresModule: React.FC = () => {
 
         logger.success('Meta criada com sucesso');
       } catch (error: any) {
-        // Fallback: simular criação de meta
         if (error.message === 'table_not_exists' || error.message.includes('does not exist')) {
           logger.info('Simulando criação de meta (tabela não existe)');
         } else {
@@ -687,17 +631,11 @@ const VendedoresModule: React.FC = () => {
         }
       }
       
-      alert(`✅ Meta criada com sucesso para ${selectedVendedor.first_name}!
+      showSuccessToast(
+        `Meta criada para ${selectedVendedor.first_name}!`, 
+        `${formatGoalType(goalData.goal_type)} - ${formatGoalValue(goalData.goal_type, goalData.goal_value.toString())} (${goalData.period})`
+      );
 
-📊 Detalhes:
-• Tipo: ${formatGoalType(goalData.goal_type)}
-• Valor: ${formatGoalValue(goalData.goal_type, goalData.goal_value.toString())}
-• Período: ${goalData.period}
-• Data limite: ${new Date(goalData.target_date).toLocaleDateString('pt-BR')}
-
-🎯 A meta foi salva no sistema e já está ativa!`);
-
-      // Limpar formulário e fechar modal
       setGoalData({ goal_type: 'vendas', goal_value: '', period: 'mensal', target_date: '' });
       setShowGoalsModal(false);
       setSelectedVendedor(null);
@@ -706,9 +644,9 @@ const VendedoresModule: React.FC = () => {
       logger.error('Erro ao criar meta', error);
       
       if (error instanceof Error) {
-        alert(`Erro ao criar meta: ${error.message}`);
+        showErrorToast('Erro ao criar meta', error.message);
       } else {
-        alert('Erro desconhecido ao criar meta. Tente novamente.');
+        showErrorToast('Erro desconhecido', 'Erro desconhecido ao criar meta. Tente novamente.');
       }
     }
   };
@@ -774,7 +712,6 @@ const VendedoresModule: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <div className="flex items-center space-x-3">
@@ -825,7 +762,6 @@ const VendedoresModule: React.FC = () => {
         </div>
       </div>
 
-      {/* Header com botão de ação */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <div className="flex items-center justify-between">
           <div>
@@ -852,7 +788,6 @@ const VendedoresModule: React.FC = () => {
         </div>
       </div>
 
-      {/* Formulário de Criação/Edição */}
       {showForm && (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <div className="mb-6">
@@ -921,7 +856,6 @@ const VendedoresModule: React.FC = () => {
                     : 'border-gray-300 focus:ring-blue-500'
                 }`}
               />
-              {/* Notificação de validação do email */}
               {formData.email && !editingVendedor && emailValidation.message && (
                 <div className={`mt-3 flex items-center space-x-2 text-sm ${
                   emailValidation.exists ? 'text-red-600' : 'text-green-600'
@@ -949,7 +883,6 @@ const VendedoresModule: React.FC = () => {
               )}
             </div>
 
-            {/* Campo de senha - diferente para criação e edição */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 {editingVendedor ? 'Nova Senha (opcional)' : 'Senha'}
@@ -971,7 +904,6 @@ const VendedoresModule: React.FC = () => {
                 }`}
               />
               
-              {/* Validação da senha */}
               {formData.password && !editingVendedor && passwordValidation.message && (
                 <div className={`mt-3 text-sm ${
                   passwordValidation.isValid ? 'text-green-600' : 'text-red-600'
@@ -989,7 +921,6 @@ const VendedoresModule: React.FC = () => {
                     <span className="font-medium">{passwordValidation.message}</span>
                   </div>
                   
-                  {/* Indicadores de requisitos */}
                   <div className="ml-7 space-y-1">
                     <div className={`flex items-center space-x-2 text-xs ${
                       passwordValidation.requirements.length ? 'text-green-600' : 'text-red-600'
@@ -1070,7 +1001,6 @@ const VendedoresModule: React.FC = () => {
         </div>
       )}
 
-      {/* Lista de Vendedores */}
       <div className="bg-white rounded-xl border border-gray-200">
         <div className="p-6 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">
@@ -1197,7 +1127,6 @@ const VendedoresModule: React.FC = () => {
         )}
       </div>
 
-      {/* Modal de Metas */}
       {showGoalsModal && selectedVendedor && createPortal(
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[10000] p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
@@ -1313,6 +1242,6 @@ const VendedoresModule: React.FC = () => {
       )}
     </div>
   );
-};
+});
 
 export default VendedoresModule;

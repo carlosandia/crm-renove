@@ -1,6 +1,7 @@
 import { supabase } from '../config/supabase';
 import crypto from 'crypto';
 import axios from 'axios';
+import { ConversionConfigService } from './conversionConfigService';
 
 interface ConversionData {
   log_id: string;
@@ -193,9 +194,18 @@ export class ConversionService {
         }]
       };
 
+      // Obter Pixel ID real da empresa
+      const pixelId = await ConversionConfigService.getMetaPixelId(conversion.company_id);
+      if (!pixelId) {
+        return {
+          success: false,
+          error: 'Meta Pixel ID não configurado para esta empresa'
+        };
+      }
+
       // Fazer requisição para Meta Conversion API
       const response = await axios.post(
-        `https://graph.facebook.com/v18.0/${this.getMetaPixelId(conversion.company_id)}/events`,
+        `https://graph.facebook.com/v18.0/${pixelId}/events`,
         metaPayload,
         {
           headers: {
@@ -247,11 +257,29 @@ export class ConversionService {
         };
       }
 
+      // Obter configurações reais da empresa
+      const customerId = await ConversionConfigService.getGoogleCustomerId(conversion.company_id);
+      const conversionAction = await ConversionConfigService.getGoogleConversionAction(conversion.company_id, conversion.event_name);
+      
+      if (!customerId) {
+        return {
+          success: false,
+          error: 'Google Ads Customer ID não configurado para esta empresa'
+        };
+      }
+
+      if (!conversionAction) {
+        return {
+          success: false,
+          error: `Ação de conversão não configurada para o evento: ${conversion.event_name}`
+        };
+      }
+
       // Construir payload para Google Ads Offline Conversions
       const googlePayload: GoogleConversionPayload = {
         conversions: [{
           gclid: leadData.click_id,
-          conversion_action: this.getGoogleConversionAction(conversion.company_id, conversion.event_name),
+          conversion_action: conversionAction,
           conversion_date_time: new Date(conversion.event_time).toISOString(),
           conversion_value: leadData.conversion_value || 0,
           currency_code: 'BRL',
@@ -261,7 +289,7 @@ export class ConversionService {
 
       // Fazer requisição para Google Ads API
       const response = await axios.post(
-        `https://googleads.googleapis.com/v14/customers/${this.getGoogleCustomerId(conversion.company_id)}/conversionUploads:upload`,
+        `https://googleads.googleapis.com/v14/customers/${customerId}/conversionUploads:upload`,
         googlePayload,
         {
           headers: {

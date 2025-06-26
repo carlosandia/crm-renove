@@ -1,0 +1,319 @@
+import React, { useState } from 'react';
+import { useDraggable } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
+import { 
+  Calendar, 
+  Clock, 
+  Mail, 
+  Phone, 
+  Building2, 
+  DollarSign, 
+  MoreVertical, 
+  Edit, 
+  Trash2, 
+  UserX, 
+  Eye,
+  User as UserIcon,
+  GripVertical
+} from 'lucide-react';
+import { Lead } from '../../types/Pipeline';
+import { User } from '../../types/User';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+
+interface DraggableLeadCardProps {
+  lead: Lead;
+  userRole: 'admin' | 'member' | 'super_admin';
+  assignedMember?: User;
+  
+  // Permissões condicionais
+  canEdit?: boolean;
+  canTransfer?: boolean;
+  canDelete?: boolean;
+  canView?: boolean;
+  canDrag?: boolean;
+  
+  // Callbacks
+  onEdit?: (lead: Lead) => void;
+  onTransfer?: (lead: Lead) => void;
+  onDelete?: (lead: Lead) => void;
+  onView?: (lead: Lead) => void;
+  onViewDetails?: (lead: Lead) => void;
+  
+  // Configurações visuais
+  showVendorInfo?: boolean;
+  showTemperature?: boolean;
+  showActions?: boolean;
+}
+
+const DraggableLeadCard: React.FC<DraggableLeadCardProps> = ({
+  lead,
+  userRole,
+  assignedMember,
+  canEdit = true,
+  canTransfer = false,
+  canDelete = false,
+  canView = true,
+  canDrag = false,
+  onEdit,
+  onTransfer,
+  onDelete,
+  onView,
+  onViewDetails,
+  showVendorInfo = true,
+  showTemperature = true,
+  showActions = true
+}) => {
+  const [showActionsMenu, setShowActionsMenu] = useState(false);
+
+  // Hook do @dnd-kit para drag and drop com ID hierárquico
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    isDragging,
+  } = useDraggable({
+    id: `lead-${lead.id}`,
+    disabled: !canDrag,
+  });
+
+  const style = {
+    transform: CSS.Translate.toString(transform),
+  };
+
+  // Função para calcular dias na etapa
+  const getDaysInStage = (lead: Lead): number => {
+    const movedAt = lead.moved_at || lead.created_at;
+    const now = new Date();
+    const moveDate = new Date(movedAt);
+    const diffTime = Math.abs(now.getTime() - moveDate.getTime());
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  // Função para cor da temperatura baseada nos dias
+  const getTemperatureColor = (days: number): string => {
+    if (days <= 1) return 'bg-green-500'; // Verde - Quente
+    if (days <= 3) return 'bg-yellow-500'; // Amarelo - Morno
+    if (days <= 7) return 'bg-orange-500'; // Laranja - Frio
+    return 'bg-red-500'; // Vermelho - Congelado
+  };
+
+  // Extrair dados do lead
+  const leadName = lead.custom_data?.nome_lead || lead.custom_data?.nome_oportunidade || lead.custom_data?.titulo || 'Lead sem nome';
+  const leadEmail = lead.custom_data?.email || lead.custom_data?.email_contato;
+  const leadPhone = lead.custom_data?.telefone || lead.custom_data?.celular || lead.custom_data?.telefone_contato;
+  const leadCompany = lead.custom_data?.empresa || lead.custom_data?.empresa_contato;
+  const leadValue = lead.custom_data?.valor || lead.custom_data?.valor_oportunidade;
+  const daysInStage = getDaysInStage(lead);
+
+  // ✅ Handler para cliques nos botões (previne drag)
+  const handleButtonClick = (e: React.MouseEvent, callback?: () => void) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (callback) callback();
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...(canDrag ? { ...attributes, ...listeners } : {})}
+      className={`
+        bg-white rounded-lg border border-gray-200 transition-all duration-200 group relative
+        ${canDrag ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}
+        ${isDragging 
+          ? 'shadow-2xl rotate-3 scale-105 z-[9999] ring-2 ring-blue-500 opacity-90' 
+          : 'hover:shadow-lg hover:-translate-y-1'
+        }
+      `}
+    >
+      {/* ✅ Indicador Visual de Drag - Discreto */}
+      {canDrag && !isDragging && (
+        <div className="absolute top-2 left-2 text-gray-300 group-hover:text-gray-500 transition-colors pointer-events-none">
+          <GripVertical className="h-4 w-4" />
+        </div>
+      )}
+
+      {/* Conteúdo Principal */}
+      <div className="p-4 pb-2">
+        <div className="flex items-start justify-between mb-2">
+          <h4 
+            className="font-medium text-gray-900 truncate flex-1 hover:text-blue-600 transition-colors cursor-pointer"
+            onClick={(e) => handleButtonClick(e, () => {
+              console.log('🖱️ CARD: Clique detectado no nome do lead:', leadName, lead.id);
+              if (onViewDetails) {
+                onViewDetails(lead);
+              }
+            })}
+            title={leadName}
+          >
+            {leadName}
+          </h4>
+          
+          {/* Menu de Ações */}
+          {showActions && (canTransfer || canDelete || (userRole === 'admin')) && (
+            <div className="relative flex-shrink-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => handleButtonClick(e, () => setShowActionsMenu(!showActionsMenu))}
+              >
+                <MoreVertical className="h-3 w-3" />
+              </Button>
+              
+              {showActionsMenu && (
+                <div className="absolute right-0 top-6 bg-white border rounded-md shadow-lg z-[100] min-w-[150px]">
+                  {canView && (
+                    <button
+                      onClick={(e) => handleButtonClick(e, () => {
+                        setShowActionsMenu(false);
+                        onView?.(lead);
+                      })}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <Eye className="h-3 w-3" />
+                      Visualizar
+                    </button>
+                  )}
+                  {canEdit && (
+                    <button
+                      onClick={(e) => handleButtonClick(e, () => {
+                        setShowActionsMenu(false);
+                        onEdit?.(lead);
+                      })}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <Edit className="h-3 w-3" />
+                      Editar
+                    </button>
+                  )}
+                  {canTransfer && (
+                    <button
+                      onClick={(e) => handleButtonClick(e, () => {
+                        setShowActionsMenu(false);
+                        onTransfer?.(lead);
+                      })}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <UserX className="h-3 w-3" />
+                      Transferir
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      onClick={(e) => handleButtonClick(e, () => {
+                        setShowActionsMenu(false);
+                        onDelete?.(lead);
+                      })}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 text-red-600 flex items-center gap-2"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Excluir
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Vendedor Responsável */}
+        {showVendorInfo && assignedMember && (
+          <div className="flex items-center gap-2 mb-3 text-xs">
+            <UserIcon className="h-3 w-3 text-gray-400" />
+            <span className="text-gray-600">
+              {assignedMember.first_name} {assignedMember.last_name}
+            </span>
+            <Badge variant="outline" className="text-xs px-1 py-0">
+              {assignedMember.role === 'member' ? 'Vendedor' : 'Admin'}
+            </Badge>
+          </div>
+        )}
+
+        {/* Informações do Lead */}
+        <div className="text-sm text-gray-600 space-y-2 mb-3">
+          {leadEmail && (
+            <div className="flex items-center gap-2">
+              <Mail className="h-3 w-3 text-gray-400" />
+              <span className="truncate">{leadEmail}</span>
+            </div>
+          )}
+          
+          {leadPhone && (
+            <div className="flex items-center gap-2">
+              <Phone className="h-3 w-3 text-gray-400" />
+              <span>{leadPhone}</span>
+            </div>
+          )}
+          
+          {leadCompany && (
+            <div className="flex items-center gap-2">
+              <Building2 className="h-3 w-3 text-gray-400" />
+              <span className="truncate">{leadCompany}</span>
+            </div>
+          )}
+          
+          {leadValue && (
+            <div className="flex items-center gap-2">
+              <DollarSign className="h-3 w-3 text-green-500" />
+              <span className="font-medium text-green-600">
+                {new Intl.NumberFormat('pt-BR', {
+                  style: 'currency',
+                  currency: 'BRL',
+                }).format(Number(leadValue))}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Footer com Data, Status e Botão de Detalhes */}
+        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+          <div className="flex items-center gap-1 text-xs text-gray-500">
+            <Calendar className="h-3 w-3" />
+            <span>{new Date(lead.created_at).toLocaleDateString('pt-BR')}</span>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {/* Indicador de Temperatura/Urgência */}
+            {showTemperature && (
+              <div className="flex items-center gap-1">
+                <Clock className="h-3 w-3 text-gray-400" />
+                <div className={`w-2 h-2 rounded-full ${getTemperatureColor(daysInStage)}`} />
+                <span className="text-xs text-gray-500">
+                  {daysInStage} {daysInStage === 1 ? 'dia' : 'dias'}
+                </span>
+              </div>
+            )}
+            
+            {/* Botão de Ver Detalhes */}
+            {onViewDetails && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 text-blue-600 hover:bg-blue-50 hover:text-blue-700 transition-all border border-blue-200 hover:border-blue-300"
+                onClick={(e) => handleButtonClick(e, () => onViewDetails(lead))}
+                title="Ver detalhes completos do lead"
+              >
+                <Eye className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Status Badge */}
+      <div className="absolute top-2 right-2">
+        <Badge 
+          variant="secondary" 
+          className="text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+        >
+          {userRole === 'admin' ? 'Admin' : 'Operacional'}
+        </Badge>
+      </div>
+    </div>
+  );
+};
+
+export default DraggableLeadCard;

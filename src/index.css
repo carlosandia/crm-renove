@@ -1,4 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import './styles/components.css';
+@import './styles/dnd-fixes.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -81,32 +83,7 @@
     @apply bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl shadow-glass;
   }
 
-  /* Modern Button Styles */
-  .btn-modern {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50;
-  }
-
-  .btn-primary {
-    @apply btn-modern bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm hover:shadow-md hover:-translate-y-0.5;
-  }
-
-  .btn-secondary {
-    @apply btn-modern bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-input shadow-sm hover:shadow-md hover:-translate-y-0.5;
-  }
-
-  .btn-ghost {
-    @apply btn-modern hover:bg-accent hover:text-accent-foreground;
-  }
-
-  /* Modern Input Styles */
-  .input-modern {
-    @apply flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200;
-  }
-
-  /* Modern Card Styles */
-  .card-modern {
-    @apply rounded-xl bg-card text-card-foreground shadow-sm;
-  }
+  /* Botões e inputs agora definidos em components.css */
 
   /* Sidebar Styles */
   .sidebar-modern {
@@ -127,10 +104,7 @@
     @apply bg-primary/10 text-primary border border-primary/20 shadow-sm;
   }
 
-  /* Stats Card */
-  .stat-card-modern {
-    @apply card-modern p-6 space-y-2;
-  }
+  /* Stats cards agora definidos em components.css */
 
   /* Modal Styles */
   .modal-modern {

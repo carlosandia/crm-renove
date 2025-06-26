@@ -5,9 +5,16 @@ import { getApiConfig } from '../config/api';
 
 const router = Router();
 
-// Configuração segura do Supabase
-const apiConfig = getApiConfig();
-const supabase = createClient(apiConfig.supabaseUrl, apiConfig.supabaseServiceKey);
+// Lazy loading da configuração do Supabase para evitar erro de ENV
+let supabase: any = null;
+
+const getSupabase = () => {
+  if (!supabase) {
+    const apiConfig = getApiConfig();
+    supabase = createClient(apiConfig.supabaseUrl, apiConfig.supabaseServiceKey);
+  }
+  return supabase;
+};
 
 // Configurações de segurança
 const WEBHOOK_SECRET_HEADER = 'x-webhook-signature';
@@ -95,7 +102,7 @@ router.get('/', async (req: RequestWithUser, res: Response) => {
     }
 
     // Buscar ou criar integração usando função SQL segura
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .rpc('get_or_create_secure_integration', {
         p_company_id: user.tenant_id
       });
@@ -147,7 +154,7 @@ router.put('/', async (req: RequestWithUser, res: Response) => {
 
     // Validar tokens se fornecidos
     if (meta_ads_token && meta_ads_token.trim()) {
-      const { data: validationResult } = await supabase
+      const { data: validationResult } = await getSupabase()
         .rpc('validate_meta_ads_token_enhanced', { p_token: meta_ads_token.trim() });
       
       if (!validationResult?.valid) {
@@ -160,7 +167,7 @@ router.put('/', async (req: RequestWithUser, res: Response) => {
     }
 
     if (google_ads_token && google_ads_token.trim()) {
-      const { data: validationResult } = await supabase
+      const { data: validationResult } = await getSupabase()
         .rpc('validate_google_ads_token_enhanced', { p_token: google_ads_token.trim() });
       
       if (!validationResult?.valid) {
@@ -173,7 +180,7 @@ router.put('/', async (req: RequestWithUser, res: Response) => {
     }
 
     // Atualizar tokens usando função segura
-    const { data: updateResult, error } = await supabase
+    const { data: updateResult, error } = await getSupabase()
       .rpc('update_integration_tokens_secure', {
         p_company_id: user.tenant_id,
         p_meta_ads_token: meta_ads_token?.trim() || null,
@@ -189,7 +196,7 @@ router.put('/', async (req: RequestWithUser, res: Response) => {
     }
 
     // Buscar dados atualizados
-    const { data: updatedData } = await supabase
+    const { data: updatedData } = await getSupabase()
       .rpc('get_or_create_secure_integration', {
         p_company_id: user.tenant_id
       });
@@ -225,7 +232,7 @@ router.post('/regenerate-keys', async (req: RequestWithUser, res: Response) => {
     }
 
     // Regenerar chaves usando função segura
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .rpc('regenerate_secure_api_keys', {
         p_company_id: user.tenant_id
       });

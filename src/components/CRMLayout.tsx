@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import CRMSidebar from './CRMSidebar';
-import InternalNotifications from './InternalNotifications';
+import { NotificationCenter } from './NotificationCenter/NotificationCenter';
 
 interface CRMLayoutProps {
   children: React.ReactNode;
@@ -42,12 +42,11 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
         sidebarCollapsed ? 'ml-20' : 'ml-64'
       } overflow-hidden`}>
         <main className="flex-1 bg-background relative overflow-hidden">
-          {/* Sistema de notificações interno */}
-          <InternalNotifications 
-            position="top-right"
-            compact={true}
-            onNavigate={onNavigate}
-          />
+          {/* Sistema de notificações - Posicionamento absoluto no canto superior direito */}
+          <div className="absolute top-4 right-4 z-50 flex items-center gap-3">
+            {/* NotificationCenter Enterprise */}
+            <NotificationCenter className="order-2" />
+          </div>
           
           {isFullWidth ? (
             <div className="h-full bg-background overflow-x-auto overflow-y-hidden">

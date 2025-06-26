@@ -5,6 +5,9 @@ import { useModalContext } from '../../contexts/ModalContext';
 import { Lead, CustomField } from '../../types/Pipeline';
 import { usePendingTasks } from '../../hooks/usePendingTasks';
 import { useAuth } from '../../contexts/AuthContext';
+import { Card, CardContent } from '../ui/card';
+import { BlurFade } from '../ui/blur-fade';
+import { cn } from '../../lib/utils';
 
 interface LeadCardProps {
   lead: Lead;
@@ -42,7 +45,9 @@ const LeadCard: React.FC<LeadCardProps> = memo(({
   const displayValues = useMemo(() => {
     const nomeOportunidade = leadData.nome_oportunidade || leadData.titulo_oportunidade || leadData.titulo || 'Oportunidade';
     const nomeLead = leadData.nome_lead || leadData.nome_contato || leadData.contato || leadData.nome || 'Lead sem nome';
-    const temperatura = leadData.temperatura || leadData.lead_temperature || 'frio';
+    
+    // 🌡️ NOVO SISTEMA DE TEMPERATURA AUTOMÁTICO
+    const temperatura = lead.temperature_level || leadData.temperatura || leadData.lead_temperature || 'hot';
     
     const valor = leadData.valor || leadData.valor_oportunidade || leadData.valor_proposta || 0;
     const valorFormatado = new Intl.NumberFormat('pt-BR', {
@@ -55,6 +60,19 @@ const LeadCard: React.FC<LeadCardProps> = memo(({
       day: '2-digit',
       month: 'short'
     }) : '';
+
+    // 🆕 TEMPO NA ETAPA INICIAL (para temperatura automática)
+    const tempoNaEtapaInicial = lead.initial_stage_entry_time ? (() => {
+      const agora = new Date();
+      const dataEntrada = new Date(lead.initial_stage_entry_time);
+      const diffMs = agora.getTime() - dataEntrada.getTime();
+      const diffHoras = Math.floor(diffMs / (1000 * 60 * 60));
+      const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      
+      if (diffHoras < 24) return `${diffHoras}h na inicial`;
+      if (diffDias === 1) return '1 dia na inicial';
+      return `${diffDias} dias na inicial`;
+    })() : '';
 
     // Calcular tempo na etapa atual com precisão de minutos/horas/dias
     const dataMovimentacao = lead.updated_at || lead.created_at;
@@ -78,23 +96,81 @@ const LeadCard: React.FC<LeadCardProps> = memo(({
       temperatura,
       valorFormatado,
       dataCriacao,
-      tempoNaEtapa
+      tempoNaEtapa,
+      tempoNaEtapaInicial
     };
-  }, [leadData, lead.created_at, lead.updated_at]);
+  }, [leadData, lead.created_at, lead.updated_at, lead.temperature_level, lead.initial_stage_entry_time]);
 
-  // 🚀 MEMOIZAÇÃO DE TAG DE TEMPERATURA
+  // 🆕 MEMOIZAÇÃO DE DADOS DE ORIGEM
+  const originData = useMemo(() => {
+    const origem = leadData.origem || leadData.traffic_source || 'Website';
+    const sourceType = leadData.source_type || 'unknown';
+    const campaignName = leadData.campaign_name || '';
+    
+    // Escolher ícone baseado na origem
+    const getOriginIcon = (origem: string) => {
+      const source = origem.toLowerCase();
+      if (source.includes('google')) return '🔍';
+      if (source.includes('meta') || source.includes('facebook')) return '📘';
+      if (source.includes('instagram')) return '📸';
+      if (source.includes('youtube')) return '📺';
+      if (source.includes('linkedin')) return '💼';
+      if (source.includes('tiktok')) return '🎵';
+      if (source.includes('email')) return '📧';
+      if (source.includes('ebook') || source.includes('e-book')) return '📚';
+      if (source.includes('webinar')) return '🎥';
+      return '🌐';
+    };
+
+    return {
+      origem,
+      sourceType,
+      campaignName,
+      icon: getOriginIcon(origem),
+      isCustom: sourceType === 'custom_defined',
+      isUTM: sourceType === 'utm_automatic'
+    };
+  }, [leadData]);
+
+  // 🚀 MEMOIZAÇÃO DE TAG DE TEMPERATURA AUTOMÁTICA
   const getTemperatureTag = useMemo(() => {
     switch (displayValues.temperatura) {
-      case 'quente':
       case 'hot':
-        return { label: 'Quente', color: 'bg-red-100 text-red-700', icon: '🔥' };
-      case 'morno':
+        return { 
+          label: 'Quente', 
+          color: 'bg-red-100 text-red-700 border-red-200', 
+          icon: '🔥',
+          tooltip: 'Lead recente na etapa inicial'
+        };
       case 'warm':
-        return { label: 'Morno', color: 'bg-yellow-100 text-yellow-700', icon: '🌡️' };
-      case 'frio':
+        return { 
+          label: 'Morno', 
+          color: 'bg-orange-100 text-orange-700 border-orange-200', 
+          icon: '🌡️',
+          tooltip: 'Lead há algumas horas na etapa inicial'
+        };
       case 'cold':
+        return { 
+          label: 'Frio', 
+          color: 'bg-blue-100 text-blue-700 border-blue-200', 
+          icon: '❄️',
+          tooltip: 'Lead há alguns dias na etapa inicial'
+        };
+      case 'frozen':
+        return { 
+          label: 'Gelado', 
+          color: 'bg-gray-100 text-gray-700 border-gray-200', 
+          icon: '🧊',
+          tooltip: 'Lead há muito tempo na etapa inicial'
+        };
+      // Fallback para temperaturas antigas
+      case 'quente':
+        return { label: 'Quente', color: 'bg-red-100 text-red-700 border-red-200', icon: '🔥', tooltip: 'Lead quente' };
+      case 'morno':
+        return { label: 'Morno', color: 'bg-orange-100 text-orange-700 border-orange-200', icon: '🌡️', tooltip: 'Lead morno' };
+      case 'frio':
       default:
-        return { label: 'Frio', color: 'bg-blue-100 text-blue-700', icon: '❄️' };
+        return { label: 'Frio', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: '❄️', tooltip: 'Lead frio' };
     }
   }, [displayValues.temperatura]);
 
@@ -131,9 +207,9 @@ const LeadCard: React.FC<LeadCardProps> = memo(({
 
   const handleAgendaClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    // Aqui você pode implementar a funcionalidade de agenda
-    console.log('Agenda clicada para lead:', lead.id);
-  }, [lead.id]);
+    // Abrir modal de criação de evento no Google Calendar
+    openModal(lead.id, lead, customFields, 'google-calendar');
+  }, [openModal, lead.id, lead, customFields]);
 
   // Verificar tarefas pendentes quando o componente montar
   useEffect(() => {
@@ -157,113 +233,173 @@ const LeadCard: React.FC<LeadCardProps> = memo(({
   return (
     <Draggable draggableId={lead.id} index={index}>
       {(provided, snapshot) => (
-        <>
-          <div
+        <BlurFade delay={index * 0.05} inView>
+          <Card
             ref={provided.innerRef}
             {...provided.draggableProps}
             {...provided.dragHandleProps}
             onClick={handleOpenModal}
-            className={`lead-card group cursor-pointer ${snapshot.isDragging ? 'dragging' : ''}`}
+            className={cn(
+              "group cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-1 mb-3",
+              "bg-white border border-border/50 hover:border-primary/30",
+              "relative overflow-hidden",
+              snapshot.isDragging && "shadow-xl rotate-2 scale-105 z-50"
+            )}
             style={{
               ...provided.draggableProps.style,
-              opacity: snapshot.isDragging ? 0.7 : 1,
-              transform: snapshot.isDragging 
-                ? `${provided.draggableProps.style?.transform} rotate(3deg) scale(1.02)`
-                : provided.draggableProps.style?.transform,
-              padding: '10px', // Reduzir padding para deixar mais compacto
-              marginBottom: '6px' // Reduzir margem entre cards
+              opacity: snapshot.isDragging ? 0.9 : 1,
             }}
           >
-            {/* Header: Nome da Oportunidade + Sino */}
-            <div className="flex items-start justify-between mb-0.5">
-              <h4 className="text-sm font-semibold text-gray-700 truncate flex-1">
-                {displayValues.nomeOportunidade}
-              </h4>
-              
-              {/* Sino de Notificação */}
-              {pendingTasksCount > 0 && (
-                <div className="relative ml-1 flex-shrink-0">
-                  <Bell className="w-4 h-4 text-orange-500" />
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-3 h-3 flex items-center justify-center font-bold text-[10px]">
-                    {pendingTasksCount}
+            {/* Borda superior colorida baseada na temperatura */}
+            <div className={cn(
+              "absolute top-0 left-0 right-0 h-1",
+              displayValues.temperatura === 'quente' || displayValues.temperatura === 'hot' 
+                ? "bg-gradient-to-r from-red-400 to-red-600"
+                : displayValues.temperatura === 'morno' || displayValues.temperatura === 'warm'
+                ? "bg-gradient-to-r from-yellow-400 to-orange-500"
+                : "bg-gradient-to-r from-blue-400 to-blue-600"
+            )} />
+
+            <CardContent className="p-3 space-y-2">
+              {/* Header: Nome da Oportunidade + Sino */}
+              <div className="flex items-start justify-between">
+                <h4 className="text-sm font-semibold text-foreground truncate flex-1 leading-tight">
+                  {displayValues.nomeOportunidade}
+                </h4>
+                
+                {/* Sino de Notificação */}
+                {pendingTasksCount > 0 && (
+                  <div className="relative ml-2 flex-shrink-0">
+                    <Bell className="w-4 h-4 text-orange-500 animate-pulse" />
+                    <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-xs rounded-full w-3 h-3 flex items-center justify-center font-bold text-[10px]">
+                      {pendingTasksCount}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Nome do Lead + Valor */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground truncate flex-1">
+                  {displayValues.nomeLead}
+                </span>
+                <span className="text-xs font-medium text-primary ml-2">
+                  {displayValues.valorFormatado}
+                </span>
+              </div>
+
+              {/* Origem/Fonte de Captação */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-1">
+                  <span className="text-xs">{originData.icon}</span>
+                  <span className="text-xs text-muted-foreground truncate max-w-[100px]" title={originData.origem}>
+                    {originData.origem}
                   </span>
+                  {originData.isUTM && (
+                    <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-md font-medium border border-green-200" title="Rastreamento automático por UTMs">
+                      UTM
+                    </span>
+                  )}
+                  {originData.isCustom && (
+                    <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-md font-medium border border-purple-200" title="Origem personalizada">
+                      Custom
+                    </span>
+                  )}
+                </div>
+                
+                {/* Data de criação */}
+                <span className="text-xs text-muted-foreground">
+                  {displayValues.dataCriacao}
+                </span>
+              </div>
+
+              {/* Campanha (se houver) */}
+              {originData.campaignName && originData.campaignName !== originData.origem && (
+                <div className="text-xs text-muted-foreground truncate bg-muted/30 px-2 py-1 rounded-md" title={originData.campaignName}>
+                  📢 {originData.campaignName}
                 </div>
               )}
-            </div>
 
-            {/* Nome do Lead + Valor */}
-            <div className="flex items-center mb-0.5">
-              <span className="text-sm text-gray-500">
-                {displayValues.nomeLead}
-              </span>
-              <span className="text-xs text-gray-500 ml-1">
-                {displayValues.valorFormatado}
-              </span>
-            </div>
-
-            {/* Data + Tempo na Etapa + Temperatura */}
-            <div className="flex items-center mb-1.5">
-              <div className="flex items-center space-x-2 text-xs text-gray-500">
-                <span>{displayValues.dataCriacao}</span>
-                <span>•</span>
-                <span>{displayValues.tempoNaEtapa}</span>
+              {/* Tempo na Etapa + Temperatura */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-1 text-xs text-muted-foreground">
+                  <Clock className="w-3 h-3" />
+                  <span>{displayValues.tempoNaEtapa}</span>
+                </div>
+                
+                <div className={cn(
+                  "inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border",
+                  getTemperatureTag.color
+                )}>
+                  <span className="mr-1">{getTemperatureTag.icon}</span>
+                  {getTemperatureTag.label}
+                </div>
               </div>
-              
-              <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ml-2 ${getTemperatureTag.color}`}>
-                <span className="mr-1">{getTemperatureTag.icon}</span>
-                {getTemperatureTag.label}
+
+              {/* Ações do Rodapé */}
+              <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                <div className="flex items-center space-x-1">
+                  {/* Telefone */}
+                  <button
+                    onClick={handlePhoneClick}
+                    className="p-1.5 text-muted-foreground hover:text-green-600 hover:bg-green-50 rounded-md transition-all duration-200 hover:scale-110"
+                    title="Ligar"
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Email */}
+                  <button
+                    onClick={handleEmailClick}
+                    className="p-1.5 text-muted-foreground hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all duration-200 hover:scale-110"
+                    title="Enviar email"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Agenda */}
+                  <button
+                    onClick={handleAgendaClick}
+                    className="p-1.5 text-muted-foreground hover:text-orange-600 hover:bg-orange-50 rounded-md transition-all duration-200 hover:scale-110"
+                    title="Agenda"
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Comentários */}
+                  <button
+                    onClick={handleCommentsClick}
+                    className="p-1.5 text-muted-foreground hover:text-purple-600 hover:bg-purple-50 rounded-md transition-all duration-200 hover:scale-110"
+                    title="Comentários"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Feedback */}
+                  <button
+                    onClick={handleFeedbackClick}
+                    className="p-1.5 text-muted-foreground hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-all duration-200 hover:scale-110"
+                    title="Feedback"
+                  >
+                    <ThumbsUp className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Indicador de temperatura visual */}
+                <div className="flex items-center">
+                  <Thermometer className={cn(
+                    "w-3 h-3",
+                    displayValues.temperatura === 'quente' || displayValues.temperatura === 'hot' 
+                      ? "text-red-500"
+                      : displayValues.temperatura === 'morno' || displayValues.temperatura === 'warm'
+                      ? "text-yellow-500"
+                      : "text-blue-500"
+                  )} />
+                </div>
               </div>
-            </div>
-
-            {/* Ícones do Rodapé - Alinhados à Esquerda */}
-            <div className="flex items-center space-x-2 pt-1 border-t border-gray-100">
-              {/* Telefone */}
-              <button
-                onClick={handlePhoneClick}
-                className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-50 rounded-full transition-colors"
-                title="Ligar"
-              >
-                <Phone className="w-3.5 h-3.5" />
-              </button>
-
-              {/* Email */}
-              <button
-                onClick={handleEmailClick}
-                className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-colors"
-                title="Enviar email"
-              >
-                <Mail className="w-3.5 h-3.5" />
-              </button>
-
-              {/* Agenda */}
-              <button
-                onClick={handleAgendaClick}
-                className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-full transition-colors"
-                title="Agenda"
-              >
-                <Calendar className="w-3.5 h-3.5" />
-              </button>
-
-              {/* Comentários */}
-              <button
-                onClick={handleCommentsClick}
-                className="p-1.5 text-gray-400 hover:text-purple-500 hover:bg-purple-50 rounded-full transition-colors"
-                title="Comentários"
-              >
-                <MessageCircle className="w-3.5 h-3.5" />
-              </button>
-
-              {/* Feedback */}
-              <button
-                onClick={handleFeedbackClick}
-                className="p-1.5 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 rounded-full transition-colors"
-                title="Feedback"
-              >
-                <ThumbsUp className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        </>
+            </CardContent>
+          </Card>
+        </BlurFade>
       )}
     </Draggable>
   );

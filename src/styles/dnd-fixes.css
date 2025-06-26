@@ -1,0 +1,91 @@
+/* ============================================ */
+/* DND-KIT DRAGOVERLAY FIXES */
+/* ============================================ */
+
+/* Garantir máxima visibilidade do DragOverlay */
+[data-dnd-kit-overlay] {
+  z-index: 999999 !important;
+  position: fixed !important;
+  pointer-events: none !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Container do card durante drag */
+[data-dnd-kit-overlay] > * {
+  position: absolute !important;
+  z-index: 999999 !important;
+  pointer-events: none !important;
+  will-change: transform !important;
+}
+
+/* ✅ DRAGOVERLAY CUSTOMIZADO - MÁXIMA VISIBILIDADE */
+.drag-overlay-custom {
+  position: fixed !important;
+  z-index: 2147483647 !important; /* Máximo z-index possível */
+  pointer-events: none !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  contain: layout !important;
+}
+
+.drag-overlay-card {
+  position: absolute !important;
+  z-index: 2147483647 !important;
+  pointer-events: none !important;
+  width: 320px !important;
+  will-change: transform !important;
+  backface-visibility: hidden !important;
+  transform-style: preserve-3d !important;
+}
+
+/* Garantir que DragOverlay aparece sobre todos os elementos */
+.drag-overlay-card > * {
+  z-index: 2147483647 !important;
+  position: relative !important;
+}
+
+/* Otimizações de performance */
+[data-dnd-kit-overlay] .drag-card {
+  transform-origin: 0 0 !important;
+  backface-visibility: hidden !important;
+  perspective: 1000px !important;
+}
+
+/* Anti-aliasing para drag suave */
+.drag-overlay-card {
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+  filter: drop-shadow(0 20px 25px rgb(0 0 0 / 0.25)) !important;
+}
+
+/* Estados de hover no drag */
+.drag-overlay-card:hover {
+  filter: drop-shadow(0 25px 30px rgb(0 0 0 / 0.3)) !important;
+}
+
+/* Animação de entrada do DragOverlay */
+@keyframes dragOverlayEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.8) rotate(-3deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.05) rotate(6deg);
+  }
+}
+
+.drag-overlay-enter {
+  animation: dragOverlayEnter 0.15s ease-out !important;
+}
+
+/* Debug: DragOverlay visível em vermelho para testes */
+.debug-dragoverlay {
+  background: rgba(255, 0, 0, 0.1) !important;
+  border: 2px solid red !important;
+} 

@@ -1,8 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { X, ThumbsUp, ThumbsDown, Send, User, Clock, MessageSquare } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
+import { Button } from '../ui/button';
 
 interface Feedback {
   id: string;
@@ -220,24 +226,18 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
-  if (!isOpen) return null;
-
-  const modalContent = (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden p-0 flex flex-col">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-purple-50 to-blue-50">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900">Feedback do Lead</h2>
-            <p className="text-sm text-gray-600">{leadName}</p>
-            <p className="text-xs text-gray-500">Lead ID: {leadId}</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
+        <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-blue-50">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-gray-900">Feedback do Lead</DialogTitle>
+            <div className="space-y-1">
+              <p className="text-sm text-gray-600">{leadName}</p>
+              <p className="text-xs text-gray-500">Lead ID: {leadId}</p>
+            </div>
+          </DialogHeader>
         </div>
 
         {/* Conteúdo */}
@@ -248,28 +248,32 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
             
             {/* Tipo de feedback */}
             <div className="flex space-x-4 mb-4">
-              <button
+              <Button
+                type="button"
+                variant={feedbackType === 'positive' ? 'default' : 'outline'}
                 onClick={() => setFeedbackType('positive')}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg border-2 transition-all ${
+                className={`flex items-center space-x-2 ${
                   feedbackType === 'positive'
-                    ? 'border-green-500 bg-green-50 text-green-700'
+                    ? 'border-green-500 bg-green-50 text-green-700 hover:bg-green-100'
                     : 'border-gray-200 bg-white text-gray-600 hover:border-green-300'
                 }`}
               >
                 <ThumbsUp className="w-4 h-4" />
                 <span>Positivo</span>
-              </button>
-              <button
+              </Button>
+              <Button
+                type="button"
+                variant={feedbackType === 'negative' ? 'default' : 'outline'}
                 onClick={() => setFeedbackType('negative')}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg border-2 transition-all ${
+                className={`flex items-center space-x-2 ${
                   feedbackType === 'negative'
-                    ? 'border-red-500 bg-red-50 text-red-700'
+                    ? 'border-red-500 bg-red-50 text-red-700 hover:bg-red-100'
                     : 'border-gray-200 bg-white text-gray-600 hover:border-red-300'
                 }`}
               >
                 <ThumbsDown className="w-4 h-4" />
                 <span>Negativo</span>
-              </button>
+              </Button>
             </div>
 
             {/* Campo de comentário */}
@@ -285,14 +289,14 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
 
             {/* Botão enviar */}
             <div className="flex justify-end">
-              <button
+              <Button
                 onClick={handleSubmitFeedback}
                 disabled={!newFeedback.trim() || submitting}
-                className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-700"
               >
                 <Send className="w-4 h-4" />
                 <span>{submitting ? 'Enviando...' : 'Enviar Feedback'}</span>
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -365,11 +369,9 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
             )}
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
-
-  return createPortal(modalContent, document.body);
 };
 
 export default FeedbackModal; 

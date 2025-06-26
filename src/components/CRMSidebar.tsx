@@ -18,9 +18,15 @@ import {
   LogOut,
   Plus,
   X,
-  Edit
+  Edit,
+  Bell,
+  Cog
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+
+// Sistema de logs condicionais
+const LOG_LEVEL = import.meta.env.VITE_LOG_LEVEL || 'warn';
+const isDebugMode = LOG_LEVEL === 'debug';
 
 interface CRMSidebarProps {
   activeModule: string;
@@ -32,9 +38,10 @@ interface Pipeline {
   id: string;
   name: string;
   description?: string;
-  created_at: string;
-  created_by: string;
-  tenant_id: string;
+  is_active?: boolean;
+  created_at?: string;
+  created_by?: string;
+  tenant_id?: string;
 }
 
 interface UserPipelineLink {
@@ -51,43 +58,88 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate, onTog
   const [userPipelines, setUserPipelines] = useState<Pipeline[]>([]);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (user?.role === 'admin') {
-      loadPipelines();
-    }
-  }, [user]);
-
+  // Carregar pipelines com logs condicionais
   const loadPipelines = async () => {
-    if (!user?.tenant_id) return;
+    if (!user?.id) {
+      if (isDebugMode) {
+        console.log('🔧 SIDEBAR: Aguardando user.id para carregar pipelines');
+      }
+      return;
+    }
 
     try {
-      setLoading(true);
+      let query;
       
-      // Buscar todas as pipelines do tenant criadas pelo admin logado
-      const { data: pipelines, error } = await supabase
-        .from('pipelines')
-        .select('id, name, description, created_at, created_by, tenant_id')
-        .eq('tenant_id', user.tenant_id)
-        .eq('created_by', user.email) // Usando email como identificador
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('❌ SIDEBAR: Erro ao carregar pipelines:', error);
-        setAvailablePipelines([]);
-        return;
+      if (user.role === 'super_admin') {
+        query = supabase
+          .from('pipelines')
+          .select('id, name, description, is_active')
+          .eq('tenant_id', user.tenant_id)
+          .eq('is_active', true)
+          .order('name');
+      } else if (user.role === 'admin') {
+        query = supabase
+          .from('pipelines')
+          .select('id, name, description, is_active')
+          .eq('created_by', user.id)
+          .eq('is_active', true)
+          .order('name');
+      } else {
+        // Member - buscar pipelines vinculadas
+        query = supabase
+          .from('pipeline_members')
+          .select(`
+            pipelines!inner(
+              id, name, description, is_active
+            )
+          `)
+          .eq('member_id', user.id)
+          .eq('pipelines.is_active', true);
       }
 
-      setAvailablePipelines(pipelines || []);
-      // Usar availablePipelines como userPipelines para manter compatibilidade
-      setUserPipelines(pipelines || []);
-    } catch (error) {
-      console.error('❌ SIDEBAR: Erro ao carregar pipelines:', error);
+      const { data, error } = await query.limit(10);
+
+      if (error) {
+        if (error.code === 'PGRST116' || error.message.includes('relation')) {
+          // Tabela não existe - modo graceful
+          if (isDebugMode) {
+            console.log('🔧 SIDEBAR: Tabelas de pipeline não configuradas (modo demo)');
+          }
+          setAvailablePipelines([]);
+          return;
+        } else {
+          console.warn('⚠️ SIDEBAR: Erro ao carregar pipelines:', error.message);
+          setAvailablePipelines([]);
+          return;
+        }
+      }
+
+      // Processar dados baseado no role
+      let processedPipelines: Pipeline[] = [];
+      
+      if (user.role === 'member' && data) {
+        processedPipelines = data.map((item: any) => item.pipelines).filter(Boolean);
+      } else {
+        processedPipelines = (data || []) as Pipeline[];
+      }
+
+      setAvailablePipelines(processedPipelines);
+
+      if (isDebugMode && processedPipelines.length > 0) {
+        console.log(`🔧 SIDEBAR: ${processedPipelines.length} pipelines carregadas para ${user.role}`);
+      }
+
+    } catch (error: any) {
+      if (isDebugMode) {
+        console.log('🔧 SIDEBAR: Erro de conexão ao carregar pipelines:', error.message);
+      }
       setAvailablePipelines([]);
-      setUserPipelines([]);
-    } finally {
-      setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadPipelines();
+  }, [user?.id, user?.role]);
 
   if (!user) return null;
 
@@ -100,35 +152,36 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate, onTog
   const getMenuItems = () => {
     if (user.role === 'super_admin') {
       return [
+        { id: 'Dashboard Administrativo', label: 'Dashboard Admin', icon: BarChart3 },
         { id: 'Relatório', label: 'Relatório', icon: BarChart3 },
         { id: 'Feedback', label: 'Feedback', icon: MessageSquare },
-        { id: 'Clientes', label: 'Clientes', icon: Users }
+        { id: 'Clientes', label: 'Clientes', icon: Users },
+        { id: 'Configurações da Plataforma', label: 'Configurações da Plataforma', icon: Cog },
+        { id: 'Notificações', label: 'Notificações', icon: Bell }
       ];
     }
     
     if (user.role === 'admin') {
       const baseItems = [
-        { id: 'Meta', label: 'Meta', icon: Target },
+        { id: 'Dashboard Administrativo', label: 'Dashboard Admin', icon: BarChart3 },
         { id: 'Vendedores', label: 'Vendedores', icon: Users },
-        { id: 'Criador de pipeline', label: 'Criador de pipeline', icon: Settings },
-        { id: 'Cadências', label: 'Cadências', icon: Zap },
-        { id: 'Criador de formulários', label: 'Criador de formulários', icon: FileText },
-        { id: 'Relatório', label: 'Relatório', icon: BarChart3 },
+        { id: 'Gestão de pipeline', label: 'Gestão de pipeline', icon: GitBranch },
+        { id: 'Gestão de formulários', label: 'Gestão de formulários', icon: FileText },
         { id: 'Acompanhamento', label: 'Acompanhamento', icon: Eye },
         { id: 'Leads', label: 'Leads', icon: Users },
         { id: 'Integrações', label: 'Integrações', icon: Settings }
       ];
 
-      // Admin sempre vê o menu Pipeline se tiver pelo menos 1 pipeline criada
-      if (availablePipelines.length > 0) {
-        baseItems.splice(3, 0, { id: 'Pipeline', label: 'Pipeline', icon: GitBranch });
-      }
+      // REMOVIDO: "Gestão de Pipelines" e "Cadências" conforme solicitado
+      // RENOMEADO: "Criador de pipeline" para "Gestão de pipeline"  
+      // RENOMEADO: "Criador de formulários" para "Gestão de formulários"
 
       return baseItems;
     }
     
     if (user.role === 'member') {
       return [
+        { id: 'Meu Dashboard', label: 'Meu Dashboard', icon: BarChart3 },
         { id: 'Relatório', label: 'Relatório', icon: BarChart3 },
         { id: 'Pipeline', label: 'Pipeline', icon: GitBranch },
         { id: 'Acompanhamento', label: 'Acompanhamento', icon: Eye },

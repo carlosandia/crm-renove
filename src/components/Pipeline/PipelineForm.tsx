@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Edit, Plus, X } from 'lucide-react';
-import { Pipeline } from '../../hooks/usePipelines';
+import { Pipeline } from '../../types/Pipeline';
 import { User } from '../../hooks/useMembers';
 
 interface PipelineFormProps {
