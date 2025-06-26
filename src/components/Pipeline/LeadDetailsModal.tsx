@@ -522,7 +522,7 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
         localLeadData.id,
         oldStageId,
         newStageId,
-        user.email || 'Sistema'
+        user.id
       );
       
       // Atualizar estado local
@@ -1447,13 +1447,6 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
               onClose={() => setActiveTab('dados')}
               onEventCreated={(eventId: string) => {
                 console.log('Evento criado:', eventId);
-                // Registrar no histórico
-                registerStageMove(
-                  lead.id,
-                  lead.stage_id || '',
-                  lead.stage_id || '',
-                  user?.email || 'Sistema'
-                );
                 // Recarregar histórico
                 loadHistory();
               }}
