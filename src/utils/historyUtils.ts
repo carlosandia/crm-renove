@@ -192,7 +192,7 @@ export const registerComment = async (
       description: `Comentário adicionado: "${preview}"`,
       user_id: userId,
       new_values: {
-        message_preview: message.substring(0, 100)
+        // ✅ CORREÇÃO PONTUAL: Remover message_preview do histórico
       }
     });
 
@@ -218,7 +218,7 @@ export const registerFeedback = async (
       description: `Feedback adicionado: "${preview}"`,
       user_id: userId,
       new_values: {
-        message_preview: message.substring(0, 100)
+        // ✅ CORREÇÃO PONTUAL: Remover message_preview do histórico
       }
     });
 
