@@ -6,6 +6,7 @@ import { Lead, CustomField } from '../../types/Pipeline';
 import { registerComment, registerFeedback, registerStageMove } from '../../utils/historyUtils';
 import { checkHistoryTable } from '../../utils/fixHistoryTables';
 import { useLeadTasks, LeadTask } from '../../hooks/useLeadTasks';
+import { GoogleCalendarEventModal } from '../GoogleCalendarEventModal';
 
 // SISTEMA DE BLOQUEIO RADICAL GLOBAL
 let GLOBAL_MODAL_BLOCK = false;
@@ -201,14 +202,18 @@ interface Feedback {
   user_name: string;
   message: string;
   created_at: string;
+  feedback_type?: 'positive' | 'negative';
 }
 
+// ✅ ETAPA 3: Interface expandida para histórico enriquecido
 interface HistoryEntry {
   id: string;
   lead_id: string;
   action: string;
   description: string;
   user_name: string;
+  user_role?: string;
+  user_email?: string;
   created_at: string;
   old_values?: any;
   new_values?: any;
@@ -302,12 +307,12 @@ const StageSelector: React.FC<{
             
             // Criar stages padrão para a primeira pipeline
             const defaultStages = [
-              { name: 'Novos Leads', order_index: 1, temperature_score: 20, color: '#6B7280' },
-              { name: 'Qualificado', order_index: 2, temperature_score: 40, color: '#3B82F6' },
-              { name: 'Proposta', order_index: 3, temperature_score: 70, color: '#F59E0B' },
-              { name: 'Negociação', order_index: 4, temperature_score: 90, color: '#EF4444' },
-              { name: 'Ganho', order_index: 5, temperature_score: 100, color: '#22C55E' },
-              { name: 'Perdido', order_index: 6, temperature_score: 0, color: '#6B7280' }
+              { name: 'Lead', order_index: 1, temperature_score: 20, color: '#3B82F6' },
+              { name: 'Qualified', order_index: 2, temperature_score: 40, color: '#8B5CF6' },
+              { name: 'Proposal', order_index: 3, temperature_score: 70, color: '#F59E0B' },
+              { name: 'Negotiation', order_index: 4, temperature_score: 90, color: '#EF4444' },
+              { name: 'Closed Won', order_index: 5, temperature_score: 100, color: '#10B981' },
+              { name: 'Closed Lost', order_index: 6, temperature_score: 0, color: '#6B7280' }
             ];
             
             const stagesToInsert = defaultStages.map(stage => ({
@@ -531,15 +536,25 @@ const StageSelector: React.FC<{
             hour12: false
           }).replace(', ', 'T') + '-03:00';
 
+          // Buscar nomes das stages para descrição mais clara
+          const { data: stageNames } = await supabase
+            .from('pipeline_stages')
+            .select('id, name')
+            .in('id', [currentStageId, newStageId]);
+
+          const oldStageName = stageNames?.find(s => s.id === currentStageId)?.name || 'Etapa anterior';
+          const newStageName = stageNames?.find(s => s.id === newStageId)?.name || 'Nova etapa';
+
           const { data, error } = await supabase
             .from('lead_history')
             .insert([{
               lead_id: leadId,
               action: 'stage_moved',
-              description: `Etapa alterada para nova etapa`,
+              description: `Lead movido de "${oldStageName}" para "${newStageName}"`,
               user_id: user?.id,
-              old_values: currentStageId && currentStageId !== 'null' ? { stage_id: currentStageId } : {},
-              new_values: { stage_id: newStageId },
+              user_name: user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email || 'Usuário' : 'Sistema',
+              old_values: currentStageId && currentStageId !== 'null' ? { stage_id: currentStageId, stage_name: oldStageName } : {},
+              new_values: { stage_id: newStageId, stage_name: newStageName },
               created_at: brasilTime
             }])
             .select('id')
@@ -660,6 +675,76 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   const modalControl = useModalControl(); // Usar o controle isolado
   const [activeTab, setActiveTab] = useState(externalActiveTab || 'dados');
 
+  // ✅ PASSO 2: ESTADO LOCAL REATIVO PARA SINCRONIZAÇÃO (LEADDETAILSMODAL)
+  const [localLeadData, setLocalLeadData] = useState(lead);
+
+  // ✅ CORREÇÃO DEFINITIVA: Remover completamente o useEffect problemático
+  React.useEffect(() => {
+    const handleLeadDataUpdate = (event: CustomEvent) => {
+      const { 
+        leadMasterId, 
+        pipelineLeadIds = [], 
+        cardData, 
+        leadData, 
+        timestamp,
+        source 
+      } = event.detail;
+      
+      // ✅ ETAPA 2: IDENTIFICAÇÃO ROBUSTA SIMPLIFICADA (IGUAL AO DRAGGABLELEADCARD)
+      const isThisLead = 
+        // 1. Via lead_master_id direto (método principal)
+        (leadMasterId && localLeadData.lead_master_id === leadMasterId) ||
+        
+        // 2. Via ID do pipeline_lead (método secundário)
+        (pipelineLeadIds && pipelineLeadIds.length > 0 && pipelineLeadIds.includes(localLeadData.id)) ||
+        
+        // 3. Via email (método de fallback)
+        (localLeadData.custom_data?.email && 
+         (cardData?.email || leadData?.email) && 
+         localLeadData.custom_data.email.toLowerCase().trim() === 
+         (cardData?.email || leadData?.email).toLowerCase().trim());
+      
+      if (isThisLead) {
+        console.log('🎯 [LeadDetailsModal] ETAPA 2: Sincronização aprimorada:', {
+          leadId: localLeadData.id,
+          leadMasterId,
+          source,
+          dataSource: cardData?.data_source || 'unknown'
+        });
+        
+        // ✅ ETAPA 2: ATUALIZAÇÃO DIRETA COM DADOS DA FONTE ÚNICA
+        setLocalLeadData(prevLead => ({
+          ...prevLead,
+          lead_master_id: leadMasterId,
+          custom_data: {
+            ...prevLead.custom_data,
+            // ✅ USAR CARDDATA COMPLETO (já vem de leads_master)
+            ...(cardData || {}),
+            // ✅ GARANTIR CAMPOS ESSENCIAIS
+            lead_master_id: leadMasterId,
+            last_sync_at: timestamp || new Date().toISOString(),
+            sync_source: source || 'unknown'
+          }
+        }));
+        
+        console.log('✅ [LeadDetailsModal] ETAPA 2: Modal sincronizado com fonte única');
+      }
+    };
+
+    // Registrar listener
+    window.addEventListener('leadDataUpdated', handleLeadDataUpdate as EventListener);
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener('leadDataUpdated', handleLeadDataUpdate as EventListener);
+    };
+  }, []); // ✅ CORREÇÃO DEFINITIVA: Array vazio elimina loop infinito
+
+  // ✅ PASSO 2: SINCRONIZAR ESTADO LOCAL QUANDO LEAD PROP MUDAR (LEADDETAILSMODAL)
+  React.useEffect(() => {
+    setLocalLeadData(lead);
+  }, [lead]);
+
   // Função de fechamento com controle isolado E bloqueio radical
   const protectedOnClose = React.useCallback(() => {
     console.log('🔍 MODAL-DETAILS: Tentativa de fechar modal');
@@ -727,9 +812,12 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
 
   // Função para obter dados do lead - Melhorada
   const getLeadData = (key: string): any => {
+    // ✅ PASSO 2: Usar localLeadData atualizado em vez de lead estático
+    const currentLead = localLeadData;
+    
     // Primeiro tentar custom_data
-    if (lead.custom_data?.[key]) {
-      return lead.custom_data[key];
+    if (currentLead.custom_data?.[key]) {
+      return currentLead.custom_data[key];
     }
     
     // Tentar variações do nome do campo
@@ -743,29 +831,29 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     ];
     
     for (const variation of variations) {
-      if (lead.custom_data?.[variation]) {
-        return lead.custom_data[variation];
+      if (currentLead.custom_data?.[variation]) {
+        return currentLead.custom_data[variation];
       }
     }
     
     // Tentar lead_data se existir
-    if ((lead as any).lead_data?.[key]) {
-      return (lead as any).lead_data[key];
+    if ((currentLead as any).lead_data?.[key]) {
+      return (currentLead as any).lead_data[key];
     }
     
     // Tentar propriedades diretas do lead
-    if ((lead as any)[key]) {
-      return (lead as any)[key];
+    if ((currentLead as any)[key]) {
+      return (currentLead as any)[key];
     }
     
     // Campos especiais baseados no tipo Lead
     const specialFields: Record<string, any> = {
-      'name': lead.custom_data?.nome_oportunidade || lead.custom_data?.titulo_oportunidade || lead.custom_data?.titulo,
-      'email': lead.custom_data?.email || lead.custom_data?.email_contato,
-      'phone': lead.custom_data?.telefone || lead.custom_data?.telefone_contato || lead.custom_data?.celular,
-      'value': lead.custom_data?.valor || lead.custom_data?.valor_oportunidade || lead.custom_data?.valor_proposta,
-      'company': lead.custom_data?.empresa || lead.custom_data?.empresa_contato,
-      'lead_name': lead.custom_data?.nome_lead || lead.custom_data?.nome_contato || lead.custom_data?.contato || lead.custom_data?.nome
+      'name': currentLead.custom_data?.nome_oportunidade || currentLead.custom_data?.titulo_oportunidade || currentLead.custom_data?.titulo,
+      'email': currentLead.custom_data?.email || currentLead.custom_data?.email_contato,
+      'phone': currentLead.custom_data?.telefone || currentLead.custom_data?.telefone_contato || currentLead.custom_data?.celular,
+      'value': currentLead.custom_data?.valor || currentLead.custom_data?.valor_oportunidade || currentLead.custom_data?.valor_proposta,
+      'company': currentLead.custom_data?.empresa || currentLead.custom_data?.empresa_contato,
+      'lead_name': currentLead.custom_data?.nome_lead || currentLead.custom_data?.nome_contato || currentLead.custom_data?.contato || currentLead.custom_data?.nome
     };
     
     if (specialFields[key]) {
@@ -778,37 +866,27 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   // Carregar comentários
   const loadComments = async () => {
     try {
-      // Primeiro tentar com join
-      const { data, error } = await supabase
+      // ✅ CORREÇÃO: Buscar comentários SEM JOIN (foreign keys não existem)
+      const { data: commentsData, error } = await supabase
         .from('lead_comments')
-        .select(`
-          *,
-          users!lead_comments_user_id_fkey(first_name, last_name, role)
-        `)
-        .eq('lead_id', lead.id)
+        .select('*')
+        .eq('lead_id', localLeadData.id)
         .order('created_at', { ascending: true });
 
       if (error) {
-        console.warn('⚠️ Erro com join, tentando sem join:', error.message);
-        // Fallback sem join
-        const { data: commentsData, error: simpleError } = await supabase
-          .from('lead_comments')
-          .select('*')
-          .eq('lead_id', lead.id)
-          .order('created_at', { ascending: true });
+        console.error('❌ Erro ao carregar comentários:', error);
+        setComments([]);
+        return;
+      }
 
-        if (simpleError) {
-          console.error('❌ Erro ao carregar comentários:', simpleError);
-          return;
-        }
-
-        // Buscar dados do usuário separadamente
-        const formattedComments = [];
-        for (const comment of commentsData || []) {
-          let userName = 'Usuário Desconhecido';
-          let userRole = 'member';
-          
-          if (comment.user_id) {
+      // Buscar dados do usuário separadamente para cada comentário
+      const formattedComments = [];
+      for (const comment of commentsData || []) {
+        let userName = 'Usuário Desconhecido';
+        let userRole = 'member';
+        
+        if (comment.user_id) {
+          try {
             const { data: userData } = await supabase
               .from('users')
               .select('first_name, last_name, role')
@@ -816,60 +894,50 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
               .single();
             
             if (userData) {
-              userName = `${userData.first_name} ${userData.last_name}`;
-              userRole = userData.role;
+              userName = `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || 'Usuário';
+              userRole = userData.role || 'member';
             }
+          } catch (userError) {
+            console.warn('⚠️ Erro ao buscar dados do usuário para comentário:', userError);
           }
-
-          formattedComments.push({
-            id: comment.id,
-            lead_id: comment.lead_id,
-            user_id: comment.user_id,
-            user_name: userName,
-            user_role: userRole,
-            message: comment.message,
-            created_at: comment.created_at
-          });
         }
 
-        setComments(formattedComments);
-        return;
+        formattedComments.push({
+          id: comment.id,
+          lead_id: comment.lead_id,
+          user_id: comment.user_id,
+          user_name: userName,
+          user_role: userRole,
+          message: comment.message,
+          created_at: comment.created_at
+        });
       }
 
-      // Se o join funcionou
-      const formattedComments = (data || []).map(comment => ({
-        id: comment.id,
-        lead_id: comment.lead_id,
-        user_id: comment.user_id,
-        user_name: comment.users ? `${comment.users.first_name} ${comment.users.last_name}` : 'Usuário Desconhecido',
-        user_role: comment.users?.role || 'member',
-        message: comment.message,
-        created_at: comment.created_at
-      }));
-
       setComments(formattedComments);
+      console.log('✅ Comentários carregados:', formattedComments.length);
     } catch (error) {
-      console.error('Erro geral ao carregar comentários:', error);
+      console.error('❌ Erro geral ao carregar comentários:', error);
+      setComments([]);
     }
   };
 
   // Carregar tarefas de cadência do lead específico
   const loadLeadTasks = async () => {
-    if (!user?.id || !lead.id) {
-      console.log('🚫 loadLeadTasks: Usuário ou lead não encontrado', { userId: user?.id, leadId: lead.id });
+    if (!user?.id || !localLeadData.id) {
+      console.log('🚫 loadLeadTasks: Usuário ou lead não encontrado', { userId: user?.id, leadId: localLeadData.id });
       return;
     }
 
     try {
       setCadenceLoading(true);
-      console.log('🔍 loadLeadTasks: Carregando tarefas para lead:', lead.id);
+      console.log('🔍 loadLeadTasks: Carregando tarefas para lead:', localLeadData.id);
 
-      // Primeiro, tentar consulta simples sem JOIN
-      const { data: tasksData, error } = await supabase
-        .from('lead_tasks')
-        .select('*')
-        .eq('lead_id', lead.id)
-        .order('data_programada', { ascending: true });
+              // Primeiro, tentar consulta simples sem JOIN
+        const { data: tasksData, error } = await supabase
+          .from('lead_tasks')
+          .select('*')
+          .eq('lead_id', localLeadData.id)
+          .order('data_programada', { ascending: true });
 
       if (error) {
         console.error('❌ Erro ao carregar tarefas de cadência:', error);
@@ -953,36 +1021,74 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   // Carregar feedbacks
   const loadFeedbacks = async () => {
     try {
-      // Primeiro tentar com join
-      const { data, error } = await supabase
-        .from('lead_feedbacks')
-        .select(`
-          *,
-          users!lead_feedbacks_user_id_fkey(first_name, last_name)
-        `)
+      console.log('🔍 ETAPA 2: Carregando feedbacks da nova tabela lead_feedback');
+      
+      // ✅ CORREÇÃO: Buscar feedbacks SEM JOIN (foreign keys não existem)
+      const { data: feedbacksData, error } = await supabase
+        .from('lead_feedback')
+        .select('*')
         .eq('lead_id', lead.id)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: false });
 
       if (error) {
-        console.warn('⚠️ Erro com join, tentando sem join:', error.message);
-        // Fallback sem join
-        const { data: feedbacksData, error: simpleError } = await supabase
+        console.warn('❌ Tabela lead_feedback não encontrada, tentando lead_feedbacks como fallback');
+        // Fallback para tabela antiga se nova não existir
+        const { data: oldFeedbacksData, error: oldError } = await supabase
           .from('lead_feedbacks')
           .select('*')
           .eq('lead_id', lead.id)
-          .order('created_at', { ascending: true });
+          .order('created_at', { ascending: false });
 
-        if (simpleError) {
-          console.error('❌ Erro ao carregar feedbacks:', simpleError);
+        if (oldError) {
+          console.error('❌ Erro ao carregar feedbacks (ambas tabelas):', oldError);
+          setFeedbacks([]);
           return;
         }
 
-        // Buscar dados do usuário separadamente
-        const formattedFeedbacks = [];
-        for (const feedback of feedbacksData || []) {
+        // Formatar dados da tabela antiga
+        const formattedOldFeedbacks = [];
+        for (const feedback of oldFeedbacksData || []) {
           let userName = 'Usuário Desconhecido';
           
           if (feedback.user_id) {
+            try {
+              const { data: userData } = await supabase
+                .from('users')
+                .select('first_name, last_name')
+                .eq('id', feedback.user_id)
+                .single();
+              
+              if (userData) {
+                userName = `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || 'Usuário';
+              }
+            } catch (userError) {
+              console.warn('⚠️ Erro ao buscar dados do usuário para feedback:', userError);
+            }
+          }
+
+          formattedOldFeedbacks.push({
+            id: feedback.id,
+            lead_id: feedback.lead_id,
+            user_id: feedback.user_id,
+            user_name: userName,
+            message: feedback.message,
+            created_at: feedback.created_at,
+            feedback_type: 'positive' as 'positive' | 'negative' // Assumir positivo para dados antigos
+          });
+        }
+
+        setFeedbacks(formattedOldFeedbacks);
+        console.log('✅ ETAPA 2: Feedbacks carregados da tabela antiga:', formattedOldFeedbacks.length);
+        return;
+      }
+
+      // Buscar dados do usuário separadamente para nova tabela
+      const formattedFeedbacks = [];
+      for (const feedback of feedbacksData || []) {
+        let userName = 'Usuário Desconhecido';
+        
+        if (feedback.user_id) {
+          try {
             const { data: userData } = await supabase
               .from('users')
               .select('first_name, last_name')
@@ -990,93 +1096,116 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
               .single();
             
             if (userData) {
-              userName = `${userData.first_name} ${userData.last_name}`;
+              userName = `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || 'Usuário';
             }
+          } catch (userError) {
+            console.warn('⚠️ Erro ao buscar dados do usuário para feedback:', userError);
           }
-
-          formattedFeedbacks.push({
-            id: feedback.id,
-            lead_id: feedback.lead_id,
-            user_id: feedback.user_id,
-            user_name: userName,
-            message: feedback.message,
-            created_at: feedback.created_at
-          });
         }
 
-        setFeedbacks(formattedFeedbacks);
-        return;
+        formattedFeedbacks.push({
+          id: feedback.id,
+          lead_id: feedback.lead_id,
+          user_id: feedback.user_id,
+          user_name: userName,
+          message: feedback.comment || feedback.message, // Nova tabela usa 'comment'
+          created_at: feedback.created_at,
+          feedback_type: (feedback.feedback_type as 'positive' | 'negative') || 'positive'
+        });
       }
 
-      // Se o join funcionou
-      const formattedFeedbacks = (data || []).map(feedback => ({
-        id: feedback.id,
-        lead_id: feedback.lead_id,
-        user_id: feedback.user_id,
-        user_name: feedback.users ? `${feedback.users.first_name} ${feedback.users.last_name}` : 'Usuário Desconhecido',
-        message: feedback.message,
-        created_at: feedback.created_at
-      }));
-
       setFeedbacks(formattedFeedbacks);
+      console.log('✅ ETAPA 2: Feedbacks carregados:', formattedFeedbacks.length);
+      
     } catch (error) {
-      console.error('Erro geral ao carregar feedbacks:', error);
+      console.error('❌ Erro geral ao carregar feedbacks:', error);
+      setFeedbacks([]);
     }
   };
 
-  // Carregar histórico
+  // ✅ ETAPA 3: Carregar histórico completo e enriquecido
   const loadHistory = async () => {
     setHistoryLoading(true);
     try {
-      console.log('🔍 Carregando histórico para lead:', lead.id);
+      // ✅ CORREÇÃO 3: Throttling nos logs para evitar spam
+      const now = Date.now();
+      const lastLog = (window as any).lastHistoryLogTime || 0;
+      if (now - lastLog > 2000) {
+        console.log('🔍 ETAPA 3: Carregando histórico completo para lead:', lead.id);
+        (window as any).lastHistoryLogTime = now;
+      }
       
-      // Tentar carregar diretamente - a tabela já existe conforme o teste
-      const { data, error } = await supabase
+      // ✅ CORREÇÃO: Buscar histórico SEM JOIN (foreign keys não existem)
+      const { data: historyData, error: historyError } = await supabase
         .from('lead_history')
         .select('*')
         .eq('lead_id', lead.id)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('❌ Erro ao carregar histórico:', error);
-        console.error('Detalhes do erro:', error.message, error.code, error.details);
+      if (historyError) {
+        throw historyError;
+      }
+
+      console.log('✅ ETAPA 3: Histórico carregado:', historyData?.length || 0, 'entradas');
+
+      if (!historyData) {
+        console.log('📋 ETAPA 3: Nenhuma entrada de histórico encontrada');
         setHistory([]);
         return;
       }
 
-      console.log('📋 Dados brutos do histórico para lead', lead.id.substring(0, 8) + '...:', data);
+      // ✅ ETAPA 3: Formatar histórico com dados enriquecidos
+      const enrichedHistory = await Promise.all(
+        historyData.map(async (entry: any) => {
+          let userName = entry.user_name || 'Sistema';
+          let userRole = 'system';
+          let userEmail = '';
 
-      const formattedHistory = (data || []).map(entry => ({
-        id: entry.id,
-        lead_id: entry.lead_id,
-        action: entry.action,
-        description: entry.description,
-        user_name: entry.user_name || 'Sistema',
-        created_at: entry.created_at,
-        old_values: entry.old_values,
-        new_values: entry.new_values
-      }));
+          // ✅ CORREÇÃO: Buscar dados do usuário apenas se temos user_id
+          if (entry.user_id) {
+            try {
+              const { data: userData } = await supabase
+                .from('users')
+                .select('first_name, last_name, email, role')
+                .eq('id', entry.user_id)
+                .single();
 
-      setHistory(formattedHistory);
-      console.log('✅ Histórico carregado e formatado:', formattedHistory.length, 'entradas');
+              if (userData) {
+                userName = `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || userData.email || 'Usuário';
+                userRole = userData.role || 'member';
+                userEmail = userData.email || '';
+              }
+            } catch (userError) {
+              console.warn('⚠️ ETAPA 3: Erro ao buscar dados do usuário:', userError);
+              // Usar user_name do histórico como fallback
+              userName = entry.user_name || 'Usuário Desconhecido';
+            }
+          }
+
+          return {
+            id: entry.id,
+            lead_id: entry.lead_id,
+            action: entry.action,
+            description: entry.description,
+            user_name: userName,
+            user_role: userRole,
+            user_email: userEmail,
+            created_at: entry.created_at,
+            old_values: entry.old_values,
+            new_values: entry.new_values
+          };
+        })
+      );
+
+      setHistory(enrichedHistory);
+      console.log('✅ ETAPA 3: Histórico enriquecido processado:', enrichedHistory.length, 'entradas');
       
-      if (formattedHistory.length > 0) {
-        console.log('📋 Primeira entrada do histórico:', formattedHistory[0]);
-        console.log('📋 Todas as entradas:', formattedHistory.map(h => `${h.action}: ${h.description}`));
-      } else {
-        console.log('📋 Nenhuma entrada de histórico encontrada para este lead específico');
-        
-        // DEBUG: Verificar se há histórico para outros leads
-        const { data: allHistory } = await supabase
-          .from('lead_history')
-          .select('lead_id, action, description')
-          .limit(5);
-        
-        console.log('🔍 DEBUG: Primeiros 5 registros de histórico (qualquer lead):', allHistory);
+      if (enrichedHistory.length > 0) {
+        console.log('📋 ETAPA 3: Primeira entrada enriquecida:', enrichedHistory[0]);
       }
       
     } catch (error) {
-      console.error('❌ Erro geral ao carregar histórico:', error);
+      console.error('❌ ETAPA 3: Erro geral ao carregar histórico:', error);
       setHistory([]);
     } finally {
       setHistoryLoading(false);
@@ -1121,11 +1250,11 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
 
   // Adicionar feedback
   const handleAddFeedback = async () => {
-    if (!newFeedback.trim() || !user || user.role !== 'member') return;
+    if (!newFeedback.trim() || !user || !['member', 'admin'].includes(user.role)) return;
 
     setLoading(true);
     try {
-      // Tentar inserir na tabela lead_feedback com o tipo
+      // ✅ ETAPA 2: Sistema aprimorado - inserir na tabela lead_feedback
       const { error: feedbackError } = await supabase
         .from('lead_feedback')
         .insert([{
@@ -1135,35 +1264,60 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
           comment: newFeedback.trim()
         }]);
 
-      // Se a tabela lead_feedback não existir, tentar a tabela lead_feedbacks (fallback)
       if (feedbackError) {
-        console.log('⚠️ Tentando inserir na tabela lead_feedbacks como fallback');
-        const { error: fallbackError } = await supabase
-          .from('lead_feedbacks')
+        console.error('❌ Erro ao inserir feedback:', feedbackError);
+        throw feedbackError;
+      }
+
+      // ✅ ETAPA 2: Registrar no histórico usando a função PostgreSQL
+      try {
+        const { error: historyError } = await supabase
+          .rpc('register_feedback_history', {
+            p_lead_id: lead.id,
+            p_feedback_type: feedbackType,
+            p_comment: newFeedback.trim(),
+            p_user_id: user.id
+          });
+
+        if (historyError) {
+          console.warn('⚠️ Erro ao registrar histórico de feedback:', historyError);
+        } else {
+          console.log('✅ Feedback registrado no histórico via PostgreSQL');
+        }
+      } catch (historyError) {
+        console.warn('⚠️ Fallback: Tentando registrar histórico manualmente');
+        // Fallback manual
+        const { error: manualHistoryError } = await supabase
+          .from('lead_history')
           .insert([{
             lead_id: lead.id,
-            user_id: user.id,
-            message: newFeedback.trim()
+            action: 'feedback_added',
+            description: `Feedback ${feedbackType === 'positive' ? 'Positivo' : 'Negativo'}: ${newFeedback.substring(0, 100)}${newFeedback.length > 100 ? '...' : ''}`,
+                         user_name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email || 'Usuário',
+            created_at: new Date().toISOString(),
+            new_values: {
+              feedback_type: feedbackType,
+              comment: newFeedback.trim(),
+              user_id: user.id
+            }
           }]);
-
-        if (fallbackError) throw fallbackError;
+        
+        if (manualHistoryError) {
+          console.warn('⚠️ Erro no fallback manual do histórico:', manualHistoryError);
+        }
       }
 
-      // REGISTRAR NO HISTÓRICO
-      try {
-        await registerFeedback(lead.id, newFeedback.trim(), user.id);
-        console.log('📝 Feedback registrado no histórico');
-      } catch (historyError) {
-        console.warn('⚠️ Erro ao registrar histórico de feedback:', historyError);
-      }
-
+      // Limpar formulário e recarregar dados
       setNewFeedback('');
+      setFeedbackType('positive');
       await loadFeedbacks();
-      await loadHistory(); // Recarregar histórico após adicionar feedback
+      await loadHistory();
+      
+      console.log('✅ ETAPA 2: Feedback adicionado com sucesso!');
       
     } catch (error) {
-      console.error('Erro ao adicionar feedback:', error);
-      alert('Erro ao adicionar feedback. Tente novamente.');
+      console.error('❌ Erro ao adicionar feedback:', error);
+      alert('Erro ao adicionar feedback. Verifique se você tem permissão e tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -1180,6 +1334,14 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
       loadLeadTasks();
     }
   }, [isOpen, lead.id]);
+
+  // ✅ CORREÇÃO 1: Carregar histórico quando aba dados fica ativa
+  useEffect(() => {
+    if (isOpen && activeTab === 'dados') {
+      console.log('📊 CORREÇÃO: Carregando histórico para aba dados');
+      loadHistory();
+    }
+  }, [isOpen, activeTab]);
 
   // Detectar mudanças no isOpen para debug
   useEffect(() => {
@@ -1208,7 +1370,7 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     }
   };
 
-  // Função para traduzir ações do histórico
+  // ✅ ETAPA 3: Função para traduzir ações do histórico (expandida)
   const translateAction = (action: string) => {
     const translations: { [key: string]: string } = {
       'stage_moved': 'Etapa Alterada',
@@ -1230,10 +1392,140 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
       'assigned_to': 'Atribuído Para',
       'test_direct': 'Teste Direto',
       'test_function': 'Teste de Função',
-      'manual_test': 'Teste Manual'
+      'manual_test': 'Teste Manual',
+      'lead_imported': 'Lead Importado',
+      'data_updated': 'Dados Atualizados',
+      'field_changed': 'Campo Alterado',
+      'temperature_changed': 'Temperatura Alterada',
+      'source_updated': 'Origem Atualizada',
+      'pipeline_moved': 'Pipeline Alterada',
+      'owner_changed': 'Responsável Alterado'
     };
     
     return translations[action] || action.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  // ✅ ETAPA 3: Função para obter ícone específico por tipo de ação
+  const getActionIcon = (action: string) => {
+    switch (action) {
+      case 'stage_moved':
+      case 'pipeline_moved':
+        return Target;
+      case 'comment_added':
+        return MessageCircle;
+      case 'feedback_added':
+        return ThumbsUp;
+      case 'lead_created':
+      case 'lead_imported':
+        return User;
+      case 'email_sent':
+      case 'email_received':
+        return Mail;
+      case 'task_created':
+      case 'task_completed':
+        return CheckCircle;
+      case 'call_made':
+        return Phone;
+      case 'meeting_scheduled':
+        return Calendar;
+      case 'proposal_sent':
+      case 'contract_signed':
+        return FileText;
+      case 'lead_updated':
+      case 'data_updated':
+      case 'field_changed':
+        return Activity;
+      case 'temperature_changed':
+        return Thermometer;
+      case 'status_changed':
+      case 'priority_changed':
+        return AlertCircle;
+      case 'assigned_to':
+      case 'owner_changed':
+        return User;
+      case 'source_updated':
+        return Globe;
+      default:
+        return Clock;
+    }
+  };
+
+  // ✅ ETAPA 3: Função para obter cor específica por tipo de ação
+  const getActionColor = (action: string) => {
+    switch (action) {
+      case 'stage_moved':
+      case 'pipeline_moved':
+        return { bg: 'bg-blue-500', text: 'text-blue-600', bgLight: 'bg-blue-50' };
+      case 'comment_added':
+        return { bg: 'bg-green-500', text: 'text-green-600', bgLight: 'bg-green-50' };
+      case 'feedback_added':
+        return { bg: 'bg-purple-500', text: 'text-purple-600', bgLight: 'bg-purple-50' };
+      case 'lead_created':
+      case 'lead_imported':
+        return { bg: 'bg-indigo-500', text: 'text-indigo-600', bgLight: 'bg-indigo-50' };
+      case 'email_sent':
+      case 'email_received':
+        return { bg: 'bg-cyan-500', text: 'text-cyan-600', bgLight: 'bg-cyan-50' };
+      case 'task_created':
+      case 'task_completed':
+        return { bg: 'bg-emerald-500', text: 'text-emerald-600', bgLight: 'bg-emerald-50' };
+      case 'call_made':
+        return { bg: 'bg-orange-500', text: 'text-orange-600', bgLight: 'bg-orange-50' };
+      case 'meeting_scheduled':
+        return { bg: 'bg-pink-500', text: 'text-pink-600', bgLight: 'bg-pink-50' };
+      case 'proposal_sent':
+      case 'contract_signed':
+        return { bg: 'bg-yellow-500', text: 'text-yellow-600', bgLight: 'bg-yellow-50' };
+      case 'lead_updated':
+      case 'data_updated':
+      case 'field_changed':
+        return { bg: 'bg-gray-500', text: 'text-gray-600', bgLight: 'bg-gray-50' };
+      case 'temperature_changed':
+        return { bg: 'bg-red-500', text: 'text-red-600', bgLight: 'bg-red-50' };
+      case 'status_changed':
+      case 'priority_changed':
+        return { bg: 'bg-amber-500', text: 'text-amber-600', bgLight: 'bg-amber-50' };
+      case 'assigned_to':
+      case 'owner_changed':
+        return { bg: 'bg-teal-500', text: 'text-teal-600', bgLight: 'bg-teal-50' };
+      case 'source_updated':
+        return { bg: 'bg-violet-500', text: 'text-violet-600', bgLight: 'bg-violet-50' };
+      default:
+        return { bg: 'bg-blue-500', text: 'text-blue-600', bgLight: 'bg-blue-50' };
+    }
+  };
+
+  // ✅ ETAPA 3: Função para formatar mudanças de valores
+  const formatValueChange = (oldValues: any, newValues: any, action: string) => {
+    if (!oldValues && !newValues) return null;
+
+    // Para mudança de etapa, mostrar de/para
+    if (action === 'stage_moved' && oldValues?.stage_id && newValues?.stage_id) {
+      return (
+        <div className="text-xs text-gray-600 mt-1 p-2 bg-gray-50 rounded">
+          <span className="font-medium">Mudança:</span> {oldValues.stage_id} → {newValues.stage_id}
+        </div>
+      );
+    }
+
+    // Para outros tipos, mostrar valores novos
+    if (newValues && typeof newValues === 'object') {
+      const changes = Object.entries(newValues).map(([key, value]) => (
+        <div key={key} className="text-xs text-gray-600">
+          <span className="font-medium">{key}:</span> {String(value)}
+        </div>
+      ));
+      
+      if (changes.length > 0) {
+        return (
+          <div className="mt-1 p-2 bg-gray-50 rounded">
+            {changes}
+          </div>
+        );
+      }
+    }
+
+    return null;
   };
 
   // Função para obter ícone do campo
@@ -1395,8 +1687,11 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                     
                     // Evitar que qualquer erro feche o modal
                     try {
-                      // Recarregar histórico após mudança de etapa
-                      loadHistory();
+                      // ✅ CORREÇÃO: Recarregar histórico após mudança de etapa com delay
+                      setTimeout(() => {
+                        console.log('🔄 MODAL-DETAILS: Recarregando histórico após mudança de etapa');
+                        loadHistory();
+                      }, 1000); // Aguardar 1 segundo para garantir que o registro foi salvo
                       
                       // Notificar componente pai
                       if (onUpdate) {
@@ -1452,6 +1747,7 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
             { id: 'email', label: 'E-mail', icon: Mail },
             { id: 'comentarios', label: 'Comentários', icon: MessageCircle },
             { id: 'feedback', label: 'Feedback', icon: ThumbsUp },
+            { id: 'google-calendar', label: 'Google Calendar', icon: Calendar },
             { id: 'acoes', label: 'Ações', icon: Activity }
           ].map(tab => {
             const IconComponent = tab.icon;
@@ -1530,6 +1826,101 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                           <div className="flex-1 min-w-0">
                             <span className="text-sm font-medium text-gray-700">Valor:</span>
                             <span className="ml-2 text-sm text-gray-500 italic">Não informado</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Documentos da Oportunidade */}
+                    {(() => {
+                      const documentos = getLeadData('documentos_anexos');
+                      
+                      return (
+                        <div className="flex items-start space-x-3 p-1 hover:bg-gray-50 rounded-md transition-colors">
+                          <FileText className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm font-medium text-gray-700">Documentos:</span>
+                            {documentos && documentos.length > 0 ? (
+                              <div className="ml-2 space-y-1">
+                                {documentos.map((doc: any, index: number) => (
+                                  <div key={index} className="flex items-center space-x-2">
+                                    <a 
+                                      href={doc.url} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-sm text-blue-600 hover:text-blue-800 underline"
+                                    >
+                                      {doc.name || `Documento ${index + 1}`}
+                                    </a>
+                                    <span className="text-xs text-gray-400">
+                                      ({doc.type || 'Arquivo'})
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="ml-2 text-sm text-gray-500 italic">Nenhum documento anexado</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Links da Oportunidade */}
+                    {(() => {
+                      const links = getLeadData('links_oportunidade');
+                      
+                      return (
+                        <div className="flex items-start space-x-3 p-1 hover:bg-gray-50 rounded-md transition-colors">
+                          <Globe className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm font-medium text-gray-700">Links:</span>
+                            {links && links.length > 0 ? (
+                              <div className="ml-2 space-y-1">
+                                {links.map((link: any, index: number) => (
+                                  <div key={index} className="flex items-center space-x-2">
+                                    <a 
+                                      href={link.url} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-sm text-blue-600 hover:text-blue-800 underline break-all"
+                                    >
+                                      {link.title || link.url}
+                                    </a>
+                                    {link.description && (
+                                      <span className="text-xs text-gray-400">
+                                        - {link.description}
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="ml-2 text-sm text-gray-500 italic">Nenhum link adicionado</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Notas sobre a Oportunidade */}
+                    {(() => {
+                      const notas = getLeadData('notas_oportunidade');
+                      
+                      return (
+                        <div className="flex items-start space-x-3 p-1 hover:bg-gray-50 rounded-md transition-colors">
+                          <MessageCircle className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm font-medium text-gray-700">Notas sobre a oportunidade:</span>
+                            {notas && notas.trim() !== '' ? (
+                              <div className="ml-2 mt-1">
+                                <p className="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed">
+                                  {notas}
+                                </p>
+                              </div>
+                            ) : (
+                              <span className="ml-2 text-sm text-gray-500 italic">Nenhuma nota adicionada</span>
+                            )}
                           </div>
                         </div>
                       );
@@ -1680,12 +2071,12 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                   </button>
                 </div>
 
-                {/* Timeline do histórico */}
+                {/* ✅ ETAPA 3: Timeline do histórico aprimorada */}
                 <div className="h-96 overflow-y-auto pr-2">
                   {historyLoading ? (
                     <div className="text-center py-12 text-gray-500">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3"></div>
-                      <p className="text-sm">Carregando histórico...</p>
+                      <p className="text-sm">Carregando histórico completo...</p>
                     </div>
                   ) : history.length === 0 ? (
                     <div className="text-center py-12 text-gray-500">
@@ -1698,33 +2089,88 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                       {/* Linha da timeline */}
                       <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200"></div>
                       
-                      {history.map((entry, index) => (
-                        <div key={entry.id} className="relative flex items-start space-x-4 pb-4">
-                          {/* Ponto da timeline */}
-                          <div className="relative z-10 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
-                            <Clock className="w-4 h-4 text-white" />
-                          </div>
-                          
-                          {/* Conteúdo */}
-                          <div className="flex-1 bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
-                            <div className="flex items-center justify-between mb-1">
-                              <h4 className="text-sm font-medium text-gray-900">
-                                {translateAction(entry.action)}
-                              </h4>
-                              <span className="text-xs text-gray-500">
-                                {new Date(entry.created_at).toLocaleString('pt-BR', {
-                                  day: '2-digit',
-                                  month: '2-digit',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </span>
+                      {history.map((entry, index) => {
+                        const ActionIcon = getActionIcon(entry.action);
+                        const actionColors = getActionColor(entry.action);
+                        
+                        return (
+                          <div key={entry.id} className="relative flex items-start space-x-4 pb-4">
+                            {/* ✅ ETAPA 3: Ponto da timeline com ícone específico e cor */}
+                            <div className={`relative z-10 w-8 h-8 ${actionColors.bg} rounded-full flex items-center justify-center flex-shrink-0 shadow-sm`}>
+                              <ActionIcon className="w-4 h-4 text-white" />
                             </div>
-                            <p className="text-xs text-gray-700 mb-1">{entry.description}</p>
-                            <p className="text-xs text-gray-500">por {entry.user_name}</p>
+                            
+                            {/* ✅ ETAPA 3: Conteúdo enriquecido */}
+                            <div className={`flex-1 bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow ${actionColors.bgLight} border-l-4 ${actionColors.bg.replace('bg-', 'border-')}`}>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center space-x-2">
+                                  <h4 className={`text-sm font-semibold ${actionColors.text}`}>
+                                    {translateAction(entry.action)}
+                                  </h4>
+                                  {/* ✅ ETAPA 3: Badge do tipo de usuário */}
+                                  {entry.user_role && entry.user_role !== 'system' && (
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                      entry.user_role === 'admin' 
+                                        ? 'bg-purple-100 text-purple-700'
+                                        : entry.user_role === 'member'
+                                        ? 'bg-blue-100 text-blue-700'
+                                        : 'bg-gray-100 text-gray-700'
+                                    }`}>
+                                      {entry.user_role === 'admin' ? 'Admin' : entry.user_role === 'member' ? 'Member' : entry.user_role}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-xs text-gray-500 font-medium">
+                                  {new Date(entry.created_at).toLocaleString('pt-BR', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </span>
+                              </div>
+                              
+                              {/* ✅ ETAPA 3: Descrição com formatação melhorada */}
+                              <p className="text-sm text-gray-800 mb-2 leading-relaxed">{entry.description}</p>
+                              
+                              {/* ✅ ETAPA 3: Informações do usuário */}
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-2">
+                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
+                                    entry.user_role === 'admin' ? 'bg-purple-500' :
+                                    entry.user_role === 'member' ? 'bg-blue-500' : 'bg-gray-500'
+                                  }`}>
+                                    {entry.user_name.charAt(0).toUpperCase()}
+                                  </div>
+                                  <span className="text-xs font-medium text-gray-700">{entry.user_name}</span>
+                                  {entry.user_email && (
+                                    <span className="text-xs text-gray-500">({entry.user_email})</span>
+                                  )}
+                                </div>
+                                
+                                {/* ✅ ETAPA 3: Indicador de tempo relativo */}
+                                <span className="text-xs text-gray-400">
+                                  {(() => {
+                                    const diffMs = Date.now() - new Date(entry.created_at).getTime();
+                                    const diffMins = Math.floor(diffMs / 60000);
+                                    const diffHours = Math.floor(diffMins / 60);
+                                    const diffDays = Math.floor(diffHours / 24);
+                                    
+                                    if (diffMins < 1) return 'agora';
+                                    if (diffMins < 60) return `${diffMins}m atrás`;
+                                    if (diffHours < 24) return `${diffHours}h atrás`;
+                                    if (diffDays < 7) return `${diffDays}d atrás`;
+                                    return 'há mais de 1 semana';
+                                  })()}
+                                </span>
+                              </div>
+                              
+                              {/* ✅ ETAPA 3: Detalhes das mudanças */}
+                              {formatValueChange(entry.old_values, entry.new_values, entry.action)}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1967,8 +2413,8 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                 </div>
               </div>
 
-              {/* Adicionar feedback (apenas members) */}
-              {user?.role === 'member' && (
+              {/* ✅ ETAPA 2: Adicionar feedback (Member e Admin) */}
+              {(user?.role === 'member' || user?.role === 'admin') && (
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h4 className="text-md font-medium text-gray-900 mb-3">Deixar Feedback</h4>
                   
@@ -2055,6 +2501,26 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                 )}
               </div>
             </div>
+          )}
+
+          {/* ABA GOOGLE CALENDAR */}
+          {activeTab === 'google-calendar' && (
+            <GoogleCalendarEventModal
+              lead={lead}
+              onClose={() => setActiveTab('dados')}
+              onEventCreated={(eventId: string) => {
+                console.log('Evento criado:', eventId);
+                // Registrar no histórico
+                registerStageMove(
+                  lead.id,
+                  lead.stage_id || '',
+                  lead.stage_id || '',
+                  user?.email || 'Sistema'
+                );
+                // Recarregar histórico
+                loadHistory();
+              }}
+            />
           )}
 
           {/* ABA AÇÕES */}
