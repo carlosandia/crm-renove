@@ -234,11 +234,11 @@ export const formatDate = (dateString: string) => {
 export const getValueChangeInfo = (oldValues: any, newValues: any, action: string) => {
   if (!oldValues && !newValues) return null;
 
-  // Para mudança de etapa, mostrar de/para
+  // Para mudança de etapa, mostrar apenas de/para (sem "Mudança:")
   if (action === 'stage_moved' && oldValues?.stage_id && newValues?.stage_id) {
     return {
       type: 'stage_change',
-      message: `Mudança: ${oldValues.stage_id} → ${newValues.stage_id}`
+      message: `${oldValues.stage_id} → ${newValues.stage_id}`
     };
   }
 

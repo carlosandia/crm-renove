@@ -925,14 +925,10 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                     'valor', 'valor_oportunidade', 'valor_proposta', 'value'
                   ];
                   
-                  // Filtrar apenas campos customizados que foram realmente criados para este pipeline
-                  // E que NÃO são campos básicos do sistema
+                  // ✅ CORREÇÃO 1: Mostrar TODOS os campos customizados da pipeline (com ou sem valor)
                   const camposCustomizadosReais = customFields.filter(field => {
-                    const value = getLeadData(field.field_name);
-                    const temValor = value !== null && value !== undefined && value.toString().trim() !== '';
                     const naoECampoBasico = !camposBasicosDoSistema.includes(field.field_name);
-                    
-                    return temValor && naoECampoBasico;
+                    return naoECampoBasico; // Mostrar todos os campos customizados, independente de ter valor
                   });
                   
                   return camposCustomizadosReais.length > 0 ? (
@@ -942,7 +938,6 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                       </h3>
                       <div className="space-y-1">
                         {camposCustomizadosReais.map(field => {
-                          const value = getLeadData(field.field_name);
                           const IconComponent = getFieldIcon(field.field_type);
                           
                           return (
@@ -951,10 +946,21 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                               <div className="flex-1 min-w-0">
                                 <span className="text-sm font-medium text-gray-700">{field.field_label}:</span>
                                 <span className="ml-2 text-sm text-gray-900">
-                                  {field.field_type === 'select' && field.field_options ? 
-                                    field.field_options.find(opt => opt === value) || value :
-                                    value
-                                  }
+                                  {(() => {
+                                    const value = getLeadData(field.field_name);
+                                    
+                                    // ✅ CORREÇÃO 1: Mostrar valor ou "Não informado"
+                                    if (value === null || value === undefined || value.toString().trim() === '') {
+                                      return <span className="italic text-gray-500">Não informado</span>;
+                                    }
+                                    
+                                    // Para campos select, tentar encontrar o valor nas opções
+                                    if (field.field_type === 'select' && field.field_options) {
+                                      return field.field_options.find(opt => opt === value) || value;
+                                    }
+                                    
+                                    return value;
+                                  })()}
                                 </span>
                                 {field.is_required && (
                                   <span className="ml-1 text-xs text-red-500">*</span>
@@ -1069,7 +1075,9 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                                     entry.user_role === 'admin' ? 'bg-purple-500' :
                                     entry.user_role === 'member' ? 'bg-blue-500' : 'bg-gray-500'
                                   }`}>
-                                    {entry.user_name ? entry.user_name.charAt(0).toUpperCase() : '?'}
+                                    {entry.user_name ? entry.user_name.charAt(0).toUpperCase() : 
+                                      <User className="w-3 h-3" />
+                                    }
                                   </div>
                                   <span className="text-xs font-medium text-gray-700">{entry.user_name}</span>
                                   {entry.user_email && (
