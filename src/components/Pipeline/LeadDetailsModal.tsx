@@ -1,5 +1,5 @@
 import React, { useState, useEffect, createContext, useContext, useRef, useCallback } from 'react';
-import { X, User, Mail, MessageCircle, ThumbsUp, ThumbsDown, Clock, Phone, Building, DollarSign, MapPin, Calendar, Target, Thermometer, Globe, FileText, Activity, ChevronDown, CheckCircle, AlertCircle, PlayCircle } from 'lucide-react';
+import { X, User, Mail, MessageCircle, ThumbsUp, ThumbsDown, Clock, Phone, Building, DollarSign, MapPin, Calendar, Target, Thermometer, Globe, FileText, Activity, ChevronDown, CheckCircle, AlertCircle, PlayCircle, ArrowRight, Zap } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { Lead, CustomField } from '../../types/Pipeline';
@@ -90,6 +90,11 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
 
   // ✅ PASSO 2: ESTADO LOCAL REATIVO PARA SINCRONAÇÃO (LEADDETAILSMODAL)
   const [localLeadData, setLocalLeadData] = useState(lead);
+
+  // ✅ ETAPA 2: Estados para o seletor de stages
+  const [pipelineStages, setPipelineStages] = useState<any[]>([]);
+  const [loadingStages, setLoadingStages] = useState(false);
+  const [showStageSelector, setShowStageSelector] = useState(false);
 
   // ✅ CORREÇÃO DEFINITIVA: Remover completamente o useEffect problemático
   React.useEffect(() => {
@@ -460,6 +465,97 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     }
   }, [externalActiveTab]);
 
+  // ✅ ETAPA 2: Função para carregar stages da pipeline
+  const loadPipelineStages = useCallback(async () => {
+    if (!localLeadData.pipeline_id) return;
+    
+    try {
+      setLoadingStages(true);
+      
+      const { data: stages, error } = await supabase
+        .from('pipeline_stages')
+        .select('*')
+        .eq('pipeline_id', localLeadData.pipeline_id)
+        .order('order_index', { ascending: true });
+      
+      if (error) {
+        console.error('❌ Erro ao carregar stages:', error);
+        return;
+      }
+      
+      setPipelineStages(stages || []);
+    } catch (error) {
+      console.error('❌ Erro geral ao carregar stages:', error);
+    } finally {
+      setLoadingStages(false);
+    }
+  }, [localLeadData.pipeline_id]);
+
+  // ✅ ETAPA 2: Função para mover lead para outro stage
+  const handleStageMove = useCallback(async (newStageId: string) => {
+    if (!user?.id || newStageId === localLeadData.stage_id) return;
+    
+    try {
+      const oldStageId = localLeadData.stage_id;
+      const newStage = pipelineStages.find(s => s.id === newStageId);
+      const oldStage = pipelineStages.find(s => s.id === oldStageId);
+      
+      if (!newStage) return;
+      
+      // Atualizar no banco
+      const { error } = await supabase
+        .from('pipeline_leads')
+        .update({
+          stage_id: newStageId,
+          moved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', localLeadData.id);
+      
+      if (error) {
+        console.error('❌ Erro ao mover lead:', error);
+        return;
+      }
+      
+      // Registrar no histórico
+      await registerStageMove(
+        localLeadData.id,
+        oldStageId,
+        newStageId,
+        user.email || 'Sistema'
+      );
+      
+      // Atualizar estado local
+      setLocalLeadData(prev => ({
+        ...prev,
+        stage_id: newStageId
+      }));
+      
+      // Recarregar histórico
+      await loadHistory();
+      
+      // Notificar componente pai se callback disponível
+      if (onUpdate) {
+        onUpdate(localLeadData.id, { stage_id: newStageId });
+      }
+      
+      // Fechar dropdown
+      setShowStageSelector(false);
+      
+      console.log(`✅ Lead movido de "${oldStage?.name}" para "${newStage.name}"`);
+      
+    } catch (error) {
+      console.error('❌ Erro ao mover lead:', error);
+    }
+  }, [localLeadData, pipelineStages, user, onUpdate, loadHistory]);
+
+  // ✅ ETAPA 2: Carregar stages quando modal abre
+  useEffect(() => {
+    if (isOpen && localLeadData.pipeline_id) {
+      loadPipelineStages();
+    }
+  }, [isOpen, localLeadData.pipeline_id, loadPipelineStages]);
+
   if (!isOpen) return null;
 
   return (
@@ -494,6 +590,65 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
             <h2 className="text-xl font-semibold text-gray-900">
               {getLeadData('nome_oportunidade') || getLeadData('titulo_oportunidade') || getLeadData('titulo') || 'Oportunidade sem título'}
             </h2>
+            
+            {/* ✅ ETAPA 2: Seletor de Stages ao lado do título */}
+            <div className="relative">
+              <button
+                onClick={() => setShowStageSelector(!showStageSelector)}
+                disabled={loadingStages}
+                className="flex items-center space-x-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg border border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loadingStages ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Carregando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4 text-blue-600" />
+                    <span>{pipelineStages.find(s => s.id === localLeadData.stage_id)?.name || 'Selecionar Etapa'}</span>
+                    <ChevronDown className={`w-4 h-4 transition-transform ${showStageSelector ? 'rotate-180' : ''}`} />
+                  </>
+                )}
+              </button>
+              
+              {/* Dropdown com os stages */}
+              {showStageSelector && !loadingStages && (
+                <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-[60] max-h-60 overflow-y-auto">
+                  <div className="p-2">
+                    <div className="text-xs font-medium text-gray-500 mb-2 px-2">Mover para etapa:</div>
+                    {pipelineStages.map((stage) => {
+                      const isCurrentStage = stage.id === localLeadData.stage_id;
+                      return (
+                        <button
+                          key={stage.id}
+                          onClick={() => handleStageMove(stage.id)}
+                          disabled={isCurrentStage}
+                          className={`w-full flex items-center space-x-3 px-3 py-2 text-sm rounded-md transition-colors text-left ${
+                            isCurrentStage
+                              ? 'bg-blue-50 text-blue-700 cursor-not-allowed'
+                              : 'hover:bg-gray-50 text-gray-700 hover:text-gray-900'
+                          }`}
+                        >
+                          <div 
+                            className="w-3 h-3 rounded-full flex-shrink-0" 
+                            style={{ backgroundColor: stage.color || '#3B82F6' }}
+                          ></div>
+                          <span className="flex-1">{stage.name}</span>
+                          {isCurrentStage && (
+                            <span className="text-xs font-medium text-blue-600">Atual</span>
+                          )}
+                          {!isCurrentStage && (
+                            <ArrowRight className="w-3 h-3 text-gray-400" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+            
             {isUpdatingStage && (
               <div className="flex items-center space-x-2">
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-yellow-100 text-yellow-800 border-2 border-yellow-300 animate-bounce">
