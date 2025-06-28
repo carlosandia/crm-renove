@@ -49,7 +49,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
   const loadNotifications = useCallback(async () => {
     const result = await executeWithFallback(
       async () => {
-        const response = await silentFetch('/api/notifications');
+        const response = await silentFetch('http://localhost:3001/api/notifications');
         if (!response) return [];
         
         const data = await response.json();

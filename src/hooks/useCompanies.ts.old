@@ -1,0 +1,285 @@
+import { useState, useCallback, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import { logger } from '../lib/logger';
+import { Company, CompanyAdmin } from '../types/Company';
+
+export const useCompanies = () => {
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
+  
+  const formatDateBrasilia = useCallback((dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      return 'Data inválida';
+    }
+  }, []);
+
+  const generateLastLogin = useCallback((createdAt: string, adminId: string) => {
+    const baseDate = new Date(createdAt);
+    const now = new Date();
+    
+    const seed = adminId.charCodeAt(0) + adminId.charCodeAt(adminId.length - 1);
+    const daysSinceCreation = Math.floor((now.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24));
+    const daysBack = Math.max(1, Math.floor((seed % 7) + 1));
+    
+    const lastLogin = new Date(now);
+    lastLogin.setDate(lastLogin.getDate() - Math.min(daysBack, daysSinceCreation));
+    lastLogin.setHours(8 + (seed % 12));
+    lastLogin.setMinutes(seed % 60);
+    
+    return lastLogin.toISOString();
+  }, []);
+
+  const fetchCompanies = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      logger.info('Carregando empresas...');
+
+      // Query otimizada - buscar empresas primeiro
+      const { data: companiesData, error: companiesError } = await supabase
+        .from('companies')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (companiesError) {
+        throw companiesError;
+      }
+
+      // Buscar admins em paralelo
+      const companiesWithAdmin = await Promise.all(
+        (companiesData || []).map(async (company) => {
+          try {
+            // Buscar admin da empresa
+            const { data: adminData, error: adminError } = await supabase
+              .from('users')
+              .select('id, first_name, last_name, email, created_at')
+              .eq('role', 'admin')
+              .eq('tenant_id', company.id)
+              .maybeSingle();
+
+            let admin: CompanyAdmin | undefined;
+            
+            if (adminError) {
+              console.log(`⚠️ [useCompanies] Erro ao buscar admin da empresa "${company.name}":`, adminError.message);
+            } else if (!adminData) {
+              console.log(`📝 [useCompanies] Empresa "${company.name}" não possui administrador cadastrado`);
+            } else {
+              console.log(`✅ [useCompanies] Admin encontrado para empresa "${company.name}": ${adminData.email}`);
+            }
+            
+            if (!adminError && adminData) {
+              // 🔧 CORREÇÃO: Busca de convites com fallback graceful
+              let invitationData = null;
+              
+              try {
+                console.log(`🔍 [useCompanies] Buscando convite para admin: ${adminData.email} na empresa: ${company.id}`);
+                
+                const { data, error: invitationError } = await supabase
+                  .from('admin_invitations')
+                  .select('id, status, sent_at, expires_at, resend_count, created_at')
+                  .eq('company_id', company.id)
+                  .ilike('email', adminData.email)
+                  .order('created_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+
+                if (invitationError) {
+                  if (invitationError.message.includes('relation "public.admin_invitations" does not exist')) {
+                    console.warn(`⚠️ [useCompanies] Tabela admin_invitations não existe ainda. Usando status padrão.`);
+                  } else {
+                    console.warn(`⚠️ [useCompanies] Erro ao buscar convite para ${adminData.email}:`, invitationError.message);
+                  }
+                } else {
+                  invitationData = data;
+                  if (invitationData) {
+                    console.log(`✅ [useCompanies] Convite encontrado para ${adminData.email}:`, {
+                      status: invitationData.status,
+                      sent_at: invitationData.sent_at,
+                      resend_count: invitationData.resend_count
+                    });
+                  } else {
+                    console.log(`📝 [useCompanies] Nenhum convite encontrado para ${adminData.email}`);
+                  }
+                }
+              } catch (invitationSearchError) {
+                console.warn(`⚠️ [useCompanies] Erro na busca de convite para ${adminData.email}:`, invitationSearchError);
+                // Continuar sem dados de convite
+              }
+
+              admin = {
+                id: adminData.id,
+                name: `${adminData.first_name} ${adminData.last_name}`,
+                email: adminData.email,
+                role: 'admin',
+                tenant_id: company.id,
+                is_active: true,
+                created_at: adminData.created_at,
+                // 🔧 CORREÇÃO: Mapeamento robusto com fallback
+                activation_status: invitationData?.status === 'accepted' ? 'activated' : 
+                                 invitationData?.status === 'sent' ? 'sent' :
+                                 invitationData?.status === 'expired' ? 'expired' :
+                                 invitationData?.status || 'pending',
+                invitation_id: invitationData?.id,
+                invitation_sent_at: invitationData?.sent_at,
+                invitation_expires_at: invitationData?.expires_at,
+                resend_count: invitationData?.resend_count || 0
+              };
+            }
+
+            return {
+              ...company,
+              admin
+            } as Company;
+          } catch (error) {
+            logger.error('Erro ao carregar admin da empresa:', error);
+            return company as Company;
+          }
+        })
+      );
+
+      setCompanies(companiesWithAdmin);
+      logger.success(`Empresas carregadas: ${companiesWithAdmin.length}`);
+
+    } catch (error) {
+      logger.error('Erro ao carregar empresas:', error);
+      setError(error instanceof Error ? error.message : 'Erro desconhecido');
+      setCompanies([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [formatDateBrasilia, generateLastLogin]);
+
+  const toggleCompanyStatus = useCallback(async (company: Company) => {
+    const novoStatus = !company.is_active;
+    const acao = novoStatus ? 'ativar' : 'desativar';
+    
+    try {
+      logger.info(`${acao.charAt(0).toUpperCase() + acao.slice(1)}ando empresa:`, company.name);
+
+      const { error } = await supabase
+        .from('companies')
+        .update({
+          is_active: novoStatus,
+          segment: `${company.industry} | ${company.city}/${company.state} | Leads:${company.expected_leads_monthly} Vendas:${company.expected_sales_monthly} Seg:${company.expected_followers_monthly} | ATIVO:${novoStatus}`
+        })
+        .eq('id', company.id);
+
+      if (error) {
+        throw new Error(`Erro do banco de dados: ${error.message}`);
+      }
+
+      await fetchCompanies();
+      logger.success(`Empresa "${company.name}" ${acao === 'ativar' ? 'ativada' : 'desativada'} com sucesso`);
+      
+      return { success: true, message: `✅ Empresa "${company.name}" foi ${acao === 'ativar' ? 'ativada' : 'desativada'} com sucesso!` };
+      
+    } catch (error) {
+      logger.error(`Erro ao ${acao} empresa:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      return { success: false, message: `❌ Erro ao ${acao} empresa: ${errorMessage}` };
+    }
+  }, [fetchCompanies]);
+
+  const resendActivationEmail = useCallback(async (company: Company) => {
+    if (!company.admin) {
+      return { success: false, message: 'Admin não encontrado' };
+    }
+
+    try {
+      console.log(`📧 [useCompanies] Reenviando email para: ${company.admin.email}`);
+      
+      const response = await fetch('/api/email-test/send-admin-invitation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adminEmail: company.admin.email,
+          adminName: company.admin.name,
+          companyName: company.name,
+          companyId: company.id
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log(`✅ [useCompanies] Email reenviado com sucesso:`, result.messageId);
+        await fetchCompanies(); // Atualizar dados
+        return { 
+          success: true, 
+          message: `✅ Email de ativação reenviado para ${company.admin.email}` 
+        };
+      } else {
+        console.error(`❌ [useCompanies] Erro ao reenviar email:`, result.error);
+        return { 
+          success: false, 
+          message: `❌ Erro ao reenviar email: ${result.error}` 
+        };
+      }
+    } catch (error) {
+      console.error(`❌ [useCompanies] Erro de conexão:`, error);
+      return { 
+        success: false, 
+        message: `❌ Erro de conexão: ${error instanceof Error ? error.message : 'Erro desconhecido'}` 
+      };
+    }
+  }, [fetchCompanies]);
+
+  useEffect(() => {
+    fetchCompanies();
+    
+    // Listener para refresh automático após ativação
+    const handleAdminActivated = (event: CustomEvent) => {
+      console.log('🔄 [useCompanies] Admin ativado detectado, atualizando lista:', event.detail);
+      setTimeout(() => {
+        fetchCompanies();
+      }, 1000);
+    };
+
+    window.addEventListener('admin-activated', handleAdminActivated as EventListener);
+    
+    return () => {
+      window.removeEventListener('admin-activated', handleAdminActivated as EventListener);
+    };
+  }, [fetchCompanies]);
+
+  const startPolling = useCallback(() => {
+    if (isPolling) return;
+    
+    setIsPolling(true);
+    const interval = setInterval(() => {
+      console.log('🔄 [useCompanies] Polling - atualizando dados...');
+      fetchCompanies();
+    }, 30000);
+    
+    setTimeout(() => {
+      clearInterval(interval);
+      setIsPolling(false);
+      console.log('⏹️ [useCompanies] Polling parado');
+    }, 5 * 60 * 1000);
+    
+    return () => clearInterval(interval);
+  }, [fetchCompanies, isPolling]);
+
+  return {
+    companies,
+    loading,
+    error,
+    fetchCompanies,
+    toggleCompanyStatus,
+    resendActivationEmail,
+    refetch: fetchCompanies,
+    startPolling
+  };
+}; 

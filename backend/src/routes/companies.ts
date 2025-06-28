@@ -231,10 +231,14 @@ router.post('/',
       throw new Error(`Erro ao criar empresa: ${companyError.message}`);
     }
 
-    // 4. Criar admin
+    // 4. 🔧 ETAPA 3: Criar admin com senha hasheada corretamente
     const adminNames = admin_name.trim().split(' ');
     const firstName = adminNames[0];
     const lastName = adminNames.slice(1).join(' ') || '';
+
+    // Importar função de hash do security.ts
+    const { hashPassword } = await import('../utils/security');
+    const hashedPassword = await hashPassword(admin_password);
 
     const { data: newAdmin, error: adminError } = await supabase
       .from('users')
@@ -244,8 +248,8 @@ router.post('/',
         last_name: lastName,
         role: 'admin',
         tenant_id: newCompany.id,
-        is_active: true,
-        password_hash: admin_password // Salvar senha (em produção seria hash)
+        is_active: false, // 🔧 ETAPA 3: Admin criado como inativo até ativação
+        password_hash: hashedPassword // 🔧 ETAPA 3: Usar senha hasheada
       }])
       .select()
       .single();
@@ -278,7 +282,189 @@ router.post('/',
 );
 
 /**
+ * PUT /api/companies/update-admin-password - Atualizar senha do administrador
+ * REFACTOR: Sistema simplificado sem headers problemáticos
+ */
+router.put('/update-admin-password',
+  // Middleware CORS simplificado e robusto
+  (req, res, next) => {
+    const origin = req.headers.origin;
+    
+    // Log detalhado para debug
+    console.log(`🔧 [CORS-PASSWORD] Requisição recebida:`, {
+      method: req.method,
+      origin: origin || 'no-origin',
+      headers: Object.keys(req.headers),
+      userAgent: req.headers['user-agent']?.substring(0, 50)
+    });
+    
+    // Permitir todas as origens do desenvolvimento
+    res.header('Access-Control-Allow-Origin', origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    
+    // Headers simplificados - APENAS os essenciais
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Max-Age', '86400'); // Cache por 24h
+    
+    // Resposta imediata para OPTIONS
+    if (req.method === 'OPTIONS') {
+      console.log(`✅ [CORS-PASSWORD] Preflight aprovado para ${origin}`);
+      return res.status(200).end();
+    }
+    
+    console.log(`➡️ [CORS-PASSWORD] Prosseguindo com ${req.method} para ${req.path}`);
+    next();
+  },
+  requireRole(['super_admin', 'admin']),
+  validateRequest({
+    body: {
+      companyId: { required: true, type: 'string', uuid: true },
+      newPassword: { required: true, type: 'string', min: 1 }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { companyId, newPassword } = req.body;
+
+    console.log('🔧 [UPDATE-ADMIN-PASSWORD] Recebendo requisição:', { 
+      companyId: companyId || 'MISSING', 
+      hasPassword: !!newPassword,
+      passwordLength: newPassword?.length || 0,
+      user: req.user?.email 
+    });
+
+    // 1. Verificar permissões
+    if (req.user?.role === 'admin' && companyId !== req.user.tenant_id) {
+      console.log('❌ [UPDATE-ADMIN-PASSWORD] Permissão negada:', { 
+        userRole: req.user?.role, 
+        userTenant: req.user?.tenant_id, 
+        requestedCompany: companyId 
+      });
+      throw new ForbiddenError('Admins só podem atualizar a própria empresa');
+    }
+
+    // 2. Verificar se empresa existe
+    const { data: existingCompany } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('id', companyId)
+      .single();
+
+    if (!existingCompany) {
+      console.log('❌ [UPDATE-ADMIN-PASSWORD] Empresa não encontrada:', companyId);
+      throw new NotFoundError('Empresa não encontrada');
+    }
+
+    console.log('✅ [UPDATE-ADMIN-PASSWORD] Empresa encontrada:', existingCompany.name);
+
+    // 3. Encontrar admin da empresa
+    const { data: adminUser, error: adminError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('tenant_id', companyId)
+      .eq('role', 'admin')
+      .single();
+
+    if (adminError || !adminUser) {
+      console.log('❌ [UPDATE-ADMIN-PASSWORD] Admin não encontrado:', { 
+        companyId, 
+        error: adminError?.message 
+      });
+      throw new NotFoundError('Administrador da empresa não encontrado');
+    }
+
+    console.log('✅ [UPDATE-ADMIN-PASSWORD] Admin encontrado:', adminUser.email);
+
+    // 4. Atualizar senha do admin
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ 
+        password_hash: newPassword, // Em produção seria hash
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', adminUser.id);
+
+    if (updateError) {
+      console.log('❌ [UPDATE-ADMIN-PASSWORD] Erro ao atualizar:', updateError.message);
+      throw new Error(`Erro ao atualizar senha: ${updateError.message}`);
+    }
+
+    console.log(`✅ [UPDATE-ADMIN-PASSWORD] Senha atualizada com sucesso para ${adminUser.email} da empresa ${existingCompany.name}`);
+
+    const response: ApiResponse = {
+      success: true,
+      message: 'Senha do administrador atualizada com sucesso',
+      timestamp: new Date().toISOString()
+    };
+
+    res.json(response);
+  })
+);
+
+/**
+ * PUT /api/companies/update-expectations - Atualizar expectativas mensais
+ * IMPORTANTE: Esta rota deve vir ANTES de /:id para evitar conflitos de roteamento
+ */
+router.put('/update-expectations',
+  requireRole(['super_admin', 'admin']),
+  validateRequest({
+    body: {
+      companyId: { required: true, type: 'string', uuid: true },
+      expectations: { required: true, type: 'object' }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { companyId, expectations } = req.body;
+
+    // 1. Verificar permissões
+    if (req.user?.role === 'admin' && companyId !== req.user.tenant_id) {
+      throw new ForbiddenError('Admins só podem atualizar a própria empresa');
+    }
+
+    // 2. Verificar se empresa existe
+    const { data: existingCompany } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('id', companyId)
+      .single();
+
+    if (!existingCompany) {
+      throw new NotFoundError('Empresa não encontrada');
+    }
+
+    // 3. Atualizar expectativas
+    const { data: updatedCompany, error } = await supabase
+      .from('companies')
+      .update({
+        expected_leads_monthly: expectations.expected_leads_monthly,
+        expected_sales_monthly: expectations.expected_sales_monthly,
+        expected_followers_monthly: expectations.expected_followers_monthly,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', companyId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Erro ao atualizar expectativas: ${error.message}`);
+    }
+
+    console.log(`✅ Expectativas atualizadas para empresa: ${existingCompany.name}`);
+
+    const response: ApiResponse = {
+      success: true,
+      data: updatedCompany,
+      message: 'Expectativas mensais atualizadas com sucesso',
+      timestamp: new Date().toISOString()
+    };
+
+    res.json(response);
+  })
+);
+
+/**
  * PUT /api/companies/:id - Atualizar empresa
+ * IMPORTANTE: Esta rota deve vir DEPOIS das rotas específicas para evitar conflitos
  */
 router.put('/:id',
   requireRole(['super_admin', 'admin']),

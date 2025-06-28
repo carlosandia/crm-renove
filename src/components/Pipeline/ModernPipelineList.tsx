@@ -420,12 +420,44 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
                   : 'Crie sua primeira pipeline para começar a organizar seus leads'
                 }
               </p>
-              {!searchTerm && (
-                <ShimmerButton onClick={onCreatePipeline} className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  Criar Pipeline
-                </ShimmerButton>
-              )}
+              
+              {/* ✅ ETAPA 4.1: Melhorar fallback com debug info e retry */}
+              <div className="space-y-4">
+                {!searchTerm && (
+                  <ShimmerButton onClick={onCreatePipeline} className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Criar Pipeline
+                  </ShimmerButton>
+                )}
+                
+                {/* Debug info para teste3@teste3.com */}
+                {window.location.hostname === 'localhost' && (
+                  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+                    <p className="font-medium text-blue-800 mb-2">🔍 Debug Info:</p>
+                    <div className="space-y-1 text-blue-700">
+                      <p>• Total pipelines recebidas: {pipelines.length}</p>
+                      <p>• Pipelines após filtro: {filteredPipelines.length}</p>
+                      <p>• Termo de busca: "{searchTerm}"</p>
+                      <p>• Filtro selecionado: {selectedFilter}</p>
+                      <p>• Status loading: {loading ? 'Sim' : 'Não'}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Botão de retry se não há pipelines */}
+                {pipelines.length === 0 && !loading && (
+                  <Button 
+                    variant="outline" 
+                    onClick={() => window.location.reload()}
+                    className="gap-2"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Tentar Novamente
+                  </Button>
+                )}
+              </div>
             </div>
           </Card>
         </BlurFade>

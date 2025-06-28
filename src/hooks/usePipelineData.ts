@@ -5,8 +5,43 @@ import { Pipeline, Lead, PipelineStage, CustomField } from '../types/Pipeline';
 import { logger } from '../utils/logger';
 
 // ============================================
-// TIPOS E INTERFACES
+// TIPOS E INTERFACES ESPECÍFICAS
 // ============================================
+
+export interface PipelineMember {
+  id: string;
+  pipeline_id: string;
+  member_id: string;
+  role: 'owner' | 'member' | 'viewer';
+  created_at: string;
+  member?: {
+    id: string;
+    email: string;
+    first_name?: string;
+    last_name?: string;
+    role: string;
+  };
+}
+
+export interface UserDBData {
+  id: string;
+  email: string;
+  role: string;
+  tenant_id: string;
+  first_name?: string;
+  last_name?: string;
+  is_active?: boolean;
+}
+
+export interface LeadData {
+  [key: string]: string | number | boolean | null | undefined;
+}
+
+export interface MemberIssues {
+  memberNotFound: boolean;
+  noActiveLinkedPipelines: boolean;
+  pipelineAccessError?: string;
+}
 
 interface UsePipelineDataReturn {
   pipelines: Pipeline[];
@@ -16,9 +51,9 @@ interface UsePipelineDataReturn {
   error: string | null;
   setSelectedPipeline: (pipeline: Pipeline | null) => void;
   setLeads: React.Dispatch<React.SetStateAction<Lead[]>>;
-  handleCreateLead: (stageId: string, leadData: any) => Promise<Lead | null>;
+  handleCreateLead: (stageId: string, leadData: LeadData) => Promise<Lead | null>;
   updateLeadStage: (leadId: string, stageId: string) => Promise<void>;
-  updateLeadData: (leadId: string, data: any) => Promise<void>;
+  updateLeadData: (leadId: string, data: LeadData) => Promise<void>;
   refreshPipelines: () => Promise<void>;
   refreshLeads: () => Promise<void>;
   getUserPipelines: () => Pipeline[];
@@ -26,7 +61,7 @@ interface UsePipelineDataReturn {
   getMemberLinkedPipelines: () => Pipeline[];
   linkMemberToPipeline: (memberId: string, pipelineId: string) => Promise<boolean>;
   unlinkMemberFromPipeline: (memberId: string, pipelineId: string) => Promise<boolean>;
-  getPipelineMembers: (pipelineId: string) => Promise<any[]>;
+  getPipelineMembers: (pipelineId: string) => Promise<PipelineMember[]>;
 }
 
 // ============================================
@@ -79,19 +114,41 @@ export const usePipelineData = (): UsePipelineDataReturn => {
   // LOGGING UTILITIES - USANDO SISTEMA CENTRALIZADO
   // ============================================
 
-  const log = useCallback((message: string, ...args: any[]) => {
-    logger.pipeline(message, 'usePipelineData', ...args);
-  }, []);
+  const log = useCallback((message: string, ...args: unknown[]) => {
+    // ✅ ETAPA 1A: Ativar logs para admin específico teste3@teste3.com para debug
+    const forceLogsForTestUser = user?.email === 'teste3@teste3.com';
+    
+    if (import.meta.env.VITE_LOG_LEVEL === 'debug' || forceLogsForTestUser) {
+      if (forceLogsForTestUser) {
+        // Log direto no console para visibilidade imediata
+        console.log(`🔍 [usePipelineData] ${message}`, ...args);
+      }
+      logger.pipeline(message, 'usePipelineData', ...args);
+    }
+  }, [user?.email]);
 
-  const logError = useCallback((message: string, error?: any) => {
-    logger.error(message, 'usePipelineData', error);
+  const logError = useCallback((message: string, error?: unknown) => {
+    // ✅ CORREÇÃO: Filtrar erros de conectividade comuns para não poluir o console
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const isNetworkError = errorMessage?.includes('Failed to fetch') || 
+                          errorMessage?.includes('NetworkError') ||
+                          errorMessage?.includes('TypeError') ||
+                          (error as any)?.code === 'network';
+    
+    if (isNetworkError) {
+      if (import.meta.env.VITE_LOG_LEVEL === 'debug') {
+        logger.warn(message + ' (Erro de conectividade)', 'usePipelineData', error);
+      }
+    } else {
+      logger.error(message, 'usePipelineData', error);
+    }
   }, []);
 
   // ============================================
   // ETAPA 1: VERIFICAÇÃO E CORREÇÃO DO USUÁRIO MEMBER
   // ============================================
 
-  const verifyAndFixMemberUser = useCallback(async (user: any): Promise<any> => {
+  const verifyAndFixMemberUser = useCallback(async (user: UserDBData): Promise<UserDBData> => {
     log('🔍 ETAPA 1: Verificando e corrigindo usuário member...');
     
     try {
@@ -114,8 +171,8 @@ export const usePipelineData = (): UsePipelineDataReturn => {
             email: user.email,
             role: user.role || 'member',
             tenant_id: tenantPadrao,
-            first_name: user.first_name || user.user_metadata?.first_name,
-            last_name: user.last_name || user.user_metadata?.last_name,
+            first_name: user.first_name,
+            last_name: user.last_name,
             is_active: true
           }])
           .select()
@@ -142,16 +199,16 @@ export const usePipelineData = (): UsePipelineDataReturn => {
             return {
               ...user,
               tenant_id: tenantPadrao,
-              id: user.id || user.sub
+              id: user.id
             };
           }
           
           log('✅ Usuário atualizado:', updatedUser);
-          return updatedUser;
+          return updatedUser as UserDBData;
         }
         
         log('✅ Usuário criado:', newUser);
-        return newUser;
+        return newUser as UserDBData;
       }
       
       // 2. Verificar se o tenant_id está correto
@@ -172,11 +229,11 @@ export const usePipelineData = (): UsePipelineDataReturn => {
           return {
             ...userInDB,
             tenant_id: tenantPadrao
-          };
+          } as UserDBData;
         }
         
         log('✅ Tenant_id corrigido:', correctedUser);
-        return correctedUser;
+        return correctedUser as UserDBData;
       }
       
       log('✅ Usuário verificado e está correto:', userInDB);
@@ -189,9 +246,9 @@ export const usePipelineData = (): UsePipelineDataReturn => {
       return {
         ...user,
         tenant_id: tenantPadrao,
-        id: user.id || user.sub,
+        id: user.id,
         role: user.role || 'member'
-      };
+      } as UserDBData;
     }
   }, [log]);
 
@@ -429,24 +486,33 @@ export const usePipelineData = (): UsePipelineDataReturn => {
             log('👑 SUPER_ADMIN - Carregando todas as pipelines do tenant:', realUser.tenant_id);
             basicQuery.eq('tenant_id', realUser.tenant_id);
           } else if (realUser.role === 'admin') {
-            // Admin comum vê apenas as que ELE criou
+            // ✅ ETAPA 3A: Lógica unificada para TODOS os admins (isolamento total)
             log('🔐 ADMIN - Carregando pipelines criadas por:', { 
               id: realUser.id, 
               email: realUser.email,
               originalEmail: user.email // Email original do contexto
             });
             
-            // CORREÇÃO ESPECÍFICA: Se é o admin teste3@teste3.com, buscar diretamente
-            if (user.email === 'teste3@teste3.com') {
-              log('🎯 ADMIN ESPECÍFICO: Buscando pipelines de teste3@teste3.com');
-              basicQuery.eq('created_by', 'teste3@teste3.com');
-            } else {
-              // Para outros admins, usar busca por ID ou email
-              basicQuery.or(`created_by.eq.${realUser.id},created_by.eq.${realUser.email}`);
-            }
+            // ✅ SOLUÇÃO UNIFICADA: Usar OR para todos os admins (ID ou email)
+            // Isso garante compatibilidade tanto para pipelines criadas com ID quanto com email
+            const adminIdentifiers = [realUser.id, realUser.email, user.email].filter(Boolean);
+            const orClause = adminIdentifiers.map(id => `created_by.eq.${id}`).join(',');
+            basicQuery.or(orClause);
+            
+            log('🎯 ETAPA 3A: Busca unificada para admin com identificadores:', adminIdentifiers);
           }
 
-          const { data: basicPipelines, error: basicError } = await basicQuery;
+          // ✅ ETAPA 5.2: Timeout e error recovery
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Timeout de 10s na busca de pipelines')), 10000);
+          });
+          
+          const queryPromise = basicQuery;
+          
+          const { data: basicPipelines, error: basicError } = await Promise.race([
+            queryPromise,
+            timeoutPromise
+          ]) as any;
 
           log('🔍 ETAPA 1 - Resultado da busca básica:', { 
             basicPipelines: basicPipelines?.length || 0, 
@@ -457,10 +523,27 @@ export const usePipelineData = (): UsePipelineDataReturn => {
           });
 
           if (basicError) {
-            throw basicError;
+            // ✅ ETAPA 5.2: Retry automático em caso de erro
+            log('⚠️ ETAPA 5.2: Erro na primeira tentativa, tentando retry...');
+            
+            try {
+              await new Promise(resolve => setTimeout(resolve, 1000)); // Aguardar 1s
+              
+              const { data: retryPipelines, error: retryError } = await basicQuery;
+              
+              if (retryError) {
+                throw retryError;
+              }
+              
+              log('✅ ETAPA 5.2: Retry bem-sucedido!');
+              pipelinesData = retryPipelines || [];
+            } catch (retryError) {
+              log('❌ ETAPA 5.2: Retry também falhou, propagando erro original');
+              throw basicError;
+            }
+          } else {
+            pipelinesData = basicPipelines || [];
           }
-
-          pipelinesData = basicPipelines || [];
           
           // ETAPA 2: Carregar stages e campos para cada pipeline
           if (pipelinesData.length > 0) {
@@ -1007,7 +1090,11 @@ export const usePipelineData = (): UsePipelineDataReturn => {
         }
         
       } else {
+        // ✅ ETAPA 3B: Garantir setPipelines sempre é executado
         log('ℹ️ Nenhuma pipeline encontrada');
+        if (user?.email === 'teste3@teste3.com') {
+          log('🎯 ETAPA 3B: Admin teste3@teste3.com - Forçando setPipelines([]) para garantir estado consistente');
+        }
         setPipelines([]);
         setSelectedPipeline(null);
       }
@@ -1015,9 +1102,17 @@ export const usePipelineData = (): UsePipelineDataReturn => {
     } catch (error: any) {
       logError('❌ Erro geral na busca de pipelines:', error);
       setError(error.message || 'Erro ao carregar pipelines');
+      // ✅ ETAPA 3B: Garantir setPipelines sempre executado em caso de erro
+      if (user?.email === 'teste3@teste3.com') {
+        log('🎯 ETAPA 3B: Admin teste3@teste3.com - Forçando setPipelines([]) em caso de erro');
+      }
       setPipelines([]);
       setSelectedPipeline(null);
     } finally {
+      // ✅ ETAPA 1C: Garantir que loading sempre seja desabilitado, com log específico para admin de teste
+      if (user?.email === 'teste3@teste3.com') {
+        log('✅ ETAPA 1C: Finalizando loading para admin teste3@teste3.com');
+      }
       setLoading(false);
     }
   }, [user?.id, user?.email, user?.role, user?.tenant_id]); // OTIMIZADO: Apenas campos específicos
@@ -1070,31 +1165,52 @@ export const usePipelineData = (): UsePipelineDataReturn => {
 
         log('✅ Pipeline_leads encontrados:', pipelineLeadsData?.length || 0);
 
-        // ETAPA 2: Para cada pipeline_lead, buscar leads_master se existir lead_master_id
+        // ✅ ETAPA 4.2: Otimizar com Promise.all() para operações paralelas
         leadsData = [];
         
-        for (const pipelineLead of (pipelineLeadsData || [])) {
-          let leadMaster = null;
-          
-          // Se tem lead_master_id, buscar dados do leads_master
-          if (pipelineLead.lead_master_id) {
-            try {
-              const { data: masterData, error: masterError } = await supabase
-                .from('leads_master')
-                .select('*')
-                .eq('id', pipelineLead.lead_master_id)
-                .single();
-                
-              if (!masterError && masterData) {
-                leadMaster = masterData;
-                log('✅ Lead_master encontrado para:', pipelineLead.lead_master_id);
-              } else {
-                log('⚠️ Lead_master não encontrado para:', pipelineLead.lead_master_id, masterError?.message);
-              }
-            } catch (masterError) {
-              log('⚠️ Erro ao buscar lead_master:', pipelineLead.lead_master_id, masterError);
+        // Identificar leads_master únicos para buscar em paralelo
+        const uniqueLeadMasterIds = [...new Set(
+          (pipelineLeadsData || [])
+            .filter(pl => pl.lead_master_id)
+            .map(pl => pl.lead_master_id)
+        )];
+        
+        log('🚀 ETAPA 4.2: Buscando', uniqueLeadMasterIds.length, 'leads_master em paralelo');
+        
+        // Buscar todos os leads_master em paralelo
+        const leadMasterPromises = uniqueLeadMasterIds.map(async (leadMasterId) => {
+          try {
+            const { data: masterData, error: masterError } = await supabase
+              .from('leads_master')
+              .select('*')
+              .eq('id', leadMasterId)
+              .single();
+              
+            if (!masterError && masterData) {
+              return { id: leadMasterId, data: masterData };
+            } else {
+              log('⚠️ Lead_master não encontrado para:', leadMasterId, masterError?.message);
+              return { id: leadMasterId, data: null };
             }
+          } catch (masterError) {
+            log('⚠️ Erro ao buscar lead_master:', leadMasterId, masterError);
+            return { id: leadMasterId, data: null };
           }
+        });
+        
+        // Aguardar todas as buscas em paralelo
+        const leadMasterResults = await Promise.all(leadMasterPromises);
+        
+        // Criar mapa para acesso rápido
+        const leadMasterMap = new Map(
+          leadMasterResults.map(result => [result.id, result.data])
+        );
+        
+        log('✅ ETAPA 4.2: Leads_master carregados em paralelo:', leadMasterMap.size);
+        
+        // Processar pipeline_leads com dados dos leads_master
+        for (const pipelineLead of (pipelineLeadsData || [])) {
+          const leadMaster = pipelineLead.lead_master_id ? leadMasterMap.get(pipelineLead.lead_master_id) : null;
           
           // Criar entrada com dados disponíveis
           const leadEntry = {
@@ -1205,7 +1321,17 @@ export const usePipelineData = (): UsePipelineDataReturn => {
         }
 
       } catch (queryError: any) {
-        log('❌ Erro na busca de fonte única:', queryError.message);
+        // ✅ CORREÇÃO: Tratamento melhorado de erros de conectividade
+        const isNetworkError = queryError?.message?.includes('Failed to fetch') || 
+                              queryError?.message?.includes('NetworkError') ||
+                              queryError?.message?.includes('TypeError');
+        
+        if (isNetworkError) {
+          log('⚠️ Erro de conectividade na busca de leads - usando fallback');
+        } else {
+          log('❌ Erro na busca de fonte única:', queryError.message);
+        }
+        
         logError('❌ Erro ao buscar leads da fonte única:', queryError);
         
         // ✅ FALLBACK: Retorna lista vazia em caso de erro
@@ -1243,7 +1369,17 @@ export const usePipelineData = (): UsePipelineDataReturn => {
       }
 
     } catch (error: any) {
-      logError('❌ Erro crítico ao carregar leads:', error);
+      // ✅ CORREÇÃO: Tratamento melhorado de erros críticos
+      const isNetworkError = error?.message?.includes('Failed to fetch') || 
+                            error?.message?.includes('NetworkError') ||
+                            error?.message?.includes('TypeError');
+      
+      if (isNetworkError) {
+        log('⚠️ Erro de conectividade crítico - sistema em modo offline');
+      } else {
+        logError('❌ Erro crítico ao carregar leads:', error);
+      }
+      
       log('🔄 Sistema funcionando em modo de recuperação');
       setLeads([]);
     }
@@ -1565,28 +1701,33 @@ export const usePipelineData = (): UsePipelineDataReturn => {
       return [];
     }
     
-    // INTEGRAÇÃO EMPRESA: Admin vê TODAS as pipelines da empresa, não apenas as que criou
+    // ISOLAMENTO ESTRATÉGICO: Admin vê apenas pipelines que ELE criou
     if (user.role === 'super_admin') {
       // Super admin vê TODAS as pipelines do tenant
       log('👑 getAdminCreatedPipelines: Super admin - retornando todas as pipelines do tenant:', pipelines.length);
       return pipelines;
     } else if (user.role === 'admin') {
-      // MUDANÇA: Admin agora vê TODAS as pipelines da empresa (tenant_id)
-      // Isso permite integração total entre admin e members da mesma empresa
-      const companyPipelines = pipelines.filter(p => p.tenant_id === user.tenant_id);
-      
-      log('🏢 getAdminCreatedPipelines: Admin - retornando TODAS as pipelines da empresa:', {
-        total: pipelines.length,
-        companyPipelines: companyPipelines.length,
-        adminTenantId: user.tenant_id,
-        adminEmail: user.email,
-        found: companyPipelines.map(p => ({ name: p.name, created_by: p.created_by, tenant_id: p.tenant_id }))
+      // CORREÇÃO: Admin vê apenas as pipelines que ELE criou (isolamento total)
+      // Alinhamento com a lógica do fetchPipelines para consistência
+      const adminPipelines = pipelines.filter(p => {
+        // Verificar por email (prioridade) ou por ID
+        const createdByAdmin = p.created_by === user.email || p.created_by === user.id;
+        return createdByAdmin;
       });
-      return companyPipelines;
+      
+      log('🔐 getAdminCreatedPipelines: Admin - retornando apenas pipelines CRIADAS pelo admin:', {
+        total: pipelines.length,
+        adminPipelines: adminPipelines.length,
+        adminId: user.id,
+        adminEmail: user.email,
+        found: adminPipelines.map(p => ({ name: p.name, created_by: p.created_by, tenant_id: p.tenant_id })),
+        allPipelinesCreatedBy: pipelines.map(p => ({ name: p.name, created_by: p.created_by }))
+      });
+      return adminPipelines;
     }
     
     return [];
-  }, [pipelines.length, user?.role, user?.tenant_id, user?.email]); // OTIMIZADO: Campos específicos
+  }, [pipelines.length, user?.role, user?.id, user?.email]); // OTIMIZADO: Campos específicos
 
   const getMemberLinkedPipelines = useCallback((): Pipeline[] => {
     if (user?.role !== 'member') {
@@ -1660,7 +1801,16 @@ export const usePipelineData = (): UsePipelineDataReturn => {
       log('✅ Member vinculado com sucesso');
       return true;
     } catch (err: any) {
-      logError('❌ Erro ao vincular member:', err);
+      // ✅ CORREÇÃO: Tratamento melhorado de erros de vinculação
+      const isNetworkError = err?.message?.includes('Failed to fetch') || 
+                            err?.message?.includes('NetworkError') ||
+                            err?.message?.includes('TypeError');
+      
+      if (isNetworkError) {
+        log('⚠️ Erro de conectividade ao vincular member - tente novamente');
+      } else {
+        logError('❌ Erro ao vincular member:', err);
+      }
       return false;
     }
   }, [user?.role, refreshPipelines]); // OTIMIZADO: Apenas role necessário
@@ -1687,12 +1837,21 @@ export const usePipelineData = (): UsePipelineDataReturn => {
       log('✅ Member desvinculado com sucesso');
       return true;
     } catch (err: any) {
-      logError('❌ Erro ao desvincular member:', err);
+      // ✅ CORREÇÃO: Tratamento melhorado de erros de desvinculação
+      const isNetworkError = err?.message?.includes('Failed to fetch') || 
+                            err?.message?.includes('NetworkError') ||
+                            err?.message?.includes('TypeError');
+      
+      if (isNetworkError) {
+        log('⚠️ Erro de conectividade ao desvincular member - tente novamente');
+      } else {
+        logError('❌ Erro ao desvincular member:', err);
+      }
       return false;
     }
   }, [user?.role, refreshPipelines]); // OTIMIZADO: Apenas role necessário
 
-  const getPipelineMembers = useCallback(async (pipelineId: string): Promise<any[]> => {
+  const getPipelineMembers = useCallback(async (pipelineId: string): Promise<PipelineMember[]> => {
     log('👥 Buscando members da pipeline:', pipelineId);
 
     try {
@@ -1700,17 +1859,45 @@ export const usePipelineData = (): UsePipelineDataReturn => {
         .from('pipeline_members')
         .select(`
           id,
+          pipeline_id,
           member_id,
-          assigned_at,
+          role,
+          created_at,
           users:member_id(id, first_name, last_name, email, is_active, role)
         `)
         .eq('pipeline_id', pipelineId);
 
       if (error) throw error;
-      log('✅ Members encontrados:', (data || []).length);
-      return data || [];
+      
+      // Mapear dados para interface correta
+      const mappedData: PipelineMember[] = (data || []).map((item: any) => ({
+        id: item.id,
+        pipeline_id: item.pipeline_id,
+        member_id: item.member_id,
+        role: item.role || 'member',
+        created_at: item.created_at,
+        member: Array.isArray(item.users) && item.users.length > 0 ? {
+          id: item.users[0].id,
+          email: item.users[0].email,
+          first_name: item.users[0].first_name,
+          last_name: item.users[0].last_name,
+          role: item.users[0].role
+        } : undefined
+      }));
+      
+      log('✅ Members encontrados:', mappedData.length);
+      return mappedData;
     } catch (err: any) {
-      logError('❌ Erro ao buscar members:', err);
+      // ✅ CORREÇÃO: Tratamento melhorado de erros de busca de members
+      const isNetworkError = err?.message?.includes('Failed to fetch') || 
+                            err?.message?.includes('NetworkError') ||
+                            err?.message?.includes('TypeError');
+      
+      if (isNetworkError) {
+        log('⚠️ Erro de conectividade ao buscar members - modo offline');
+      } else {
+        logError('❌ Erro ao buscar members:', err);
+      }
       return [];
     }
   }, []);
@@ -1719,19 +1906,28 @@ export const usePipelineData = (): UsePipelineDataReturn => {
   // EFFECTS
   // ============================================
 
-  // Carregar pipelines quando usuário muda (OTIMIZADO: apenas ID)
-  useEffect(() => {
+  // ✅ ETAPA 2A: Criar versões estáveis para evitar loops infinitos
+  const fetchPipelinesStable = useCallback(() => {
     if (user?.id) {
       fetchPipelines();
     }
-  }, [user?.id, fetchPipelines]);
+  }, [user?.id]); // DEPENDÊNCIA FIXA: apenas user.id
 
-  // Carregar leads quando pipeline selecionada muda (OTIMIZADO: apenas ID)
-  useEffect(() => {
+  const fetchLeadsStable = useCallback(() => {
     if (selectedPipeline?.id) {
       fetchLeads();
     }
-  }, [selectedPipeline?.id, fetchLeads]);
+  }, [selectedPipeline?.id]); // DEPENDÊNCIA FIXA: apenas selectedPipeline.id
+
+  // Carregar pipelines quando usuário muda (OTIMIZADO: sem loops)
+  useEffect(() => {
+    fetchPipelinesStable();
+  }, [fetchPipelinesStable]);
+
+  // Carregar leads quando pipeline selecionada muda (OTIMIZADO: sem loops)
+  useEffect(() => {
+    fetchLeadsStable();
+  }, [fetchLeadsStable]);
 
   // Log de debug do estado atual (OTIMIZADO: apenas counts)
   useEffect(() => {

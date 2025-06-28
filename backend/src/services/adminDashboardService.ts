@@ -1,5 +1,5 @@
 import { supabase } from '../config/supabase';
-import { cacheService } from './cacheService';
+import { getCache } from './cacheService';
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -165,7 +165,7 @@ class AdminDashboardService {
   ): Promise<AdminDashboardMetrics> {
     const cacheKey = `${this.CACHE_KEYS.DASHBOARD(tenantId)}:${timeRange}`;
     
-    const cached = await cacheService.get<AdminDashboardMetrics>(cacheKey);
+    const cached = await getCache().get<AdminDashboardMetrics>(cacheKey);
     if (cached) return cached;
 
     try {
@@ -195,7 +195,7 @@ class AdminDashboardService {
         forecast: forecastData,
       };
 
-      await cacheService.set(cacheKey, metrics, this.CACHE_TTL.DASHBOARD);
+      await getCache().set(cacheKey, metrics, this.CACHE_TTL.DASHBOARD);
       return metrics;
 
     } catch (error) {
@@ -356,8 +356,8 @@ class AdminDashboardService {
   async getTeamPerformance(tenantId: string, period: string = '30d') {
     const cacheKey = this.CACHE_KEYS.TEAM_PERFORMANCE(tenantId, period);
     
-    const cached = await cacheService.get(cacheKey);
-    if (cached) return cached;
+    const cached = await getCache().get(cacheKey);
+    if (cached && Array.isArray(cached)) return cached;
 
     try {
       const { data: teamData, error } = await supabase
@@ -390,7 +390,7 @@ class AdminDashboardService {
         growth_rates: snapshot.growth_rates || {},
       })) || [];
 
-      await cacheService.set(cacheKey, processedData, this.CACHE_TTL.TEAM_PERFORMANCE);
+      await getCache().set(cacheKey, processedData, this.CACHE_TTL.TEAM_PERFORMANCE);
       return processedData;
 
     } catch (error) {
@@ -406,7 +406,7 @@ class AdminDashboardService {
   async getSalesTargets(tenantId: string): Promise<SalesTarget[]> {
     const cacheKey = this.CACHE_KEYS.TARGETS(tenantId);
     
-    const cached = await cacheService.get<SalesTarget[]>(cacheKey);
+    const cached = await getCache().get<SalesTarget[]>(cacheKey);
     if (cached) return cached;
 
     try {
@@ -432,7 +432,7 @@ class AdminDashboardService {
           : undefined
       })) || [];
 
-      await cacheService.set(cacheKey, targets, this.CACHE_TTL.TARGETS);
+      await getCache().set(cacheKey, targets, this.CACHE_TTL.TARGETS);
       return targets;
 
     } catch (error) {
@@ -452,7 +452,7 @@ class AdminDashboardService {
       if (error) throw error;
 
       // Invalidar cache
-      await cacheService.del(this.CACHE_KEYS.TARGETS(targetData.tenant_id!));
+      await getCache().delete(this.CACHE_KEYS.TARGETS(targetData.tenant_id!));
 
       return data;
 
@@ -474,7 +474,7 @@ class AdminDashboardService {
       if (error) throw error;
 
       // Invalidar cache
-      await cacheService.del(this.CACHE_KEYS.TARGETS(updates.tenant_id!));
+      await getCache().delete(this.CACHE_KEYS.TARGETS(updates.tenant_id!));
 
       return data;
 
@@ -491,7 +491,7 @@ class AdminDashboardService {
   async getAdminAlerts(adminUserId: string): Promise<AdminAlert[]> {
     const cacheKey = this.CACHE_KEYS.ALERTS(adminUserId);
     
-    const cached = await cacheService.get<AdminAlert[]>(cacheKey);
+    const cached = await getCache().get<AdminAlert[]>(cacheKey);
     if (cached) return cached;
 
     try {
@@ -506,7 +506,7 @@ class AdminDashboardService {
       if (error) throw error;
 
       const alerts = data || [];
-      await cacheService.set(cacheKey, alerts, this.CACHE_TTL.ALERTS);
+      await getCache().set(cacheKey, alerts, this.CACHE_TTL.ALERTS);
       return alerts;
 
     } catch (error) {
@@ -526,7 +526,7 @@ class AdminDashboardService {
       if (error) throw error;
 
       // Invalidar cache
-      await cacheService.del(this.CACHE_KEYS.ALERTS(alertData.admin_user_id!));
+      await getCache().delete(this.CACHE_KEYS.ALERTS(alertData.admin_user_id!));
 
       return data;
 
@@ -550,7 +550,7 @@ class AdminDashboardService {
       if (error) throw error;
 
       // Invalidar cache
-      await cacheService.del(this.CACHE_KEYS.ALERTS(adminUserId));
+      await getCache().delete(this.CACHE_KEYS.ALERTS(adminUserId));
 
     } catch (error) {
       console.error('Error marking alert as read:', error);
@@ -565,8 +565,8 @@ class AdminDashboardService {
   private async getForecast(tenantId: string, scope: string) {
     const cacheKey = this.CACHE_KEYS.FORECAST(tenantId, scope);
     
-    const cached = await cacheService.get(cacheKey);
-    if (cached) return cached;
+    const cached = await getCache().get(cacheKey);
+    if (cached && typeof cached === 'object' && cached.predicted_revenue !== undefined) return cached;
 
     try {
       // Buscar forecast mais recente
@@ -592,7 +592,7 @@ class AdminDashboardService {
         period_breakdown: latestForecast.period_breakdown || [],
       };
 
-      await cacheService.set(cacheKey, forecastData, this.CACHE_TTL.FORECAST);
+      await getCache().set(cacheKey, forecastData, this.CACHE_TTL.FORECAST);
       return forecastData;
 
     } catch (error) {
@@ -647,7 +647,7 @@ class AdminDashboardService {
       if (error) throw error;
 
       // Invalidar cache
-      await cacheService.del(this.CACHE_KEYS.TEAM_PERFORMANCE(tenantId, periodType));
+      await getCache().delete(this.CACHE_KEYS.TEAM_PERFORMANCE(tenantId, periodType));
 
       return data || 0;
 
@@ -739,10 +739,10 @@ class AdminDashboardService {
 
   async clearCache(tenantId: string): Promise<void> {
     await Promise.all([
-      cacheService.del(this.CACHE_KEYS.DASHBOARD(tenantId)),
-      cacheService.del(this.CACHE_KEYS.TEAM_PERFORMANCE(tenantId, '30d')),
-      cacheService.del(this.CACHE_KEYS.TARGETS(tenantId)),
-      cacheService.del(this.CACHE_KEYS.FORECAST(tenantId, 'company')),
+      getCache().delete(this.CACHE_KEYS.DASHBOARD(tenantId)),
+      getCache().delete(this.CACHE_KEYS.TEAM_PERFORMANCE(tenantId, '30d')),
+      getCache().delete(this.CACHE_KEYS.TARGETS(tenantId)),
+      getCache().delete(this.CACHE_KEYS.FORECAST(tenantId, 'company')),
     ]);
   }
 }

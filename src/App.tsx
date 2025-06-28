@@ -12,6 +12,7 @@ import './App.css'
 const AppDashboard = lazy(() => import('./components/AppDashboard'))
 const PublicFormRoute = lazy(() => import('./components/FormBuilder/PublicFormRoute'))
 const GoogleCalendarCallback = lazy(() => import('./components/GoogleCalendarCallback'))
+const AccountActivation = lazy(() => import('./components/AccountActivation'))
 
 // 🚀 OTIMIZAÇÃO: Componente de loading otimizado
 const LoadingFallback = React.memo(() => (
@@ -60,6 +61,7 @@ function AppRoutes() {
         <Routes>
           <Route path="/form/:slug" element={<PublicFormRoute />} />
           <Route path="/auth/google/callback" element={<GoogleCalendarCallback />} />
+          <Route path="/activate" element={<AccountActivation />} />
           
           <Route 
             path="/login" 

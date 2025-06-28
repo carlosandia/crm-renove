@@ -1,4 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
+import { 
+  databaseConfig, 
+  createStandardHeaders, 
+  createTimeoutController,
+  performDatabaseHealthCheck,
+  retryWithBackoff
+} from '../config/database';
 import { appConfig } from '../config/app';
 
 // Sistema de logs condicionais
@@ -6,61 +13,178 @@ const LOG_LEVEL = import.meta.env.VITE_LOG_LEVEL || 'warn';
 const isDebugMode = LOG_LEVEL === 'debug';
 const isVerboseMode = LOG_LEVEL === 'verbose';
 
-// Configurações do Supabase a partir da configuração centralizada
-const supabaseUrl = appConfig.supabase.url;
-const supabaseAnonKey = appConfig.supabase.anonKey;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('❌ Variáveis de ambiente Supabase não configuradas')
-  throw new Error('Supabase environment variables are not configured')
-}
-
-// Log inicial apenas em modo debug
+// Log de inicialização apenas em modo debug
 if (isDebugMode) {
-  console.log('🔗 Inicializando cliente Supabase...')
+  console.log('🔗 Inicializando cliente Supabase com configuração centralizada...');
+  console.log('🔧 Configuração:', {
+    url: databaseConfig.connection.url,
+    hasKey: Boolean(databaseConfig.connection.anonKey),
+    keyLength: databaseConfig.connection.anonKey.length,
+    timeouts: databaseConfig.timeouts,
+    features: databaseConfig.features
+  });
 }
 
 // Cliente Supabase configurado para o frontend
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    // Desabilitar persistência automática (usaremos JWT manual)
-    persistSession: false,
-    autoRefreshToken: false,
-    detectSessionInUrl: false,
-    // Configurações de segurança
-    flowType: 'pkce'
-  },
-  // Configurações globais
-  global: {
-    headers: {
-      'X-Client-Info': 'crm-marketing-frontend',
-      // Adicionar header customizado para identificar requests do frontend
-      'X-Frontend-Request': 'true'
-    }
-  },
-  // Configurações da base
-  db: {
-    schema: 'public'
-  },
-  // Configurações de real-time (se necessário)
-  realtime: {
-    params: {
-      eventsPerSecond: 10
-    }
+export const supabase = createClient(
+  databaseConfig.connection.url, 
+  databaseConfig.connection.anonKey, 
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    },
+    global: {
+      headers: createStandardHeaders(),
+      fetch: (url, options = {}) => {
+        const { controller, cleanup } = createTimeoutController(databaseConfig.timeouts.connection);
+
+        const modifiedOptions = {
+          ...options,
+          signal: controller.signal,
+          headers: {
+            ...createStandardHeaders(),
+            ...options.headers
+          }
+        };
+
+        return fetch(url, modifiedOptions)
+          .catch((error) => {
+            if (error.name === 'AbortError') {
+              console.warn('⚠️ [Supabase] Request timeout - conexão lenta');
+              throw new Error('Timeout: Conexão lenta detectada');
+            }
+            
+            if (error.message?.includes('Failed to fetch')) {
+              console.warn('⚠️ [Supabase] Erro de conectividade - modo offline');
+              throw new Error('Network: Sem conexão com servidor');
+            }
+            
+            throw error;
+          })
+          .finally(() => {
+            cleanup();
+          });
+      }
+    },
+    db: {
+      schema: 'public'
+    },
+    realtime: databaseConfig.features.realtime ? {
+      params: {
+        eventsPerSecond: 2
+      }
+    } : undefined
   }
-});
+);
 
 // Log de conexão bem-sucedida apenas uma vez
 if (isDebugMode) {
-  console.log('✅ Cliente Supabase inicializado com sucesso')
+  console.log('✅ Cliente Supabase inicializado com sucesso');
 }
+
+// Função de teste de conectividade usando configuração centralizada
+export const testSupabaseConnection = async () => {
+  console.log('🧪 Testando conectividade com Supabase...');
+  
+  try {
+    const result = await performDatabaseHealthCheck();
+    
+    if (result.success) {
+      console.log(`✅ Conectividade com Supabase OK (${result.latency}ms)`);
+      return { success: true, data: 'Conectividade estabelecida', latency: result.latency };
+    } else {
+      console.error('❌ Erro de conectividade:', result.error);
+      return { success: false, error: result.error };
+    }
+    
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+    console.error('❌ Erro fatal na conectividade:', errorMessage);
+    return { success: false, error: errorMessage };
+  }
+};
+
+// Executar teste de conectividade automaticamente em modo debug
+if (isDebugMode) {
+  testSupabaseConnection().then(result => {
+    if (result.success) {
+      console.log('🎉 Teste de conectividade automático: SUCESSO');
+    } else {
+      console.warn('⚠️ Teste de conectividade automático: FALHOU -', result.error);
+    }
+  });
+}
+
+// Função auxiliar para buscar dados relacionados de forma segura com retry
+export const fetchRelatedDataSafely = async (pipelineId: string) => {
+  console.log('🔍 Buscando dados relacionados de forma segura para pipeline:', pipelineId);
+  
+  return retryWithBackoff(async () => {
+    try {
+      // Buscar stages separadamente com timeout
+      const stagesPromise = supabase
+        .from('pipeline_stages')
+        .select('*')
+        .eq('pipeline_id', pipelineId)
+        .order('order_index');
+      
+      // Buscar custom fields separadamente com timeout
+      const customFieldsPromise = supabase
+        .from('pipeline_custom_fields')
+        .select('*')
+        .eq('pipeline_id', pipelineId)
+        .order('field_order');
+      
+      // Buscar members separadamente com timeout
+      const membersPromise = supabase
+        .from('pipeline_members')
+        .select('*')
+        .eq('pipeline_id', pipelineId);
+      
+      // Executar todas as queries em paralelo com timeout
+      const [stagesResult, customFieldsResult, membersResult] = await Promise.all([
+        stagesPromise,
+        customFieldsPromise,
+        membersPromise
+      ]);
+      
+      // Processar resultados
+      const stages = stagesResult.data || [];
+      const customFields = customFieldsResult.data || [];
+      const members = membersResult.data || [];
+      
+      console.log('✅ Dados relacionados carregados:', {
+        stages: stages.length,
+        customFields: customFields.length,
+        members: members.length
+      });
+      
+      return {
+        stages,
+        customFields,
+        members,
+        errors: {
+          stages: stagesResult.error,
+          customFields: customFieldsResult.error,
+          members: membersResult.error
+        }
+      };
+      
+    } catch (error) {
+      console.error('❌ Erro ao buscar dados relacionados:', error);
+      throw error; // Re-throw para que retry funcione
+    }
+  });
+};
 
 // Função auxiliar para usar backend como proxy quando RLS falha
 export const executeQueryViaBackend = async (table: string, operation: string, params: any = {}) => {
   console.log(`🔄 Executando query via backend: ${operation} em ${table}`);
   
   try {
-    const response = await fetch(`${appConfig.api.baseUrl}/database/proxy`, {
+         const response = await fetch(`${appConfig.api.baseUrl}/database/proxy`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -167,18 +291,18 @@ export const fetchPipelinesWithFallback = async (tenantId: string) => {
     
     console.log('✅ Busca direta bem-sucedida:', data?.length || 0, 'pipelines');
     
-    // Carregar relacionamentos separadamente para cada pipeline
-    const pipelinesWithStructure = [];
-    
-    for (const pipeline of data || []) {
-        console.log(`🔍 Carregando relacionamentos para pipeline: ${pipeline.name}`);
-        
-        // Buscar stages
-        const { data: stages, error: stagesError } = await supabase
-          .from('pipeline_stages')
-          .select('*')
-          .eq('pipeline_id', pipeline.id)
-          .order('order_index');
+          // Carregar relacionamentos separadamente para cada pipeline
+      const pipelinesWithStructure = [];
+      
+      for (const pipeline of data || []) {
+          console.log(`🔍 Carregando relacionamentos para pipeline: ${pipeline.name}`);
+          
+          // Buscar stages de forma separada (evitar JOINs problemáticos)
+          const { data: stages, error: stagesError } = await supabase
+            .from('pipeline_stages')
+            .select('*')
+            .eq('pipeline_id', pipeline.id)
+            .order('order_index');
           
         // Buscar custom fields
         const { data: fields, error: fieldsError } = await supabase
@@ -676,7 +800,7 @@ export async function ensurePipelineStages() {
     if (!success) {
       try {
         console.log('📝 Tentativa 2: Via backend proxy...');
-        const response = await fetch(`${appConfig.api.baseUrl}/api/database/proxy`, {
+                 const response = await fetch(`${appConfig.api.baseUrl}/api/database/proxy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

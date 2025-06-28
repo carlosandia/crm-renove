@@ -1,0 +1,11 @@
+
+> crm-insight@0.0.0 dev
+> vite --mode development
+
+Port 8080 is in use, trying another one...
+
+  VITE v5.4.19  ready in 340 ms
+
+  ➜  Local:   http://localhost:8081/
+  ➜  Network: http://192.168.0.177:8081/
+  ➜  press h + enter to show help

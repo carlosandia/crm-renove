@@ -63,7 +63,7 @@ function getConfig(): AppConfig {
     },
     
     api: {
-      baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:3001/api',
+      baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:3001',
       timeout: parseInt(import.meta.env.VITE_API_TIMEOUT || '30000', 10)
     },
     

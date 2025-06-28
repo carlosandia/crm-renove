@@ -9,18 +9,17 @@ import { User } from '../types/express';
 const router = Router();
 
 /**
- * Verificar senha (implementação básica - pode usar bcrypt futuramente)
+ * 🔧 CORREÇÃO: Usar sistema de verificação enterprise do security.ts
+ * Suporte para bcrypt, SHA-256 e senhas padrão
  */
-function verifyPassword(inputPassword: string, storedPassword: string): boolean {
-  // Por enquanto, senhas padrão para desenvolvimento
-  const defaultPasswords = ['123456', '123', 'SuperAdmin123!'];
-  
-  if (defaultPasswords.includes(inputPassword)) {
-    return true;
+async function verifyPasswordSecure(inputPassword: string, storedPassword: string): Promise<boolean> {
+  try {
+    const { verifyPassword } = await import('../utils/security');
+    return await verifyPassword(inputPassword, storedPassword);
+  } catch (error) {
+    console.error('❌ [AUTH] Error verifying password:', error);
+    return false;
   }
-  
-  // TODO: Implementar bcrypt para senhas hash
-  return inputPassword === storedPassword;
 }
 
 /**
@@ -67,8 +66,8 @@ router.post('/login',
       return;
     }
 
-    // 2. Verificar senha
-    const isPasswordValid = verifyPassword(password, user.password_hash || ''); // Usar senha salva ou padrões
+    // 2. Verificar senha usando sistema enterprise corrigido
+    const isPasswordValid = await verifyPasswordSecure(password, user.password_hash || ''); // Usar senha salva ou padrões
     
     if (!isPasswordValid) {
       res.status(401).json({
@@ -79,16 +78,33 @@ router.post('/login',
       return;
     }
 
+    // 🔧 CORREÇÃO 5: Migração automática de senhas para bcrypt
+    try {
+      const { migratePasswordIfNeeded, needsPasswordMigration } = await import('../utils/security');
+      
+      if (needsPasswordMigration(user.password_hash || '')) {
+        console.log(`🔄 [AUTH-MIGRATION] Migrating legacy password for user: ${user.email}`);
+        await migratePasswordIfNeeded(password, user.password_hash || '', user.id);
+        console.log(`✅ [AUTH-MIGRATION] Password successfully migrated to bcrypt for: ${user.email}`);
+      } else {
+        console.log(`✅ [AUTH-MIGRATION] User already has bcrypt password: ${user.email}`);
+      }
+    } catch (migrationError) {
+      // Não falhar o login por causa da migração
+      console.warn(`⚠️ [AUTH-MIGRATION] Migration failed for ${user.email}, but login continues:`, migrationError);
+    }
+
     // 3. Gerar tokens JWT
     const tokens = generateTokens(user);
 
     // 4. Log de segurança
     console.log(`✅ Login bem-sucedido: ${email} (${user.role}) em ${new Date().toISOString()}`);
 
-    // 5. Resposta com tokens
+    // 5. Resposta com tokens padronizada
     res.json({
       success: true,
       message: 'Login realizado com sucesso',
+      token: tokens.accessToken, // 🔧 CORREÇÃO: Compatibilidade com diferentes formatos
       data: {
         user: {
           id: user.id,
@@ -96,7 +112,8 @@ router.post('/login',
           first_name: user.first_name,
           last_name: user.last_name,
           role: user.role,
-          tenant_id: user.tenant_id
+          tenant_id: user.tenant_id,
+          is_active: user.is_active
         },
         tokens: tokens
       },
@@ -318,5 +335,7 @@ router.get('/me',
     });
   })
 );
+
+
 
 export default router; 

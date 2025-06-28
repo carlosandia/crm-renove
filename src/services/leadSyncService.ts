@@ -1,5 +1,13 @@
 import { supabase } from '../lib/supabase';
 
+// ============================================================================
+// TIPOS ESPECÍFICOS PARA LEAD SYNC SERVICE
+// ============================================================================
+
+export interface CustomFields {
+  [key: string]: string | number | boolean | null | undefined;
+}
+
 export interface LeadSyncData {
   // Dados da oportunidade (primeira etapa)
   nome_oportunidade: string;
@@ -10,15 +18,17 @@ export interface LeadSyncData {
   nome_lead: string;
   email: string;
   telefone?: string;
+  empresa?: string;
+  cargo?: string;
   
-  // Campos customizados
-  [key: string]: any;
+  // Campos customizados tipados
+  [key: string]: string | number | boolean | null | undefined;
 }
 
 export interface PipelineLeadData {
   pipeline_id: string;
   stage_id: string;
-  lead_data: any;
+  lead_data: Record<string, unknown>;
   created_by: string;
   assigned_to?: string;
 }
@@ -38,6 +48,50 @@ export interface LeadMasterData {
   assigned_to?: string;
   created_by: string;
   origem: string;
+}
+
+export interface PipelineLead {
+  id: string;
+  pipeline_id: string;
+  stage_id: string;
+  lead_data: Record<string, unknown>;
+  created_by: string;
+  assigned_to?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface LeadMaster {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone?: string;
+  company?: string;
+  job_title?: string;
+  lead_temperature: string;
+  status: string;
+  lead_source: string;
+  estimated_value?: number;
+  tenant_id: string;
+  assigned_to?: string;
+  created_by: string;
+  origem: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface SyncResult {
+  pipelineLead: PipelineLead;
+  leadMaster: LeadMaster;
+}
+
+export interface UserData {
+  tenant_id: string;
+}
+
+export interface PipelineInfo {
+  tenant_id: string;
 }
 
 export class LeadSyncService {
@@ -77,7 +131,7 @@ export class LeadSyncService {
     tenantId: string,
     createdBy: string,
     assignedTo?: string
-  ): Promise<any> {
+  ): Promise<LeadMaster> {
     try {
       console.log('🔄 Criando lead no módulo Leads:', syncData);
 
@@ -87,23 +141,23 @@ export class LeadSyncService {
       // Converter valor monetário
       const estimated_value = this.parseMonetaryValue(syncData.valor || '');
 
-             // Preparar dados para leads_master
-       const leadMasterData: LeadMasterData = {
-         first_name,
-         last_name,
-         email: syncData.email,
-         phone: syncData.telefone || undefined,
-         company: syncData.empresa || undefined,
-         job_title: syncData.cargo || undefined,
-         lead_temperature: 'warm', // Padrão para leads vindos da pipeline
-         status: 'active',
-         lead_source: 'Pipeline',
-         estimated_value: estimated_value || undefined,
-         tenant_id: tenantId,
-         assigned_to: assignedTo || undefined,
-         created_by: createdBy,
-         origem: 'Pipeline'
-       };
+      // Preparar dados para leads_master
+      const leadMasterData: LeadMasterData = {
+        first_name,
+        last_name,
+        email: syncData.email,
+        phone: syncData.telefone || undefined,
+        company: syncData.empresa || undefined,
+        job_title: syncData.cargo || undefined,
+        lead_temperature: 'warm', // Padrão para leads vindos da pipeline
+        status: 'active',
+        lead_source: 'Pipeline',
+        estimated_value: estimated_value || undefined,
+        tenant_id: tenantId,
+        assigned_to: assignedTo || undefined,
+        created_by: createdBy,
+        origem: 'Pipeline'
+      };
 
       // Inserir na tabela leads_master
       const { data: leadMaster, error } = await supabase
@@ -118,11 +172,12 @@ export class LeadSyncService {
       }
 
       console.log('✅ Lead criado no módulo Leads:', leadMaster);
-      return leadMaster;
+      return leadMaster as LeadMaster;
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       console.error('❌ Erro no LeadSyncService.createLeadMaster:', error);
-      throw new Error(`Erro ao criar lead no módulo Leads: ${error.message}`);
+      throw new Error(`Erro ao criar lead no módulo Leads: ${errorMessage}`);
     }
   }
 
@@ -132,7 +187,7 @@ export class LeadSyncService {
   static async createOpportunityWithLead(
     syncData: LeadSyncData,
     pipelineData: PipelineLeadData
-  ): Promise<{ pipelineLead: any; leadMaster: any }> {
+  ): Promise<SyncResult> {
     try {
       console.log('🚀 Iniciando criação de oportunidade com lead:', { syncData, pipelineData });
 
@@ -149,7 +204,7 @@ export class LeadSyncService {
         .select()
         .single();
 
-      if (pipelineError) {
+      if (pipelineError || !pipelineLead) {
         console.error('❌ Erro ao criar pipeline lead:', pipelineError);
         throw pipelineError;
       }
@@ -198,138 +253,127 @@ export class LeadSyncService {
       );
 
       // 4. Atualizar pipeline_leads com referência ao lead_master
-      await supabase
-        .from('pipeline_leads')
-        .update({ 
-          lead_data: {
-            ...pipelineData.lead_data,
-            lead_master_id: leadMaster.id
-          }
-        })
-        .eq('id', pipelineLead.id);
+      try {
+        const { error: updateError } = await supabase
+          .from('pipeline_leads')
+          .update({ lead_master_id: leadMaster.id })
+          .eq('id', pipelineLead.id);
 
-      console.log('🎉 Oportunidade e lead criados com sucesso!');
+        if (updateError) {
+          console.warn('⚠️ Erro ao atualizar referência do lead_master:', updateError);
+        } else {
+          console.log('✅ Referência lead_master_id atualizada no pipeline_leads');
+        }
+      } catch (updateError: unknown) {
+        console.warn('⚠️ Erro ao atualizar referência:', updateError);
+      }
+
+      console.log('🎉 Sincronização completa!', {
+        pipelineLeadId: pipelineLead.id,
+        leadMasterId: leadMaster.id
+      });
 
       return {
-        pipelineLead,
+        pipelineLead: pipelineLead as PipelineLead,
         leadMaster
       };
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       console.error('❌ Erro no LeadSyncService.createOpportunityWithLead:', error);
-      throw new Error(`Erro ao criar oportunidade com lead: ${error.message}`);
+      throw new Error(`Erro ao criar oportunidade: ${errorMessage}`);
     }
   }
 
   /**
-   * Atualiza lead_master quando pipeline_lead for atualizado
+   * Sincroniza atualizações do lead_master para pipeline_leads
    */
   static async syncLeadMasterUpdate(
     pipelineLeadId: string,
-    updatedData: any
+    updatedData: Partial<LeadMaster>
   ): Promise<void> {
     try {
-      console.log('🔄 Sincronizando atualização do lead:', { pipelineLeadId, updatedData });
+      console.log('🔄 Sincronizando atualização de lead master para pipeline:', pipelineLeadId, updatedData);
 
-      // Buscar lead_master vinculado pelo email (já que não temos pipeline_lead_id)
-      const { data: pipelineLeadData, error: pipelineError } = await supabase
+      // Buscar dados atuais do pipeline_lead
+      const { data: pipelineLead, error: fetchError } = await supabase
         .from('pipeline_leads')
-        .select('lead_data')
+        .select('lead_data, id')
         .eq('id', pipelineLeadId)
         .single();
 
-      if (pipelineError || !pipelineLeadData?.lead_data?.email_lead) {
-        console.log('ℹ️ Pipeline lead não encontrado para sincronização');
+      if (fetchError || !pipelineLead) {
+        console.error('❌ Pipeline lead não encontrado:', pipelineLeadId);
         return;
       }
 
-      const { data: leadMaster, error: findError } = await supabase
-        .from('leads_master')
-        .select('id')
-        .eq('email', pipelineLeadData.lead_data.email_lead)
-        .single();
+      // Atualizar lead_data com novos dados
+      const currentLeadData = pipelineLead.lead_data || {};
+      const updatedLeadData = {
+        ...currentLeadData,
+        ...updatedData,
+        last_sync_at: new Date().toISOString()
+      };
 
-      if (findError || !leadMaster) {
-        console.log('ℹ️ Lead master não encontrado para sincronização');
-        return;
+      // Atualizar pipeline_leads
+      const { error: updateError } = await supabase
+        .from('pipeline_leads')
+        .update({ lead_data: updatedLeadData })
+        .eq('id', pipelineLeadId);
+
+      if (updateError) {
+        console.error('❌ Erro ao sincronizar atualização:', updateError);
+        throw updateError;
       }
 
-      // Preparar dados para atualização
-      const updateData: Partial<LeadMasterData> = {};
+      console.log('✅ Sincronização de atualização completa!');
 
-      if (updatedData.nome_lead) {
-        const { first_name, last_name } = this.splitFullName(updatedData.nome_lead);
-        updateData.first_name = first_name;
-        updateData.last_name = last_name;
-      }
-
-      if (updatedData.email) {
-        updateData.email = updatedData.email;
-      }
-
-      if (updatedData.telefone) {
-        updateData.phone = updatedData.telefone;
-      }
-
-             if (updatedData.valor) {
-         const parsedValue = this.parseMonetaryValue(updatedData.valor);
-         updateData.estimated_value = parsedValue || undefined;
-       }
-
-      if (Object.keys(updateData).length > 0) {
-        const { error: updateError } = await supabase
-          .from('leads_master')
-          .update(updateData)
-          .eq('id', leadMaster.id);
-
-        if (updateError) {
-          console.error('❌ Erro ao atualizar lead master:', updateError);
-          throw updateError;
-        }
-
-        console.log('✅ Lead master sincronizado com sucesso');
-      }
-
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       console.error('❌ Erro no LeadSyncService.syncLeadMasterUpdate:', error);
-      // Não lançar erro para não quebrar o fluxo principal
+      throw new Error(`Erro na sincronização: ${errorMessage}`);
     }
   }
 
   /**
-   * Remove lead_master quando pipeline_lead for removido
+   * Remove sincronização quando pipeline_lead é deletado
    */
   static async syncLeadMasterDelete(pipelineLeadId: string): Promise<void> {
     try {
-      console.log('🗑️ Removendo lead master vinculado:', pipelineLeadId);
+      console.log('🗑️ Processando exclusão de pipeline lead:', pipelineLeadId);
 
-      // Buscar lead_master vinculado pelo email (já que não temos pipeline_lead_id)
-      const { data: pipelineLeadData, error: pipelineError } = await supabase
+      // Buscar lead_master_id antes de deletar
+      const { data: pipelineLead, error: fetchError } = await supabase
         .from('pipeline_leads')
-        .select('lead_data')
+        .select('lead_master_id')
         .eq('id', pipelineLeadId)
         .single();
 
-      if (pipelineError || !pipelineLeadData?.lead_data?.email_lead) {
-        console.log('ℹ️ Pipeline lead não encontrado para exclusão');
+      if (fetchError || !pipelineLead?.lead_master_id) {
+        console.log('⚠️ Pipeline lead não tem lead_master_id associado');
         return;
       }
 
-      const { error } = await supabase
+      // Marcar lead_master como órfão ou remover dependendo da regra de negócio
+      const { error: updateError } = await supabase
         .from('leads_master')
-        .delete()
-        .eq('email', pipelineLeadData.lead_data.email_lead);
+        .update({ 
+          status: 'orphaned',
+          origem: 'Pipeline (removida)',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', pipelineLead.lead_master_id);
 
-      if (error) {
-        console.error('❌ Erro ao remover lead master:', error);
-        throw error;
+      if (updateError) {
+        console.error('❌ Erro ao marcar lead master como órfão:', updateError);
+      } else {
+        console.log('✅ Lead master marcado como órfão');
       }
 
-      console.log('✅ Lead master removido com sucesso');
-
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
       console.error('❌ Erro no LeadSyncService.syncLeadMasterDelete:', error);
-      // Não lançar erro para não quebrar o fluxo principal
+      throw new Error(`Erro ao processar exclusão: ${errorMessage}`);
     }
   }
 } 

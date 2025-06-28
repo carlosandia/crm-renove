@@ -85,34 +85,27 @@ const AutomationRulesManager: React.FC = () => {
 
   const loadRules = async () => {
     try {
-      const response = await fetch('/api/automation/rules', {
+      const response = await fetch('http://localhost:3001/api/automation/rules', {
+        method: 'GET',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
       });
 
       if (!response.ok) {
-        throw new Error('Failed to load rules');
+        throw new Error(`HTTP ${response.status}`);
       }
 
-      const data = await response.json();
-      setRules(data.data || []);
+      const result = await response.json();
+      setRules(result.data || []);
     } catch (error) {
-      console.error('Error loading rules:', error);
-      toast({
-        title: 'Erro',
-        description: 'Falha ao carregar regras de automação',
-        variant: 'destructive'
-      });
-    } finally {
-      setLoading(false);
+      console.error('Erro ao carregar regras:', error);
     }
   };
 
   const loadMetrics = async () => {
     try {
-      const response = await fetch('/api/automation/metrics', {
+      const response = await fetch('http://localhost:3001/api/automation/metrics', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'

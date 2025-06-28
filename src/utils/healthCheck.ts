@@ -135,7 +135,7 @@ class HealthCheckService {
     const startTime = Date.now();
     
     try {
-      const response = await fetch('/api/health', {
+      const response = await fetch('http://localhost:3001/api/health', {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' }
       });

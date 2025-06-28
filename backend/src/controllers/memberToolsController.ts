@@ -124,7 +124,7 @@ export class MemberToolsController {
 
   async getMemberTasks(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
       const memberId = req.params.memberId || req.user?.id;
 
       if (!tenantId) {
@@ -134,6 +134,11 @@ export class MemberToolsController {
 
       // Validate query parameters
       const filters = TaskFiltersSchema.parse(req.query);
+
+      if (!memberId) {
+        res.status(400).json({ error: 'Member ID is required' });
+        return;
+      }
 
       const result = await memberToolsService.getMemberTasks(tenantId, memberId, filters);
 
@@ -154,7 +159,7 @@ export class MemberToolsController {
 
   async createTask(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
       const createdBy = req.user?.id;
 
       if (!tenantId) {
@@ -192,7 +197,7 @@ export class MemberToolsController {
 
   async updateTask(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
       const taskId = req.params.taskId;
       const updatedBy = req.user?.id;
 
@@ -231,7 +236,7 @@ export class MemberToolsController {
 
   async completeTask(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
       const taskId = req.params.taskId;
       const completedBy = req.user?.id;
       const { completion_notes } = req.body;
@@ -265,11 +270,16 @@ export class MemberToolsController {
 
   async getMemberTaskSummary(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
       const memberId = req.params.memberId || req.user?.id;
 
       if (!tenantId) {
         res.status(400).json({ error: 'Tenant ID is required' });
+        return;
+      }
+
+      if (!memberId) {
+        res.status(400).json({ error: 'Member ID is required' });
         return;
       }
 
@@ -292,7 +302,7 @@ export class MemberToolsController {
 
   async getOverdueTasks(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
 
       if (!tenantId) {
         res.status(400).json({ error: 'Tenant ID is required' });
@@ -322,11 +332,16 @@ export class MemberToolsController {
 
   async getCalendarIntegrations(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
       const userId = req.params.userId || req.user?.id;
 
       if (!tenantId) {
         res.status(400).json({ error: 'Tenant ID is required' });
+        return;
+      }
+
+      if (!userId) {
+        res.status(400).json({ error: 'User ID is required' });
         return;
       }
 
@@ -349,7 +364,7 @@ export class MemberToolsController {
 
   async createCalendarIntegration(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
 
       if (!tenantId) {
         res.status(400).json({ error: 'Tenant ID is required' });
@@ -437,7 +452,7 @@ export class MemberToolsController {
 
   async getEmailTemplates(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
 
       if (!tenantId) {
         res.status(400).json({ error: 'Tenant ID is required' });
@@ -470,7 +485,7 @@ export class MemberToolsController {
 
   async createEmailTemplate(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
       const createdBy = req.user?.id;
 
       if (!tenantId) {
@@ -512,7 +527,7 @@ export class MemberToolsController {
 
   async updateEmailTemplate(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
       const templateId = req.params.templateId;
 
       if (!tenantId) {
@@ -554,7 +569,7 @@ export class MemberToolsController {
 
   async sendEmailFromTemplate(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
       const sentBy = req.user?.id;
 
       if (!tenantId) {
@@ -605,7 +620,7 @@ export class MemberToolsController {
 
   async getWhatsAppIntegrations(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
 
       if (!tenantId) {
         res.status(400).json({ error: 'Tenant ID is required' });
@@ -631,7 +646,7 @@ export class MemberToolsController {
 
   async createWhatsAppIntegration(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
 
       if (!tenantId) {
         res.status(400).json({ error: 'Tenant ID is required' });
@@ -675,7 +690,7 @@ export class MemberToolsController {
 
   async getMemberPerformance(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
       const memberId = req.params.memberId || req.user?.id;
 
       if (!tenantId) {
@@ -686,6 +701,11 @@ export class MemberToolsController {
       const periodType = (req.query.period_type as string) || 'monthly';
       const periodStart = req.query.period_start as string;
       const periodEnd = req.query.period_end as string;
+
+      if (!memberId) {
+        res.status(400).json({ error: 'Member ID is required' });
+        return;
+      }
 
       const performance = await memberToolsService.getMemberPerformance(
         tenantId,
@@ -712,7 +732,7 @@ export class MemberToolsController {
 
   async calculateMemberPerformance(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
       const memberId = req.params.memberId;
 
       if (!tenantId) {
@@ -757,11 +777,16 @@ export class MemberToolsController {
 
   async getMemberDashboardConfig(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
       const memberId = req.params.memberId || req.user?.id;
 
       if (!tenantId) {
         res.status(400).json({ error: 'Tenant ID is required' });
+        return;
+      }
+
+      if (!memberId) {
+        res.status(400).json({ error: 'Member ID is required' });
         return;
       }
 
@@ -784,7 +809,7 @@ export class MemberToolsController {
 
   async updateMemberDashboardConfig(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
       const memberId = req.params.memberId || req.user?.id;
 
       if (!tenantId) {
@@ -794,6 +819,11 @@ export class MemberToolsController {
 
       // Validate request body
       const configData = DashboardConfigSchema.parse(req.body);
+
+      if (!memberId) {
+        res.status(400).json({ error: 'Member ID is required' });
+        return;
+      }
 
       const config = await memberToolsService.updateMemberDashboardConfig(
         tenantId, 
@@ -830,7 +860,7 @@ export class MemberToolsController {
 
   async recordMemberActivity(req: Request, res: Response): Promise<void> {
     try {
-      const tenantId = req.user?.company_id;
+      const tenantId = req.user?.tenant_id;
       const memberId = req.user?.id;
 
       if (!tenantId || !memberId) {

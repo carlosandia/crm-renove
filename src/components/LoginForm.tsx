@@ -1,8 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
-import { Lock, Mail, Eye, EyeOff } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Lock, Mail, Eye, EyeOff, CheckCircle } from 'lucide-react';
 
 const LoginForm: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -10,7 +10,9 @@ const LoginForm: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [activationMessage, setActivationMessage] = useState('');
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Hook de autenticação com tratamento de erro
   let authHook;
@@ -40,6 +42,18 @@ const LoginForm: React.FC = () => {
   }
 
   const { login } = authHook;
+
+  // Verificar mensagem de ativação
+  useEffect(() => {
+    if (location.state?.message) {
+      setActivationMessage(location.state.message);
+      if (location.state?.email) {
+        setEmail(location.state.email);
+      }
+      // Limpar o state após 10 segundos
+      setTimeout(() => setActivationMessage(''), 10000);
+    }
+  }, [location.state]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,6 +134,16 @@ const LoginForm: React.FC = () => {
             <h2 className="text-2xl font-bold text-foreground mb-2">Bem-vindo de volta</h2>
             <p className="text-muted-foreground">Acesse o sistema com suas credenciais</p>
           </div>
+
+          {/* Activation Success Message */}
+          {activationMessage && (
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg animate-scale-in">
+              <div className="flex items-center gap-3">
+                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+                <p className="text-sm text-green-800 font-medium">{activationMessage}</p>
+              </div>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Email Field */}

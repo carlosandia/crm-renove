@@ -39,12 +39,14 @@ export interface ApiResponse<T = any> {
   data?: T;
   error?: string;
   message?: string;
-  timestamp: string;
+  timestamp?: string;
   meta?: {
     page?: number;
     limit?: number;
     total?: number;
     totalPages?: number;
+    tenant_id?: string;
+    time_range?: string;
   };
 }
 

@@ -24,7 +24,7 @@ import {
   X,
 } from "lucide-react";
 
-import { cn } from "../../lib/utils";
+import { cn } from "@/lib/utils";
 import { Button } from "./button";
 import { Card, CardContent, CardHeader } from "./card";
 import { Input } from "./input";

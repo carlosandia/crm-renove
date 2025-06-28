@@ -62,18 +62,18 @@ const getDefaultTimeRange = (): TimeRange => {
 const handleControllerError = (error: any, res: Response, operation: string) => {
   console.error(`Error in ${operation}:`, error);
   
-  if (error.message.includes('Insufficient')) {
+  if ((error instanceof Error ? error.message : String(error)).includes('Insufficient')) {
     return res.status(400).json({
       success: false,
-      message: error.message,
+      message: (error instanceof Error ? error.message : String(error)),
       error_code: 'INSUFFICIENT_DATA',
     });
   }
 
-  if (error.message.includes('Invalid')) {
+  if ((error instanceof Error ? error.message : String(error)).includes('Invalid')) {
     return res.status(400).json({
       success: false,
-      message: error.message,
+      message: (error instanceof Error ? error.message : String(error)),
       error_code: 'INVALID_PARAMETERS',
     });
   }
@@ -120,7 +120,7 @@ class AnalyticsController {
             errors: validation.error.errors,
           });
         }
-        timeRange = validation.data;
+        timeRange = { ...validation.data, period_type: validation.data.period_type || "month" };
       } else {
         timeRange = getDefaultTimeRange();
       }
@@ -237,7 +237,7 @@ class AnalyticsController {
             errors: validation.error.errors,
           });
         }
-        timeRange = validation.data;
+        timeRange = { ...validation.data, period_type: validation.data.period_type || "month" };
       } else {
         timeRange = getDefaultTimeRange();
       }
@@ -294,7 +294,7 @@ class AnalyticsController {
             errors: validation.error.errors,
           });
         }
-        timeRange = validation.data;
+        timeRange = { ...validation.data, period_type: validation.data.period_type || "month" };
       } else {
         timeRange = getDefaultTimeRange();
       }
@@ -496,7 +496,7 @@ class AnalyticsController {
         success: false,
         data: {
           status: 'unhealthy',
-          error: error.message,
+          error: (error instanceof Error ? error.message : String(error)),
         },
         message: 'Analytics system health check failed',
       });
@@ -558,7 +558,7 @@ class AnalyticsController {
     } catch (error) {
       return {
         status: 'unhealthy',
-        error: error.message,
+        error: (error instanceof Error ? error.message : String(error)),
         last_check: new Date().toISOString(),
       };
     }
@@ -576,7 +576,7 @@ class AnalyticsController {
     } catch (error) {
       return {
         status: 'unhealthy',
-        error: error.message,
+        error: (error instanceof Error ? error.message : String(error)),
         last_check: new Date().toISOString(),
       };
     }
@@ -594,7 +594,7 @@ class AnalyticsController {
     } catch (error) {
       return {
         status: 'unhealthy',
-        error: error.message,
+        error: (error instanceof Error ? error.message : String(error)),
         last_check: new Date().toISOString(),
       };
     }

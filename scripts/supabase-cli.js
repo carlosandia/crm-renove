@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Configuração
-const API_BASE = 'http://localhost:8081/api/admin';
+const API_BASE = 'http://localhost:3001/api/admin';
 
 // Cores para console
 const colors = {
@@ -305,7 +305,7 @@ ${colors.yellow}Exemplos:${colors.reset}
   node scripts/supabase-cli.js migrate supabase/migrations/001_init.sql
   node scripts/supabase-cli.js backup users backup-users.json
 
-${colors.yellow}Nota:${colors.reset} Certifique-se de que o backend está rodando em http://localhost:8081
+${colors.yellow}Nota:${colors.reset} Certifique-se de que o backend está rodando em http://localhost:3001
     `);
   }
 };

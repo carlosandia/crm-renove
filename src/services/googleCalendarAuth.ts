@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 export interface GoogleCalendarCredentials {
   access_token: string;
@@ -47,6 +48,23 @@ export class GoogleCalendarAuth {
   // 🔧 CREDENCIAIS CENTRALIZADAS DA PLATAFORMA
   private static _platformCredentials: PlatformCredentials | null = null;
   private static _credentialsLoadPromise: Promise<PlatformCredentials | null> | null = null;
+
+  private authenticatedFetch: ((url: string, options?: RequestInit) => Promise<Response>) | null = null;
+
+  constructor() {
+    // Inicializar authenticatedFetch se disponível
+    const authContext = useAuth();
+    this.authenticatedFetch = authContext?.authenticatedFetch || null;
+  }
+
+  private async makeRequest(endpoint: string, options: RequestInit = {}) {
+    if (this.authenticatedFetch) {
+      return this.authenticatedFetch(endpoint, options);
+    } else {
+      // Fallback para desenvolvimento
+      return fetch(`http://localhost:3001${endpoint}`, options);
+    }
+  }
 
   /**
    * 🆕 Carrega credenciais globais da plataforma (configuradas pelo super_admin)
@@ -442,13 +460,13 @@ export class GoogleCalendarAuth {
   /**
    * 🆕 Verifica se empresa tem Google Calendar habilitado
    */
-  static async isEnabledForTenant(tenantId?: string): Promise<boolean> {
+  async isEnabledForTenant(): Promise<boolean> {
     try {
-      const response = await fetch('/api/platform-integrations/tenant/available', {
+      const response = await this.makeRequest('/platform-integrations/tenant/available', {
+        method: 'GET',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('supabase_token')}`,
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
       });
 
       if (!response.ok) {
@@ -456,13 +474,9 @@ export class GoogleCalendarAuth {
       }
 
       const result = await response.json();
-      const googleIntegration = result.data?.find((integration: any) => 
-        integration.provider === 'google'
-      );
-
-      return googleIntegration?.is_enabled_for_tenant === true;
+      return result.data?.google_calendar === true;
     } catch (error) {
-      console.error('❌ GOOGLE AUTH: Erro ao verificar habilitação para empresa:', error);
+      console.warn('[GOOGLE-CALENDAR] Erro ao verificar habilitação:', error);
       return false;
     }
   }
@@ -658,6 +672,29 @@ export class GoogleCalendarAuth {
     } catch (error) {
       console.error('❌ GOOGLE AUTH: Erro ao remover integração:', error);
       return false;
+    }
+  }
+
+  public async getPlatformCredentials(): Promise<PlatformCredentials | null> {
+    try {
+      const directCredentialsResponse = await this.makeRequest('/platform-integrations/credentials/google', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (directCredentialsResponse.ok) {
+        const result = await directCredentialsResponse.json();
+        if (result.success && result.data?.client_id) {
+          return result.data;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.warn('[GOOGLE-CALENDAR] Erro ao obter credenciais:', error);
+      return null;
     }
   }
 } 

@@ -1,5 +1,5 @@
 import { supabase } from '../config/supabase';
-import { cacheService } from './cacheService';
+import { getCache } from './cacheService';
 import { logger } from '../utils/logger';
 
 // =====================================================
@@ -206,8 +206,8 @@ export class MemberToolsService {
   ): Promise<{ tasks: MemberTask[]; total: number }> {
     try {
       const cacheKey = `member_tasks:${tenantId}:${memberId}:${JSON.stringify(filters)}`;
-      const cached = await cacheService.get(cacheKey);
-      if (cached) return cached;
+      const cached = await getCache().get<{ tasks: MemberTask[]; total: number }>(cacheKey);
+      if (cached && cached.tasks && Array.isArray(cached.tasks)) return cached;
 
       let query = supabase
         .from('member_tasks')
@@ -256,7 +256,7 @@ export class MemberToolsService {
         total: count || 0
       };
 
-      await cacheService.set(cacheKey, result, this.CACHE_TTL.TASKS);
+      await getCache().set(cacheKey, result, { ttl: this.CACHE_TTL.TASKS });
       return result;
     } catch (error) {
       logger.error('Error in getMemberTasks:', error);
@@ -416,8 +416,8 @@ export class MemberToolsService {
   ): Promise<CalendarIntegration[]> {
     try {
       const cacheKey = `calendar_integrations:${tenantId}:${userId}`;
-      const cached = await cacheService.get(cacheKey);
-      if (cached) return cached;
+      const cached = await getCache().get<CalendarIntegration[]>(cacheKey);
+      if (cached && Array.isArray(cached)) return cached;
 
       const { data, error } = await supabase
         .from('calendar_integrations')
@@ -431,7 +431,7 @@ export class MemberToolsService {
         throw error;
       }
 
-      await cacheService.set(cacheKey, data || [], this.CACHE_TTL.DASHBOARD);
+      await getCache().set(cacheKey, data || [], { ttl: this.CACHE_TTL.DASHBOARD });
       return data || [];
     } catch (error) {
       logger.error('Error in getCalendarIntegrations:', error);
@@ -461,7 +461,7 @@ export class MemberToolsService {
       }
 
       // Clear cache
-      await cacheService.delete(`calendar_integrations:${tenantId}:${integrationData.user_id}`);
+      await getCache().delete(`calendar_integrations:${tenantId}:${integrationData.user_id}`);
 
       return data;
     } catch (error) {
@@ -517,8 +517,8 @@ export class MemberToolsService {
   ): Promise<EmailTemplate[]> {
     try {
       const cacheKey = `email_templates:${tenantId}:${JSON.stringify(filters)}`;
-      const cached = await cacheService.get(cacheKey);
-      if (cached) return cached;
+      const cached = await getCache().get(cacheKey);
+      if (cached && Array.isArray(cached)) return cached;
 
       let query = supabase
         .from('email_templates')
@@ -546,7 +546,7 @@ export class MemberToolsService {
         throw error;
       }
 
-      await cacheService.set(cacheKey, data || [], this.CACHE_TTL.TEMPLATES);
+      await getCache().set(cacheKey, data || [], { ttl: this.CACHE_TTL.TEMPLATES });
       return data || [];
     } catch (error) {
       logger.error('Error in getEmailTemplates:', error);
@@ -707,8 +707,8 @@ export class MemberToolsService {
   async getWhatsAppIntegrations(tenantId: string): Promise<WhatsAppIntegration[]> {
     try {
       const cacheKey = `whatsapp_integrations:${tenantId}`;
-      const cached = await cacheService.get(cacheKey);
-      if (cached) return cached;
+      const cached = await getCache().get(cacheKey);
+      if (cached && Array.isArray(cached)) return cached;
 
       const { data, error } = await supabase
         .from('whatsapp_integrations')
@@ -721,7 +721,7 @@ export class MemberToolsService {
         throw error;
       }
 
-      await cacheService.set(cacheKey, data || [], this.CACHE_TTL.DASHBOARD);
+      await getCache().set(cacheKey, data || [], { ttl: this.CACHE_TTL.DASHBOARD });
       return data || [];
     } catch (error) {
       logger.error('Error in getWhatsAppIntegrations:', error);
@@ -751,7 +751,7 @@ export class MemberToolsService {
       }
 
       // Clear cache
-      await cacheService.delete(`whatsapp_integrations:${tenantId}`);
+      await getCache().delete(`whatsapp_integrations:${tenantId}`);
 
       return data;
     } catch (error) {
@@ -773,8 +773,8 @@ export class MemberToolsService {
   ): Promise<MemberPerformanceSnapshot[]> {
     try {
       const cacheKey = `member_performance:${tenantId}:${memberId}:${periodType}:${periodStart}:${periodEnd}`;
-      const cached = await cacheService.get(cacheKey);
-      if (cached) return cached;
+      const cached = await getCache().get(cacheKey);
+      if (cached && Array.isArray(cached)) return cached;
 
       let query = supabase
         .from('member_performance_snapshots')
@@ -798,7 +798,7 @@ export class MemberToolsService {
         throw error;
       }
 
-      await cacheService.set(cacheKey, data || [], this.CACHE_TTL.PERFORMANCE);
+      await getCache().set(cacheKey, data || [], { ttl: this.CACHE_TTL.PERFORMANCE });
       return data || [];
     } catch (error) {
       logger.error('Error in getMemberPerformance:', error);
@@ -845,8 +845,8 @@ export class MemberToolsService {
   ): Promise<MemberDashboardConfig | null> {
     try {
       const cacheKey = `member_dashboard_config:${tenantId}:${memberId}`;
-      const cached = await cacheService.get(cacheKey);
-      if (cached) return cached;
+      const cached = await getCache().get(cacheKey);
+      if (cached && typeof cached === 'object' && cached.id !== undefined) return cached;
 
       const { data, error } = await supabase
         .from('member_dashboard_configs')
@@ -860,7 +860,7 @@ export class MemberToolsService {
         throw error;
       }
 
-      await cacheService.set(cacheKey, data, this.CACHE_TTL.DASHBOARD);
+      await getCache().set(cacheKey, data, { ttl: this.CACHE_TTL.DASHBOARD });
       return data;
     } catch (error) {
       logger.error('Error in getMemberDashboardConfig:', error);
@@ -891,7 +891,7 @@ export class MemberToolsService {
       }
 
       // Clear cache
-      await cacheService.delete(`member_dashboard_config:${tenantId}:${memberId}`);
+      await getCache().delete(`member_dashboard_config:${tenantId}:${memberId}`);
 
       return data;
     } catch (error) {
@@ -948,17 +948,17 @@ export class MemberToolsService {
 
   private async clearMemberTasksCache(tenantId: string, memberId: string): Promise<void> {
     const pattern = `member_tasks:${tenantId}:${memberId}:*`;
-    await cacheService.deletePattern(pattern);
+    await getCache().deletePattern(pattern);
   }
 
   private async clearEmailTemplatesCache(tenantId: string): Promise<void> {
     const pattern = `email_templates:${tenantId}:*`;
-    await cacheService.deletePattern(pattern);
+    await getCache().deletePattern(pattern);
   }
 
   private async clearMemberPerformanceCache(tenantId: string, memberId: string): Promise<void> {
     const pattern = `member_performance:${tenantId}:${memberId}:*`;
-    await cacheService.deletePattern(pattern);
+    await getCache().deletePattern(pattern);
   }
 
   // =====================================================
@@ -1000,7 +1000,7 @@ export class MemberToolsService {
   }> {
     try {
       const cacheKey = `member_task_summary:${tenantId}:${memberId}`;
-      const cached = await cacheService.get(cacheKey);
+      const cached = await getCache().get(cacheKey);
       if (cached) return cached;
 
       const today = new Date().toISOString().split('T')[0];
@@ -1038,7 +1038,7 @@ export class MemberToolsService {
         ).length
       };
 
-      await cacheService.set(cacheKey, summary, this.CACHE_TTL.TASKS);
+      await getCache().set(cacheKey, summary, { ttl: this.CACHE_TTL.TASKS });
       return summary;
     } catch (error) {
       logger.error('Error in getMemberTaskSummary:', error);

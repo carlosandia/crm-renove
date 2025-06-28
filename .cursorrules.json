@@ -1,0 +1,9 @@
+{
+    "readOnly": [
+      "frontend/**",
+      "supabase/migrations/**"
+    ],
+    "specialRules": [
+      { "glob": "backend/src/**", "requireApproval": true }
+    ]
+  }  

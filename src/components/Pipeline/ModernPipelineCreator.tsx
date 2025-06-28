@@ -215,7 +215,7 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
   submitText,
 }) => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'basic' | 'stages' | 'fields' | 'cadence'>('basic');
+  const [activeTab, setActiveTab] = useState<'basic' | 'stages' | 'fields' | 'distribution' | 'cadence'>('basic');
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Estados para modais
@@ -309,6 +309,13 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
         // Carregar membros da pipeline se estiver editando
         if (pipeline.id) {
           try {
+            // ✅ CORREÇÃO: Usar lógica de isolamento total para admin
+            console.log('🔍 [ModernPipelineCreator] Carregando membros da pipeline:', {
+              pipelineId: pipeline.id,
+              userRole: user?.role,
+              userEmail: user?.email
+            });
+
             const { data: pipelineMembers, error } = await supabase
               .from('pipeline_members')
               .select('member_id')
@@ -316,19 +323,23 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
             
             if (!error && pipelineMembers) {
               memberIds = pipelineMembers.map(pm => pm.member_id);
-              console.log('✅ Membros carregados para edição:', memberIds);
+              console.log('✅ [ModernPipelineCreator] Membros carregados para edição:', memberIds);
+            } else {
+              console.warn('⚠️ [ModernPipelineCreator] Erro ao carregar membros:', error?.message);
             }
           } catch (error) {
-            console.error('Erro ao carregar membros da pipeline:', error);
+            console.error('❌ [ModernPipelineCreator] Erro crítico ao carregar membros:', error);
           }
         }
         
-        console.log('📋 Carregando dados da pipeline para edição:', {
+        console.log('📋 [ModernPipelineCreator] Carregando dados da pipeline para edição:', {
           name: pipeline.name,
           stagesCount: pipeline.stages?.length || 0,
           customFieldsCount: pipeline.custom_fields?.length || 0,
           stages: pipeline.stages?.map(s => s.name),
-          customFields: pipeline.custom_fields?.map(f => f.field_name)
+          customFields: pipeline.custom_fields?.map(f => f.field_name),
+          userRole: user?.role,
+          userEmail: user?.email
         });
 
         // 🆕 CARREGAR REGRA DE DISTRIBUIÇÃO EXISTENTE
@@ -342,6 +353,7 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
 
         if (pipeline.id) {
           try {
+            console.log('🔍 [ModernPipelineCreator] Carregando regra de distribuição...');
             const { data: distributionData } = await supabase
               .from('pipeline_distribution_rules')
               .select('*')
@@ -356,12 +368,32 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
                 skip_inactive_members: distributionData.skip_inactive_members ?? true,
                 fallback_to_manual: distributionData.fallback_to_manual ?? true
               };
-              console.log('✅ Regra de distribuição carregada:', distributionRule);
+              console.log('✅ [ModernPipelineCreator] Regra de distribuição carregada:', distributionRule);
+            } else {
+              console.log('ℹ️ [ModernPipelineCreator] Nenhuma regra de distribuição encontrada, usando padrão');
             }
           } catch (error) {
-            console.log('ℹ️ Regra de distribuição não encontrada, usando padrão');
+            console.log('ℹ️ [ModernPipelineCreator] Regra de distribuição não encontrada, usando padrão:', error);
           }
         }
+
+        // ✅ CORREÇÃO: Aplicar isolamento total - admin só vê pipelines que criou
+        const canEditPipeline = user?.role === 'super_admin' || 
+          (user?.role === 'admin' && (pipeline.created_by === user.email || pipeline.created_by === user.id));
+
+        if (!canEditPipeline) {
+          console.error('❌ [ModernPipelineCreator] Usuário não tem permissão para editar esta pipeline:', {
+            userRole: user?.role,
+            userEmail: user?.email,
+            userId: user?.id,
+            pipelineCreatedBy: pipeline.created_by,
+            pipelineName: pipeline.name
+          });
+          alert('Erro: Você não tem permissão para editar esta pipeline.');
+          return;
+        }
+
+        console.log('✅ [ModernPipelineCreator] Permissão confirmada para edição da pipeline');
 
         setFormData({
           name: pipeline.name,
@@ -376,9 +408,11 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
           distribution_rule: distributionRule // 🆕 INCLUIR REGRA DE DISTRIBUIÇÃO
         });
 
-        console.log('✅ FormData configurado:', {
+        console.log('✅ [ModernPipelineCreator] FormData configurado:', {
           stagesCount: organizeStages(pipeline.stages || SYSTEM_STAGES).length,
-          customFieldsCount: [...SYSTEM_REQUIRED_FIELDS, ...(pipeline.custom_fields || [])].length
+          customFieldsCount: [...SYSTEM_REQUIRED_FIELDS, ...(pipeline.custom_fields || [])].length,
+          memberIdsCount: memberIds.length,
+          distributionMode: distributionRule.mode
         });
         
         if (pipeline.id) {
@@ -388,7 +422,7 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
     };
     
     loadPipelineData();
-  }, [pipeline]);
+  }, [pipeline, user?.role, user?.email, user?.id]); // ✅ DEPENDÊNCIAS CORRIGIDAS
 
   const loadCadenceConfigs = async (pipelineId: string) => {
     try {
@@ -469,8 +503,48 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
     if (!validateForm()) return;
     
     setIsSubmitting(true);
+    
     try {
+      // ✅ CORREÇÃO: Validar permissões antes de prosseguir
+      if (!user?.id || !user?.tenant_id) {
+        console.error('❌ [ModernPipelineCreator] Usuário não autenticado:', { user });
+        alert('Erro: Usuário não autenticado. Faça login novamente.');
+        return;
+      }
+
+      // ✅ CORREÇÃO: Aplicar isolamento total para admin
+      if (pipeline && user.role === 'admin') {
+        const canEditPipeline = pipeline.created_by === user.email || pipeline.created_by === user.id;
+        if (!canEditPipeline) {
+          console.error('❌ [ModernPipelineCreator] Admin não pode editar pipeline de outro admin:', {
+            userEmail: user.email,
+            userId: user.id,
+            pipelineCreatedBy: pipeline.created_by
+          });
+          alert('Erro: Você só pode editar pipelines que você criou.');
+          return;
+        }
+      }
+
+      console.log('🚀 [ModernPipelineCreator] Iniciando salvamento de pipeline:', {
+        name: formData.name,
+        description: formData.description,
+        memberIds: formData.member_ids,
+        stagesCount: formData.stages?.length,
+        customFieldsCount: formData.custom_fields?.length,
+        isEditing: !!pipeline,
+        userInfo: {
+          id: user?.id,
+          email: user?.email,
+          tenant_id: user?.tenant_id,
+          role: user?.role
+        }
+      });
+
       await onSubmit(formData);
+    } catch (error) {
+      console.error('❌ [ModernPipelineCreator] Erro no salvamento:', error);
+      alert('Erro ao salvar pipeline: ' + (error as Error).message);
     } finally {
       setIsSubmitting(false);
     }
@@ -1534,7 +1608,7 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
 
       {/* Tabs */}
       <BlurFade delay={0.1}>
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)} className="w-full">
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)} className="w-full"> {/* 🆕 5 COLUNAS AGORA */}
           <TabsList className="grid w-full grid-cols-5"> {/* 🆕 5 COLUNAS AGORA */}
             <TabsTrigger value="basic" className="gap-2">
               <Rocket className="h-4 w-4" />

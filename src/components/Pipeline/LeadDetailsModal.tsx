@@ -1,5 +1,5 @@
 import React, { useState, useEffect, createContext, useContext, useRef, useCallback } from 'react';
-import { X, User, Mail, MessageCircle, ThumbsUp, ThumbsDown, Clock, Phone, Building, DollarSign, MapPin, Calendar, Target, Thermometer, Globe, FileText, Activity, ChevronDown, CheckCircle, AlertCircle, PlayCircle, ArrowRight, Zap } from 'lucide-react';
+import { X, User, Mail, MessageCircle, ThumbsUp, ThumbsDown, Clock, Phone, Building, DollarSign, MapPin, Calendar, Target, Thermometer, Globe, FileText, Activity, ChevronDown, CheckCircle, AlertCircle, PlayCircle, ArrowRight, Zap, Edit, Check, X as XIcon } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { Lead, CustomField } from '../../types/Pipeline';
@@ -95,6 +95,11 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   const [pipelineStages, setPipelineStages] = useState<any[]>([]);
   const [loadingStages, setLoadingStages] = useState(false);
   const [showStageSelector, setShowStageSelector] = useState(false);
+
+  // ✅ IMPLEMENTAÇÃO: Estados para edição inline (inspirado no LeadViewModal)
+  const [editing, setEditing] = useState<{[key: string]: boolean}>({});
+  const [editValues, setEditValues] = useState<{[key: string]: string}>({});
+  const [saving, setSaving] = useState<{[key: string]: boolean}>({});
 
   // ✅ CORREÇÃO DEFINITIVA: Remover completamente o useEffect problemático
   React.useEffect(() => {
@@ -556,6 +561,348 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     }
   }, [isOpen, localLeadData.pipeline_id, loadPipelineStages]);
 
+  // ✅ IMPLEMENTAÇÃO: Funções de controle de edição (baseadas no LeadViewModal)
+  const handleInputChange = useCallback((field: string, value: string) => {
+    console.log('🔄 [LeadDetailsModal] handleInputChange - field:', field, 'value:', value);
+    setEditValues(prev => ({ ...prev, [field]: value }));
+  }, []);
+
+  const startEditing = useCallback((field: string, currentValue: string) => {
+    console.log('🔄 [LeadDetailsModal] startEditing - field:', field, 'currentValue:', currentValue);
+    setEditing(prev => ({ ...prev, [field]: true }));
+    setEditValues(prev => ({ ...prev, [field]: currentValue || '' }));
+  }, []);
+
+  const cancelEditing = useCallback((field: string) => {
+    console.log('🔄 [LeadDetailsModal] cancelEditing - field:', field);
+    setEditing(prev => ({ ...prev, [field]: false }));
+    setEditValues(prev => ({ ...prev, [field]: '' }));
+  }, []);
+
+  // ✅ IMPLEMENTAÇÃO: Mapeamento de campos seguindo estratégia arquitetural dupla
+  const FIELD_STRATEGY: Record<string, any> = {
+    // DADOS DO LEAD - Salvos em leads_master (fonte única) + sync para todos pipeline_leads
+    'nome_lead': { table: 'leads_master', fields: ['first_name', 'last_name'], handler: 'special_name', syncToAll: true },
+    'email': { table: 'leads_master', field: 'email', handler: 'direct', syncToAll: true },
+    'telefone': { table: 'leads_master', field: 'phone', handler: 'direct', syncToAll: true },
+    
+    // DADOS DA OPORTUNIDADE - Salvos apenas em custom_data desta oportunidade
+    'nome_oportunidade': { table: 'pipeline_leads', path: 'custom_data', handler: 'direct', syncToAll: false },
+    'valor': { table: 'pipeline_leads', path: 'custom_data', handler: 'number', syncToAll: false },
+    'notas_oportunidade': { table: 'pipeline_leads', path: 'custom_data', handler: 'direct', syncToAll: false },
+    
+    // CAMPOS CUSTOMIZADOS - Salvos apenas em custom_data desta oportunidade
+    // Serão mapeados dinamicamente baseado em customFields
+  };
+
+  // ✅ IMPLEMENTAÇÃO: Função principal de salvamento com estratégia dupla
+  const saveField = useCallback(async (fieldName: string) => {
+    console.log('💾 [LeadDetailsModal] Iniciando salvamento estratégico do campo:', fieldName, 'Valor:', editValues[fieldName]);
+    
+    if (!localLeadData?.id) {
+      console.error('❌ [LeadDetailsModal] ID do lead não encontrado');
+      return;
+    }
+
+    if (editValues[fieldName] === undefined || editValues[fieldName] === null || editValues[fieldName] === '') {
+      console.warn('⚠️ [LeadDetailsModal] Valor do campo vazio:', fieldName);
+      // Permitir salvar valores vazios para limpar campos
+    }
+
+    try {
+      setSaving(prev => ({ ...prev, [fieldName]: true }));
+      
+      const inputValue = editValues[fieldName] || '';
+      let strategy = FIELD_STRATEGY[fieldName as keyof typeof FIELD_STRATEGY];
+      
+      // ✅ Para campos customizados, criar estratégia dinamicamente
+      if (!strategy) {
+        const customField = customFields.find(cf => cf.field_name === fieldName);
+        if (customField) {
+          strategy = { 
+            table: 'pipeline_leads', 
+            path: 'custom_data', 
+            handler: customField.field_type === 'number' ? 'number' : 'direct', 
+            syncToAll: false 
+          };
+          console.log('📝 [LeadDetailsModal] Campo customizado detectado:', fieldName, strategy);
+        } else {
+          console.log('📝 [LeadDetailsModal] Campo será salvo em custom_data:', fieldName);
+          strategy = { 
+            table: 'pipeline_leads', 
+            path: 'custom_data', 
+            handler: 'direct', 
+            syncToAll: false 
+          };
+        }
+      }
+
+      console.log('📡 [LeadDetailsModal] Estratégia para campo:', fieldName, strategy);
+
+      // ✅ ESTRATÉGIA DUPLA: LEADS_MASTER vs CUSTOM_DATA
+      if (strategy.table === 'leads_master' && localLeadData.lead_master_id) {
+        console.log('🎯 [LeadDetailsModal] SALVANDO EM LEADS_MASTER (fonte única)');
+        
+        let updateData: any = {};
+        let customDataUpdate: any = {};
+        
+        // Processar valor baseado no handler
+        switch (strategy.handler) {
+          case 'special_name':
+            const parts = inputValue.trim().split(' ');
+            updateData.first_name = parts[0] || '';
+            updateData.last_name = parts.slice(1).join(' ') || '';
+            customDataUpdate.nome_lead = `${updateData.first_name} ${updateData.last_name}`.trim();
+            console.log('📝 [LeadDetailsModal] Nome processado:', updateData);
+            break;
+            
+          case 'direct':
+            if (strategy.field) {
+              updateData[strategy.field] = inputValue;
+              if (strategy.field === 'email') {
+                customDataUpdate.email = inputValue;
+              } else if (strategy.field === 'phone') {
+                customDataUpdate.telefone = inputValue;
+              }
+            }
+            break;
+        }
+        
+        // 1. Atualizar leads_master (fonte única)
+        const { data: updatedLead, error: masterError } = await supabase
+          .from('leads_master')
+          .update({
+            ...updateData,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', localLeadData.lead_master_id)
+          .select()
+          .single();
+          
+        if (masterError) {
+          throw masterError;
+        }
+        
+        console.log('✅ [LeadDetailsModal] Leads_master atualizado:', updatedLead.id);
+        
+        // 2. Buscar TODOS os pipeline_leads relacionados para sincronização
+        const { data: allPipelineLeads, error: searchError } = await supabase
+          .from('pipeline_leads')
+          .select('id, custom_data')
+          .eq('lead_master_id', localLeadData.lead_master_id);
+          
+        if (!searchError && allPipelineLeads && allPipelineLeads.length > 0) {
+          console.log(`🔄 [LeadDetailsModal] Sincronizando com ${allPipelineLeads.length} pipeline_leads`);
+          
+          // Atualizar todos os pipeline_leads relacionados
+          const updatePromises = allPipelineLeads.map(pl => 
+            supabase
+              .from('pipeline_leads')
+              .update({
+                custom_data: {
+                  ...pl.custom_data,
+                  ...customDataUpdate,
+                  last_sync_at: new Date().toISOString(),
+                  sync_source: 'leadDetailsModal_edit'
+                },
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', pl.id)
+          );
+          
+          await Promise.all(updatePromises);
+          console.log('✅ [LeadDetailsModal] Sincronização com pipeline_leads concluída');
+        }
+        
+        // 3. Atualizar estado local com dados de leads_master
+        setLocalLeadData(prev => ({
+          ...prev,
+          custom_data: {
+            ...prev.custom_data,
+            ...customDataUpdate
+          }
+        }));
+        
+        // 4. Disparar evento global para sincronização completa
+        const eventData = {
+          leadMasterId: localLeadData.lead_master_id,
+          pipelineLeadIds: allPipelineLeads?.map(pl => pl.id) || [localLeadData.id],
+          cardData: {
+            nome_lead: strategy.handler === 'special_name' 
+              ? `${updateData.first_name} ${updateData.last_name}`.trim()
+              : getLeadData('nome_lead'),
+            email: customDataUpdate.email || getLeadData('email'),
+            telefone: customDataUpdate.telefone || getLeadData('telefone'),
+            lead_master_id: localLeadData.lead_master_id,
+            last_sync_at: new Date().toISOString(),
+            data_source: 'leads_master',
+            sync_method: 'leadDetailsModal_edit'
+          },
+          timestamp: Date.now(),
+          source: 'LeadDetailsModal'
+        };
+        
+        console.log('📡 [LeadDetailsModal] Disparando evento global (fonte única):', eventData);
+        window.dispatchEvent(new CustomEvent('leadDataUpdated', { detail: eventData }));
+        
+      } else {
+        console.log('🎯 [LeadDetailsModal] SALVANDO EM CUSTOM_DATA (específico da oportunidade)');
+        
+        // Processar valor
+        let processedValue: any = inputValue;
+        if (strategy.handler === 'number') {
+          const numValue = parseFloat(inputValue.replace(/[^\d.,]/g, '').replace(',', '.'));
+          processedValue = isNaN(numValue) ? null : numValue;
+        }
+        
+        // Atualizar apenas este pipeline_lead específico
+        const currentCustomData = localLeadData.custom_data || {};
+        const updatedCustomData = {
+          ...currentCustomData,
+          [fieldName]: processedValue,
+          last_sync_at: new Date().toISOString(),
+          sync_source: 'leadDetailsModal_edit'
+        };
+        
+        const { error: customError } = await supabase
+          .from('pipeline_leads')
+          .update({
+            custom_data: updatedCustomData,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', localLeadData.id);
+          
+        if (customError) {
+          throw customError;
+        }
+        
+        console.log('✅ [LeadDetailsModal] Custom_data atualizado para este pipeline_lead');
+        
+        // Atualizar estado local
+        setLocalLeadData(prev => ({
+          ...prev,
+          custom_data: updatedCustomData
+        }));
+        
+        // Disparar evento local para este pipeline_lead
+        const eventData = {
+          leadMasterId: localLeadData.lead_master_id,
+          pipelineLeadIds: [localLeadData.id],
+          cardData: updatedCustomData,
+          timestamp: Date.now(),
+          source: 'LeadDetailsModal'
+        };
+        
+        console.log('📡 [LeadDetailsModal] Disparando evento local (custom_data):', eventData);
+        window.dispatchEvent(new CustomEvent('leadDataUpdated', { detail: eventData }));
+      }
+
+      // Limpar estados de edição
+      setEditValues(prev => {
+        const newValues = { ...prev };
+        delete newValues[fieldName];
+        return newValues;
+      });
+      setEditing(prev => ({ ...prev, [fieldName]: false }));
+
+      console.log('🎉 [LeadDetailsModal] Campo salvo com sucesso!');
+
+    } catch (error: any) {
+      // ✅ CORREÇÃO: Tratamento melhorado de erros de conectividade
+      const isNetworkError = error?.message?.includes('Failed to fetch') || 
+                            error?.message?.includes('NetworkError') ||
+                            error?.message?.includes('TypeError') ||
+                            error?.code === 'network';
+      
+      if (isNetworkError) {
+        console.warn('⚠️ [LeadDetailsModal] Erro de conectividade no salvamento - tente novamente:', fieldName);
+        alert('Erro de conectividade. Verifique sua conexão e tente novamente.');
+      } else {
+        console.error('❌ [LeadDetailsModal] Erro no salvamento:', error);
+        alert('Erro ao salvar campo. Tente novamente.');
+      }
+    } finally {
+      setSaving(prev => ({ ...prev, [fieldName]: false }));
+    }
+  }, [editValues, localLeadData, customFields, getLeadData]);
+
+  // ✅ IMPLEMENTAÇÃO: Função renderEditableField adaptada para LeadDetailsModal
+  const renderEditableField = useCallback((
+    fieldName: string,
+    label: string,
+    icon: React.ReactNode,
+    placeholder: string = '',
+    disabled: boolean = false
+  ) => {
+    const currentValue = getLeadData(fieldName) || '';
+    const isEditing = editing[fieldName];
+    const isSaving = saving[fieldName];
+    
+    return (
+      <div className="flex items-center space-x-3 p-1 hover:bg-gray-50 rounded-md transition-colors">
+        {icon}
+        <div className="flex-1 min-w-0">
+          <span className="text-sm font-medium text-gray-700">{label}:</span>
+          {isEditing ? (
+            <div className="ml-2 flex items-center space-x-2">
+              <input
+                type="text"
+                value={editValues[fieldName] || ''}
+                onChange={(e) => handleInputChange(fieldName, e.target.value)}
+                placeholder={placeholder}
+                className="flex-1 text-sm border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                disabled={isSaving}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !isSaving) {
+                    saveField(fieldName);
+                  } else if (e.key === 'Escape') {
+                    cancelEditing(fieldName);
+                  }
+                }}
+              />
+              {isSaving ? (
+                <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <>
+                  <button 
+                    onClick={() => saveField(fieldName)}
+                    className="p-1 hover:bg-green-100 rounded transition-colors"
+                    title="Salvar alterações"
+                  >
+                    <Check className="h-3 w-3 text-green-600" />
+                  </button>
+                  <button 
+                    onClick={() => cancelEditing(fieldName)}
+                    className="p-1 hover:bg-red-100 rounded transition-colors"
+                    title="Cancelar edição"
+                  >
+                    <XIcon className="h-3 w-3 text-red-600" />
+                  </button>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="ml-2 flex items-center justify-between">
+              <span className="text-sm text-gray-900">
+                {currentValue || <span className="italic text-gray-500">Não informado</span>}
+              </span>
+              {!disabled && (
+                <button 
+                  onClick={() => startEditing(fieldName, currentValue)}
+                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-100 rounded transition-all"
+                  title="Editar campo"
+                >
+                  <Edit className="h-3 w-3 text-gray-400 hover:text-gray-600" />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }, [editing, saving, editValues, getLeadData, handleInputChange, saveField, startEditing, cancelEditing]);
+
   if (!isOpen) return null;
 
   return (
@@ -708,152 +1055,55 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                 <div>
                   <h3 className="text-md font-semibold text-gray-900 mb-2 pb-2 border-b border-gray-200">Oportunidade</h3>
                   <div className="space-y-1">
-                    {/* Nome da Oportunidade */}
-                    {(() => {
-                      const nomeOportunidade = getLeadData('nome_oportunidade') || getLeadData('titulo_oportunidade') || getLeadData('titulo') || getLeadData('name');
-                      
-                      return (
-                        <div className="flex items-center space-x-3 p-1 hover:bg-gray-50 rounded-md transition-colors">
-                          <Target className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <span className="text-sm font-medium text-gray-700">Nome:</span>
-                            <span className="ml-2 text-sm text-gray-900">
-                              {nomeOportunidade || 'Oportunidade sem título'}
-                            </span>
+                    {/* Nome da Oportunidade - ✅ IMPLEMENTAÇÃO: Edição inline */}
+                    <div className="group">
+                      {renderEditableField(
+                        'nome_oportunidade',
+                        'Nome',
+                        <Target className="w-4 h-4 text-gray-500 flex-shrink-0" />,
+                        'Digite o nome da oportunidade...'
+                      )}
                           </div>
-                        </div>
-                      );
-                    })()}
                     
-                    {/* Valor da Oportunidade */}
-                    {(() => {
-                      const valor = getLeadData('valor') || getLeadData('valor_oportunidade') || getLeadData('valor_proposta') || getLeadData('value');
-                      
-                      if (valor) {
-                        // Limpar e converter valor
-                        const valorNumerico = typeof valor === 'string' 
-                          ? parseFloat(valor.replace(/[^\d.,]/g, '').replace(',', '.')) || 0
-                          : parseFloat(valor) || 0;
-                        
-                        return (
-                          <div className="flex items-center space-x-3 p-1 hover:bg-gray-50 rounded-md transition-colors">
-                            <DollarSign className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <span className="text-sm font-medium text-gray-700">Valor:</span>
-                              <span className="ml-2 text-sm text-gray-900">
-                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorNumerico)}
-                              </span>
+                    {/* Valor da Oportunidade - ✅ IMPLEMENTAÇÃO: Edição inline */}
+                    <div className="group">
+                      {renderEditableField(
+                        'valor',
+                        'Valor',
+                        <DollarSign className="w-4 h-4 text-gray-500 flex-shrink-0" />,
+                        'Ex: 1500,00'
+                      )}
                             </div>
-                          </div>
-                        );
-                      }
-                      
-                      // Se não encontrou valor, mostrar debug
-                      return (
-                        <div className="flex items-center space-x-3 p-1 hover:bg-gray-50 rounded-md transition-colors">
-                          <DollarSign className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <span className="text-sm font-medium text-gray-700">Valor:</span>
-                            <span className="ml-2 text-sm text-gray-500 italic">Não informado</span>
-                          </div>
-                        </div>
-                      );
-                    })()}
 
-                    {/* Documentos da Oportunidade */}
-                    {(() => {
-                      const documentos = getLeadData('documentos_anexos');
-                      
-                      return (
-                        <div className="flex items-start space-x-3 p-1 hover:bg-gray-50 rounded-md transition-colors">
-                          <FileText className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
-                          <div className="flex-1 min-w-0">
-                            <span className="text-sm font-medium text-gray-700">Documentos:</span>
-                            {documentos && documentos.length > 0 ? (
-                              <div className="ml-2 space-y-1">
-                                {documentos.map((doc: any, index: number) => (
-                                  <div key={index} className="flex items-center space-x-2">
-                                    <a 
-                                      href={doc.url} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
-                                      className="text-sm text-blue-600 hover:text-blue-800 underline"
-                                    >
-                                      {doc.name || `Documento ${index + 1}`}
-                                    </a>
-                                    <span className="text-xs text-gray-400">
-                                      ({doc.type || 'Arquivo'})
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="ml-2 text-sm text-gray-500 italic">Nenhum documento anexado</span>
+                    {/* Documentos da Oportunidade - ✅ IMPLEMENTAÇÃO: Edição inline */}
+                    <div className="group">
+                      {renderEditableField(
+                        'documentos_anexos',
+                        'Documentos',
+                        <FileText className="w-4 h-4 text-gray-500 flex-shrink-0" />,
+                        'Cole links de documentos separados por vírgula...'
                             )}
                           </div>
-                        </div>
-                      );
-                    })()}
 
-                    {/* Links da Oportunidade */}
-                    {(() => {
-                      const links = getLeadData('links_oportunidade');
-                      
-                      return (
-                        <div className="flex items-start space-x-3 p-1 hover:bg-gray-50 rounded-md transition-colors">
-                          <Globe className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
-                          <div className="flex-1 min-w-0">
-                            <span className="text-sm font-medium text-gray-700">Links:</span>
-                            {links && links.length > 0 ? (
-                              <div className="ml-2 space-y-1">
-                                {links.map((link: any, index: number) => (
-                                  <div key={index} className="flex items-center space-x-2">
-                                    <a 
-                                      href={link.url} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
-                                      className="text-sm text-blue-600 hover:text-blue-800 underline break-all"
-                                    >
-                                      {link.title || link.url}
-                                    </a>
-                                    {link.description && (
-                                      <span className="text-xs text-gray-400">
-                                        - {link.description}
-                                      </span>
+                    {/* Links da Oportunidade - ✅ IMPLEMENTAÇÃO: Edição inline */}
+                    <div className="group">
+                      {renderEditableField(
+                        'links_oportunidade',
+                        'Links',
+                        <Globe className="w-4 h-4 text-gray-500 flex-shrink-0" />,
+                        'Cole URLs separadas por vírgula...'
                                     )}
                                   </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="ml-2 text-sm text-gray-500 italic">Nenhum link adicionado</span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })()}
 
-                    {/* Notas sobre a Oportunidade */}
-                    {(() => {
-                      const notas = getLeadData('notas_oportunidade');
-                      
-                      return (
-                        <div className="flex items-start space-x-3 p-1 hover:bg-gray-50 rounded-md transition-colors">
-                          <MessageCircle className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
-                          <div className="flex-1 min-w-0">
-                            <span className="text-sm font-medium text-gray-700">Notas sobre a oportunidade:</span>
-                            {notas && notas.trim() !== '' ? (
-                              <div className="ml-2 mt-1">
-                                <p className="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed">
-                                  {notas}
-                                </p>
-                              </div>
-                            ) : (
-                              <span className="ml-2 text-sm text-gray-500 italic">Nenhuma nota adicionada</span>
+                    {/* Notas sobre a Oportunidade - ✅ IMPLEMENTAÇÃO: Edição inline */}
+                    <div className="group">
+                      {renderEditableField(
+                        'notas_oportunidade',
+                        'Notas',
+                        <MessageCircle className="w-4 h-4 text-gray-500 flex-shrink-0" />,
+                        'Digite observações sobre a oportunidade...'
                             )}
                           </div>
-                        </div>
-                      );
-                    })()}
                   </div>
                 </div>
 
@@ -861,56 +1111,35 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                 <div>
                   <h3 className="text-md font-semibold text-gray-900 mb-2 pb-2 border-b border-gray-200">Lead</h3>
                   <div className="space-y-1">
-                    {/* Nome do Lead */}
-                    {(() => {
-                      const nomeLead = getLeadData('nome_lead') || getLeadData('nome_contato') || getLeadData('contato') || getLeadData('nome') || getLeadData('lead_name');
-                      
-                      return (
-                        <div className="flex items-center space-x-3 p-1 hover:bg-gray-50 rounded-md transition-colors">
-                          <User className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <span className="text-sm font-medium text-gray-700">Nome:</span>
-                            <span className="ml-2 text-sm text-gray-900">
-                              {nomeLead || 'Lead sem nome'}
-                            </span>
+                    {/* Nome do Lead - ✅ IMPLEMENTAÇÃO: Edição inline */}
+                    <div className="group">
+                      {renderEditableField(
+                        'nome_lead',
+                        'Nome',
+                        <User className="w-4 h-4 text-gray-500 flex-shrink-0" />,
+                        'Digite o nome completo...'
+                      )}
                           </div>
-                        </div>
-                      );
-                    })()}
                     
-                    {/* Email do Lead */}
-                    {(() => {
-                      const email = getLeadData('email') || getLeadData('email_contato');
-                      
-                      return (
-                        <div className="flex items-center space-x-3 p-1 hover:bg-gray-50 rounded-md transition-colors">
-                          <Mail className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <span className="text-sm font-medium text-gray-700">E-mail:</span>
-                            <span className="ml-2 text-sm text-gray-900">
-                              {email || <span className="italic text-gray-500">Não informado</span>}
-                            </span>
+                    {/* Email do Lead - ✅ IMPLEMENTAÇÃO: Edição inline */}
+                    <div className="group">
+                      {renderEditableField(
+                        'email',
+                        'E-mail',
+                        <Mail className="w-4 h-4 text-gray-500 flex-shrink-0" />,
+                        'Digite o e-mail...'
+                      )}
                           </div>
-                        </div>
-                      );
-                    })()}
                     
-                    {/* Telefone do Lead */}
-                    {(() => {
-                      const telefone = getLeadData('telefone') || getLeadData('telefone_contato') || getLeadData('celular') || getLeadData('phone');
-                      
-                      return (
-                        <div className="flex items-center space-x-3 p-1 hover:bg-gray-50 rounded-md transition-colors">
-                          <Phone className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <span className="text-sm font-medium text-gray-700">Telefone:</span>
-                            <span className="ml-2 text-sm text-gray-900">
-                              {telefone || <span className="italic text-gray-500">Não informado</span>}
-                            </span>
+                    {/* Telefone do Lead - ✅ IMPLEMENTAÇÃO: Edição inline */}
+                    <div className="group">
+                      {renderEditableField(
+                        'telefone',
+                        'Telefone',
+                        <Phone className="w-4 h-4 text-gray-500 flex-shrink-0" />,
+                        'Digite o telefone...'
+                      )}
                           </div>
-                        </div>
-                      );
-                    })()}
                   </div>
                 </div>
 
@@ -941,31 +1170,13 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                           const IconComponent = getFieldIcon(field.field_type);
                           
                           return (
-                            <div key={field.id} className="flex items-center space-x-3 p-1 hover:bg-gray-50 rounded-md transition-colors">
-                              <IconComponent className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <span className="text-sm font-medium text-gray-700">{field.field_label}:</span>
-                                <span className="ml-2 text-sm text-gray-900">
-                                  {(() => {
-                                    const value = getLeadData(field.field_name);
-                                    
-                                    // ✅ CORREÇÃO 1: Mostrar valor ou "Não informado"
-                                    if (value === null || value === undefined || value.toString().trim() === '') {
-                                      return <span className="italic text-gray-500">Não informado</span>;
-                                    }
-                                    
-                                    // Para campos select, tentar encontrar o valor nas opções
-                                    if (field.field_type === 'select' && field.field_options) {
-                                      return field.field_options.find(opt => opt === value) || value;
-                                    }
-                                    
-                                    return value;
-                                  })()}
-                                </span>
-                                {field.is_required && (
-                                  <span className="ml-1 text-xs text-red-500">*</span>
-                                )}
-                              </div>
+                            <div key={field.id} className="group">
+                              {renderEditableField(
+                                field.field_name,
+                                field.field_label + (field.is_required ? ' *' : ''),
+                                <IconComponent className="w-4 h-4 text-gray-500 flex-shrink-0" />,
+                                `Digite ${field.field_label.toLowerCase()}...`
+                              )}
                             </div>
                           );
                         })}

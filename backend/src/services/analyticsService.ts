@@ -122,6 +122,14 @@ export interface ConversionFunnel {
   }[];
 }
 
+export interface Recommendation {
+  type: string;
+  priority: 'low' | 'medium' | 'high';
+  title: string;
+  description: string;
+  action?: string;
+}
+
 export interface TimeRange {
   start_date: string;
   end_date: string;
@@ -190,7 +198,7 @@ class AnalyticsService {
       };
 
       // Cache por 5 minutos
-      await cacheService.set(cacheKey, metrics, this.CACHE_TTL.MEDIUM);
+      await cacheService.set(cacheKey, metrics, { ttl: this.CACHE_TTL.MEDIUM });
       
       return metrics;
     } catch (error) {
@@ -338,13 +346,13 @@ class AnalyticsService {
         current_period: currentCount,
         previous_period: previousCount,
         change_percentage: Math.round(changePercentage * 100) / 100,
-        change_direction: changePercentage > 5 ? 'up' : changePercentage < -5 ? 'down' : 'stable',
+        change_direction: (changePercentage > 5 ? 'up' : changePercentage < -5 ? 'down' : 'stable') as 'up' | 'down' | 'stable',
       },
       year_over_year: {
         current_period: currentCount,
         previous_period: yearAgoCount,
         change_percentage: Math.round(yearOverYearChange * 100) / 100,
-        change_direction: yearOverYearChange > 5 ? 'up' : yearOverYearChange < -5 ? 'down' : 'stable',
+        change_direction: (yearOverYearChange > 5 ? 'up' : yearOverYearChange < -5 ? 'down' : 'stable') as 'up' | 'down' | 'stable',
       },
     };
   }
@@ -356,7 +364,7 @@ class AnalyticsService {
   async getTeamPerformance(tenantId: string, timeRange: TimeRange): Promise<TeamMember[]> {
     const cacheKey = `${this.CACHE_KEYS.TEAM_PERFORMANCE}:${tenantId}:${timeRange.start_date}`;
     
-    const cached = await getCache.get<TeamMember[]>(cacheKey);
+    const cached = await getCache().get<TeamMember[]>(cacheKey);
     if (cached) return cached;
 
     const { data: users } = await supabase
@@ -425,7 +433,7 @@ class AnalyticsService {
       member.ranking = index + 1;
     });
 
-    await getCache.set(cacheKey, teamPerformance, this.CACHE_TTL.MEDIUM);
+    await getCache().set(cacheKey, teamPerformance, this.CACHE_TTL.MEDIUM);
     return teamPerformance;
   }
 
@@ -440,7 +448,7 @@ class AnalyticsService {
   ): Promise<ForecastData> {
     const cacheKey = `${this.CACHE_KEYS.FORECAST}:${tenantId}:${forecastType}:${periods}`;
     
-    const cached = await getCache.get<ForecastData>(cacheKey);
+    const cached = await getCache().get<ForecastData>(cacheKey);
     if (cached) return cached;
 
     // Buscar dados históricos dos últimos 12 meses
@@ -484,7 +492,7 @@ class AnalyticsService {
       historical_data: historical,
     };
 
-    await getCache.set(cacheKey, forecast, this.CACHE_TTL.LONG);
+    await getCache().set(cacheKey, forecast, this.CACHE_TTL.LONG);
     return forecast;
   }
 
@@ -495,7 +503,7 @@ class AnalyticsService {
   async getConversionFunnel(tenantId: string, timeRange: TimeRange): Promise<ConversionFunnel> {
     const cacheKey = `${this.CACHE_KEYS.FUNNEL}:${tenantId}:${timeRange.start_date}`;
     
-    const cached = await getCache.get<ConversionFunnel>(cacheKey);
+    const cached = await getCache().get<ConversionFunnel>(cacheKey);
     if (cached) return cached;
 
     // Buscar dados de conversão
@@ -577,7 +585,7 @@ class AnalyticsService {
       recommendations,
     };
 
-    await getCache.set(cacheKey, funnel, this.CACHE_TTL.MEDIUM);
+    await getCache().set(cacheKey, funnel, this.CACHE_TTL.MEDIUM);
     return funnel;
   }
 
@@ -706,8 +714,8 @@ class AnalyticsService {
     return Math.round(dropoffScore + timeScore);
   }
 
-  private generateFunnelRecommendations(stages: any[]) {
-    const recommendations = [];
+  private generateFunnelRecommendations(stages: any[]): Recommendation[] {
+    const recommendations: Recommendation[] = [];
 
     stages.forEach(stage => {
       if (stage.bottleneck_score > 70) {

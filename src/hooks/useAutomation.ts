@@ -155,7 +155,7 @@ export const useAutomation = (): UseAutomationReturn => {
       setLoadingRules(true);
       setErrorRules(null);
       
-      const response = await fetch('/api/automation/rules', {
+      const response = await fetch('http://localhost:3001/api/automation/rules', {
         headers: getAuthHeaders()
       });
 
@@ -182,7 +182,7 @@ export const useAutomation = (): UseAutomationReturn => {
     try {
       setLoadingMetrics(true);
       
-      const response = await fetch('/api/automation/metrics', {
+      const response = await fetch('http://localhost:3001/api/automation/metrics', {
         headers: getAuthHeaders()
       });
 
@@ -207,7 +207,7 @@ export const useAutomation = (): UseAutomationReturn => {
     try {
       setLoadingEvents(true);
       
-      const response = await fetch('/api/automation/events/definitions', {
+      const response = await fetch('http://localhost:3001/api/automation/events/definitions', {
         headers: getAuthHeaders()
       });
 
@@ -241,7 +241,7 @@ export const useAutomation = (): UseAutomationReturn => {
         });
       }
       
-      const response = await fetch(`/api/automation/events/log?${queryParams}`, {
+      const response = await fetch(`http://localhost:3001/api/automation/events/log?${queryParams}`, {
         headers: getAuthHeaders()
       });
 
@@ -264,7 +264,7 @@ export const useAutomation = (): UseAutomationReturn => {
   // Create Rule
   const createRule = useCallback(async (rule: Omit<BusinessRule, 'id' | 'createdAt' | 'updatedAt' | 'metadata'>): Promise<BusinessRule> => {
     try {
-      const response = await fetch('/api/automation/rules', {
+      const response = await fetch('http://localhost:3001/api/automation/rules', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(rule)
@@ -291,7 +291,7 @@ export const useAutomation = (): UseAutomationReturn => {
   // Update Rule
   const updateRule = useCallback(async (ruleId: string, updates: Partial<BusinessRule>): Promise<BusinessRule> => {
     try {
-      const response = await fetch(`/api/automation/rules/${ruleId}`, {
+      const response = await fetch(`http://localhost:3001/api/automation/rules/${ruleId}`, {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify(updates)
@@ -318,7 +318,7 @@ export const useAutomation = (): UseAutomationReturn => {
   // Delete Rule
   const deleteRule = useCallback(async (ruleId: string): Promise<void> => {
     try {
-      const response = await fetch(`/api/automation/rules/${ruleId}`, {
+      const response = await fetch(`http://localhost:3001/api/automation/rules/${ruleId}`, {
         method: 'DELETE',
         headers: getAuthHeaders()
       });
@@ -342,7 +342,7 @@ export const useAutomation = (): UseAutomationReturn => {
   // Test Rule
   const testRule = useCallback(async (ruleId: string, testData: Record<string, any>): Promise<any> => {
     try {
-      const response = await fetch(`/api/automation/rules/${ruleId}/test`, {
+      const response = await fetch(`http://localhost:3001/api/automation/rules/${ruleId}/test`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ testData })
@@ -381,7 +381,7 @@ export const useAutomation = (): UseAutomationReturn => {
     data: Record<string, any>
   ): Promise<string> => {
     try {
-      const response = await fetch('/api/automation/events', {
+      const response = await fetch('http://localhost:3001/api/automation/events', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({

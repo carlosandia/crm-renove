@@ -42,7 +42,7 @@ router.post('/sql/execute', async (req, res) => {
     console.error('❌ Erro na execução SQL via API:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: (error instanceof Error ? error.message : String(error))
     });
   }
 });
@@ -75,7 +75,7 @@ router.post('/sql/select', async (req, res) => {
     console.error('❌ Erro na query SELECT via API:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: (error instanceof Error ? error.message : String(error))
     });
   }
 });
@@ -110,7 +110,7 @@ router.post('/sql/ddl', async (req, res) => {
     console.error('❌ Erro na execução DDL via API:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: (error instanceof Error ? error.message : String(error))
     });
   }
 });
@@ -147,7 +147,7 @@ router.post('/crud/insert', async (req, res) => {
     console.error('❌ Erro no insert via API:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: (error instanceof Error ? error.message : String(error))
     });
   }
 });
@@ -180,7 +180,7 @@ router.put('/crud/update', async (req, res) => {
     console.error('❌ Erro no update via API:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: (error instanceof Error ? error.message : String(error))
     });
   }
 });
@@ -211,7 +211,7 @@ router.delete('/crud/delete', async (req, res) => {
     console.error('❌ Erro no delete via API:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: (error instanceof Error ? error.message : String(error))
     });
   }
 });
@@ -259,7 +259,7 @@ router.get('/crud/select/:table', async (req, res) => {
     console.error('❌ Erro no select via API:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: (error instanceof Error ? error.message : String(error))
     });
   }
 });
@@ -296,7 +296,7 @@ router.post('/schema/create-table', async (req, res) => {
     console.error('❌ Erro ao criar tabela via API:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: (error instanceof Error ? error.message : String(error))
     });
   }
 });
@@ -330,7 +330,7 @@ router.post('/schema/add-column', async (req, res) => {
     console.error('❌ Erro ao adicionar coluna via API:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: (error instanceof Error ? error.message : String(error))
     });
   }
 });
@@ -365,7 +365,7 @@ router.post('/schema/create-index', async (req, res) => {
     console.error('❌ Erro ao criar índice via API:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: (error instanceof Error ? error.message : String(error))
     });
   }
 });
@@ -402,7 +402,7 @@ router.post('/migration/run', async (req, res) => {
     console.error('❌ Erro na migração via API:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: (error instanceof Error ? error.message : String(error))
     });
   }
 });
@@ -435,7 +435,7 @@ router.post('/seeder/run', async (req, res) => {
     console.error('❌ Erro no seeder via API:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: (error instanceof Error ? error.message : String(error))
     });
   }
 });
@@ -462,7 +462,7 @@ router.get('/utils/tables', async (req, res) => {
     console.error('❌ Erro ao listar tabelas via API:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: (error instanceof Error ? error.message : String(error))
     });
   }
 });
@@ -487,7 +487,7 @@ router.get('/utils/describe/:table', async (req, res) => {
     console.error('❌ Erro ao descrever tabela via API:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: (error instanceof Error ? error.message : String(error))
     });
   }
 });
@@ -509,7 +509,7 @@ router.get('/utils/status', async (req, res) => {
     console.error('❌ Erro ao verificar status via API:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: (error instanceof Error ? error.message : String(error))
     });
   }
 });
@@ -535,9 +535,11 @@ router.post('/utils/backup/:table', async (req, res) => {
     console.error('❌ Erro no backup via API:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: (error instanceof Error ? error.message : String(error))
     });
   }
 });
+
+
 
 export default router; 

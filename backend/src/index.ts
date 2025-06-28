@@ -39,7 +39,8 @@ import cadenceRoutes from './routes/cadence';
 import notificationsRoutes from './routes/notifications';
 import adminRoutes from './routes/admin';
 import emailRoutes from './routes/email';
-// import modernLeadsRoutes from './routes/modernLeads'; // Removed - not needed for Phase 2
+import emailTestRoutes from './routes/emailTest';
+import adminInvitationsRoutes from './routes/adminInvitations';// import modernLeadsRoutes from './routes/modernLeads'; // Removed - not needed for Phase 2
 
 // Middleware de autenticação
 import { authMiddleware } from './middleware/auth';
@@ -92,7 +93,7 @@ console.log('✅ Performance monitoring initialized');
 // CONFIGURAÇÕES DE SEGURANÇA
 // ============================================
 
-// Helmet para headers de segurança
+// Helmet para headers de segurança (SEM sobrescrever CORS)
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -103,18 +104,12 @@ app.use(helmet({
       scriptSrc: ["'self'"],
       connectSrc: ["'self'", "https://*.supabase.co", "wss://*.supabase.co"]
     }
-  }
+  },
+  crossOriginResourcePolicy: false, // Desabilitar para evitar conflito com CORS
+  crossOriginOpenerPolicy: false   // Desabilitar para evitar conflito com CORS
 }));
 
-// CORS configurado de forma segura
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-domain.com'] 
-    : ['http://localhost:3000', 'http://localhost:3001'],
-  credentials: true, // Permitir cookies
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
+// CORS manual - configuração específica que permite Cache-Control
 
 // Rate limiting
 const limiter = rateLimit({
@@ -150,6 +145,43 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // ============================================
 // MIDDLEWARE CUSTOMIZADO
 // ============================================
+
+// Middleware para forçar headers CORS corretos
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    'http://localhost:8080',
+    'http://127.0.0.1:8080', 
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173'
+  ];
+
+  // Definir headers CORS corretos
+  if (!origin || allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+  }
+  
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD');
+  
+  // FORÇA os headers permitidos corretos
+  res.header('Access-Control-Allow-Headers', 
+    'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-User-ID, X-User-Role, X-Tenant-ID, Cache-Control, Pragma, X-Cache-Control, If-None-Match, If-Modified-Since'
+  );
+  
+  res.header('Access-Control-Max-Age', '86400');
+
+  if (req.method === 'OPTIONS') {
+    console.log(`✅ [CORS] Preflight OPTIONS para ${req.path} - Origin: ${origin}`);
+    console.log(`✅ [CORS] Headers permitidos: Content-Type, Authorization, Cache-Control, etc.`);
+    res.status(200).end();
+    return;
+  }
+  
+  next();
+});
 
 // Adicionar timestamp a todas as requests
 app.use((req, res, next) => {
@@ -266,6 +298,9 @@ app.post('/api/cadence/test-public', async (req, res) => {
 // Webhooks (com autenticação própria)
 app.use('/api/webhooks', integrationsRoutes);
 
+// Admin Invitations (Sistema simplificado - SEM autenticação)
+app.use('/api/admin-invitations', adminInvitationsRoutes);
+
 // ============================================
 // MIDDLEWARE DE AUTENTICAÇÃO
 // ============================================
@@ -306,6 +341,8 @@ app.use('/api/notifications', notificationsRoutes);
 // E-mail pessoal
 app.use('/api/email', emailRoutes);
 
+// Teste de email (Mailtrap)
+app.use('/api/email-test', emailTestRoutes);
 // Integrações
 app.use('/api/integrations', integrationsSecureRoutes);
 

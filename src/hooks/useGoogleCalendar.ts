@@ -98,7 +98,8 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
       console.log('🔗 CALENDAR: Iniciando conexão via sistema centralizado...');
       
       // 🆕 Verificar se a empresa tem Google Calendar habilitado
-      const isEnabled = await GoogleCalendarAuth.isEnabledForTenant(user.tenant_id);
+      const googleAuth = new GoogleCalendarAuth();
+      const isEnabled = await googleAuth.isEnabledForTenant();
       if (!isEnabled) {
         showErrorToast('Google Calendar não está habilitado para sua empresa. Entre em contato com o administrador.');
         setIsConnecting(false);

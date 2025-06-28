@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
 import { showSuccessToast, showErrorToast, showWarningToast } from '../lib/toast';
+import { hashPasswordEnterprise } from '../lib/utils';
 import { 
   Users, User, Mail, Shield, Plus, Eye, EyeOff, CheckCircle, XCircle, 
   Target, Edit, Trash2, Calendar, Phone, Building
@@ -410,6 +411,10 @@ const VendedoresModule: React.FC = React.memo(() => {
     try {
       logger.info('Salvando vendedor...');
 
+      // Hash da senha com segurança enterprise
+      const passwordToHash = formData.password || '123456';
+      const hashedPassword = await hashPasswordEnterprise(passwordToHash);
+
       const vendedorData = {
         first_name: formData.first_name,
         last_name: formData.last_name,
@@ -417,7 +422,7 @@ const VendedoresModule: React.FC = React.memo(() => {
         role: 'member',
         tenant_id: user?.tenant_id,
         is_active: true,
-        password_hash: formData.password || '123456'
+        password_hash: hashedPassword
       };
 
       if (editingVendedor) {
@@ -461,7 +466,7 @@ const VendedoresModule: React.FC = React.memo(() => {
         }
 
         await fetchVendedores();
-        showSuccessToast('Vendedor criado', `Vendedor "${data.first_name} ${data.last_name}" foi criado com sucesso! Senha padrão: ${vendedorData.password_hash}`);
+        showSuccessToast('Vendedor criado', `Vendedor "${data.first_name} ${data.last_name}" foi criado com sucesso! Senha padrão: ${passwordToHash}`);
       }
 
       setFormData({
