@@ -3,7 +3,8 @@ import { Bell, X, Check, Clock, AlertCircle, Info, CheckCircle, AlertTriangle } 
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { silentFetch, executeWithFallback } from '../../utils/silentFallback';
+import { logger } from '../../utils/logger';
+import { useArrayState } from '../../hooks/useArrayState';
 
 // Sistema de logs condicionais
 const LOG_LEVEL = import.meta.env.VITE_LOG_LEVEL || 'warn';
@@ -38,29 +39,117 @@ interface NotificationCenterProps {
 }
 
 export const NotificationCenter: React.FC<NotificationCenterProps> = ({ className = '' }) => {
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
+  
+  // Estados específicos do componente
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const hasNoNotifications = notifications.length === 0;
+
+  // Estados específicos do componente mantidos
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 🔧 CARREGAMENTO DE NOTIFICAÇÕES COM FALLBACK SILENCIOSO
+  // 🔧 CARREGAMENTO DE NOTIFICAÇÕES COM AUTENTICAÇÃO CORRIGIDA
   const loadNotifications = useCallback(async () => {
-    const result = await executeWithFallback(
-      async () => {
-        const response = await silentFetch('http://localhost:3001/api/notifications');
-        if (!response) return [];
-        
-        const data = await response.json();
-        return data.notifications || [];
-      },
-      [], // fallback: array vazio
-      'Notificações indisponíveis'
-    );
+    if (!user?.id) return;
     
-    setNotifications(result);
-  }, []);
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // 🔧 VERIFICAÇÃO DE SAÚDE DO BACKEND: Tentar uma requisição simples primeiro
+      let backendAvailable = false;
+      try {
+        // Teste simples de conectividade (timeout de 2 segundos)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        
+        const healthResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/health`, {
+          signal: controller.signal,
+          method: 'GET'
+        });
+        
+        clearTimeout(timeoutId);
+        backendAvailable = healthResponse.status < 500; // Qualquer resposta < 500 é considerada "disponível"
+        
+        if (isDebugMode) {
+          logger.debug('NotificationCenter Health check', `Backend ${backendAvailable ? 'disponível' : 'indisponível'}`);
+        }
+      } catch (healthError: any) {
+        if (isDebugMode) {
+          logger.debug('NotificationCenter Health check falhou', 'Usando modo offline');
+        }
+        backendAvailable = false;
+      }
+
+      // 🔧 CORREÇÃO CRÍTICA: Só tentar API se backend estiver disponível
+      if (backendAvailable && authenticatedFetch) {
+        try {
+          const response = await authenticatedFetch('/notifications/user');
+          
+          if (response.ok) {
+            const data = await response.json();
+            const notificationsList = data.notifications || data || [];
+            
+            setNotifications(notificationsList);
+            
+            // Calcular não lidas
+            const unreadCount = notificationsList.filter((n: Notification) => !n.read).length;
+            setUnreadCount(unreadCount);
+            
+            if (isDebugMode) {
+              logger.info('NotificationCenter carregado via API', `${notificationsList.length} notificações`);
+            }
+            return;
+          } else {
+            if (isDebugMode) {
+              logger.debug('NotificationCenter API retornou erro', `Status: ${response.status}`);
+            }
+          }
+        } catch (apiError: any) {
+          if (isDebugMode) {
+            logger.debug('NotificationCenter API error', apiError.message);
+          }
+        }
+      } else if (isDebugMode) {
+        logger.debug('NotificationCenter', 'Backend indisponível, usando Supabase direto');
+      }
+
+      // 🔄 FALLBACK: Buscar diretamente do Supabase
+      const { data: supabaseData, error: supabaseError } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (supabaseError) {
+        throw new Error(`Supabase error: ${supabaseError.message}`);
+      }
+
+      const notificationsList = supabaseData || [];
+      setNotifications(notificationsList);
+      
+      const unreadCount = notificationsList.filter(n => !n.read).length;
+      setUnreadCount(unreadCount);
+
+      if (isDebugMode) {
+        logger.info('NotificationCenter fallback Supabase', `${notificationsList.length} notificações`);
+      }
+
+    } catch (error: any) {
+      if (isDebugMode) {
+        logger.error('NotificationCenter erro geral', error.message);
+      }
+      setError(error.message);
+      setNotifications([]);
+      setUnreadCount(0);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?.id, authenticatedFetch]);
 
   // Marcar como lida com fallback graceful
   const markAsRead = async (notificationId: string) => {
@@ -100,27 +189,26 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
     }
   };
 
-  // Rastrear clique com fallback graceful
+  // Rastrear clique com autenticação corrigida
   const trackClick = async (notification: Notification, actionType: string = 'click') => {
     try {
-      // Verificar se API está disponível
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-      
-      const response = await fetch(`${apiUrl}/api/notifications/track-click`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          notificationId: notification.id,
-          actionType
-        }),
-        signal: AbortSignal.timeout(3000) // Timeout de 3s
-      });
+      // 🔧 CORREÇÃO: Usar authenticatedFetch com timeout
+      if (authenticatedFetch) {
+        const response = await authenticatedFetch('/notifications/track-click', {
+          method: 'POST',
+          body: JSON.stringify({
+            notificationId: notification.id,
+            actionType
+          })
+        });
 
-      if (!response.ok && isDebugMode) {
-        console.log('📋 NotificationCenter: API de tracking indisponível');
+        if (response.ok && isDebugMode) {
+          console.log('✅ NotificationCenter: Click tracking registrado');
+        } else if (isDebugMode) {
+          console.log('⚠️ NotificationCenter: API de tracking indisponível');
+        }
+      } else if (isDebugMode) {
+        console.log('⚠️ NotificationCenter: Sem autenticação para tracking');
       }
 
     } catch (error: any) {

@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo - CRM Form Builder Embed System</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+        
+        .header p {
+            margin: 0.5rem 0 0;
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .demo-section {
+            padding: 2rem;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .demo-section:last-child {
+            border-bottom: none;
+        }
+        
+        .demo-section h2 {
+            margin: 0 0 1rem;
+            color: #2d3748;
+            font-size: 1.5rem;
+        }
+        
+        .demo-section p {
+            margin: 0 0 1.5rem;
+            color: #4a5568;
+        }
+        
+        .demo-buttons {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 2rem;
+        }
+        
+        .demo-btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+        
+        .demo-btn.primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .demo-btn.primary:hover {
+            background: #5a6fd8;
+            transform: translateY(-2px);
+        }
+        
+        .demo-btn.secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+        
+        .demo-btn.secondary:hover {
+            background: #cbd5e0;
+        }
+        
+        .demo-btn.success {
+            background: #48bb78;
+            color: white;
+        }
+        
+        .demo-btn.success:hover {
+            background: #38a169;
+        }
+        
+        .demo-btn.warning {
+            background: #ed8936;
+            color: white;
+        }
+        
+        .demo-btn.warning:hover {
+            background: #dd7324;
+        }
+        
+        .embed-container {
+            background: #f7fafc;
+            border: 2px dashed #cbd5e0;
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            margin: 1rem 0;
+            min-height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+        
+        .embed-placeholder {
+            color: #a0aec0;
+            font-size: 1.1rem;
+        }
+        
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .stat-card {
+            background: #f7fafc;
+            padding: 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #2d3748;
+            margin: 0;
+        }
+        
+        .stat-label {
+            color: #718096;
+            margin: 0.5rem 0 0;
+        }
+        
+        .form-types {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .form-type-card {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        
+        .form-type-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+            transform: translateY(-2px);
+        }
+        
+        .form-type-card h3 {
+            margin: 0 0 0.5rem;
+            color: #2d3748;
+        }
+        
+        .form-type-card p {
+            margin: 0;
+            color: #718096;
+            font-size: 0.9rem;
+        }
+        
+        .footer {
+            background: #f7fafc;
+            padding: 2rem;
+            text-align: center;
+            color: #718096;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 CRM Form Builder Demo</h1>
+            <p>Sistema Completo de Formulários Inteligentes com Embed</p>
+        </div>
+
+        <!-- Seção 1: Tipos de Formulário -->
+        <div class="demo-section">
+            <h2>📋 Tipos de Formulário Disponíveis</h2>
+            <p>O sistema suporta 8 tipos diferentes de formulários, cada um otimizado para diferentes estratégias de conversão:</p>
+            
+            <div class="form-types">
+                <div class="form-type-card" onclick="demoFormType('standard')">
+                    <h3>📄 Standard</h3>
+                    <p>Formulário tradicional para embedding em páginas</p>
+                </div>
+                
+                <div class="form-type-card" onclick="demoFormType('exit_intent')">
+                    <h3>🚪 Exit Intent</h3>
+                    <p>Popup ativado quando usuário tenta sair da página</p>
+                </div>
+                
+                <div class="form-type-card" onclick="demoFormType('scroll_trigger')">
+                    <h3>📜 Scroll Trigger</h3>
+                    <p>Ativado quando usuário rola até porcentagem específica</p>
+                </div>
+                
+                <div class="form-type-card" onclick="demoFormType('time_delayed')">
+                    <h3>⏰ Time Delayed</h3>
+                    <p>Exibido após tempo determinado na página</p>
+                </div>
+                
+                <div class="form-type-card" onclick="demoFormType('multi_step')">
+                    <h3>📊 Multi Step</h3>
+                    <p>Formulário em múltiplas etapas com progress bar</p>
+                </div>
+                
+                <div class="form-type-card" onclick="demoFormType('smart_scheduling')">
+                    <h3>📅 Smart Scheduling</h3>
+                    <p>Integração com Google Calendar para agendamentos</p>
+                </div>
+                
+                <div class="form-type-card" onclick="demoFormType('cadence_trigger')">
+                    <h3>🔄 Cadence Trigger</h3>
+                    <p>Inicia cadência automática de follow-up</p>
+                </div>
+                
+                <div class="form-type-card" onclick="demoFormType('whatsapp_integration')">
+                    <h3>💬 WhatsApp Integration</h3>
+                    <p>Botão direto para WhatsApp com dados pré-preenchidos</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Seção 2: Demo Interativo -->
+        <div class="demo-section">
+            <h2>🎮 Demo Interativo</h2>
+            <p>Teste os diferentes comportamentos dos formulários:</p>
+            
+            <div class="demo-buttons">
+                <button class="demo-btn primary" onclick="demoExitIntent()">
+                    Testar Exit Intent
+                </button>
+                <button class="demo-btn primary" onclick="demoScrollTrigger()">
+                    Testar Scroll Trigger
+                </button>
+                <button class="demo-btn primary" onclick="demoTimeDelay()">
+                    Testar Time Delayed (5s)
+                </button>
+                <button class="demo-btn success" onclick="demoMultiStep()">
+                    Abrir Multi Step
+                </button>
+            </div>
+            
+            <div class="embed-container" id="demo-container">
+                <div class="embed-placeholder">
+                    Clique nos botões acima para testar os diferentes tipos de formulário
+                </div>
+            </div>
+        </div>
+
+        <!-- Seção 3: Código de Embed -->
+        <div class="demo-section">
+            <h2>💻 Exemplo de Código de Embed</h2>
+            <p>Assim é como você incorpora um formulário em qualquer site:</p>
+            
+            <div class="code-block">
+&lt;!-- Código HTML simples --&gt;
+&lt;div id="crm-form-container"&gt;&lt;/div&gt;
+
+&lt;script&gt;
+window.crmFormConfig = {
+  formId: 'seu-form-id-aqui',
+  domain: 'https://seu-crm.com',
+  type: 'exit_intent',
+  theme: 'modern',
+  analytics: true
+};
+&lt;/script&gt;
+&lt;script src="https://seu-crm.com/form-embed.js"&gt;&lt;/script&gt;
+            </div>
+            
+            <div class="demo-buttons">
+                <button class="demo-btn secondary" onclick="copyCode()">
+                    📋 Copiar Código
+                </button>
+                <button class="demo-btn secondary" onclick="downloadCode()">
+                    💾 Download HTML
+                </button>
+            </div>
+        </div>
+
+        <!-- Seção 4: Analytics em Tempo Real -->
+        <div class="demo-section">
+            <h2>📊 Analytics em Tempo Real</h2>
+            <p>Métricas de performance dos formulários nesta demo:</p>
+            
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="demo-views">1,247</div>
+                    <div class="stat-label">Visualizações</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="demo-conversions">89</div>
+                    <div class="stat-label">Conversões</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="demo-rate">7.14%</div>
+                    <div class="stat-label">Taxa de Conversão</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="demo-time">3m 42s</div>
+                    <div class="stat-label">Tempo Médio</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Seção 5: Recursos Avançados -->
+        <div class="demo-section">
+            <h2>⚡ Recursos Avançados</h2>
+            <p>Funcionalidades enterprise incluídas no sistema:</p>
+            
+            <div class="demo-buttons">
+                <button class="demo-btn warning" onclick="showABTesting()">
+                    🧪 A/B Testing
+                </button>
+                <button class="demo-btn warning" onclick="showHeatmap()">
+                    🔥 Heatmap
+                </button>
+                <button class="demo-btn warning" onclick="showFunnelAnalysis()">
+                    📈 Análise de Funil
+                </button>
+                <button class="demo-btn warning" onclick="showIntegrations()">
+                    🔗 Integrações
+                </button>
+            </div>
+            
+            <div id="advanced-demo" style="display: none; margin-top: 1rem;">
+                <div class="embed-container">
+                    <div class="embed-placeholder" id="advanced-content">
+                        Selecione um recurso avançado acima
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>💡 Esta demo demonstra todas as funcionalidades implementadas nas 5 fases do projeto Form Builder Evolution</p>
+            <p><strong>Tecnologias:</strong> React, TypeScript, Supabase, Tailwind CSS, shadcn/ui</p>
+        </div>
+    </div>
+
+    <!-- Script de Demo -->
+    <script>
+        // Simulação do sistema de embed
+        let demoStats = {
+            views: 1247,
+            conversions: 89,
+            rate: 7.14,
+            avgTime: '3m 42s'
+        };
+
+        function updateStats() {
+            demoStats.views += Math.floor(Math.random() * 3) + 1;
+            demoStats.conversions += Math.random() > 0.85 ? 1 : 0;
+            demoStats.rate = ((demoStats.conversions / demoStats.views) * 100).toFixed(2);
+            
+            document.getElementById('demo-views').textContent = demoStats.views.toLocaleString();
+            document.getElementById('demo-conversions').textContent = demoStats.conversions;
+            document.getElementById('demo-rate').textContent = demoStats.rate + '%';
+        }
+
+        // Atualizar stats a cada 3 segundos
+        setInterval(updateStats, 3000);
+
+        function demoFormType(type) {
+            const container = document.getElementById('demo-container');
+            container.innerHTML = `
+                <div style="text-align: left; width: 100%; max-width: 400px;">
+                    <h3>Demo: ${getFormTypeName(type)}</h3>
+                    <p style="margin-bottom: 1rem;">${getFormTypeDescription(type)}</p>
+                    <div style="background: white; padding: 1rem; border-radius: 8px; border: 1px solid #e2e8f0;">
+                        <form onsubmit="handleDemoSubmit(event, '${type}')">
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Nome:</label>
+                                <input type="text" required style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e0; border-radius: 4px;">
+                            </div>
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Email:</label>
+                                <input type="email" required style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e0; border-radius: 4px;">
+                            </div>
+                            <button type="submit" style="width: 100%; padding: 0.75rem; background: #667eea; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer;">
+                                Enviar
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+
+        function getFormTypeName(type) {
+            const names = {
+                standard: '📄 Formulário Standard',
+                exit_intent: '🚪 Exit Intent Modal',
+                scroll_trigger: '📜 Scroll Trigger',
+                time_delayed: '⏰ Time Delayed',
+                multi_step: '📊 Multi Step Form',
+                smart_scheduling: '📅 Smart Scheduling',
+                cadence_trigger: '🔄 Cadence Trigger',
+                whatsapp_integration: '💬 WhatsApp Integration'
+            };
+            return names[type] || type;
+        }
+
+        function getFormTypeDescription(type) {
+            const descriptions = {
+                standard: 'Formulário tradicional incorporado diretamente na página.',
+                exit_intent: 'Detecta movimento do mouse para sair e exibe modal.',
+                scroll_trigger: 'Ativado quando usuário rola 70% da página.',
+                time_delayed: 'Exibido automaticamente após 5 segundos na página.',
+                multi_step: 'Quebrado em etapas com barra de progresso.',
+                smart_scheduling: 'Integra com Google Calendar para agendar reuniões.',
+                cadence_trigger: 'Inicia sequência automática de follow-up.',
+                whatsapp_integration: 'Abre WhatsApp com mensagem pré-formatada.'
+            };
+            return descriptions[type] || 'Demonstração do tipo de formulário.';
+        }
+
+        function demoExitIntent() {
+            showModal('🚪 Exit Intent Demo', 'Este modal seria exibido quando o usuário move o mouse para sair da página.');
+        }
+
+        function demoScrollTrigger() {
+            showModal('📜 Scroll Trigger Demo', 'Este formulário apareceria quando você rola até 70% da página.');
+        }
+
+        function demoTimeDelay() {
+            setTimeout(() => {
+                showModal('⏰ Time Delayed Demo', 'Este modal aparece após 5 segundos na página.');
+            }, 2000); // Reduzido para demo
+        }
+
+        function demoMultiStep() {
+            const container = document.getElementById('demo-container');
+            container.innerHTML = `
+                <div style="width: 100%; max-width: 500px;">
+                    <div style="background: white; padding: 1.5rem; border-radius: 8px; border: 1px solid #e2e8f0;">
+                        <div style="margin-bottom: 1rem;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                <span style="font-size: 0.9rem; color: #718096;">Etapa 1 de 3</span>
+                                <span style="font-size: 0.9rem; color: #718096;">33%</span>
+                            </div>
+                            <div style="width: 100%; height: 4px; background: #e2e8f0; border-radius: 2px;">
+                                <div style="width: 33%; height: 100%; background: #667eea; border-radius: 2px; transition: width 0.3s;"></div>
+                            </div>
+                        </div>
+                        <h3>Informações Básicas</h3>
+                        <form>
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display: block; margin-bottom: 0.5rem;">Nome Completo:</label>
+                                <input type="text" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e0; border-radius: 4px;">
+                            </div>
+                            <div style="margin-bottom: 1rem;">
+                                <label style="display: block; margin-bottom: 0.5rem;">Email:</label>
+                                <input type="email" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e0; border-radius: 4px;">
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <button type="button" disabled style="padding: 0.75rem 1.5rem; background: #e2e8f0; color: #a0aec0; border: none; border-radius: 4px;">
+                                    Anterior
+                                </button>
+                                <button type="button" onclick="nextStep()" style="padding: 0.75rem 1.5rem; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                    Próximo
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+
+        function nextStep() {
+            alert('Em um formulário real, isso avançaria para a próxima etapa!');
+        }
+
+        function showModal(title, content) {
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0,0,0,0.5);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 9999;
+            `;
+            
+            modal.innerHTML = `
+                <div style="background: white; padding: 2rem; border-radius: 12px; max-width: 400px; width: 90%; text-align: center;">
+                    <h3 style="margin: 0 0 1rem; color: #2d3748;">${title}</h3>
+                    <p style="margin: 0 0 1.5rem; color: #4a5568;">${content}</p>
+                    <button onclick="this.closest('div').parentElement.remove()" style="padding: 0.75rem 1.5rem; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                        Fechar
+                    </button>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // Auto-remove após 5 segundos
+            setTimeout(() => {
+                if (modal.parentElement) {
+                    modal.remove();
+                }
+            }, 5000);
+        }
+
+        function handleDemoSubmit(event, type) {
+            event.preventDefault();
+            demoStats.conversions++;
+            updateStats();
+            showModal('✅ Sucesso!', `Formulário ${type} enviado com sucesso! Em um sistema real, isso criaria um lead e iniciaria as integrações configuradas.`);
+        }
+
+        function copyCode() {
+            const code = `<!-- Código HTML para incorporar formulário CRM -->
+<div id="crm-form-container"></div>
+
+<script>
+window.crmFormConfig = {
+  formId: 'seu-form-id-aqui',
+  domain: 'https://seu-crm.com',
+  type: 'exit_intent',
+  theme: 'modern',
+  analytics: true
+};
+</script>
+<script src="https://seu-crm.com/form-embed.js"></script>`;
+            
+            navigator.clipboard.writeText(code).then(() => {
+                alert('Código copiado para a área de transferência!');
+            });
+        }
+
+        function downloadCode() {
+            const code = `<!DOCTYPE html>
+<html>
+<head>
+    <title>Exemplo - CRM Form Embed</title>
+</head>
+<body>
+    <h1>Minha Página com Formulário CRM</h1>
+    
+    <div id="crm-form-container"></div>
+
+    <script>
+    window.crmFormConfig = {
+      formId: 'seu-form-id-aqui',
+      domain: 'https://seu-crm.com',
+      type: 'exit_intent',
+      theme: 'modern',
+      analytics: true
+    };
+    </script>
+    <script src="https://seu-crm.com/form-embed.js"></script>
+</body>
+</html>`;
+            
+            const blob = new Blob([code], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'crm-form-embed-exemplo.html';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function showABTesting() {
+            showAdvanced('🧪 A/B Testing', `
+                <h4>Teste A/B Ativo</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+                    <div style="padding: 1rem; background: #f0fff4; border: 1px solid #9ae6b4; border-radius: 6px;">
+                        <strong>Variante A</strong><br>
+                        Conversão: 8.2%<br>
+                        Amostras: 500
+                    </div>
+                    <div style="padding: 1rem; background: #fef5e7; border: 1px solid #f6ad55; border-radius: 6px;">
+                        <strong>Variante B</strong><br>
+                        Conversão: 6.4%<br>
+                        Amostras: 485
+                    </div>
+                </div>
+                <p style="margin: 0; color: #38a169; font-weight: 600;">Variante A vencendo com 95% de confiança</p>
+            `);
+        }
+
+        function showHeatmap() {
+            showAdvanced('🔥 Heatmap de Interações', `
+                <h4>Áreas Mais Clicadas</h4>
+                <div style="background: #f7fafc; padding: 1rem; border-radius: 6px; margin: 1rem 0;">
+                    <div style="margin-bottom: 0.5rem;">📧 Campo Email: <span style="color: #e53e3e; font-weight: 600;">92% dos cliques</span></div>
+                    <div style="margin-bottom: 0.5rem;">👤 Campo Nome: <span style="color: #dd6b20; font-weight: 600;">78% dos cliques</span></div>
+                    <div style="margin-bottom: 0.5rem;">📞 Campo Telefone: <span style="color: #d69e2e; font-weight: 600;">45% dos cliques</span></div>
+                    <div>🔘 Botão Enviar: <span style="color: #38a169; font-weight: 600;">23% dos cliques</span></div>
+                </div>
+                <p style="margin: 0; color: #4a5568;">Dados dos últimos 30 dias</p>
+            `);
+        }
+
+        function showFunnelAnalysis() {
+            showAdvanced('📈 Análise de Funil', `
+                <h4>Funil de Conversão</h4>
+                <div style="margin: 1rem 0;">
+                    <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                        <div style="width: 100%; height: 20px; background: #667eea; border-radius: 4px; margin-right: 1rem;"></div>
+                        <span style="min-width: 80px;">Visitantes: 100%</span>
+                    </div>
+                    <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                        <div style="width: 65%; height: 20px; background: #764ba2; border-radius: 4px; margin-right: 1rem;"></div>
+                        <span style="min-width: 80px;">Interagiram: 65%</span>
+                    </div>
+                    <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                        <div style="width: 28%; height: 20px; background: #48bb78; border-radius: 4px; margin-right: 1rem;"></div>
+                        <span style="min-width: 80px;">Iniciaram: 28%</span>
+                    </div>
+                    <div style="display: flex; align-items: center;">
+                        <div style="width: 7%; height: 20px; background: #38a169; border-radius: 4px; margin-right: 1rem;"></div>
+                        <span style="min-width: 80px;">Converteram: 7%</span>
+                    </div>
+                </div>
+                <p style="margin: 0; color: #4a5568;">Maior abandono: transição início → conversão (75%)</p>
+            `);
+        }
+
+        function showIntegrations() {
+            showAdvanced('🔗 Integrações Ativas', `
+                <h4>Sistemas Conectados</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;">
+                    <div style="padding: 1rem; background: #f0fff4; border-radius: 6px; text-align: center;">
+                        <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">📊</div>
+                        <strong>Pipeline CRM</strong><br>
+                        <small>Auto-assignment ativo</small>
+                    </div>
+                    <div style="padding: 1rem; background: #f0f9ff; border-radius: 6px; text-align: center;">
+                        <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">📅</div>
+                        <strong>Google Calendar</strong><br>
+                        <small>Agendamento automático</small>
+                    </div>
+                    <div style="padding: 1rem; background: #fef5e7; border-radius: 6px; text-align: center;">
+                        <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🔄</div>
+                        <strong>Cadências</strong><br>
+                        <small>Follow-up automático</small>
+                    </div>
+                    <div style="padding: 1rem; background: #f0fff4; border-radius: 6px; text-align: center;">
+                        <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">💬</div>
+                        <strong>WhatsApp</strong><br>
+                        <small>Mensagem direta</small>
+                    </div>
+                </div>
+                <p style="margin: 0; color: #4a5568;">Todas as integrações funcionando normalmente</p>
+            `);
+        }
+
+        function showAdvanced(title, content) {
+            const container = document.getElementById('advanced-demo');
+            const contentDiv = document.getElementById('advanced-content');
+            
+            contentDiv.innerHTML = `
+                <div style="text-align: left; width: 100%;">
+                    <h3 style="margin: 0 0 1rem; color: #2d3748;">${title}</h3>
+                    ${content}
+                </div>
+            `;
+            
+            container.style.display = 'block';
+        }
+
+        // Animação de entrada
+        document.addEventListener('DOMContentLoaded', () => {
+            const sections = document.querySelectorAll('.demo-section');
+            sections.forEach((section, index) => {
+                section.style.opacity = '0';
+                section.style.transform = 'translateY(20px)';
+                section.style.transition = 'all 0.6s ease';
+                
+                setTimeout(() => {
+                    section.style.opacity = '1';
+                    section.style.transform = 'translateY(0)';
+                }, index * 200);
+            });
+        });
+    </script>
+</body>
+</html> 

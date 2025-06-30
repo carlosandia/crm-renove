@@ -5,12 +5,12 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Contact } from '../../integrations/supabase/types';
+import { CrudModalProps } from '../../types/CommonProps';
 
-interface ContactFormModalProps {
-  contact?: Contact | null;
-  open: boolean;
-  onClose: () => void;
-  onSave: (contactData: Partial<Contact>) => Promise<void>;
+interface ContactFormModalProps extends Omit<CrudModalProps<Contact>, 'isOpen'> {
+  contact?: Contact | null; // Mantido para compatibilidade
+  open: boolean; // Usando 'open' em vez de 'isOpen' para compatibilidade com este componente
+  onSave: (contactData: Partial<Contact>) => Promise<void>; // Mantido para compatibilidade
 }
 
 export function ContactFormModal({

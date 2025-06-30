@@ -1,7 +1,10 @@
 // Tipos específicos para o módulo de empresas
+import { CrudModalProps } from './CommonProps';
 export interface CompanyAdmin {
   id: string;
-  name: string;
+  name?: string; // Campo composto (compatibilidade)
+  first_name?: string; // Campo usado no backend
+  last_name?: string; // Campo usado no backend
   email: string;
   role: string;
   tenant_id: string;
@@ -108,10 +111,8 @@ export interface IndustrySegment {
   category: string;
 }
 
-export interface CompanyModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSuccess: () => void;
-  company?: Company | null;
-  mode: 'create' | 'edit';
+export interface CompanyModalProps extends Omit<CrudModalProps<Company>, 'onSave'> {
+  onSuccess: () => void; // Mantido para compatibilidade
+  company?: Company | null; // Mantido para compatibilidade
+  onSave?: (item: Company) => Promise<void> | void; // Opcional para compatibilidade
 } 

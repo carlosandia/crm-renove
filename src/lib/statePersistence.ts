@@ -8,6 +8,7 @@
  */
 
 // 🔧 LOGS CONDICIONAIS: Baseado em VITE_LOG_LEVEL
+import { logger } from '../utils/logger';
 const LOG_LEVEL = import.meta.env.VITE_LOG_LEVEL || 'warn';
 const isDebugMode = LOG_LEVEL === 'debug';
 
@@ -101,7 +102,7 @@ export class StatePersistenceManager {
       if (state[key] !== undefined && !validator(state[key])) {
         // 🔧 LOG CONDICIONAL: Apenas em modo debug
         if (isDebugMode) {
-          console.warn(`⚠️ Validação falhou para ${key}:`, state[key]);
+          logger.warn(`StatePersistence validação falhou para ${key}`, state[key]);
         }
         return false;
       }

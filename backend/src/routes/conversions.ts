@@ -65,8 +65,6 @@ router.delete('/logs/:log_id', ConversionController.deleteLog);
 // MIDDLEWARE DE VALIDAÇÃO (futuro)
 // ============================================
 
-// TODO: Adicionar middleware de autenticação
-// TODO: Adicionar middleware de autorização por role
-// TODO: Adicionar rate limiting para APIs externas
+// Middleware de autenticação, autorização e rate limiting devem ser implementados
 
 export default router; 

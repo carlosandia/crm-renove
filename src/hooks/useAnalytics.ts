@@ -143,6 +143,142 @@ export interface AnalyticsError {
   suggestion?: string;
 }
 
+// ============================================
+// ✅ CATEGORIA 5.2: TIPOS ESPECÍFICOS PARA PROMISE<ANY>
+// ============================================
+
+/**
+ * ✅ Tipo para retorno da função exportReport
+ */
+export interface ExportResult {
+  success: boolean;
+  download_url?: string;
+  file_name: string;
+  format: 'csv' | 'pdf' | 'excel';
+  file_size: number;
+  expires_at: string;
+  error?: string;
+}
+
+/**
+ * ✅ Tipo para retorno da função getLeadSources
+ */
+export interface LeadSourcesData {
+  sources: Array<{
+    source_name: string;
+    leads_count: number;
+    conversion_rate: number;
+    avg_deal_value: number;
+    total_revenue: number;
+    cost_per_lead?: number;
+    roi?: number;
+    trend: 'up' | 'down' | 'stable';
+    change_percentage: number;
+  }>;
+  summary: {
+    total_leads: number;
+    top_source: string;
+    best_converting_source: string;
+    highest_value_source: string;
+  };
+}
+
+/**
+ * ✅ Tipo para retorno da função getPipelineAnalysis
+ */
+export interface PipelineAnalysisData {
+  pipelines: Array<{
+    pipeline_id: string;
+    pipeline_name: string;
+    total_leads: number;
+    total_value: number;
+    conversion_rate: number;
+    avg_cycle_time: number;
+    velocity: number;
+    health_score: number;
+    stages_analysis: Array<{
+      stage_id: string;
+      stage_name: string;
+      leads_count: number;
+      avg_time_in_stage: number;
+      conversion_rate: number;
+      bottleneck_score: number;
+    }>;
+  }>;
+  overall_metrics: {
+    total_pipelines: number;
+    avg_conversion_rate: number;
+    total_pipeline_value: number;
+    fastest_pipeline: string;
+    slowest_pipeline: string;
+  };
+}
+
+/**
+ * ✅ Tipo para retorno da função getRevenueAnalysis
+ */
+export interface RevenueAnalysisData {
+  periods: Array<{
+    period: string;
+    revenue: number;
+    deals_closed: number;
+    avg_deal_size: number;
+    target?: number;
+    achievement_rate?: number;
+  }>;
+  revenue_streams: Array<{
+    source: string;
+    revenue: number;
+    percentage: number;
+    growth_rate: number;
+  }>;
+  forecasts: Array<{
+    period: string;
+    predicted_revenue: number;
+    confidence_level: number;
+  }>;
+  metrics: {
+    total_revenue: number;
+    growth_rate: number;
+    avg_deal_size: number;
+    recurring_revenue: number;
+    one_time_revenue: number;
+  };
+}
+
+/**
+ * ✅ Tipo para retorno da função getActivitiesAnalysis
+ */
+export interface ActivitiesAnalysisData {
+  activities: Array<{
+    activity_type: 'call' | 'email' | 'meeting' | 'task' | 'note';
+    count: number;
+    success_rate: number;
+    avg_response_time: number;
+    peak_hours: string[];
+    top_performers: string[];
+  }>;
+  team_activity: Array<{
+    user_id: string;
+    user_name: string;
+    total_activities: number;
+    activity_breakdown: Record<string, number>;
+    productivity_score: number;
+    best_performing_activity: string;
+  }>;
+  trends: {
+    daily_activity: TrendData[];
+    weekly_activity: TrendData[];
+    activity_effectiveness: TrendData[];
+  };
+  insights: {
+    most_effective_activity: string;
+    best_time_for_calls: string;
+    highest_response_rate_channel: string;
+    recommendations: string[];
+  };
+}
+
 // ============================================================================
 // API SERVICE FUNCTIONS
 // ============================================================================
@@ -219,7 +355,7 @@ class AnalyticsAPI {
     return this.request<RealTimeMetrics>('/realtime');
   }
 
-  async exportReport(format: 'csv' | 'pdf' | 'excel', reportType: string, filters?: any): Promise<any> {
+  async exportReport(format: 'csv' | 'pdf' | 'excel', reportType: string, filters?: any): Promise<ExportResult> {
     return this.request('/export', {
       method: 'POST',
       body: JSON.stringify({
@@ -230,19 +366,19 @@ class AnalyticsAPI {
     });
   }
 
-  async getLeadSources(): Promise<any> {
+  async getLeadSources(): Promise<LeadSourcesData> {
     return this.request('/lead-sources');
   }
 
-  async getPipelineAnalysis(): Promise<any> {
+  async getPipelineAnalysis(): Promise<PipelineAnalysisData> {
     return this.request('/pipeline');
   }
 
-  async getRevenueAnalysis(): Promise<any> {
+  async getRevenueAnalysis(): Promise<RevenueAnalysisData> {
     return this.request('/revenue');
   }
 
-  async getActivitiesAnalysis(): Promise<any> {
+  async getActivitiesAnalysis(): Promise<ActivitiesAnalysisData> {
     return this.request('/activities');
   }
 }

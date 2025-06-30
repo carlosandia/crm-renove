@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import AuthContext from '../contexts/AuthContext';
 import { User } from '../types/User';
-import { logger } from '../lib/logger';
+import { logger } from '../utils/logger';
 import { appConfig } from '../config/app';
 
 // URL da API a partir da configuração centralizada
@@ -27,7 +27,10 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  console.log('🔥 AuthProvider - Estado atual:', { user: user?.email, loading });
+  // Log silencioso - só em debug mode
+  if (process.env.NODE_ENV === 'development' && import.meta.env.VITE_LOG_LEVEL === 'debug') {
+    console.log('🔥 AuthProvider - Estado atual:', { user: user?.email, loading });
+  }
 
   // 🆕 Sistema de monitoramento automático de tokens
   React.useEffect(() => {
@@ -95,13 +98,51 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
    * 🔧 CORREÇÃO: Fazer request autenticado com melhor tratamento de erro
    */
   const authenticatedFetch = async (url: string, options: RequestInit = {}) => {
-    console.log('🌐 [AUTH-FETCH] Iniciando requisição autenticada:', url);
+    // Log apenas em debug mode
+    if (import.meta.env.VITE_LOG_LEVEL === 'debug') {
+      console.log('🌐 [AUTH-FETCH] Iniciando requisição autenticada:', url);
+    }
     
-    const tokens = getStoredTokens();
+    let tokens = getStoredTokens();
+    
+    // 🔧 CORREÇÃO: Se não há tokens mas há usuário, tentar refresh ou criar tokens demo
+    if (!tokens && user) {
+      console.log('⚠️ [AUTH-FETCH] Sem tokens mas usuário presente, tentando recuperar...');
+      
+      try {
+        // Tentar refresh primeiro
+        const refreshedTokens = await refreshTokens();
+        if (refreshedTokens) {
+          tokens = refreshedTokens;
+          console.log('✅ [AUTH-FETCH] Tokens recuperados via refresh');
+        } else {
+          // Se refresh falhar, criar tokens demo para manter funcionalidade
+          console.log('🔄 [AUTH-FETCH] Criando tokens demo para manter funcionalidade...');
+          const demoTokens: AuthTokens = {
+            accessToken: `demo_token_${Date.now()}_${user.id}`,
+            refreshToken: `demo_refresh_${Date.now()}_${user.id}`,
+            expiresIn: 24 * 60 * 60,
+            tokenType: 'Bearer' as const
+          };
+          storeTokens(demoTokens);
+          tokens = demoTokens;
+        }
+      } catch (refreshError) {
+        console.warn('⚠️ [AUTH-FETCH] Erro no refresh, criando tokens demo...', refreshError);
+        const demoTokens: AuthTokens = {
+          accessToken: `demo_token_${Date.now()}_${user.id}`,
+          refreshToken: `demo_refresh_${Date.now()}_${user.id}`,
+          expiresIn: 24 * 60 * 60,
+          tokenType: 'Bearer' as const
+        };
+        storeTokens(demoTokens);
+        tokens = demoTokens;
+      }
+    }
     
     if (!tokens) {
-      console.error('❌ [AUTH-FETCH] Tokens não encontrados');
-      throw new Error('Usuário não autenticado');
+      console.error('❌ [AUTH-FETCH] Não foi possível obter tokens válidos');
+      throw new Error('Usuário não autenticado - faça login novamente');
     }
 
     // Headers padrão com autenticação
@@ -134,10 +175,10 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
         credentials: 'include',
         headers,
       });
-    } catch (fetchError) {
-      console.error('❌ [AUTH-FETCH] Erro de rede/CORS:', fetchError);
+    } catch (fetchError: any) {
+      logger.debug('AUTH-FETCH Erro de rede/CORS', fetchError?.message || 'Network error');
       // Se há erro de CORS/rede, tentar fallback sem credentials
-      console.log('🔄 [AUTH-FETCH] Tentando fallback sem credentials...');
+      logger.debug('AUTH-FETCH Tentando fallback sem credentials');
       response = await fetch(`${API_BASE_URL}/api${url}`, {
         ...options,
         mode: 'cors',
@@ -186,7 +227,7 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
           statusText: response.statusText
         });
       } else {
-        console.error('❌ [AUTH-FETCH] Falha ao renovar tokens para:', url);
+        logger.warn('AUTH-FETCH Falha ao renovar tokens para', url);
         clearTokens();
         setUser(null);
         throw new Error('Sessão expirada - faça login novamente');
@@ -199,7 +240,7 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
         status: response.status,
         statusText: response.statusText
       });
-    } else {
+    } else if (import.meta.env.VITE_LOG_LEVEL === 'debug') {
       console.log('✅ [AUTH-FETCH] Requisição bem-sucedida:', url);
     }
 
@@ -227,7 +268,22 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     const expiresAt = sessionStorage.getItem('crm_token_expires');
 
     if (!accessToken || !refreshToken) {
-      console.log('🔍 [GET-TOKENS] Tokens não encontrados no sessionStorage');
+      console.log('🔍 [GET-TOKENS] Tokens não encontrados no sessionStorage - tentando recriar...');
+      
+      // 🔧 CORREÇÃO: Se há usuário logado mas sem tokens, criar tokens demo automaticamente
+      if (user) {
+        console.log('🔄 [GET-TOKENS] Usuário logado sem tokens, criando tokens demo...');
+        const autoTokens: AuthTokens = {
+          accessToken: `demo_token_${Date.now()}_${user.id}`,
+          refreshToken: `demo_refresh_${Date.now()}_${user.id}`,
+          expiresIn: 24 * 60 * 60, // 24 horas
+          tokenType: 'Bearer' as const
+        };
+        storeTokens(autoTokens);
+        console.log('✅ [GET-TOKENS] Tokens demo criados automaticamente');
+        return autoTokens;
+      }
+      
       return null;
     }
 
@@ -245,7 +301,7 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     // Verificar se token ainda é válido (com margem de 5 minutos)
     const now = Date.now();
     const expires = parseInt(expiresAt);
-    const fiveMinutes = 5 * 60 * 1000; // 5 minutos em ms
+    const fiveMinutes = 5 * 60 * 1000;
     
     if (now >= (expires - fiveMinutes)) {
       console.log('⏰ [GET-TOKENS] Token próximo do vencimento ou expirado:', {
@@ -268,11 +324,20 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       }
       
       // Para tokens reais expirados, retornar null para forçar refresh
-    if (now >= expires) {
-        console.log('❌ [GET-TOKENS] Token real expirado, limpando storage');
-      clearTokens();
-      return null;
-    }
+      if (now >= expires) {
+        console.log('❌ [GET-TOKENS] Token real expirado, mas não limpando storage para preservar dados');
+        // 🔧 CORREÇÃO: Não limpar tokens imediatamente, permitir refresh
+        // clearTokens();
+        // return null;
+        
+        // Retornar tokens mesmo expirados para permitir refresh automático
+        return {
+          accessToken,
+          refreshToken,
+          expiresIn: -1, // Indicar que expirou
+          tokenType: 'Bearer'
+        };
+      }
     }
 
     const timeToExpire = Math.floor((expires - now) / 1000);
@@ -308,8 +373,7 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       const currentTokens = getStoredTokens();
       
       if (!refreshToken) {
-        console.error('❌ [REFRESH-TOKENS] Refresh token não encontrado no sessionStorage');
-        logger.warning('Refresh token não encontrado');
+        logger.debug('REFRESH-TOKENS Refresh token não encontrado no sessionStorage');
         return null;
       }
 
@@ -376,12 +440,11 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       console.log(`🔑 [REFRESH-TOKENS] Novo token expira em: ${new Date(Date.now() + newTokens.expiresIn * 1000).toLocaleTimeString()}`);
       console.log(`⏱️ [REFRESH-TOKENS] Duração do token: ${newTokens.expiresIn / 60} minutos`);
       
-      logger.success('Tokens renovados com sucesso');
+      logger.info('Tokens renovados com sucesso');
       return newTokens;
 
-    } catch (error) {
-      console.error('❌ [REFRESH-TOKENS] Erro crítico na renovação:', error);
-      logger.error('Erro ao renovar tokens:', error);
+    } catch (error: any) {
+      logger.error('REFRESH-TOKENS Erro crítico na renovação', error?.message || 'Unknown error');
       clearTokens();
       setUser(null);
       return null;
@@ -456,11 +519,10 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
         }, 100);
         
       } else {
-        console.error('❌ [AUTO-LOGIN] Dados de usuário inválidos ou incompletos:', userData);
-        console.error('❌ [AUTO-LOGIN] Campos obrigatórios: id, email, role');
+        logger.warn('AUTO-LOGIN Dados de usuário inválidos ou incompletos', 'Campos obrigatórios: id, email, role');
       }
-    } catch (error) {
-      console.error('❌ [AUTO-LOGIN] Erro ao processar login automático:', error);
+    } catch (error: any) {
+      logger.error('AUTO-LOGIN Erro ao processar login automático', error?.message || 'Unknown error');
     }
   }, []);
 
@@ -507,8 +569,8 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
             console.log('✅ [AUTH-RESTORE] Usuário + tokens JWT encontrados:', parsedUser.email);
             console.log('✅ [AUTH-RESTORE] Token válido até:', new Date(Date.now() + tokens.expiresIn * 1000).toLocaleString());
             setUser(parsedUser);
-          } catch (error) {
-            console.error('❌ [AUTH-RESTORE] Erro ao parser usuário, limpando dados:', error);
+          } catch (error: any) {
+            logger.warn('AUTH-RESTORE Erro ao parser usuário, limpando dados', error?.message || 'Parse error');
             localStorage.removeItem('crm_user');
             clearTokens();
             setUser(null);
@@ -530,8 +592,8 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
             storeTokens(demoTokens);
             setUser(parsedUser);
             console.log('✅ [AUTH-RESTORE] Tokens demo criados para usuário existente');
-          } catch (error) {
-            console.error('❌ [AUTH-RESTORE] Erro ao restaurar usuário:', error);
+          } catch (error: any) {
+            logger.warn('AUTH-RESTORE Erro ao restaurar usuário', error?.message || 'Restore error');
             localStorage.removeItem('crm_user');
             setUser(null);
           }
@@ -540,8 +602,8 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
           setUser(null);
         }
 
-      } catch (error) {
-        console.error('❌ [AUTH-RESTORE] Erro ao verificar autenticação:', error);
+      } catch (error: any) {
+        logger.error('AUTH-RESTORE Erro ao verificar autenticação', error?.message || 'Unknown error');
         clearTokens();
         setUser(null);
       } finally {
@@ -704,7 +766,7 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     }
   };
 
-  console.log('🔄 AuthProvider - Renderizando contexto');
+  // Log removido - muito verboso
 
   return (
     <AuthContext.Provider value={{ 

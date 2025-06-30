@@ -21,6 +21,7 @@ import { Badge } from '../ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { BaseModalProps } from '../../types/CommonProps';
 
 // ============================================
 // INTERFACES E TIPOS
@@ -60,9 +61,7 @@ interface Pipeline {
   pipeline_stages?: any[];
 }
 
-interface StepLeadModalProps {
-  isOpen: boolean;
-  onClose: () => void;
+interface StepLeadModalProps extends BaseModalProps {
   pipeline: Pipeline;
   members?: Member[];
   onSubmit: (leadData: any) => void;

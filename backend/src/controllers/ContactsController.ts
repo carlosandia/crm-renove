@@ -24,7 +24,7 @@ interface Contact {
   lifecycle_stage?: 'lead' | 'prospect' | 'customer' | 'evangelist';
   owner_id?: string;
   created_by?: string;
-  custom_fields?: Record<string, any>;
+  custom_fields?: Record<string, string | number | boolean | null>;
 }
 
 interface ContactFilters {
@@ -96,7 +96,7 @@ export class ContactsController {
       // Apply pagination
       query = query.range(offset, offset + limit - 1);
 
-      const { data: contacts, error, count } = await query;
+      const { data: contacts, error } = await query;
 
       if (error) {
         console.error('Error fetching contacts:', error);
@@ -167,7 +167,7 @@ export class ContactsController {
   static async createContact(req: Request, res: Response) {
     try {
       const contactData: Contact = req.body;
-      const userId = (req as any).user?.id;
+      const userId = req.user?.id;
 
       // Validate required fields
       if (!contactData.company_id) {
@@ -213,7 +213,7 @@ export class ContactsController {
     try {
       const { id } = req.params;
       const updateData: Partial<Contact> = req.body;
-      const userId = (req as any).user?.id;
+      const userId = req.user?.id;
 
       // Remove fields that shouldn't be updated directly
       delete updateData.id;
@@ -254,7 +254,7 @@ export class ContactsController {
   static async deleteContact(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userId = (req as any).user?.id;
+      const userId = req.user?.id;
 
       const { error } = await supabase
         .from('contacts')

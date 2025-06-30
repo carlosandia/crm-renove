@@ -69,6 +69,12 @@ const CompanyList: React.FC<CompanyListProps> = ({
         className: 'bg-blue-100 text-blue-800 hover:bg-blue-100',
         text: 'Email Enviado' 
       },
+      activated: { 
+        icon: CheckCircle, 
+        variant: 'default' as const,
+        className: 'bg-green-100 text-green-800 hover:bg-green-100',
+        text: 'Ativado' 
+      },
       expired: { 
         icon: AlertTriangle, 
         variant: 'destructive' as const,

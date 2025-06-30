@@ -1,6 +1,6 @@
 // Sistema de Logger Centralizado com Níveis de Verbosidade
 
-type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'silent';
+type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'none';
 
 interface LoggerConfig {
   level: LogLevel;
@@ -10,39 +10,29 @@ interface LoggerConfig {
 
 class Logger {
   private config: LoggerConfig;
-  private logLevels: Record<LogLevel, number> = {
-    silent: 0,
-    error: 1,
-    warn: 2,
-    info: 3,
-    debug: 4
-  };
+  private isDev: boolean;
 
   constructor() {
-    // 🔧 CONFIGURAÇÃO POR AMBIENTE
-    const envLogLevel = import.meta.env.VITE_LOG_LEVEL as LogLevel;
-    const isDev = import.meta.env.DEV;
-    const isDebugMode = import.meta.env.VITE_DEBUG_MODE === 'true';
-
-    // Determinar nível de log baseado no ambiente
-    let defaultLevel: LogLevel = 'info';
-    if (isDebugMode) {
-      defaultLevel = 'debug';
-    } else if (isDev) {
-      defaultLevel = 'warn';
-    } else {
-      defaultLevel = 'error'; // Produção: apenas erros
-    }
-
+    this.isDev = import.meta.env.DEV;
     this.config = {
-      level: envLogLevel || defaultLevel,
-      enableColors: isDev,
-      enableTimestamp: isDev
+      level: (import.meta.env.VITE_LOG_LEVEL as LogLevel) || (this.isDev ? 'debug' : 'warn'),
+      enableColors: this.isDev,
+      enableTimestamp: this.isDev
     };
   }
 
   private shouldLog(level: LogLevel): boolean {
-    return this.logLevels[level] <= this.logLevels[this.config.level];
+    if (this.config.level === 'none') return false;
+    
+    const levels: Record<LogLevel, number> = {
+      debug: 0,
+      info: 1,
+      warn: 2,
+      error: 3,
+      none: 4
+    };
+    
+    return levels[level] >= levels[this.config.level];
   }
 
   private formatMessage(level: LogLevel, message: string, context?: string): string {
@@ -58,7 +48,7 @@ class Logger {
         warn: '⚠️',
         info: 'ℹ️',
         debug: '🐛',
-        silent: ''
+        none: ''
       };
       formatted += `${colors[level]} `;
     }
@@ -108,9 +98,7 @@ class Logger {
 
   // 🔄 LOGS DE SISTEMA - Importantes mas controláveis
   system(message: string, context?: string, ...args: any[]): void {
-    if (this.shouldLog('info')) {
-      console.log(this.formatMessage('info', `[SYSTEM] ${message}`, context), ...args);
-    }
+    console.log(this.formatMessage('info', `🚀 [SYSTEM] ${message}`, context), ...args);
   }
 
   // 🔐 LOGS DE AUTH - Seguros e controláveis

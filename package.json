@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --mode development",
+    "dev:clean": "VITE_LOG_LEVEL=none vite --mode development",
+    "dev:quiet": "VITE_LOG_LEVEL=warn vite --mode development",
     "dev:prod": "vite --mode production",
     "build": "tsc && vite build",
     "build:dev": "vite build --mode development",

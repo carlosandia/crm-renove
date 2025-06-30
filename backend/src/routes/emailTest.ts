@@ -211,7 +211,7 @@ router.post('/send-admin-invitation',
       
       if (emailResult.success) {
         // Atualizar status do convite para 'sent'
-        await supabase
+        await getSupabaseClient()
           .from('admin_invitations')
           .update({ 
             status: 'sent',
@@ -233,7 +233,7 @@ router.post('/send-admin-invitation',
         });
       } else {
         // Atualizar status do convite para 'failed'
-        await supabase
+        await getSupabaseClient()
           .from('admin_invitations')
           .update({ 
             status: 'failed',
@@ -280,7 +280,7 @@ router.post('/validate-activation-token',
     
     try {
       // Usar função PostgreSQL para validar token
-      const { data: validationResult, error: validationError } = await supabase
+      const { data: validationResult, error: validationError } = await getSupabaseClient()
         .rpc('validate_invitation_token', { token_input: token });
 
       if (validationError) {
@@ -309,7 +309,7 @@ router.post('/validate-activation-token',
       }
 
       // Buscar dados da empresa
-      const { data: companyData, error: companyError } = await supabase
+      const { data: companyData, error: companyError } = await getSupabaseClient()
         .from('companies')
         .select('name, industry, city, state')
         .eq('id', result.company_id)
@@ -379,7 +379,7 @@ router.post('/activate-account',
       });
 
       // Usar função PostgreSQL para aceitar convite
-      const { data: activationResult, error: activationError } = await supabase
+      const { data: activationResult, error: activationError } = await getSupabaseClient()
         .rpc('accept_invitation', {
           token_input: token,
           password_hash_input: hashedPassword,
@@ -521,7 +521,7 @@ router.post('/apply-admin-invitations-migration',
       console.log('✅ [MIGRATION] Migração executada com sucesso');
 
       // Testar se a tabela foi criada
-      const { data: testData, error: testError } = await supabase
+      const { data: testData, error: testError } = await getSupabaseClient()
         .from('admin_invitations')
         .select('count')
         .limit(1);

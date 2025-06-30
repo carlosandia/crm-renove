@@ -1,0 +1,1 @@
+export { useInlineEditor } from './InlineEditor';

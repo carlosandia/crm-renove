@@ -1,23 +1,7 @@
 
 import React from 'react';
 import { Edit2, Trash2, Eye, Globe, BarChart3 } from 'lucide-react';
-
-interface CustomForm {
-  id: string;
-  name: string;
-  description?: string;
-  slug: string;
-  is_active: boolean;
-  settings: any;
-  styling: any;
-  redirect_url?: string;
-  pipeline_id?: string;
-  assigned_to?: string;
-  qualification_rules: any;
-  formio_schema?: any;
-  created_at: string;
-  updated_at: string;
-}
+import { CustomForm } from '../../types/Forms';
 
 interface FormBuilderListProps {
   forms: CustomForm[];

@@ -33,7 +33,7 @@ import {
   Filter
 } from 'lucide-react';
 import { LineChart as RechartsLineChart, Line, AreaChart, Area, BarChart, Bar, PieChart as RechartsPieChart, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { useDashboard, useRealTimeMetrics, useTimeRange, useExportReport, TimeRange } from '@/hooks/useAnalytics';
+import { useDashboard, useRealTimeMetrics, useTimeRange, useExportReport, TimeRange, TeamMember } from '@/hooks/useAnalytics';
 import { formatCurrency, formatNumber, formatPercentage } from '@/lib/utils';
 
 // ============================================================================
@@ -205,7 +205,7 @@ const TrendChart: React.FC<{
 };
 
 const TeamPerformanceTable: React.FC<{
-  teamData: any[];
+  teamData: TeamMember[];
 }> = ({ teamData }) => {
   return (
     <Card>

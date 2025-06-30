@@ -6,6 +6,55 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePasswordManager } from '../../hooks/usePasswordManager';
+import { formatPhone } from '../../utils/formatUtils';
+import CityAutocomplete from '../CityAutocomplete';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+
+// Lista de nichos/segmentos baseada em CRMs enterprise (igual ao formulário de criação)
+const INDUSTRY_SEGMENTS = [
+  // Tecnologia
+  { value: 'software', label: 'Software e TI', description: 'Desenvolvimento de software, consultoria em TI', category: 'Tecnologia' },
+  { value: 'ecommerce', label: 'E-commerce', description: 'Lojas virtuais, marketplaces', category: 'Tecnologia' },
+  { value: 'saas', label: 'SaaS', description: 'Software como serviço', category: 'Tecnologia' },
+  { value: 'fintech', label: 'Fintech', description: 'Tecnologia financeira', category: 'Tecnologia' },
+  
+  // Marketing e Vendas
+  { value: 'marketing_digital', label: 'Marketing Digital', description: 'Agências de marketing, publicidade online', category: 'Marketing' },
+  { value: 'agencia_publicidade', label: 'Agência de Publicidade', description: 'Criação publicitária, campanhas', category: 'Marketing' },
+  { value: 'social_media', label: 'Social Media', description: 'Gestão de redes sociais', category: 'Marketing' },
+  { value: 'influencer_marketing', label: 'Influencer Marketing', description: 'Marketing de influência', category: 'Marketing' },
+  
+  // Consultoria
+  { value: 'consultoria_empresarial', label: 'Consultoria Empresarial', description: 'Consultoria estratégica, gestão', category: 'Consultoria' },
+  { value: 'consultoria_financeira', label: 'Consultoria Financeira', description: 'Planejamento financeiro, investimentos', category: 'Consultoria' },
+  { value: 'consultoria_rh', label: 'Consultoria em RH', description: 'Recursos humanos, recrutamento', category: 'Consultoria' },
+  { value: 'coaching', label: 'Coaching', description: 'Coaching pessoal e empresarial', category: 'Consultoria' },
+  
+  // Educação
+  { value: 'educacao_online', label: 'Educação Online', description: 'Cursos online, plataformas de ensino', category: 'Educação' },
+  { value: 'treinamento_corporativo', label: 'Treinamento Corporativo', description: 'Capacitação empresarial', category: 'Educação' },
+  { value: 'escola_idiomas', label: 'Escola de Idiomas', description: 'Ensino de idiomas', category: 'Educação' },
+  
+  // Saúde e Bem-estar
+  { value: 'clinica_medica', label: 'Clínica Médica', description: 'Serviços médicos, clínicas', category: 'Saúde' },
+  { value: 'estetica', label: 'Estética e Beleza', description: 'Clínicas de estética, salões', category: 'Saúde' },
+  { value: 'fitness', label: 'Fitness', description: 'Academias, personal trainer', category: 'Saúde' },
+  { value: 'nutricao', label: 'Nutrição', description: 'Consultoria nutricional', category: 'Saúde' },
+  
+  // Imobiliário
+  { value: 'imobiliaria', label: 'Imobiliária', description: 'Venda e locação de imóveis', category: 'Imobiliário' },
+  { value: 'construcao', label: 'Construção Civil', description: 'Construtoras, engenharia', category: 'Imobiliário' },
+  { value: 'arquitetura', label: 'Arquitetura', description: 'Projetos arquitetônicos', category: 'Imobiliário' },
+  
+  // Serviços
+  { value: 'juridico', label: 'Jurídico', description: 'Escritórios de advocacia', category: 'Serviços' },
+  { value: 'contabilidade', label: 'Contabilidade', description: 'Serviços contábeis', category: 'Serviços' },
+  { value: 'turismo', label: 'Turismo', description: 'Agências de viagem, turismo', category: 'Serviços' },
+  { value: 'eventos', label: 'Eventos', description: 'Organização de eventos', category: 'Serviços' },
+  
+  // Outros
+  { value: 'outros', label: 'Outros', description: 'Outros segmentos não listados', category: 'Outros' }
+];
 
 interface CompanyViewModalProps {
   company: Company;
@@ -42,9 +91,9 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
     address: company.address || ''
   });
   
-  // Estados para edição do admin
+  // Estados para edição do admin - corrigindo estrutura de dados
   const [adminData, setAdminData] = useState({
-    name: company.admin?.name || '',
+    name: company.admin ? `${company.admin.first_name || ''} ${company.admin.last_name || ''}`.trim() : '',
     email: company.admin?.email || ''
   });
   
@@ -53,6 +102,38 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
     expected_sales_monthly: company.expected_sales_monthly || 0,
     expected_followers_monthly: company.expected_followers_monthly || 0
   });
+
+  // Agrupa segmentos por categoria para o select
+  const segmentsByCategory = INDUSTRY_SEGMENTS.reduce((acc, segment) => {
+    if (!acc[segment.category]) {
+      acc[segment.category] = [];
+    }
+    acc[segment.category].push(segment);
+    return acc;
+  }, {} as Record<string, typeof INDUSTRY_SEGMENTS>);
+
+  // Função para encontrar o label do nicho
+  const getIndustryLabel = (value: string) => {
+    const industry = INDUSTRY_SEGMENTS.find(segment => segment.value === value);
+    return industry ? industry.label : value;
+  };
+
+  // Handler para mudança de cidade com autocomplete
+  const handleCityChange = (cityState: string) => {
+    const [city, state] = cityState.split('/');
+    setCompanyData(prev => ({ 
+      ...prev, 
+      city: city || '', 
+      state: state || '' 
+    }));
+  };
+
+  // Handler para formatação do telefone
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputValue = e.target.value;
+    const formattedPhone = formatPhone(inputValue);
+    setCompanyData(prev => ({ ...prev, phone: formattedPhone }));
+  };
 
   // 🚀 REFACTOR: Handler simplificado usando o hook especializado
   const handlePasswordUpdate = async () => {
@@ -114,64 +195,138 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
   // Handler para atualizar informações da empresa
   const handleCompanyUpdate = async () => {
     try {
-      console.log('🔧 [COMPANY-VIEW] Enviando requisição para alterar empresa...');
+      // Validações prévia dos dados
+      if (!company?.id) {
+        console.error('❌ [COMPANY-VIEW] Company ID está vazio ou inválido:', company);
+        alert('❌ Erro interno: ID da empresa não encontrado');
+        return;
+      }
+
+      if (!companyData.name || !companyData.industry) {
+        alert('❌ Preencha todos os campos obrigatórios (Nome e Nicho)');
+        return;
+      }
+
+      console.log('🔧 [COMPANY-VIEW] === INICIANDO ATUALIZAÇÃO EMPRESA ===');
+      console.log('🔧 [COMPANY-VIEW] Company Object:', company);
       console.log('🔧 [COMPANY-VIEW] Company ID:', company.id);
+      console.log('🔧 [COMPANY-VIEW] Company ID Type:', typeof company.id);
+      console.log('🔧 [COMPANY-VIEW] Company ID Length:', company.id?.length);
+      console.log('🔧 [COMPANY-VIEW] Company Data:', companyData);
+
+      const requestPayload = {
+        companyId: company.id,
+        companyData: companyData
+      };
+
+      console.log('🔧 [COMPANY-VIEW] Request Payload:', requestPayload);
 
       const response = await authenticatedFetch('/companies/update-info', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          companyId: company.id,
-          companyData: companyData
-        })
+        body: JSON.stringify(requestPayload)
       });
+
+      console.log('🔧 [COMPANY-VIEW] Response Status:', response.status);
+      console.log('🔧 [COMPANY-VIEW] Response Headers:', response.headers);
 
       if (response.ok) {
         const result = await response.json();
-        alert('Informações da empresa atualizadas com sucesso!');
+        console.log('✅ [COMPANY-VIEW] Sucesso:', result);
+        alert('✅ Informações da empresa atualizadas com sucesso!');
         setIsEditingCompany(false);
         onRefetch();
       } else {
-        const errorData = await response.json();
-        alert(`Erro ao atualizar empresa: ${errorData.message || errorData.error || 'Erro desconhecido'}`);
+        console.log('❌ [COMPANY-VIEW] Erro HTTP:', response.status);
+        
+        let errorData;
+        try {
+          errorData = await response.json();
+          console.log('❌ [COMPANY-VIEW] Error Data:', errorData);
+        } catch (parseError) {
+          console.log('❌ [COMPANY-VIEW] Erro ao parsear resposta:', parseError);
+          const errorText = await response.text();
+          console.log('❌ [COMPANY-VIEW] Error Text:', errorText);
+          errorData = { message: `Erro ${response.status}: ${errorText}` };
+        }
+
+        const errorMessage = errorData?.message || errorData?.error || `Erro HTTP ${response.status}`;
+        alert(`❌ Erro ao atualizar empresa: ${errorMessage}`);
       }
     } catch (error: any) {
-      console.error('Erro ao atualizar empresa:', error);
-      alert(`Erro ao atualizar empresa: ${error.message || 'Network Error'}`);
+      console.error('❌ [COMPANY-VIEW] Exception:', error);
+      console.error('❌ [COMPANY-VIEW] Error Stack:', error.stack);
+      alert(`❌ Erro ao atualizar empresa: ${error.message || 'Network Error'}`);
     }
   };
 
   // Handler para atualizar informações do admin
   const handleAdminUpdate = async () => {
     try {
-      console.log('🔧 [COMPANY-VIEW] Enviando requisição para alterar admin...');
+      // Validações prévia dos dados
+      if (!company?.id) {
+        console.error('❌ [COMPANY-VIEW] Company ID está vazio ou inválido:', company);
+        alert('❌ Erro interno: ID da empresa não encontrado');
+        return;
+      }
+
+      if (!adminData.name || !adminData.email) {
+        alert('❌ Preencha todos os campos obrigatórios (Nome e Email)');
+        return;
+      }
+
+      console.log('🔧 [COMPANY-VIEW] === INICIANDO ATUALIZAÇÃO ADMIN ===');
+      console.log('🔧 [COMPANY-VIEW] Company Object:', company);
       console.log('🔧 [COMPANY-VIEW] Company ID:', company.id);
+      console.log('🔧 [COMPANY-VIEW] Company ID Type:', typeof company.id);
+      console.log('🔧 [COMPANY-VIEW] Admin Data:', adminData);
+
+      const requestPayload = {
+        companyId: company.id,
+        adminData: adminData
+      };
+
+      console.log('🔧 [COMPANY-VIEW] Request Payload:', requestPayload);
 
       const response = await authenticatedFetch('/companies/update-admin-info', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          companyId: company.id,
-          adminData: adminData
-        })
+        body: JSON.stringify(requestPayload)
       });
+
+      console.log('🔧 [COMPANY-VIEW] Response Status:', response.status);
 
       if (response.ok) {
         const result = await response.json();
-        alert('Informações do administrador atualizadas com sucesso!');
+        console.log('✅ [COMPANY-VIEW] Sucesso Admin:', result);
+        alert('✅ Informações do administrador atualizadas com sucesso!');
         setIsEditingAdmin(false);
         onRefetch();
       } else {
-        const errorData = await response.json();
-        alert(`Erro ao atualizar admin: ${errorData.message || errorData.error || 'Erro desconhecido'}`);
+        console.log('❌ [COMPANY-VIEW] Erro HTTP Admin:', response.status);
+        
+        let errorData;
+        try {
+          errorData = await response.json();
+          console.log('❌ [COMPANY-VIEW] Error Data Admin:', errorData);
+        } catch (parseError) {
+          console.log('❌ [COMPANY-VIEW] Erro ao parsear resposta Admin:', parseError);
+          const errorText = await response.text();
+          console.log('❌ [COMPANY-VIEW] Error Text Admin:', errorText);
+          errorData = { message: `Erro ${response.status}: ${errorText}` };
+        }
+
+        const errorMessage = errorData?.message || errorData?.error || `Erro HTTP ${response.status}`;
+        alert(`❌ Erro ao atualizar admin: ${errorMessage}`);
       }
     } catch (error: any) {
-      console.error('Erro ao atualizar admin:', error);
-      alert(`Erro ao atualizar admin: ${error.message || 'Network Error'}`);
+      console.error('❌ [COMPANY-VIEW] Exception Admin:', error);
+      console.error('❌ [COMPANY-VIEW] Error Stack Admin:', error.stack);
+      alert(`❌ Erro ao atualizar admin: ${error.message || 'Network Error'}`);
     }
   };
 
@@ -250,32 +405,36 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-600 mb-2">Nicho de Atuação *</label>
-                    <input
-                      type="text"
-                      value={companyData.industry}
-                      onChange={(e) => setCompanyData(prev => ({ ...prev, industry: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Ex: Tecnologia, Marketing, Consultoria"
-                    />
+                    <Select value={companyData.industry} onValueChange={(value) => setCompanyData(prev => ({ ...prev, industry: value }))}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Selecione o segmento" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(segmentsByCategory).map(([category, segments]) => (
+                          <div key={category}>
+                            <div className="px-2 py-1 text-sm font-medium text-muted-foreground">
+                              {category}
+                            </div>
+                            {segments.map((segment) => (
+                              <SelectItem key={segment.value} value={segment.value}>
+                                <div className="flex flex-col">
+                                  <span>{segment.label}</span>
+                                  <span className="text-xs text-muted-foreground">{segment.description}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </div>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-2">Cidade</label>
-                    <input
-                      type="text"
-                      value={companyData.city}
-                      onChange={(e) => setCompanyData(prev => ({ ...prev, city: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Cidade"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-2">Estado</label>
-                    <input
-                      type="text"
-                      value={companyData.state}
-                      onChange={(e) => setCompanyData(prev => ({ ...prev, state: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Estado"
+                    <label className="block text-sm font-medium text-slate-600 mb-2">Cidade/Estado *</label>
+                    <CityAutocomplete
+                      value={companyData.city && companyData.state ? `${companyData.city}/${companyData.state}` : ''}
+                      onChange={handleCityChange}
+                      placeholder="Digite a cidade..."
+                      className="w-full"
                     />
                   </div>
                   <div>
@@ -289,6 +448,16 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
                     />
                   </div>
                   <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-2">Telefone</label>
+                    <input
+                      type="tel"
+                      value={companyData.phone}
+                      onChange={handlePhoneChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="(11) 99999-9999"
+                    />
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium text-slate-600 mb-2">Email</label>
                     <input
                       type="email"
@@ -298,24 +467,14 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
                       placeholder="contato@empresa.com"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-2">Telefone</label>
-                    <input
-                      type="tel"
-                      value={companyData.phone}
-                      onChange={(e) => setCompanyData(prev => ({ ...prev, phone: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="(11) 99999-9999"
-                    />
-                  </div>
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-slate-600 mb-2">Endereço</label>
-                    <input
-                      type="text"
+                    <textarea
                       value={companyData.address}
                       onChange={(e) => setCompanyData(prev => ({ ...prev, address: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       placeholder="Endereço completo"
+                      rows={3}
                     />
                   </div>
                 </div>
@@ -356,26 +515,27 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
               <div className="grid grid-cols-2 gap-6 bg-slate-50 rounded-lg p-4">
                 <div>
                   <label className="text-sm font-medium text-slate-600">Nome</label>
-                  <p className="text-slate-900 font-medium">{company.name}</p>
+                  <p className="text-slate-900 font-medium">{company.name || 'Não informado'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-slate-600">Nicho de Atuação</label>
-                  <p className="text-slate-900">{company.industry}</p>
+                  <p className="text-slate-900">{getIndustryLabel(company.industry) || 'Não informado'}</p>
                 </div>
-                {company.city && company.state && (
-                  <div>
-                    <label className="text-sm font-medium text-slate-600">Localização</label>
-                    <p className="text-slate-900 flex items-center">
-                      <MapPin className="w-4 h-4 mr-1 text-slate-400" />
-                      {company.city}/{company.state}
-                    </p>
-                  </div>
-                )}
-                {company.website && (
-                  <div>
-                    <label className="text-sm font-medium text-slate-600">Website</label>
-                    <p className="text-slate-900 flex items-center">
-                      <Globe className="w-4 h-4 mr-1 text-slate-400" />
+                <div>
+                  <label className="text-sm font-medium text-slate-600">Localização</label>
+                  <p className="text-slate-900 flex items-center">
+                    <MapPin className="w-4 h-4 mr-1 text-slate-400" />
+                    {company.city && company.state 
+                      ? `${company.city}/${company.state}` 
+                      : 'Não informado'
+                    }
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-600">Website</label>
+                  <p className="text-slate-900 flex items-center">
+                    <Globe className="w-4 h-4 mr-1 text-slate-400" />
+                    {company.website ? (
                       <a 
                         href={company.website} 
                         target="_blank" 
@@ -384,33 +544,36 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
                       >
                         {company.website}
                       </a>
-                    </p>
-                  </div>
-                )}
-                {company.email && (
-                  <div>
-                    <label className="text-sm font-medium text-slate-600">Email</label>
-                    <p className="text-slate-900 flex items-center">
-                      <Mail className="w-4 h-4 mr-1 text-slate-400" />
-                      {company.email}
-                    </p>
-                  </div>
-                )}
-                {company.phone && (
-                  <div>
-                    <label className="text-sm font-medium text-slate-600">Telefone</label>
-                    <p className="text-slate-900 flex items-center">
-                      <Phone className="w-4 h-4 mr-1 text-slate-400" />
-                      {company.phone}
-                    </p>
-                  </div>
-                )}
-                {company.address && (
-                  <div className="col-span-2">
-                    <label className="text-sm font-medium text-slate-600">Endereço</label>
-                    <p className="text-slate-900">{company.address}</p>
-                  </div>
-                )}
+                    ) : (
+                      'Não informado'
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-600">Email</label>
+                  <p className="text-slate-900 flex items-center">
+                    <Mail className="w-4 h-4 mr-1 text-slate-400" />
+                    {company.email || 'Não informado'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-600">Telefone</label>
+                  <p className="text-slate-900 flex items-center">
+                    <Phone className="w-4 h-4 mr-1 text-slate-400" />
+                    {company.phone ? formatPhone(company.phone) : 'Não informado'}
+                  </p>
+                </div>
+                <div className="col-span-2">
+                  <label className="text-sm font-medium text-slate-600">Endereço</label>
+                  <p className="text-slate-900">{company.address || 'Não informado'}</p>
+                </div>
+                <div className="col-span-2">
+                  <label className="text-sm font-medium text-slate-600">Data de Criação</label>
+                  <p className="text-slate-900 flex items-center">
+                    <Calendar className="w-4 h-4 mr-1 text-slate-400" />
+                    {company.created_at ? formatDate(company.created_at) : 'Não informado'}
+                  </p>
+                </div>
               </div>
             )}
           </div>
@@ -486,11 +649,16 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-6 mb-4">
-                    <div>
-                      <label className="text-sm font-medium text-slate-600">Nome</label>
-                      <p className="text-slate-900 font-medium">{company.admin.name}</p>
-                    </div>
+                                  <div className="grid grid-cols-2 gap-6 mb-4">
+                  <div>
+                    <label className="text-sm font-medium text-slate-600">Nome</label>
+                    <p className="text-slate-900 font-medium">
+                      {company.admin.name || 
+                       `${company.admin.first_name || ''} ${company.admin.last_name || ''}`.trim() ||
+                       'Nome não informado'
+                      }
+                    </p>
+                  </div>
                     <div>
                       <label className="text-sm font-medium text-slate-600">Email</label>
                       <p className="text-slate-900 flex items-center">

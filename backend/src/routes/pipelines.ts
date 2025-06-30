@@ -14,6 +14,9 @@ const router = express.Router();
 // ROTAS PRINCIPAIS DE PIPELINES
 // ============================================
 
+// GET /api/pipelines/validate-name - Validar nome de pipeline em tempo real
+router.get('/validate-name', PipelineController.validatePipelineName);
+
 // GET /api/pipelines - Listar pipelines do tenant (com cache)
 router.get('/', cacheMiddlewares.pipeline(CacheTTL.medium), PipelineController.getPipelines);
 
@@ -247,8 +250,6 @@ router.post('/complete', async (req, res) => {
       const stageInserts = stages.map((stage: any, index: number) => ({
         pipeline_id: pipelineId,
         name: stage.name,
-        temperature_score: stage.temperature_score || 50,
-        max_days_allowed: stage.max_days_allowed || 7,
         color: stage.color || '#3B82F6',
         order_index: stage.order_index !== undefined ? stage.order_index : index + 1
       }));
@@ -319,6 +320,7 @@ router.post('/complete', async (req, res) => {
     console.log('✅ Pipeline completa criada com sucesso');
 
     res.status(201).json({ 
+      success: true,
       message: 'Pipeline criada com sucesso',
       pipeline,
       stages_created: stages.length,
@@ -391,7 +393,7 @@ router.get('/:id/stages', async (req, res) => {
 router.post('/:id/stages', async (req, res) => {
   try {
     const { id: pipeline_id } = req.params;
-    const { name, temperature_score, max_days_allowed, color = '#3B82F6' } = req.body;
+    const { name, color = '#3B82F6' } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Nome da etapa é obrigatório' });
@@ -414,8 +416,6 @@ router.post('/:id/stages', async (req, res) => {
         pipeline_id,
         name,
         order_index,
-        temperature_score,
-        max_days_allowed,
         color
       })
       .select()
@@ -643,8 +643,6 @@ router.post('/test-create-with-stages', async (req, res) => {
       const stageInserts = stages.map((stage: any, index: number) => ({
         pipeline_id: pipeline.id,
         name: stage.name,
-        temperature_score: stage.temperature_score || 50,
-        max_days_allowed: stage.max_days_allowed || 7,
         color: stage.color || '#3B82F6',
         order_index: stage.order_index !== undefined ? stage.order_index : index + 1
       }));
@@ -793,8 +791,6 @@ router.post('/debug-complete', async (req, res) => {
         pipeline_id: pipeline.id,
         name: s.name,
         order_index: i + 1,
-        temperature_score: s.temperature_score || 50,
-        max_days_allowed: s.max_days_allowed || 7,
         color: s.color || '#3B82F6'
       }));
 

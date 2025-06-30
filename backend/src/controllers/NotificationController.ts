@@ -18,17 +18,7 @@ interface CreateNotificationRequest {
   expiresAt?: string;
 }
 
-interface NotificationAnalytics {
-  category: string;
-  priority: string;
-  targetRole: string;
-  totalSent: number;
-  totalRead: number;
-  totalClicked: number;
-  readRatePercent: number;
-  clickRatePercent: number;
-  dateSent: string;
-}
+
 
 export class NotificationController {
   /**

@@ -1,8 +1,8 @@
-import { useState, useCallback, useEffect, useContext } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
 import { Company, CompanyAdmin } from '../types/Company';
-import AuthContext from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 
 export const useCompanies = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -10,10 +10,8 @@ export const useCompanies = () => {
   const [error, setError] = useState<string | null>(null);
   const [isPolling, setIsPolling] = useState(false);
   
-  // 🔧 CORREÇÃO: Usar contexto de autenticação com verificação
-  const authContext = useContext(AuthContext);
-  const authenticatedFetch = authContext?.authenticatedFetch;
-  const user = authContext?.user;
+  // 🔧 CORREÇÃO: Usar hook useAuth diretamente
+  const { user, authenticatedFetch } = useAuth();
   
   const formatDateBrasilia = useCallback((dateString: string) => {
     try {
@@ -34,11 +32,14 @@ export const useCompanies = () => {
   /**
    * 🔧 CORREÇÃO CRÍTICA: Busca de empresas corrigida para super_admin
    */
-  const fetchCompanies = useCallback(async () => {
+  const fetchCompanies = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError(null);
-      console.log('🔍 [useCompanies] Iniciando busca de empresas...');
+      console.log(`🔍 [useCompanies] Iniciando busca de empresas (forceRefresh: ${forceRefresh})...`);
+      
+      // 🔥 FORÇA BRUTA: Se for force refresh, adicionar timestamp para quebrar cache
+      const cacheBreaker = forceRefresh ? `?_cb=${Date.now()}` : '';
 
       let companiesData: any[] = [];
       let usedBackendAPI = false;
@@ -47,7 +48,7 @@ export const useCompanies = () => {
       if (authenticatedFetch) {
         console.log('🚀 [useCompanies] Tentando Backend API...');
         try {
-          const response = await authenticatedFetch('/companies');
+          const response = await authenticatedFetch(`/companies${cacheBreaker}`);
           
           if (response.ok) {
             const result = await response.json();
@@ -143,16 +144,17 @@ export const useCompanies = () => {
                         if (parts.length >= 3) {
                           invitationToken = parts[1];
                           invitationSentAt = parts[2];
-                          activationStatus = invitationSegment.includes('ACCEPTED') ? 'activated' : 'sent';
+                          // ✅ CORREÇÃO: Reconhecer tanto ACCEPTED quanto ADMIN_ACTIVATED como ativado
+                          activationStatus = (invitationSegment.includes('ACCEPTED') || invitationSegment.includes('ADMIN_ACTIVATED')) ? 'activated' : 'sent';
                         }
                       }
                     }
                   }
                 } catch (invitationError) {
                   console.warn(`⚠️ Erro ao buscar convite para "${adminData.email}":`, invitationError);
-                  // FALLBACK para segment se tabela admin_invitations falhar
+                  // ✅ FALLBACK aprimorado para segment se tabela admin_invitations falhar
                   if (company.segment && company.segment.includes('INVITATION:')) {
-                    activationStatus = company.segment.includes('ACCEPTED') ? 'activated' : 'sent';
+                    activationStatus = (company.segment.includes('ACCEPTED') || company.segment.includes('ADMIN_ACTIVATED')) ? 'activated' : 'sent';
                   }
                 }
               }
@@ -196,7 +198,7 @@ export const useCompanies = () => {
     } finally {
       setLoading(false);
     }
-  }, [authenticatedFetch]);
+  }, [authenticatedFetch, user]);
 
   const toggleCompanyStatus = useCallback(async (company: Company) => {
     const novoStatus = !company.is_active;
@@ -333,10 +335,59 @@ export const useCompanies = () => {
       }, 1000);
     };
 
+    // 🔧 CORREÇÃO ROBUSTA: Listener para refresh automático após criação de empresa
+    const handleCompanyCreated = (event: CustomEvent) => {
+      const retry = event.detail?.retry || 0;
+      console.log(`🔄 [useCompanies] Empresa criada detectada (tentativa ${retry + 1}):`, event.detail);
+      console.log('📋 [useCompanies] Executando refresh FORÇADO da lista...');
+      
+      // 🔥 FORÇA BRUTA: Limpar cache antes de fazer fetch
+      setCompanies([]); 
+      setLoading(true);
+      
+      // Fetch imediato com FORCE REFRESH
+      fetchCompanies(true).then(() => {
+        console.log(`✅ [useCompanies] Lista atualizada com sucesso (tentativa ${retry + 1})`);
+        
+        // 🔥 SUPER FORÇA BRUTA: Se for uma das primeiras tentativas, disparar um polling adicional
+        if (retry <= 1) {
+          setTimeout(() => {
+            console.log(`🔄 [useCompanies] Polling adicional (tentativa ${retry + 1})...`);
+            fetchCompanies(true);
+          }, 1000);
+        }
+      }).catch(error => {
+        console.error(`❌ [useCompanies] Erro na atualização (tentativa ${retry + 1}):`, error);
+      });
+    };
+
+    // 🔥 SUPER FORÇA BRUTA: Listener adicional para force refresh
+    const handleForceRefresh = (event: CustomEvent) => {
+      const retry = event.detail?.retry || 0;
+      const source = event.detail?.source || 'unknown';
+      console.log(`🚨 [useCompanies] FORCE REFRESH detectado (${source} - tentativa ${retry + 1}):`, event.detail);
+      
+      // Limpar tudo e recarregar
+      setCompanies([]);
+      setLoading(true);
+      setError(null);
+      
+      // Force refresh com cache breaker
+      fetchCompanies(true).then(() => {
+        console.log(`✅ [useCompanies] FORCE REFRESH concluído (${source} - tentativa ${retry + 1})`);
+      }).catch(error => {
+        console.error(`❌ [useCompanies] FORCE REFRESH falhou (${source} - tentativa ${retry + 1}):`, error);
+      });
+    };
+
     window.addEventListener('admin-activated', handleAdminActivated as EventListener);
+    window.addEventListener('company-created', handleCompanyCreated as EventListener);
+    window.addEventListener('force-refresh-companies', handleForceRefresh as EventListener);
     
     return () => {
       window.removeEventListener('admin-activated', handleAdminActivated as EventListener);
+      window.removeEventListener('company-created', handleCompanyCreated as EventListener);
+      window.removeEventListener('force-refresh-companies', handleForceRefresh as EventListener);
     };
   }, [fetchCompanies]);
 

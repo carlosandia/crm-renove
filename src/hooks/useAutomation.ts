@@ -88,6 +88,54 @@ export interface EventLog {
   error?: string;
 }
 
+/**
+ * ✅ CATEGORIA 5.2: Tipo para retorno da função testRule
+ */
+export interface TestRuleResult {
+  success: boolean;
+  ruleId: string;
+  testData: Record<string, any>;
+  
+  // Resultados da execução do teste
+  conditionsResult: {
+    passed: boolean;
+    evaluations: Array<{
+      field: string;
+      operator: string;
+      expected: any;
+      actual: any;
+      passed: boolean;
+    }>;
+  };
+  
+  // Ações que seriam executadas
+  actionsToExecute: Array<{
+    id: string;
+    type: 'email' | 'task' | 'notification' | 'webhook' | 'update_field' | 'change_stage';
+    parameters: Record<string, any>;
+    wouldExecute: boolean;
+    simulatedResult?: any;
+  }>;
+  
+  // Métricas de execução
+  executionMetrics: {
+    executionTime: number;
+    conditionsEvaluationTime: number;
+    actionsSimulationTime: number;
+  };
+  
+  // Logs de depuração
+  debugLogs: Array<{
+    timestamp: string;
+    level: 'info' | 'warning' | 'error';
+    message: string;
+    context?: Record<string, any>;
+  }>;
+  
+  // Recomendações de otimização
+  recommendations?: string[];
+}
+
 interface UseAutomationReturn {
   // Rules
   rules: BusinessRule[];
@@ -110,7 +158,7 @@ interface UseAutomationReturn {
   createRule: (rule: Omit<BusinessRule, 'id' | 'createdAt' | 'updatedAt' | 'metadata'>) => Promise<BusinessRule>;
   updateRule: (ruleId: string, updates: Partial<BusinessRule>) => Promise<BusinessRule>;
   deleteRule: (ruleId: string) => Promise<void>;
-  testRule: (ruleId: string, testData: Record<string, any>) => Promise<any>;
+  testRule: (ruleId: string, testData: Record<string, any>) => Promise<TestRuleResult>;
   toggleRuleStatus: (ruleId: string, isActive: boolean) => Promise<void>;
   
   emitEvent: (type: string, entityType: string, entityId: string, data: Record<string, any>) => Promise<string>;
@@ -340,7 +388,7 @@ export const useAutomation = (): UseAutomationReturn => {
   }, [loadRules]);
 
   // Test Rule
-  const testRule = useCallback(async (ruleId: string, testData: Record<string, any>): Promise<any> => {
+  const testRule = useCallback(async (ruleId: string, testData: Record<string, any>): Promise<TestRuleResult> => {
     try {
       const response = await fetch(`http://localhost:3001/api/automation/rules/${ruleId}/test`, {
         method: 'POST',

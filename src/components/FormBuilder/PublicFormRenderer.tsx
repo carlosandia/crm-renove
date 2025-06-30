@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Star, MessageSquare, Upload, Calendar, Clock, 
   Send, CheckCircle, AlertCircle, Target, TrendingUp, X,
@@ -9,35 +9,28 @@ import { ShimmerButton } from '../ui/shimmer-button';
 import { BlurFade } from '../ui/blur-fade';
 import { cn } from '../../lib/utils';
 
-interface FormField {
-  id: string;
-  field_type: string;
-  field_name: string;
-  field_label: string;
-  field_description?: string;
-  placeholder?: string;
-  is_required: boolean;
-  field_options: any;
-  validation_rules: any;
-  styling: any;
-  order_index: number;
-  scoring_weight?: number;
-}
+// ================================================================================
+// FASE 5: OTIMIZAÇÃO COM COMPONENTES MODULARES E LAZY LOADING
+// ================================================================================
+import { 
+  FormField, 
+  ScoringRule, 
+  PublicFormRendererProps,
+  NotificationState,
+  NotificationSettings,
+  FieldType,
+  ScoringCondition,
+  FormDataWithDestination
+} from '../../types/Forms';
 
-interface ScoringRule {
-  id: string;
-  field_id: string;
-  condition: 'equals' | 'contains' | 'greater_than' | 'less_than' | 'not_empty' | 'range';
-  value: string;
-  points: number;
-  description: string;
-}
+// Imports modulares FASE 5.3 e 5.4
+import FieldRenderer from './rendering/FieldRenderer';
+import { SubmissionHandler } from './core/SubmissionHandler';
 
-interface PublicFormRendererProps {
-  formId: string;
-  formSlug?: string;
-  embedded?: boolean;
-}
+// ================================================================================
+// INTERFACE REMOVIDA - AGORA USANDO TIPO UNIFICADO
+// ================================================================================
+// ✅ PublicFormRendererProps → src/types/Forms.ts
 
 // 🆕 FUNÇÕES DE CAPTURA E PROCESSAMENTO DE UTMs
 const captureUTMParameters = () => {
@@ -265,7 +258,7 @@ const PublicFormRenderer: React.FC<PublicFormRendererProps> = ({
         fields: [
           {
             id: '1',
-            field_type: 'text',
+            field_type: 'text' as const,
             field_name: 'nome',
             field_label: 'Nome Completo',
             placeholder: 'Digite seu nome completo',
@@ -284,7 +277,7 @@ const PublicFormRenderer: React.FC<PublicFormRendererProps> = ({
           },
           {
             id: '2',
-            field_type: 'email',
+            field_type: 'email' as const,
             field_name: 'email',
             field_label: 'E-mail',
             placeholder: 'seu@email.com',
@@ -303,7 +296,7 @@ const PublicFormRenderer: React.FC<PublicFormRendererProps> = ({
           },
           {
             id: '3',
-            field_type: 'phone',
+            field_type: 'phone' as const,
             field_name: 'telefone',
             field_label: 'Telefone',
             placeholder: '(11) 99999-9999',
@@ -322,7 +315,7 @@ const PublicFormRenderer: React.FC<PublicFormRendererProps> = ({
           },
           {
             id: '4',
-            field_type: 'select',
+            field_type: 'select' as const,
             field_name: 'interesse',
             field_label: 'Área de Interesse',
             is_required: true,
@@ -526,7 +519,8 @@ const PublicFormRenderer: React.FC<PublicFormRendererProps> = ({
       console.log('📊 Dados da submissão com origem:', submissionData);
 
       // Verificar se há configuração de destino
-      const destinationConfig = (formData as any).destination_config;
+      const formDataWithDestination = formData as FormDataWithDestination;
+      const destinationConfig = formDataWithDestination.destination_config;
       console.log('🎯 Configuração de destino:', destinationConfig);
 
       let submitEndpoint = '/api/forms/submit';
@@ -1069,7 +1063,11 @@ const PublicFormRenderer: React.FC<PublicFormRendererProps> = ({
       case 'whatsapp':
         return (
           <ShimmerButton
-            onClick={() => {
+            onClick={async (e) => {
+              // Primeiro, submete o formulário
+              await handleSubmit(e);
+              
+              // Depois, abre o WhatsApp
               const number = field.field_options?.number || '';
               const message = field.field_options?.message || 'Olá! Gostaria de mais informações.';
               const whatsappUrl = `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
@@ -1209,7 +1207,12 @@ const PublicFormRenderer: React.FC<PublicFormRendererProps> = ({
                     <p className="text-sm text-gray-500 mb-2">{field.field_description}</p>
                   )}
                   
-                  {renderField(field)}
+                  <FieldRenderer
+                    field={field}
+                    value={formValues[field.id]}
+                    error={errors[field.id]}
+                    onChange={handleInputChange}
+                  />
                   
                   {errors[field.id] && (
                     <div className="mt-1 flex items-center space-x-1 text-red-600">
@@ -1262,7 +1265,7 @@ const PublicFormRenderer: React.FC<PublicFormRendererProps> = ({
                         disabled={submitting}
                         onClick={async (e) => {
                           // Primeiro, submete o formulário
-                          await handleSubmit(e as any);
+                          await handleSubmit(e);
                           
                           // Depois, abre o WhatsApp
                           const number = whatsappField.field_options?.number || '';
@@ -1330,7 +1333,7 @@ const PublicFormRenderer: React.FC<PublicFormRendererProps> = ({
                       disabled={submitting}
                       onClick={async (e) => {
                         // Primeiro, submete o formulário
-                        await handleSubmit(e as any);
+                        await handleSubmit(e);
                         
                         // Depois, abre o WhatsApp
                         const number = whatsappField.field_options?.number || '';

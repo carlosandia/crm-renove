@@ -7,6 +7,7 @@ import {
   retryWithBackoff
 } from '../config/database';
 import { appConfig } from '../config/app';
+import { logger } from '../utils/logger';
 
 // Sistema de logs condicionais
 const LOG_LEVEL = import.meta.env.VITE_LOG_LEVEL || 'warn';
@@ -52,12 +53,12 @@ export const supabase = createClient(
         return fetch(url, modifiedOptions)
           .catch((error) => {
             if (error.name === 'AbortError') {
-              console.warn('⚠️ [Supabase] Request timeout - conexão lenta');
+              logger.debug('Supabase Request timeout - conexão lenta');
               throw new Error('Timeout: Conexão lenta detectada');
             }
             
             if (error.message?.includes('Failed to fetch')) {
-              console.warn('⚠️ [Supabase] Erro de conectividade - modo offline');
+              logger.debug('Supabase Erro de conectividade - modo offline');
               throw new Error('Network: Sem conexão com servidor');
             }
             
@@ -86,22 +87,22 @@ if (isDebugMode) {
 
 // Função de teste de conectividade usando configuração centralizada
 export const testSupabaseConnection = async () => {
-  console.log('🧪 Testando conectividade com Supabase...');
+  logger.debug('Testando conectividade com Supabase');
   
   try {
     const result = await performDatabaseHealthCheck();
     
     if (result.success) {
-      console.log(`✅ Conectividade com Supabase OK (${result.latency}ms)`);
+      logger.debug('Conectividade com Supabase OK', `${result.latency}ms`);
       return { success: true, data: 'Conectividade estabelecida', latency: result.latency };
     } else {
-      console.error('❌ Erro de conectividade:', result.error);
+      logger.error('Erro de conectividade', result.error || 'Unknown error');
       return { success: false, error: result.error };
     }
     
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-    console.error('❌ Erro fatal na conectividade:', errorMessage);
+    logger.error('Erro fatal na conectividade', errorMessage);
     return { success: false, error: errorMessage };
   }
 };
@@ -110,16 +111,16 @@ export const testSupabaseConnection = async () => {
 if (isDebugMode) {
   testSupabaseConnection().then(result => {
     if (result.success) {
-      console.log('🎉 Teste de conectividade automático: SUCESSO');
+      logger.debug('Teste de conectividade automático: SUCESSO');
     } else {
-      console.warn('⚠️ Teste de conectividade automático: FALHOU -', result.error);
+      logger.debug('Teste de conectividade automático: FALHOU', result.error || 'Unknown error');
     }
   });
 }
 
 // Função auxiliar para buscar dados relacionados de forma segura com retry
 export const fetchRelatedDataSafely = async (pipelineId: string) => {
-  console.log('🔍 Buscando dados relacionados de forma segura para pipeline:', pipelineId);
+  logger.debug('Buscando dados relacionados de forma segura para pipeline', pipelineId);
   
   return retryWithBackoff(async () => {
     try {
@@ -155,11 +156,7 @@ export const fetchRelatedDataSafely = async (pipelineId: string) => {
       const customFields = customFieldsResult.data || [];
       const members = membersResult.data || [];
       
-      console.log('✅ Dados relacionados carregados:', {
-        stages: stages.length,
-        customFields: customFields.length,
-        members: members.length
-      });
+      logger.debug('Dados relacionados carregados', `stages: ${stages.length}, customFields: ${customFields.length}, members: ${members.length}`);
       
       return {
         stages,
@@ -172,8 +169,8 @@ export const fetchRelatedDataSafely = async (pipelineId: string) => {
         }
       };
       
-    } catch (error) {
-      console.error('❌ Erro ao buscar dados relacionados:', error);
+    } catch (error: any) {
+      logger.error('Erro ao buscar dados relacionados', error?.message || 'Unknown error');
       throw error; // Re-throw para que retry funcione
     }
   });
@@ -181,7 +178,7 @@ export const fetchRelatedDataSafely = async (pipelineId: string) => {
 
 // Função auxiliar para usar backend como proxy quando RLS falha
 export const executeQueryViaBackend = async (table: string, operation: string, params: any = {}) => {
-  console.log(`🔄 Executando query via backend: ${operation} em ${table}`);
+  logger.debug('Executando query via backend', `${operation} em ${table}`);
   
   try {
          const response = await fetch(`${appConfig.api.baseUrl}/database/proxy`, {
@@ -226,7 +223,7 @@ export const fetchPipelinesWithFallback = async (tenantId: string) => {
       .order('created_at', { ascending: false });
 
     if (error || !data) {
-      console.warn('⚠️ Erro RLS na busca de pipelines, usando fallback:', error?.message);
+      logger.debug('Erro RLS na busca de pipelines, usando fallback', error?.message || 'No data');
       
       // Usar dados mock como fallback
       const mockPipeline = {
@@ -285,17 +282,17 @@ export const fetchPipelinesWithFallback = async (tenantId: string) => {
         }]
       };
       
-      console.log('✅ Retornando pipeline mock:', mockPipeline.name);
+      logger.debug('Retornando pipeline mock', mockPipeline.name);
       return { data: [mockPipeline], error: null };
     }
     
-    console.log('✅ Busca direta bem-sucedida:', data?.length || 0, 'pipelines');
+    logger.debug('Busca direta bem-sucedida', `${data?.length || 0} pipelines`);
     
           // Carregar relacionamentos separadamente para cada pipeline
       const pipelinesWithStructure = [];
       
       for (const pipeline of data || []) {
-          console.log(`🔍 Carregando relacionamentos para pipeline: ${pipeline.name}`);
+          logger.debug('Carregando relacionamentos para pipeline', pipeline.name);
           
           // Buscar stages de forma separada (evitar JOINs problemáticos)
           const { data: stages, error: stagesError } = await supabase
@@ -320,20 +317,20 @@ export const fetchPipelinesWithFallback = async (tenantId: string) => {
             .eq('pipeline_id', pipeline.id);
             
           if (membersError) {
-            console.warn(`⚠️ Erro ao buscar members da pipeline ${pipeline.name}:`, membersError.message);
+            logger.debug('Erro ao buscar members da pipeline', `${pipeline.name}: ${membersError.message}`);
             finalMembers = [];
           } else {
             finalMembers = members || [];
           }
         } catch (error) {
-          console.warn(`⚠️ Erro geral ao buscar members da pipeline ${pipeline.name}`);
+          logger.debug('Erro geral ao buscar members da pipeline', pipeline.name);
           finalMembers = [];
         }
         
         // Se não há stages, criar as etapas padrão
         let finalStages = stages || [];
         if (!stages || stages.length === 0) {
-          console.log(`⚠️ Pipeline ${pipeline.name} sem etapas, criando etapas padrão...`);
+          logger.debug('Pipeline sem etapas, criando etapas padrão', pipeline.name);
           finalStages = [
             {
               id: `${pipeline.id}-stage-lead`,
@@ -381,7 +378,7 @@ export const fetchPipelinesWithFallback = async (tenantId: string) => {
           pipeline_members: finalMembers || []
         });
         
-        console.log(`✅ Pipeline ${pipeline.name}: ${finalStages.length} etapas, ${(fields || []).length} campos, ${(finalMembers || []).length} membros`);
+        logger.debug('Pipeline carregado', `${pipeline.name}: ${finalStages.length} etapas, ${(fields || []).length} campos, ${(finalMembers || []).length} membros`);
       }
       
       return { data: pipelinesWithStructure, error: null };

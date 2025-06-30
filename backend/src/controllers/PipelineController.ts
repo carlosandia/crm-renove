@@ -1,22 +1,89 @@
 import { Request, Response } from 'express';
 import { PipelineService } from '../services/pipelineService';
 import { MemberService } from '../services/memberService';
-import { CustomFieldService } from '../services/customFieldService';
 import { supabase as supabaseAdmin } from '../config/supabase';
 
 export class PipelineController {
-  static async getPipelines(req: Request, res: Response) {
+  // ✅ NOVA ROTA: Validar nome de pipeline em tempo real
+  static async validatePipelineName(req: Request, res: Response) {
     try {
-      const { tenant_id } = req.query;
+      const { name, pipeline_id } = req.query;
+      const user = (req as any).user;
 
-      if (!tenant_id) {
-        return res.status(400).json({ error: 'tenant_id é obrigatório' });
+      if (!user?.tenant_id) {
+        return res.status(400).json({ 
+          error: 'Usuário deve pertencer a uma empresa' 
+        });
       }
 
-      const pipelines = await PipelineService.getPipelinesByTenant(tenant_id as string);
-      res.json({ pipelines });
+      if (!name || typeof name !== 'string') {
+        return res.status(400).json({ 
+          error: 'Nome da pipeline é obrigatório' 
+        });
+      }
+
+      console.log('🔍 [PipelineController] Validando nome:', {
+        name,
+        tenant_id: user.tenant_id,
+        pipeline_id: pipeline_id || 'novo',
+        user_email: user.email
+      });
+
+      const validation = await PipelineService.validatePipelineName(
+        name,
+        user.tenant_id,
+        pipeline_id as string | undefined
+      );
+
+      console.log('✅ [PipelineController] Validação concluída:', {
+        is_valid: validation.is_valid,
+        has_suggestion: !!validation.suggestion,
+        similar_names_count: validation.similar_names?.length || 0
+      });
+
+      res.json({
+        success: true,
+        validation
+      });
+
     } catch (error) {
-      console.error('Erro ao buscar pipelines:', error);
+      console.error('❌ [PipelineController] Erro na validação:', error);
+      res.status(500).json({
+        error: 'Erro interno na validação',
+        details: error instanceof Error ? error.message : 'Erro desconhecido'
+      });
+    }
+  }
+
+  static async getPipelines(req: Request, res: Response) {
+    try {
+      const user = (req as any).user;
+      
+      if (!user?.tenant_id) {
+        console.error('❌ [getPipelines] Usuário sem tenant_id:', { user });
+        return res.status(400).json({ error: 'Usuário deve pertencer a uma empresa' });
+      }
+
+      console.log('🔍 [getPipelines] Buscando pipelines para tenant:', {
+        tenant_id: user.tenant_id,
+        user_id: user.id,
+        user_email: user.email,
+        user_role: user.role
+      });
+
+      const pipelines = await PipelineService.getPipelinesByTenant(user.tenant_id);
+      
+      console.log('✅ [getPipelines] Pipelines encontradas:', {
+        count: pipelines?.length || 0,
+        tenant_id: user.tenant_id
+      });
+
+      res.json({ 
+        success: true,
+        pipelines 
+      });
+    } catch (error) {
+      console.error('❌ [getPipelines] Erro ao buscar pipelines:', error);
       res.status(500).json({ 
         error: 'Erro ao buscar pipelines', 
         details: error instanceof Error ? error.message : 'Erro desconhecido' 
@@ -67,6 +134,15 @@ export class PipelineController {
       });
     } catch (error) {
       console.error('Erro ao criar pipeline:', error);
+      
+      // ✅ TRATAR ERROS DE VALIDAÇÃO DE FORMA AMIGÁVEL
+      if (error instanceof Error && error.message.includes('Já existe uma pipeline')) {
+        return res.status(409).json({ 
+          error: 'Nome já existe',
+          details: error.message
+        });
+      }
+
       res.status(500).json({ 
         error: 'Erro ao criar pipeline',
         details: error instanceof Error ? error.message : 'Erro desconhecido'
@@ -92,6 +168,19 @@ export class PipelineController {
         });
       }
 
+      // ✅ VALIDAR NOME ANTES DE INICIAR TRANSAÇÃO
+      console.log('🔍 [createPipelineWithStagesAndFields] Validando nome...');
+      const validation = await PipelineService.validatePipelineName(name, tenant_id);
+      
+      if (!validation.is_valid) {
+        console.error('❌ [createPipelineWithStagesAndFields] Nome inválido:', validation.error);
+        return res.status(409).json({
+          error: 'Nome já existe',
+          details: validation.error,
+          suggestion: validation.suggestion
+        });
+      }
+
       // Iniciar transação
       const { data: pipeline, error: pipelineError } = await supabaseAdmin
         .from('pipelines')
@@ -105,6 +194,14 @@ export class PipelineController {
         .single();
 
       if (pipelineError) {
+        // ✅ TRATAR ERRO DE CONSTRAINT ÚNICO
+        if (pipelineError.code === '23505' && 
+            pipelineError.message.includes('idx_pipelines_unique_name_per_tenant')) {
+          return res.status(409).json({
+            error: 'Nome já existe',
+            details: `Pipeline com nome "${name}" já existe nesta empresa`
+          });
+        }
         throw pipelineError;
       }
 
@@ -131,8 +228,6 @@ export class PipelineController {
         const stageInserts = stages.map((stage: any, index: number) => ({
           pipeline_id: pipelineId,
           name: stage.name,
-          temperature_score: stage.temperature_score,
-          max_days_allowed: stage.max_days_allowed,
           color: stage.color,
           order_index: stage.order_index !== undefined ? stage.order_index : index
         }));
@@ -175,11 +270,21 @@ export class PipelineController {
 
       res.status(201).json({ 
         message: 'Pipeline criada com sucesso com etapas e campos customizados',
+        success: true, // ✅ ADICIONAR CAMPO SUCCESS PARA COMPATIBILIDADE
         pipeline: completePipeline
       });
 
     } catch (error) {
       console.error('Erro ao criar pipeline completa:', error);
+      
+      // ✅ TRATAR ERROS DE VALIDAÇÃO DE FORMA AMIGÁVEL
+      if (error instanceof Error && error.message.includes('Já existe uma pipeline')) {
+        return res.status(409).json({ 
+          error: 'Nome já existe',
+          details: error.message
+        });
+      }
+
       res.status(500).json({ 
         error: 'Erro ao criar pipeline completa',
         details: error instanceof Error ? error.message : 'Erro desconhecido'

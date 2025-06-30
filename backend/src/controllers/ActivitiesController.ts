@@ -23,8 +23,8 @@ interface Activity {
   call_outcome?: string;
   meeting_location?: string;
   meeting_url?: string;
-  attendees?: any[];
-  custom_fields?: Record<string, any>;
+  attendees?: string[];
+  custom_fields?: Record<string, string | number | boolean | null>;
 }
 
 interface ActivityFilters {
@@ -208,7 +208,12 @@ export class ActivitiesController {
   static async createActivity(req: Request, res: Response) {
     try {
       const activityData: Activity = req.body;
-      const userId = (req as any).user?.id;
+      const userId = req.user?.id;
+
+      // Validate authentication
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
 
       // Validate required fields
       if (!activityData.subject || !activityData.activity_type || !activityData.company_id) {

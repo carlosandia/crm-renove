@@ -40,6 +40,7 @@ import GoogleCalendarSetup from './GoogleCalendarSetup';
 import EmailPersonalTab from './Integrations/EmailPersonalTab'; // ➕ NOVO: Componente de E-mail pessoal
 import { BlurFade } from './ui/blur-fade';
 import { ShimmerButton } from './ui/shimmer-button';
+import { IconBadge } from './ui/icon-badge';
 import { useStatePersistence, MODULE_PERSISTENCE_CONFIGS } from '../lib/statePersistence';
 import { useGoogleCalendar } from '../hooks/useGoogleCalendar';
 
@@ -595,9 +596,11 @@ const IntegrationsModule: React.FC = React.memo(() => {
         {!tenantIntegration?.google_calendar_enabled ? (
           <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-6">
             <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-yellow-100 rounded-lg flex items-center justify-center">
-                <AlertTriangle className="text-yellow-600" size={16} />
-              </div>
+              <IconBadge
+                icon={<AlertTriangle size={16} />}
+                variant="yellow"
+                size="md"
+              />
               <div>
                 <h3 className="text-lg font-medium text-yellow-800">Google Calendar Não Habilitado</h3>
                 <p className="text-sm text-yellow-700 mt-1">
@@ -612,9 +615,11 @@ const IntegrationsModule: React.FC = React.memo(() => {
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <Calendar className="text-blue-600" size={16} />
-                </div>
+                <IconBadge
+                  icon={<Calendar size={16} />}
+                  variant="blue"
+                  size="md"
+                />
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">Google Calendar</h3>
                   <p className="text-sm text-gray-500">Conecte sua conta pessoal do Google Calendar</p>
@@ -642,9 +647,11 @@ const IntegrationsModule: React.FC = React.memo(() => {
                   <BlurFade delay={0.1}>
                     <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
                       <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                          <Plus className="text-blue-600" size={16} />
-                        </div>
+                        <IconBadge
+                          icon={<Plus size={16} />}
+                          variant="blue"
+                          size="md"
+                        />
                         <div>
                           <h4 className="font-medium text-blue-900">Criação Automática</h4>
                           <p className="text-sm text-blue-700">Eventos criados automaticamente</p>
@@ -656,9 +663,11 @@ const IntegrationsModule: React.FC = React.memo(() => {
                   <BlurFade delay={0.2}>
                     <div className="p-4 bg-green-50 rounded-lg border border-green-200">
                       <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                          <Clock className="text-green-600" size={16} />
-                        </div>
+                        <IconBadge
+                          icon={<Clock size={16} />}
+                          variant="green"
+                          size="md"
+                        />
                         <div>
                           <h4 className="font-medium text-green-900">Lembretes</h4>
                           <p className="text-sm text-green-700">Notificações automáticas</p>
@@ -670,9 +679,11 @@ const IntegrationsModule: React.FC = React.memo(() => {
                   <BlurFade delay={0.3}>
                     <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
                       <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-                          <RefreshCw className="text-purple-600" size={16} />
-                        </div>
+                        <IconBadge
+                          icon={<RefreshCw size={16} />}
+                          variant="purple"
+                          size="md"
+                        />
                         <div>
                           <h4 className="font-medium text-purple-900">Sincronização</h4>
                           <p className="text-sm text-purple-700">Bidirecional em tempo real</p>
@@ -684,9 +695,13 @@ const IntegrationsModule: React.FC = React.memo(() => {
 
                 {/* Connect Button */}
                 <div className="text-center p-8 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200">
-                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Calendar className="text-blue-600" size={32} />
-                  </div>
+                  <IconBadge
+                    icon={<Calendar size={32} />}
+                    variant="blue"
+                    size="2xl"
+                    shape="circle"
+                    className="mx-auto mb-4"
+                  />
                   <h3 className="text-xl font-semibold text-gray-900 mb-2">Conectar Google Calendar</h3>
                   <p className="text-gray-600 mb-6 max-w-md mx-auto">
                     Conecte sua conta pessoal do Google Calendar para criar eventos automaticamente a partir dos seus leads.
@@ -761,9 +776,11 @@ const IntegrationsModule: React.FC = React.memo(() => {
                   <BlurFade delay={0.1}>
                     <div className="bg-white rounded-xl border border-gray-200 p-4">
                       <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                          <Calendar className="text-blue-600" size={16} />
-                        </div>
+                        <IconBadge
+                          icon={<Calendar size={16} />}
+                          variant="blue"
+                          size="md"
+                        />
                         <div>
                           <p className="text-sm text-gray-500">Calendários</p>
                           <p className="text-lg font-semibold text-gray-900">{availableCalendars.length}</p>
@@ -775,9 +792,11 @@ const IntegrationsModule: React.FC = React.memo(() => {
                   <BlurFade delay={0.2}>
                     <div className="bg-white rounded-xl border border-gray-200 p-4">
                       <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                          <CheckCircle className="text-green-600" size={16} />
-                        </div>
+                        <IconBadge
+                          icon={<CheckCircle size={16} />}
+                          variant="green"
+                          size="md"
+                        />
                         <div>
                           <p className="text-sm text-gray-500">Eventos Criados</p>
                           <p className="text-lg font-semibold text-gray-900">47</p>

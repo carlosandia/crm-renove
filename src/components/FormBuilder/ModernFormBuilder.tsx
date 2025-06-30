@@ -1,81 +1,43 @@
-import React, { useState, useRef, useEffect, memo, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, memo, useMemo, useCallback, Suspense, lazy } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+
+// ================================================================================
+// FASE 3.7: INTEGRAÇÃO DE UTILIDADES CENTRALIZADAS E HOOKS CUSTOMIZADOS
+// ================================================================================
+import { applyMask, validateFieldValue, getDefaultPlaceholder, getDefaultOptions } from './utils/FormValidation';
+import { usePipelineConnection } from './hooks/usePipelineConnection';
+import { useFieldMapping } from './hooks/useFieldMapping';
+import { useArrayState } from '../../hooks/useArrayState';
+import { useAsyncState } from '../../hooks/useAsyncState';
+
+// ================================================================================
+// FASE 3.5.3 - INTEGRAÇÃO TYPES E LAZY LOADING DO FORMPREVIEW MODULAR
+// ================================================================================
 import { 
-  Save, ArrowLeft, Plus, GripVertical, Trash2, Copy, Settings, Palette,
-  Type, Mail, Phone, Calendar, MapPin, Image, Star, CheckSquare,
-  FileText, DollarSign, Clock, Users, MessageSquare, Hash,
-  ToggleLeft, List, Upload, Link2, Smartphone, Eye, Zap, Monitor,
-  Tablet, Code, ExternalLink, Share, Target, TrendingUp, X,
-  Globe, Sliders, ThumbsUp, RadioIcon, Send, Share2, BarChart3, QrCode,
-  Download, AlertCircle, Info, EyeOff, Edit, Flag, Shield, Building,
-  GitBranch, Square, Bell
-} from 'lucide-react';
+  FormField, ScoringRule, PipelineField, Pipeline, PipelineStage,
+  FieldMapping, ModernFormBuilderProps, PreviewMode, ActivePanel 
+} from '../../types/Forms';
+const FormPreview = lazy(() => import('./rendering/FormPreview'));
+
+// ================================================================================
+// INTEGRAÇÃO COM BIBLIOTECAS E COMPONENTES
+// ================================================================================
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../hooks/useAuth';
+import { 
+  Send, MessageSquare, Type, Mail, Phone, FileText, Hash, Calendar, 
+  Clock, List, RadioIcon, CheckSquare, Star, Upload, Sliders, Shield, 
+  DollarSign, Building, MapPin, Flag, Globe, Palette, Settings, 
+  Share, AlertCircle, Target, TrendingUp, Link, Copy, Check, 
+  Edit, Trash2, Plus, X, Eye, Smartphone, Tablet, Monitor,
+  ChevronDown, ChevronUp, RotateCcw, Save, ArrowLeft,
+  RefreshCw, HelpCircle, Lightbulb, Crown, Gift, Zap,
+  GitBranch, Square, Bell, ExternalLink, Code, Info, Users
+} from 'lucide-react';
 
-interface FormField {
-  id: string;
-  field_type: string;
-  field_name: string;
-  field_label: string;
-  field_description?: string;
-  placeholder?: string;
-  is_required: boolean;
-  field_options: any;
-  validation_rules: any;
-  styling: any;
-  order_index: number;
-  scoring_weight?: number;
-}
-
-interface ScoringRule {
-  id: string;
-  field_id: string;
-  condition: 'equals' | 'contains' | 'greater_than' | 'less_than' | 'not_empty' | 'range';
-  value: string;
-  points: number;
-  description: string;
-}
-
-interface PipelineField {
-  name: string;
-  label: string;
-  type: string;
-  is_required: boolean;
-  is_custom: boolean;
-  options?: any;
-}
-
-interface Pipeline {
-  id: string;
-  name: string;
-  description?: string;
-  stages: PipelineStage[];
-  fields: PipelineField[];
-  is_active: boolean;
-}
-
-interface PipelineStage {
-  id: string;
-  name: string;
-  order_index: number;
-  is_default: boolean;
-  color: string;
-}
-
-interface FieldMapping {
-  form_field_id: string;
-  pipeline_field_name: string;
-  field_type: string;
-  confidence: number; // 0-100, auto-mapping confidence
-}
-
-interface ModernFormBuilderProps {
-  form: any;
-  onSave: () => void;
-  onCancel: () => void;
-  tenantId: string;
-}
-
+// ================================================================================
+// DEFINIÇÕES DE CONSTANTES E TIPOS DE CAMPO
+// ================================================================================
 const FIELD_TYPES = [
   { type: 'text', label: 'Texto', icon: Type, description: 'Campo de texto simples', color: 'bg-blue-100 text-blue-600' },
   { type: 'email', label: 'E-mail', icon: Mail, description: 'Campo de e-mail', color: 'bg-green-100 text-green-600' },
@@ -100,76 +62,11 @@ const FIELD_TYPES = [
   { type: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, description: 'Botão WhatsApp', color: 'bg-green-100 text-green-600' },
 ];
 
-// Funções de máscara
-const applyMask = (value: string, type: string): string => {
-  if (!value) return '';
-  
-  switch (type) {
-    case 'phone':
-      // Remove tudo que não é número
-      const phoneNumbers = value.replace(/\D/g, '');
-      
-      // Aplica máscara (11) 99999-9999
-      if (phoneNumbers.length <= 10) {
-        return phoneNumbers.replace(/(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3');
-      } else {
-        return phoneNumbers.replace(/(\d{2})(\d{5})(\d{0,4})/, '($1) $2-$3');
-      }
-      
-    case 'currency':
-      // Remove tudo que não é número
-      const currencyNumbers = value.replace(/\D/g, '');
-      
-      // Converte para formato de moeda
-      if (currencyNumbers.length === 0) return '';
-      
-      const numberValue = parseInt(currencyNumbers) / 100;
-      return numberValue.toLocaleString('pt-BR', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      });
-      
-    case 'number':
-      // Permite apenas números e vírgula/ponto para decimais
-      return value.replace(/[^\d.,]/g, '').replace(/,/g, '.');
-      
-    case 'email':
-      // Remove espaços e converte para minúsculo
-      return value.replace(/\s/g, '').toLowerCase();
-      
-    case 'url':
-      // Remove espaços
-      return value.replace(/\s/g, '');
-      
-    default:
-      return value;
-  }
-};
-
-const validateField = (value: string, type: string): boolean => {
-  if (!value) return true; // Validação de obrigatório é feita separadamente
-  
-  switch (type) {
-    case 'email':
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      return emailRegex.test(value);
-      
-    case 'phone':
-      const phoneRegex = /^\(\d{2}\)\s\d{4,5}-\d{4}$/;
-      return phoneRegex.test(value);
-      
-    case 'url':
-      try {
-        new URL(value.startsWith('http') ? value : `https://${value}`);
-        return true;
-      } catch {
-        return false;
-      }
-      
-    default:
-      return true;
-  }
-};
+// ================================================================================
+// FASE 3.7: CÓDIGO DUPLICADO REMOVIDO - USANDO VERSÕES CENTRALIZADAS
+// ================================================================================
+// Removidas funções duplicadas: applyMask, validateField
+// Agora usando versões centralizadas de utils/FormValidation.ts
 
 // 🚀 OTIMIZAÇÃO: Memoização do componente principal para evitar re-renders desnecessários
 const ModernFormBuilder: React.FC<ModernFormBuilderProps> = memo(({
@@ -178,6 +75,71 @@ const ModernFormBuilder: React.FC<ModernFormBuilderProps> = memo(({
   onCancel,
   tenantId
 }) => {
+  const { user } = useAuth();
+  
+  // ✅ REFATORADO: Arrays usando useArrayState
+  const fieldsState = useArrayState<FormField>([]);
+  const fields = fieldsState.items;
+  const setFields = fieldsState.replaceAll;
+  const hasNoFields = fieldsState.isEmpty;
+
+  const scoringRulesState = useArrayState<ScoringRule>([]);
+  const scoringRules = scoringRulesState.items;
+  const setScoringRules = scoringRulesState.replaceAll;
+
+  const pipelinesState = useArrayState<Pipeline>([]);
+  const availablePipelines = pipelinesState.items;
+  const setAvailablePipelines = pipelinesState.replaceAll;
+  const hasNoPipelines = pipelinesState.isEmpty;
+
+  const membersState = useArrayState<Member>([]);
+  const availableMembers = membersState.items;
+  const setAvailableMembers = membersState.replaceAll;
+
+  // ✅ REFATORADO: Loading states usando useAsyncState
+  const saveState = useAsyncState();
+  const saving = saveState.loading;
+  const executeSave = saveState.execute;
+  const canSave = saveState.isIdle;
+
+  const pipelinesLoadState = useAsyncState();
+  const loadingPipelines = pipelinesLoadState.loading;
+
+  // Interface para Members
+  interface Member {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    role: string;
+    is_active: boolean;
+  }
+
+  // ✅ Helper functions para compatibilidade com IDs
+  const addField = useCallback((newField: FormField) => {
+    fieldsState.addItem(newField);
+  }, [fieldsState]);
+
+  const updateField = useCallback((fieldId: string, updates: Partial<FormField>) => {
+    fieldsState.updateItem((field) => field.id === fieldId, updates);
+  }, [fieldsState]);
+
+  const removeField = useCallback((fieldId: string) => {
+    fieldsState.removeItem((field) => field.id === fieldId);
+  }, [fieldsState]);
+
+  const addScoringRule = useCallback((newRule: ScoringRule) => {
+    scoringRulesState.addItem(newRule);
+  }, [scoringRulesState]);
+
+  const updateScoringRule = useCallback((ruleId: string, updates: Partial<ScoringRule>) => {
+    scoringRulesState.updateItem((rule) => rule.id === ruleId, updates);
+  }, [scoringRulesState]);
+
+  const removeScoringRule = useCallback((ruleId: string) => {
+    scoringRulesState.removeItem((rule) => rule.id === ruleId);
+  }, [scoringRulesState]);
+
   const [formData, setFormData] = useState({
     name: form?.name || '',
     description: form?.description || '',
@@ -185,11 +147,9 @@ const ModernFormBuilder: React.FC<ModernFormBuilderProps> = memo(({
     is_active: form?.is_active ?? true,
   });
 
-  const [fields, setFields] = useState<FormField[]>([]);
   const [selectedField, setSelectedField] = useState<FormField | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
-  const [activePanel, setActivePanel] = useState<'properties' | 'scoring' | 'share' | 'buttons' | 'notifications' | 'style' | 'form-settings' | 'pipeline' | 'destination'>('properties');
+  const [previewMode, setPreviewMode] = useState<PreviewMode>('desktop');
+  const [activePanel, setActivePanel] = useState<ActivePanel>('properties');
 
   // Estados para botões do formulário
   const [submitButton, setSubmitButton] = useState({
@@ -201,7 +161,6 @@ const ModernFormBuilder: React.FC<ModernFormBuilderProps> = memo(({
   });
   
   // Lead Scoring
-  const [scoringRules, setScoringRules] = useState<ScoringRule[]>([]);
   const [scoringThreshold, setScoringThreshold] = useState(70);
   
   // Share/Embed
@@ -301,27 +260,7 @@ Enviado automaticamente pelo sistema CRM Marketing`,
   });
 
   // Estado para pipelines disponíveis
-  const [availablePipelines, setAvailablePipelines] = useState<Pipeline[]>([]);
   const [selectedPipeline, setSelectedPipeline] = useState<Pipeline | null>(null);
-  const [loadingPipelines, setLoadingPipelines] = useState(false);
-  
-  // Debug: log estado das pipelines
-  React.useEffect(() => {
-    console.log('🔍 Estado das pipelines atualizado:', {
-      availablePipelines: availablePipelines.length,
-      loadingPipelines,
-      selectedPipeline: selectedPipeline?.id
-    });
-  }, [availablePipelines, loadingPipelines, selectedPipeline]);
-
-  interface Member {
-    id: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-    role: string;
-    is_active: boolean;
-  }
 
   const [leadDestination, setLeadDestination] = useState({
     type: 'pipeline' as 'pipeline' | 'leads-menu',
@@ -335,8 +274,6 @@ Enviado automaticamente pelo sistema CRM Marketing`,
     },
     field_mappings: {}
   });
-
-  const [availableMembers, setAvailableMembers] = useState<Member[]>([]);
 
   // 🆕 SISTEMA DE RASTREAMENTO DE ORIGEM
   const [leadTracking, setLeadTracking] = useState({
@@ -379,11 +316,11 @@ Enviado automaticamente pelo sistema CRM Marketing`,
   }, [form]);
 
   // 🚀 OTIMIZAÇÃO: useCallback para evitar recriação da função a cada render
-  const addField = useCallback((fieldType: string) => {
+  const addFormField = useCallback((fieldType: string) => {
     const fieldConfig = FIELD_TYPES.find(f => f.type === fieldType);
     const newField: FormField = {
       id: generateId(),
-      field_type: fieldType,
+      field_type: fieldType as any,
       field_name: `${fieldType}_${Date.now()}`,
       field_label: fieldConfig?.label || 'Campo',
       field_description: '',
@@ -392,7 +329,6 @@ Enviado automaticamente pelo sistema CRM Marketing`,
       field_options: getDefaultOptions(fieldType),
       validation_rules: {},
       styling: {
-        width: '100%',
         fontSize: '16px',
         padding: '12px',
         borderRadius: '8px',
@@ -403,85 +339,25 @@ Enviado automaticamente pelo sistema CRM Marketing`,
       scoring_weight: 0
     };
     
-    setFields([...fields, newField]);
+    addField(newField);
     setSelectedField(newField);
-  }, [fields.length]);
+  }, [addField]);
 
-  const getDefaultPlaceholder = (fieldType: string): string => {
-    const placeholders: Record<string, string> = {
-      text: 'Digite seu texto aqui...',
-      email: 'seu@email.com',
-      phone: '(11) 99999-9999',
-      textarea: 'Digite sua mensagem...',
-      number: '0',
-      url: 'https://exemplo.com',
-      currency: 'R$ 0,00',
-      city: 'São Paulo',
-      state: 'São Paulo',
-      country: 'Brasil',
-      captcha: 'Digite o código...'
-    };
-    return placeholders[fieldType] || '';
-  };
-
-  const getDefaultOptions = (fieldType: string): any => {
-    const options: Record<string, any> = {
-      select: { options: ['Opção 1', 'Opção 2', 'Opção 3'] },
-      radio: { options: ['Opção 1', 'Opção 2', 'Opção 3'] },
-      checkbox: { options: ['Opção 1', 'Opção 2', 'Opção 3'] },
-      rating: { max_rating: 5, style: 'stars' },
-      range: { min: 0, max: 100, step: 1 },
-      file: { accept: '*', max_size: '10MB', multiple: false },
-      city: { 
-        autocomplete: true,
-        suggestions: ['São Paulo', 'Rio de Janeiro', 'Belo Horizonte', 'Salvador', 'Brasília', 'Fortaleza', 'Curitiba', 'Recife', 'Porto Alegre', 'Manaus']
-      },
-      state: { 
-        options: ['Acre', 'Alagoas', 'Amapá', 'Amazonas', 'Bahia', 'Ceará', 'Distrito Federal', 'Espírito Santo', 'Goiás', 'Maranhão', 'Mato Grosso', 'Mato Grosso do Sul', 'Minas Gerais', 'Pará', 'Paraíba', 'Paraná', 'Pernambuco', 'Piauí', 'Rio de Janeiro', 'Rio Grande do Norte', 'Rio Grande do Sul', 'Rondônia', 'Roraima', 'Santa Catarina', 'São Paulo', 'Sergipe', 'Tocantins']
-      },
-      country: { 
-        options: ['Brasil', 'Argentina', 'Chile', 'Uruguai', 'Paraguai', 'Bolívia', 'Peru', 'Equador', 'Colômbia', 'Venezuela', 'Estados Unidos', 'Canadá', 'México', 'Portugal', 'Espanha', 'França', 'Alemanha', 'Itália', 'Reino Unido']
-      },
-      captcha: {
-        type: 'math', // math, text, image
-        difficulty: 'easy' // easy, medium, hard
-      },
-      submit: { 
-        button_text: 'Enviar Formulário',
-        redirect_url: '',
-        background_color: '#3b82f6',
-        text_color: '#ffffff'
-      },
-      whatsapp: { 
-        number: '',
-        message: 'Olá! Gostaria de mais informações.',
-        button_text: 'Enviar via WhatsApp',
-        background_color: '#25d366',
-        text_color: '#ffffff'
-      }
-    };
-    return options[fieldType] || {};
-  };
+  // ================================================================================
+  // REMOVIDO: getDefaultPlaceholder e getDefaultOptions locais
+  // Agora usando versões centralizadas de utils/FormValidation.ts
+  // ================================================================================
 
   // 🚀 OTIMIZAÇÃO: useCallback para updateField
-  const updateField = useCallback((fieldId: string, updates: Partial<FormField>) => {
-    setFields(fields.map(field => 
-      field.id === fieldId ? { ...field, ...updates } : field
-    ));
+  const updateFormField = useCallback((fieldId: string, updates: Partial<FormField>) => {
+    updateField(fieldId, updates);
     
     if (selectedField?.id === fieldId) {
       setSelectedField({ ...selectedField, ...updates });
     }
-  }, [fields, selectedField]);
+  }, [updateField, selectedField]);
 
-  const removeField = (fieldId: string) => {
-    setFields(fields.filter(field => field.id !== fieldId));
-    if (selectedField?.id === fieldId) {
-      setSelectedField(null);
-    }
-    // Remove regras de scoring relacionadas
-    setScoringRules(scoringRules.filter(rule => rule.field_id !== fieldId));
-  };
+
 
   const duplicateField = (fieldId: string) => {
     const fieldToDuplicate = fields.find(f => f.id === fieldId);
@@ -513,13 +389,13 @@ Enviado automaticamente pelo sistema CRM Marketing`,
   }, [fields]);
 
   const handleSave = async () => {
-    setSaving(true);
+    saveState.setLoading(true);
     try {
       await onSave();
     } catch (error) {
       console.error('Erro ao salvar:', error);
     } finally {
-      setSaving(false);
+      saveState.setLoading(false);
     }
   };
 
@@ -531,30 +407,7 @@ Enviado automaticamente pelo sistema CRM Marketing`,
     }
   };
 
-  const addScoringRule = () => {
-    if (!selectedField) return;
-    
-    const newRule: ScoringRule = {
-      id: generateId(),
-      field_id: selectedField.id,
-      condition: 'not_empty',
-      value: '',
-      points: 10,
-      description: `Pontuação para ${selectedField.field_label}`
-    };
-    
-    setScoringRules([...scoringRules, newRule]);
-  };
 
-  const updateScoringRule = (ruleId: string, updates: Partial<ScoringRule>) => {
-    setScoringRules(scoringRules.map(rule => 
-      rule.id === ruleId ? { ...rule, ...updates } : rule
-    ));
-  };
-
-  const removeScoringRule = (ruleId: string) => {
-    setScoringRules(scoringRules.filter(rule => rule.id !== ruleId));
-  };
 
   // 🚀 OTIMIZAÇÃO: useMemo para cálculo do score máximo
   const maxScore = useMemo(() => {
@@ -608,7 +461,7 @@ Enviado automaticamente pelo sistema CRM Marketing`,
 
   // Funções para conexão com pipeline
   const loadAvailablePipelines = async () => {
-    setLoadingPipelines(true);
+    pipelinesLoadState.setLoading(true);
     try {
       console.log('🔄 Carregando pipelines disponíveis...');
       
@@ -704,7 +557,7 @@ Enviado automaticamente pelo sistema CRM Marketing`,
       console.error('❌ Erro geral ao carregar pipelines:', error);
       showNotification('error', 'Erro ao carregar pipelines');
     } finally {
-      setLoadingPipelines(false);
+      pipelinesLoadState.setLoading(false);
     }
   };
 
@@ -1113,7 +966,24 @@ Enviado automaticamente pelo sistema CRM Marketing`,
                 return (
                   <button
                     key={fieldType.type}
-                    onClick={() => addField(fieldType.type)}
+                    onClick={() => {
+                      const newField: FormField = {
+                        id: generateId(),
+                        field_type: fieldType.type as any,
+                        field_name: `field_${generateId()}`,
+                        field_label: fieldType.label,
+                        placeholder: getDefaultPlaceholder(fieldType.type as any),
+                        is_required: false,
+                        order_index: fields.length,
+
+                        field_description: '',
+                        scoring_weight: 1,
+                        field_options: {} as any,
+                        validation_rules: {} as any,
+                        styling: {}
+                      };
+                      addField(newField);
+                    }}
                     className="w-full flex items-center space-x-3 p-3 text-left border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-all group"
                   >
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${fieldType.color}`}>
@@ -1131,785 +1001,70 @@ Enviado automaticamente pelo sistema CRM Marketing`,
         </div>
 
         {/* Área Central - Preview em Tempo Real */}
-        <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
-          <div className={`mx-auto bg-white rounded-lg shadow-lg p-8 transition-all duration-300 ${getPreviewWidth()}`}
-               style={{
-                 backgroundColor: formStyle.backgroundColor,
-                 borderRadius: formStyle.borderRadius,
-                 border: formStyle.border ? `${formStyle.borderWidth} solid ${formStyle.borderColor}` : 'none',
-                 boxShadow: formStyle.shadow ? '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)' : 'none',
-                 padding: formStyle.padding
-               }}>
-            <div className="mb-6 relative">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2"
-                      style={{
-                        color: formStyle.titleColor,
-                        fontSize: formStyle.titleSize,
-                        fontWeight: formStyle.titleWeight,
-                        textAlign: formStyle.titleAlign as any
-                      }}>
-                    {formStyle.title || formData.name || 'Novo Formulário'}
-                  </h2>
-                  {formData.description && (
-                    <p className="text-gray-600">{formData.description}</p>
-                  )}
-                </div>
-                
-                {/* Botão de Edição de Estilo - Sempre Visível */}
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => setActivePanel('form-settings')}
-                    className={`p-2 rounded-lg border transition-all duration-200 ${
-                      activePanel === 'form-settings' 
-                        ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-md' 
-                        : 'bg-white border-gray-300 text-gray-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700'
-                    }`}
-                    title="🎯 Ajustes no Formulário - Configure nome, notificações e comportamento"
-                  >
-                    <Settings size={16} />
-                  </button>
-                  
-                <button
-                  onClick={() => setActivePanel('style')}
-                  className={`p-2 rounded-lg border transition-all duration-200 ${
-                    activePanel === 'style' 
-                        ? 'bg-pink-50 border-pink-300 text-pink-700 shadow-md' 
-                        : 'bg-white border-gray-300 text-gray-600 hover:bg-pink-50 hover:border-pink-300 hover:text-pink-700'
-                  }`}
-                    title="🎨 Editar Estilo - Personalize cores, fontes e aparência"
-                >
-                  <Edit size={16} />
-                </button>
-                </div>
+        <div className="flex-1 overflow-y-auto bg-gray-100 p-6 relative">
+          {/* Header de controles do preview */}
+          <div className="mb-6 flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center">
+                <Edit className="text-white" size={16} />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Preview do Formulário</h3>
+                <p className="text-sm text-gray-600">Veja como ficará para seus usuários</p>
               </div>
             </div>
-
-            <DragDropContext onDragEnd={onDragEnd}>
-              <Droppable droppableId="form-fields">
-                {(provided) => (
-                  <div
-                    {...provided.droppableProps}
-                    ref={provided.innerRef}
-                    className="space-y-6"
-                  >
-                    {fields.length === 0 ? (
-                      <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-lg">
-                        <Plus size={48} className="mx-auto text-gray-400 mb-4" />
-                        <h3 className="text-lg font-medium text-gray-900 mb-2">
-                          Comece adicionando campos
-                        </h3>
-                        <p className="text-gray-500">
-                          Escolha um elemento da barra lateral para começar
-                        </p>
-                      </div>
-                    ) : (
-                      fields
-                        .filter(field => !['submit', 'whatsapp'].includes(field.field_type))
-                        .map((field, index) => (
-                        <Draggable
-                          key={field.id}
-                          draggableId={field.id}
-                          index={index}
-                        >
-                          {(provided, snapshot) => (
-                            <div
-                              ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              className={`relative group cursor-pointer ${
-                                snapshot.isDragging ? 'opacity-50' : ''
-                              } ${
-                                selectedField?.id === field.id ? 'ring-2 ring-blue-500 ring-opacity-50 bg-blue-50' : ''
-                              } p-4 rounded-lg transition-all`}
-                              onClick={() => setSelectedField(field)}
-                            >
-                              {/* Controles do campo */}
-                              <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1 z-10">
-                                <button
-                                  {...provided.dragHandleProps}
-                                  className="p-1 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50"
-                                  title="Arrastar"
-                                >
-                                  <GripVertical size={12} className="text-gray-400" />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    duplicateField(field.id);
-                                  }}
-                                  className="p-1 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50"
-                                  title="Duplicar"
-                                >
-                                  <Copy size={12} className="text-gray-400" />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    removeField(field.id);
-                                  }}
-                                  className="p-1 bg-white border border-gray-300 rounded shadow-sm hover:bg-red-50"
-                                  title="Remover"
-                                >
-                                  <Trash2 size={12} className="text-red-400" />
-                                </button>
-                              </div>
-
-                              {/* Campo do formulário */}
-                              <div className="space-y-2">
-                                <label className="block text-sm font-medium text-gray-700">
-                                  {field.field_label}
-                                  {field.is_required && <span className="text-red-500 ml-1">*</span>}
-                                  {field.scoring_weight && field.scoring_weight > 0 && (
-                                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
-                                      <Star size={10} className="mr-1" />
-                                      {field.scoring_weight}pts
-                                    </span>
-                                  )}
-                                </label>
-                                {field.field_description && (
-                                  <p className="text-sm text-gray-500">{field.field_description}</p>
-                                )}
-                                
-                                {/* Renderização do campo baseada no tipo */}
-                                {field.field_type === 'text' && (
-                                  <input
-                                    type="text"
-                                    placeholder={field.placeholder}
-                                    style={{
-                                      fontSize: field.styling?.fontSize || '16px',
-                                      padding: field.styling?.padding || '12px',
-                                      borderRadius: field.styling?.borderRadius || '8px',
-                                      borderColor: field.styling?.borderColor || '#d1d5db',
-                                      backgroundColor: field.styling?.backgroundColor || '#ffffff',
-                                    }}
-                                    className="w-full border transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    required={field.is_required}
-                                  />
-                                )}
-                                
-                                {field.field_type === 'email' && (
-                                  <div className="relative">
-                                    <input
-                                      type="email"
-                                      placeholder={field.placeholder || 'exemplo@email.com'}
-                                      style={{
-                                        fontSize: field.styling?.fontSize || '16px',
-                                        padding: field.styling?.padding || '12px',
-                                        borderRadius: field.styling?.borderRadius || '8px',
-                                        borderColor: field.styling?.borderColor || '#d1d5db',
-                                        backgroundColor: field.styling?.backgroundColor || '#ffffff',
-                                      }}
-                                      className="w-full border transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                      required={field.is_required}
-                                    />
-                                    <Mail className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                                  </div>
-                                )}
-                                
-                                {field.field_type === 'phone' && (
-                                  <div className="relative">
-                                    <input
-                                      type="tel"
-                                      placeholder="(11) 99999-9999"
-                                      style={{
-                                        fontSize: field.styling?.fontSize || '16px',
-                                        padding: field.styling?.padding || '12px',
-                                        borderRadius: field.styling?.borderRadius || '8px',
-                                        borderColor: field.styling?.borderColor || '#d1d5db',
-                                        backgroundColor: field.styling?.backgroundColor || '#ffffff',
-                                      }}
-                                      className="w-full border transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                      required={field.is_required}
-                                    />
-                                    <Phone className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                                  </div>
-                                )}
-                                
-                                {field.field_type === 'textarea' && (
-                                  <textarea
-                                    placeholder={field.placeholder}
-                                    style={{
-                                      fontSize: field.styling?.fontSize || '16px',
-                                      padding: field.styling?.padding || '12px',
-                                      borderRadius: field.styling?.borderRadius || '8px',
-                                      borderColor: field.styling?.borderColor || '#d1d5db',
-                                      backgroundColor: field.styling?.backgroundColor || '#ffffff',
-                                    }}
-                                    className="w-full border transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-                                    rows={4}
-                                    required={field.is_required}
-                                  />
-                                )}
-
-                                {field.field_type === 'number' && (
-                                  <div className="relative">
-                                    <input
-                                      type="text"
-                                      placeholder={field.placeholder || '123,45'}
-                                      style={{
-                                        fontSize: field.styling?.fontSize || '16px',
-                                        padding: field.styling?.padding || '12px',
-                                        borderRadius: field.styling?.borderRadius || '8px',
-                                        borderColor: field.styling?.borderColor || '#d1d5db',
-                                        backgroundColor: field.styling?.backgroundColor || '#ffffff',
-                                      }}
-                                      className="w-full border transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                      required={field.is_required}
-                                    />
-                                    <Hash className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                                  </div>
-                                )}
-
-                                {field.field_type === 'date' && (
-                                  <div className="relative">
-                                    <input
-                                      type="date"
-                                      style={{
-                                        fontSize: field.styling?.fontSize || '16px',
-                                        padding: field.styling?.padding || '12px',
-                                        borderRadius: field.styling?.borderRadius || '8px',
-                                        borderColor: field.styling?.borderColor || '#d1d5db',
-                                        backgroundColor: field.styling?.backgroundColor || '#ffffff',
-                                      }}
-                                      className="w-full border transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                      required={field.is_required}
-                                    />
-                                    <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
-                                  </div>
-                                )}
-
-                                {field.field_type === 'time' && (
-                                  <div className="relative">
-                                    <input
-                                      type="time"
-                                      style={{
-                                        fontSize: field.styling?.fontSize || '16px',
-                                        padding: field.styling?.padding || '12px',
-                                        borderRadius: field.styling?.borderRadius || '8px',
-                                        borderColor: field.styling?.borderColor || '#d1d5db',
-                                        backgroundColor: field.styling?.backgroundColor || '#ffffff',
-                                      }}
-                                      className="w-full border transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                      required={field.is_required}
-                                    />
-                                    <Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
-                                  </div>
-                                )}
-
-                                {field.field_type === 'url' && (
-                                  <div className="relative">
-                                    <input
-                                      type="url"
-                                      placeholder="https://exemplo.com"
-                                      style={{
-                                        fontSize: field.styling?.fontSize || '16px',
-                                        padding: field.styling?.padding || '12px',
-                                        borderRadius: field.styling?.borderRadius || '8px',
-                                        borderColor: field.styling?.borderColor || '#d1d5db',
-                                        backgroundColor: field.styling?.backgroundColor || '#ffffff',
-                                      }}
-                                      className="w-full border transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                      required={field.is_required}
-                                    />
-                                    <Globe className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                                  </div>
-                                )}
-
-                                {field.field_type === 'currency' && (
-                                  <div className="relative">
-                                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 font-medium">
-                                      R$
-                                    </span>
-                                    <input
-                                      type="text"
-                                      placeholder="1.234,56"
-                                      style={{
-                                        fontSize: field.styling?.fontSize || '16px',
-                                        padding: field.styling?.padding || '12px',
-                                        paddingLeft: '2.5rem',
-                                        paddingRight: '2.5rem',
-                                        borderRadius: field.styling?.borderRadius || '8px',
-                                        borderColor: field.styling?.borderColor || '#d1d5db',
-                                        backgroundColor: field.styling?.backgroundColor || '#ffffff',
-                                      }}
-                                      className="w-full border transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                      required={field.is_required}
-                                    />
-                                    <DollarSign className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                                  </div>
-                                )}
-
-                                {field.field_type === 'city' && (
-                                  <div className="relative">
-                                    <input
-                                      type="text"
-                                      placeholder={field.placeholder || 'São Paulo'}
-                                      list={`cities-${field.id}`}
-                                      style={{
-                                        fontSize: field.styling?.fontSize || '16px',
-                                        padding: field.styling?.padding || '12px',
-                                        borderRadius: field.styling?.borderRadius || '8px',
-                                        borderColor: field.styling?.borderColor || '#d1d5db',
-                                        backgroundColor: field.styling?.backgroundColor || '#ffffff',
-                                      }}
-                                      className="w-full border transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                      required={field.is_required}
-                                    />
-                                    <Building className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                                    <datalist id={`cities-${field.id}`}>
-                                      {field.field_options?.suggestions?.map((city: string, idx: number) => (
-                                        <option key={idx} value={city} />
-                                      ))}
-                                    </datalist>
-                                  </div>
-                                )}
-
-                                {field.field_type === 'state' && (
-                                  <div className="relative">
-                                    <select
-                                      style={{
-                                        fontSize: field.styling?.fontSize || '16px',
-                                        padding: field.styling?.padding || '12px',
-                                        borderRadius: field.styling?.borderRadius || '8px',
-                                        borderColor: field.styling?.borderColor || '#d1d5db',
-                                        backgroundColor: field.styling?.backgroundColor || '#ffffff',
-                                      }}
-                                      className="w-full border transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none"
-                                      required={field.is_required}
-                                    >
-                                      <option value="">Selecione um estado...</option>
-                                      {field.field_options?.options?.map((state: string, idx: number) => (
-                                        <option key={idx} value={state}>{state}</option>
-                                      ))}
-                                    </select>
-                                    <MapPin className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
-                                  </div>
-                                )}
-
-                                {field.field_type === 'country' && (
-                                  <div className="relative">
-                                    <select
-                                      style={{
-                                        fontSize: field.styling?.fontSize || '16px',
-                                        padding: field.styling?.padding || '12px',
-                                        borderRadius: field.styling?.borderRadius || '8px',
-                                        borderColor: field.styling?.borderColor || '#d1d5db',
-                                        backgroundColor: field.styling?.backgroundColor || '#ffffff',
-                                      }}
-                                      className="w-full border transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none"
-                                      required={field.is_required}
-                                    >
-                                      <option value="">Selecione um país...</option>
-                                      {field.field_options?.options?.map((country: string, idx: number) => (
-                                        <option key={idx} value={country}>{country}</option>
-                                      ))}
-                                    </select>
-                                    <Flag className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
-                                  </div>
-                                )}
-
-                                {field.field_type === 'captcha' && (
-                                  <div className="space-y-3">
-                                    <div className="bg-gray-100 p-4 rounded-lg border-2 border-dashed border-gray-300">
-                                      <div className="flex items-center justify-center space-x-2">
-                                        <Shield className="text-blue-600" size={24} />
-                                        <span className="text-lg font-mono font-bold text-gray-800">
-                                          {(() => {
-                                            const num1 = Math.floor(Math.random() * 10) + 1;
-                                            const num2 = Math.floor(Math.random() * 10) + 1;
-                                            return `${num1} + ${num2} = ?`;
-                                          })()}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <input
-                                      type="text"
-                                      placeholder="Digite o resultado..."
-                                      style={{
-                                        fontSize: field.styling?.fontSize || '16px',
-                                        padding: field.styling?.padding || '12px',
-                                        borderRadius: field.styling?.borderRadius || '8px',
-                                        borderColor: field.styling?.borderColor || '#d1d5db',
-                                        backgroundColor: field.styling?.backgroundColor || '#ffffff',
-                                      }}
-                                      className="w-full border transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                      required={field.is_required}
-                                    />
-                                  </div>
-                                )}
-
-                                {field.field_type === 'file' && (
-                                  <div
-                                    style={{
-                                      borderRadius: field.styling?.borderRadius || '8px',
-                                      borderColor: field.styling?.borderColor || '#d1d5db',
-                                      backgroundColor: field.styling?.backgroundColor || '#ffffff',
-                                    }}
-                                    className="w-full border-2 border-dashed transition-all duration-200 hover:border-blue-400 hover:bg-blue-50"
-                                  >
-                                    <label className="flex flex-col items-center justify-center py-6 cursor-pointer">
-                                      <Upload size={32} className="text-gray-400 mb-2" />
-                                      <span className="text-sm text-gray-600 font-medium">
-                                        Clique para enviar arquivo
-                                      </span>
-                                      <span className="text-xs text-gray-500 mt-1">
-                                        {field.field_options?.accept || 'Todos os tipos'} • 
-                                        Max: {field.field_options?.max_size || '10MB'}
-                                      </span>
-                                      <input
-                                        type="file"
-                                        className="hidden"
-                                        accept={field.field_options?.accept}
-                                        multiple={field.field_options?.multiple}
-                                        required={field.is_required}
-                                      />
-                                    </label>
-                                  </div>
-                                )}
-
-                                {field.field_type === 'range' && (
-                                  <div className="space-y-3">
-                                    <div className="flex justify-between text-sm text-gray-600">
-                                      <span>{field.field_options?.min || 0}</span>
-                                      <span className="font-medium text-blue-600">
-                                        {Math.round(((field.field_options?.max || 100) + (field.field_options?.min || 0)) / 2)}
-                                      </span>
-                                      <span>{field.field_options?.max || 100}</span>
-                                    </div>
-                                    <input
-                                      type="range"
-                                      min={field.field_options?.min || 0}
-                                      max={field.field_options?.max || 100}
-                                      step={field.field_options?.step || 1}
-                                      defaultValue={Math.round(((field.field_options?.max || 100) + (field.field_options?.min || 0)) / 2)}
-                                      style={{
-                                        accentColor: field.styling?.borderColor || '#3b82f6',
-                                      }}
-                                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                                      required={field.is_required}
-                                    />
-                                  </div>
-                                )}
-                                
-                                {field.field_type === 'select' && (
-                                  <select
-                                    style={{
-                                      fontSize: field.styling?.fontSize || '16px',
-                                      padding: field.styling?.padding || '12px',
-                                      borderRadius: field.styling?.borderRadius || '8px',
-                                      borderColor: field.styling?.borderColor || '#d1d5db',
-                                      backgroundColor: field.styling?.backgroundColor || '#ffffff',
-                                    }}
-                                    className="w-full border transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    required={field.is_required}
-                                  >
-                                    <option value="">Selecione uma opção</option>
-                                    {field.field_options.options?.map((option: string, idx: number) => (
-                                      <option key={idx} value={option}>{option}</option>
-                                    ))}
-                                  </select>
-                                )}
-
-                                {field.field_type === 'radio' && (
-                                  <div className="space-y-3">
-                                    {field.field_options.options?.map((option: string, idx: number) => (
-                                      <label key={idx} className="flex items-center cursor-pointer group">
-                                        <input
-                                          type="radio"
-                                          name={field.field_name}
-                                          value={option}
-                                          className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500 focus:ring-2"
-                                          required={field.is_required}
-                                        />
-                                        <span 
-                                          className="ml-3 text-gray-700 group-hover:text-gray-900 transition-colors"
-                                          style={{ fontSize: field.styling?.fontSize || '14px' }}
-                                        >
-                                          {option}
-                                        </span>
-                                      </label>
-                                    ))}
-                                  </div>
-                                )}
-
-                                {field.field_type === 'checkbox' && (
-                                  <div className="space-y-3">
-                                    {field.field_options.options?.map((option: string, idx: number) => (
-                                      <label key={idx} className="flex items-center cursor-pointer group">
-                                        <input
-                                          type="checkbox"
-                                          value={option}
-                                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
-                                        />
-                                        <span 
-                                          className="ml-3 text-gray-700 group-hover:text-gray-900 transition-colors"
-                                          style={{ fontSize: field.styling?.fontSize || '14px' }}
-                                        >
-                                          {option}
-                                        </span>
-                                      </label>
-                                    ))}
-                                  </div>
-                                )}
-                                
-                                {field.field_type === 'rating' && (
-                                  <div className="flex space-x-1">
-                                    {Array.from({ length: field.field_options.max_rating || 5 }).map((_, idx) => (
-                                      <button
-                                        key={idx}
-                                        type="button"
-                                        className="transition-colors hover:scale-110 transform duration-200"
-                                      >
-                                        <Star 
-                                          size={28} 
-                                          className="text-gray-300 hover:text-yellow-400 cursor-pointer" 
-                                          fill="none"
-                                        />
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
-                                
-                                {field.field_type === 'submit' && (
-                                  <button
-                                    type="button"
-                                    style={{
-                                      fontSize: field.styling?.fontSize || '16px',
-                                      padding: field.styling?.padding || '12px 24px',
-                                      borderRadius: field.styling?.borderRadius || '8px',
-                                      backgroundColor: field.field_options?.background_color || '#3b82f6',
-                                      color: field.field_options?.text_color || '#ffffff',
-                                    }}
-                                    className="flex items-center justify-center w-full font-medium hover:opacity-90 transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
-                                  >
-                                    <Send className="mr-3" size={20} />
-                                    <span>{field.field_options?.button_text || 'Enviar Formulário'}</span>
-                                  </button>
-                                )}
-
-                                {field.field_type === 'whatsapp' && (
-                                  <button
-                                    type="button"
-                                    style={{
-                                      fontSize: field.styling?.fontSize || '16px',
-                                      padding: field.styling?.padding || '12px 24px',
-                                      borderRadius: field.styling?.borderRadius || '8px',
-                                      backgroundColor: field.field_options?.background_color || '#25d366',
-                                      color: field.field_options?.text_color || '#ffffff',
-                                    }}
-                                    className="flex items-center justify-center w-full font-medium hover:opacity-90 transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
-                                  >
-                                    <MessageSquare className="mr-3" size={20} />
-                                    <span>{field.field_options?.button_text || 'Enviar via WhatsApp'}</span>
-                                    <div className="ml-3 w-2 h-2 bg-white bg-opacity-30 rounded-full animate-pulse"></div>
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </Draggable>
-                      ))
-                    )}
-                    {provided.placeholder}
-                  </div>
-                )}
-              </Droppable>
-            </DragDropContext>
-
-            {/* Botões de ação */}
-            {fields.length > 0 && (
-              <div className="mt-8 pt-6 border-t border-gray-200">
-                {(() => {
-                  const submitField = fields.find(field => field.field_type === 'submit');
-                  const whatsappField = fields.find(field => field.field_type === 'whatsapp');
-                  
-                  if (submitField && whatsappField) {
-                    // Layout 50/50 quando tem ambos os botões
-                    return (
-                      <div className="grid grid-cols-2 gap-4">
-                        {/* Botão de Submit */}
-                        <div className="relative group">
-                          <button
-                            type="submit"
-                            onClick={() => setSelectedField(submitField)}
-                            style={{
-                              backgroundColor: submitField.field_options?.background_color || '#3b82f6',
-                              color: submitField.field_options?.text_color || '#ffffff',
-                            }}
-                            className={`w-full flex items-center justify-center py-3 px-6 rounded-lg font-medium hover:opacity-90 transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl ${
-                              selectedField?.id === submitField.id ? 'ring-2 ring-blue-500 ring-opacity-50' : ''
-                            }`}
-                          >
-                            <Send className="mr-2" size={18} />
-                            {submitField.field_options?.button_text || 'Enviar Formulário'}
-                          </button>
-                          
-                          {/* Controles do botão */}
-                          <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1 z-10">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedField(submitField);
-                              }}
-                              className="p-1 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50"
-                              title="Editar"
-                            >
-                              <Edit size={12} className="text-gray-400" />
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                removeField(submitField.id);
-                              }}
-                              className="p-1 bg-white border border-gray-300 rounded shadow-sm hover:bg-red-50"
-                              title="Remover"
-                            >
-                              <Trash2 size={12} className="text-red-400" />
-                            </button>
-                          </div>
-                        </div>
-                        
-                        {/* Botão WhatsApp */}
-                        <div className="relative group">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedField(whatsappField)}
-                            style={{
-                              backgroundColor: whatsappField.field_options?.background_color || '#25d366',
-                              color: whatsappField.field_options?.text_color || '#ffffff',
-                            }}
-                            className={`w-full flex items-center justify-center py-3 px-6 rounded-lg font-medium hover:opacity-90 transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl ${
-                              selectedField?.id === whatsappField.id ? 'ring-2 ring-green-500 ring-opacity-50' : ''
-                            }`}
-                          >
-                            <MessageSquare className="mr-2" size={18} />
-                            {whatsappField.field_options?.button_text || 'Enviar via WhatsApp'}
-                            <div className="ml-2 w-2 h-2 bg-white bg-opacity-30 rounded-full animate-pulse"></div>
-                          </button>
-                          
-                          {/* Controles do botão */}
-                          <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1 z-10">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedField(whatsappField);
-                              }}
-                              className="p-1 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50"
-                              title="Editar"
-                            >
-                              <Edit size={12} className="text-gray-400" />
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                removeField(whatsappField.id);
-                              }}
-                              className="p-1 bg-white border border-gray-300 rounded shadow-sm hover:bg-red-50"
-                              title="Remover"
-                            >
-                              <Trash2 size={12} className="text-red-400" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  } else if (submitField) {
-                    // Apenas botão de Submit
-                    return (
-                      <div className="relative group">
-                        <button
-                          type="submit"
-                          onClick={() => setSelectedField(submitField)}
-                          style={{
-                            backgroundColor: submitField.field_options?.background_color || '#3b82f6',
-                            color: submitField.field_options?.text_color || '#ffffff',
-                          }}
-                          className={`w-full flex items-center justify-center py-3 px-6 rounded-lg font-medium hover:opacity-90 transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl ${
-                            selectedField?.id === submitField.id ? 'ring-2 ring-blue-500 ring-opacity-50' : ''
-                          }`}
-                        >
-                          <Send className="mr-2" size={18} />
-                          {submitField.field_options?.button_text || 'Enviar Formulário'}
-                        </button>
-                        
-                        {/* Controles do botão */}
-                        <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1 z-10">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedField(submitField);
-                            }}
-                            className="p-1 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50"
-                            title="Editar"
-                          >
-                            <Edit size={12} className="text-gray-400" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeField(submitField.id);
-                            }}
-                            className="p-1 bg-white border border-gray-300 rounded shadow-sm hover:bg-red-50"
-                            title="Remover"
-                          >
-                            <Trash2 size={12} className="text-red-400" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  } else if (whatsappField) {
-                    // Apenas botão WhatsApp
-                    return (
-                      <div className="relative group">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedField(whatsappField)}
-                          style={{
-                            backgroundColor: whatsappField.field_options?.background_color || '#25d366',
-                            color: whatsappField.field_options?.text_color || '#ffffff',
-                          }}
-                          className={`w-full flex items-center justify-center py-3 px-6 rounded-lg font-medium hover:opacity-90 transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl ${
-                            selectedField?.id === whatsappField.id ? 'ring-2 ring-green-500 ring-opacity-50' : ''
-                          }`}
-                        >
-                          <MessageSquare className="mr-2" size={18} />
-                          {whatsappField.field_options?.button_text || 'Enviar via WhatsApp'}
-                          <div className="ml-2 w-2 h-2 bg-white bg-opacity-30 rounded-full animate-pulse"></div>
-                        </button>
-                        
-                        {/* Controles do botão */}
-                        <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1 z-10">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedField(whatsappField);
-                            }}
-                            className="p-1 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50"
-                            title="Editar"
-                          >
-                            <Edit size={12} className="text-gray-400" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeField(whatsappField.id);
-                            }}
-                            className="p-1 bg-white border border-gray-300 rounded shadow-sm hover:bg-red-50"
-                            title="Remover"
-                          >
-                            <Trash2 size={12} className="text-red-400" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  }
-                  
-                  return null;
-                })()}
-              </div>
-            )}
+            
+            {/* Botões de controle - Sempre Visíveis */}
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setActivePanel('form-settings')}
+                className={`p-2 rounded-lg border transition-all duration-200 ${
+                  activePanel === 'form-settings' 
+                    ? 'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-md' 
+                    : 'bg-white border-gray-300 text-gray-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700'
+                }`}
+                title="🎯 Ajustes no Formulário - Configure nome, notificações e comportamento"
+              >
+                <Settings size={16} />
+              </button>
+              
+              <button
+                onClick={() => setActivePanel('style')}
+                className={`p-2 rounded-lg border transition-all duration-200 ${
+                  activePanel === 'style' 
+                    ? 'bg-pink-50 border-pink-300 text-pink-700 shadow-md' 
+                    : 'bg-white border-gray-300 text-gray-600 hover:bg-pink-50 hover:border-pink-300 hover:text-pink-700'
+                }`}
+                title="🎨 Editar Estilo - Personalize cores, fontes e aparência"
+              >
+                <Palette size={16} />
+              </button>
+            </div>
           </div>
+
+          {/* FASE 3.5.3 - INTEGRAÇÃO FORMPREVIEW COM SUSPENSE E LAZY LOADING */}
+          <Suspense fallback={
+            <div className="flex items-center justify-center h-96">
+              <div className="flex flex-col items-center space-y-4">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+                <p className="text-gray-600 font-medium">Carregando preview...</p>
+              </div>
+            </div>
+          }>
+            <DragDropContext onDragEnd={onDragEnd}>
+              <FormPreview
+                fields={fields}
+                formData={formData}
+                formStyle={formStyle}
+                previewMode={previewMode}
+                selectedField={selectedField}
+                onFieldSelect={setSelectedField}
+                onDragEnd={onDragEnd}
+                removeField={removeField}
+                duplicateField={duplicateField}
+              />
+            </DragDropContext>
+          </Suspense>
         </div>
 
         {/* Sidebar Direita - Propriedades/Scoring/Share */}
@@ -2659,7 +1814,18 @@ Enviado automaticamente pelo sistema CRM Marketing`,
                     <h4 className="text-sm font-medium text-gray-900">Regras de Pontuação</h4>
                     {selectedField && (
                       <button
-                        onClick={addScoringRule}
+                        onClick={() => {
+                          if (!selectedField) return;
+                          const newRule: ScoringRule = {
+                            id: generateId(),
+                            field_id: selectedField.id,
+                            condition: 'not_empty',
+                            value: '',
+                            points: 10,
+                            description: `Pontuação para ${selectedField.field_label}`
+                          };
+                          addScoringRule(newRule);
+                        }}
                         className="flex items-center space-x-1 text-sm text-blue-600 hover:text-blue-700"
                       >
                         <Plus size={14} />

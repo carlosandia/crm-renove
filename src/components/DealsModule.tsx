@@ -199,7 +199,7 @@ const DealPipelineView: React.FC<{ deals: Deal[]; loading?: boolean }> = ({ deal
 export const DealsModule: React.FC = () => {
   const [viewMode, setViewMode] = useState<'pipeline' | 'table'>('pipeline');
   const [filters, setFilters] = useState<DealFilters>({});
-  const [loading] = useState(false);
+  const loading = false;
 
   // Mock data
   const mockStats: DealStats = {

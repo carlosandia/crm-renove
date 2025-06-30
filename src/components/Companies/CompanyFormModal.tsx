@@ -182,7 +182,9 @@ const CompanyFormModal: React.FC<CompanyModalProps> = ({
       const timeoutId = setTimeout(validateEmailAsync, 800);
       return () => clearTimeout(timeoutId);
     }
-  }, [formData.admin_email, mode]);
+    // Return nothing explicitly for TypeScript
+    return undefined;
+  }, [formData.admin_email, mode, checkEmailAvailability]);
 
   // SUBMIT HANDLER
   const handleSubmit = async (e: React.FormEvent) => {
@@ -228,8 +230,38 @@ const CompanyFormModal: React.FC<CompanyModalProps> = ({
       const result = await submitCompanyForm(companyData, adminData);
       
       if (result.success) {
-        onSuccess();
-        handleClose();
+        // 🔥 FORÇA BRUTA: Disparar múltiplos eventos para garantir atualização
+        console.log('🎉 [CompanyFormModal] Empresa criada com sucesso, forçando atualização da lista...');
+        
+        // Disparar evento customizado imediatamente
+        window.dispatchEvent(new CustomEvent('force-refresh-companies', {
+          detail: { 
+            source: 'CompanyFormModal',
+            companyName: companyData.name,
+            timestamp: new Date().toISOString()
+          }
+        }));
+        
+        // Chamada de sucesso com delay para garantir processamento
+        setTimeout(() => {
+          onSuccess();
+          handleClose();
+        }, 100);
+        
+        // Força múltiplos refreshes com intervalos diferentes
+        [200, 500, 1000, 2000].forEach((delay, index) => {
+          setTimeout(() => {
+            console.log(`🔄 [CompanyFormModal] Disparando refresh adicional ${index + 1}...`);
+            window.dispatchEvent(new CustomEvent('force-refresh-companies', {
+              detail: { 
+                source: 'CompanyFormModal',
+                retry: index + 1,
+                companyName: companyData.name,
+                timestamp: new Date().toISOString()
+              }
+            }));
+          }, delay);
+        });
       } else {
         throw new Error(result.message || 'Erro ao processar formulário');
       }

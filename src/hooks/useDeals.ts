@@ -1,323 +1,327 @@
 import { useState, useEffect, useCallback } from 'react';
-import { 
-  Deal, 
-  DealStats, 
-  DealFilters, 
-  DealCreateRequest, 
-  DealUpdateRequest,
-  DealResponse,
-  DealStatsResponse 
-} from '../types/deals';
+import { useAuth } from '../contexts/AuthContext';
+import { useSupabaseCrud } from './useSupabaseCrud';
 
-const API_BASE_URL = 'http://localhost:3001/api';
+export interface Deal {
+  id: string;
+  title: string;
+  description?: string;
+  value: number;
+  currency?: string;
+  status: 'open' | 'won' | 'lost' | 'pending';
+  stage: string;
+  probability?: number;
+  expected_close_date?: string;
+  actual_close_date?: string;
+  contact_id?: string;
+  company_id?: string;
+  pipeline_id?: string;
+  assigned_to?: string;
+  lead_source?: string;
+  tags?: string[];
+  notes?: string;
+  tenant_id?: string;
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string;
+  
+  // Relacionamentos
+  contact?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    company?: string;
+  };
+  company?: {
+    id: string;
+    name: string;
+  };
+  assigned_user?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+  };
+}
 
-export const useDeals = (filters: DealFilters = {}) => {
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [stats, setStats] = useState<DealStats | undefined>();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [limit] = useState(20);
+export const useDeals = () => {
+  const { user } = useAuth();
+  
+  // ✅ USANDO NOVO HOOK BASE UNIFICADO
+  const dealsCrud = useSupabaseCrud<Deal>({
+    tableName: 'deals',
+    selectFields: `
+      id, title, description, value, currency, status, stage, probability,
+      expected_close_date, actual_close_date, contact_id, company_id,
+      pipeline_id, assigned_to, lead_source, tags, notes,
+      tenant_id, created_at, updated_at, created_by,
+      contacts(id, first_name, last_name, email, company),
+      companies(id, name),
+      users(id, first_name, last_name, email)
+    `,
+    defaultOrderBy: { column: 'created_at', ascending: false },
+    enableCache: true,
+    cacheKeyPrefix: 'deals',
+    cacheDuration: 300000 // 5 minutos
+  });
 
-  // Fetch deals with filters
-  const fetchDeals = useCallback(async (currentPage = 1) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const queryParams = new URLSearchParams({
-        page: currentPage.toString(),
-        limit: limit.toString(),
-        ...Object.fromEntries(
-          Object.entries(filters).filter(([_, value]) => value !== undefined && value !== '')
-        )
-      });
+  // ============================================
+  // CARREGAMENTO AUTOMÁTICO
+  // ============================================
 
-      const response = await fetch(`${API_BASE_URL}/deals?${queryParams}`, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result: DealResponse = await response.json();
-      
-      setDeals(result.data);
-      setTotal(result.total);
-      setPage(currentPage);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar deals');
-      console.error('Error fetching deals:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [filters, limit]);
-
-  // Fetch deal statistics
-  const fetchStats = useCallback(async () => {
-    try {
-      const queryParams = new URLSearchParams(
-        Object.fromEntries(
-          Object.entries(filters).filter(([_, value]) => value !== undefined && value !== '')
-        )
-      );
-
-      const response = await fetch(`${API_BASE_URL}/deals/stats?${queryParams}`, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result: DealStatsResponse = await response.json();
-      setStats(result.data);
-    } catch (err) {
-      console.error('Error fetching deal stats:', err);
-      // Set default stats on error
-      setStats({
-        totalValue: 0,
-        totalDeals: 0,
-        wonDeals: 0,
-        lostDeals: 0,
-        openDeals: 0,
-        conversionRate: 0,
-        averageDealSize: 0,
-        monthlyGrowth: 0,
-        averageSalesCycle: 0,
-        winRate: 0
-      });
-    }
-  }, [filters]);
-
-  // Create new deal
-  const createDeal = useCallback(async (dealData: DealCreateRequest): Promise<Deal> => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/deals`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(dealData),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const newDeal: Deal = await response.json();
-      
-      // Add to current deals list
-      setDeals(prev => [newDeal, ...prev]);
-      setTotal(prev => prev + 1);
-      
-      // Refresh stats
-      fetchStats();
-      
-      return newDeal;
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro ao criar deal';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    }
-  }, [fetchStats]);
-
-  // Update existing deal
-  const updateDeal = useCallback(async (dealId: string, dealData: DealUpdateRequest): Promise<Deal> => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/deals/${dealId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(dealData),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const updatedDeal: Deal = await response.json();
-      
-      // Update in current deals list
-      setDeals(prev => prev.map(deal => 
-        deal.id === dealId ? updatedDeal : deal
-      ));
-      
-      // Refresh stats
-      fetchStats();
-      
-      return updatedDeal;
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar deal';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    }
-  }, [fetchStats]);
-
-  // Delete deal
-  const deleteDeal = useCallback(async (dealId: string): Promise<void> => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/deals/${dealId}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      // Remove from current deals list
-      setDeals(prev => prev.filter(deal => deal.id !== dealId));
-      setTotal(prev => prev - 1);
-      
-      // Refresh stats
-      fetchStats();
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro ao excluir deal';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    }
-  }, [fetchStats]);
-
-  // Get deal by ID
-  const getDeal = useCallback(async (dealId: string): Promise<Deal> => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/deals/${dealId}`, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar deal';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    }
-  }, []);
-
-  // Move deal to different stage
-  const moveDeal = useCallback(async (dealId: string, newStageId: string): Promise<Deal> => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/deals/${dealId}/move`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ stage_id: newStageId }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const updatedDeal: Deal = await response.json();
-      
-      // Update in current deals list
-      setDeals(prev => prev.map(deal => 
-        deal.id === dealId ? updatedDeal : deal
-      ));
-      
-      // Refresh stats
-      fetchStats();
-      
-      return updatedDeal;
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro ao mover deal';
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    }
-  }, [fetchStats]);
-
-  // Win deal
-  const winDeal = useCallback(async (dealId: string, winReason?: string): Promise<Deal> => {
-    return updateDeal(dealId, { 
-      status: 'won', 
-      won_reason: winReason,
-      probability: 100 
-    });
-  }, [updateDeal]);
-
-  // Lose deal
-  const loseDeal = useCallback(async (dealId: string, lostReason?: string): Promise<Deal> => {
-    return updateDeal(dealId, { 
-      status: 'lost', 
-      lost_reason: lostReason,
-      probability: 0 
-    });
-  }, [updateDeal]);
-
-  // Pagination handlers
-  const nextPage = useCallback(() => {
-    if (page * limit < total) {
-      fetchDeals(page + 1);
-    }
-  }, [page, limit, total, fetchDeals]);
-
-  const prevPage = useCallback(() => {
-    if (page > 1) {
-      fetchDeals(page - 1);
-    }
-  }, [page, fetchDeals]);
-
-  const goToPage = useCallback((targetPage: number) => {
-    fetchDeals(targetPage);
-  }, [fetchDeals]);
-
-  // Initial load and when filters change
   useEffect(() => {
-    fetchDeals(1);
-    fetchStats();
-  }, [fetchDeals, fetchStats]);
+    if (user?.tenant_id) {
+      // Carregar deals do tenant automaticamente
+      dealsCrud.fetchAll({
+        filters: {
+          tenant_id: user.tenant_id
+        }
+      }).catch(error => {
+        console.warn('⚠️ [useDeals] Erro no carregamento automático:', error);
+      });
+    }
+  }, [user?.tenant_id]);
+
+  // ============================================
+  // FUNÇÕES DE CONVENIÊNCIA (MANTIDAS)
+  // ============================================
+
+  // Filtrar deals por status
+  const getDealsByStatus = useCallback((status: Deal['status']): Deal[] => {
+    return dealsCrud.data.filter(deal => deal.status === status);
+  }, [dealsCrud.data]);
+
+  // Filtrar deals por estágio
+  const getDealsByStage = useCallback((stage: string): Deal[] => {
+    return dealsCrud.data.filter(deal => deal.stage === stage);
+  }, [dealsCrud.data]);
+
+  // Filtrar deals por pipeline
+  const getDealsByPipeline = useCallback((pipelineId: string): Deal[] => {
+    return dealsCrud.data.filter(deal => deal.pipeline_id === pipelineId);
+  }, [dealsCrud.data]);
+
+  // Filtrar deals por vendedor
+  const getDealsByAssignedUser = useCallback((userId: string): Deal[] => {
+    return dealsCrud.data.filter(deal => deal.assigned_to === userId);
+  }, [dealsCrud.data]);
+
+  // Filtrar deals por empresa
+  const getDealsByCompany = useCallback((companyId: string): Deal[] => {
+    return dealsCrud.data.filter(deal => deal.company_id === companyId);
+  }, [dealsCrud.data]);
+
+  // Obter deals em risco (próximos do vencimento)
+  const getDealsAtRisk = useCallback((): Deal[] => {
+    const today = new Date();
+    const riskThreshold = new Date();
+    riskThreshold.setDate(today.getDate() + 7); // Próximos 7 dias
+
+    return dealsCrud.data.filter(deal => {
+      if (!deal.expected_close_date || deal.status !== 'open') return false;
+      
+      const closeDate = new Date(deal.expected_close_date);
+      return closeDate <= riskThreshold && closeDate >= today;
+    });
+  }, [dealsCrud.data]);
+
+  // Obter deals vencidos
+  const getOverdueDeals = useCallback((): Deal[] => {
+    const today = new Date();
+    
+    return dealsCrud.data.filter(deal => {
+      if (!deal.expected_close_date || deal.status !== 'open') return false;
+      
+      const closeDate = new Date(deal.expected_close_date);
+      return closeDate < today;
+    });
+  }, [dealsCrud.data]);
+
+  // Obter estatísticas dos deals
+  const getDealsStats = useCallback(() => {
+    const total = dealsCrud.data.length;
+    const open = getDealsByStatus('open').length;
+    const won = getDealsByStatus('won').length;
+    const lost = getDealsByStatus('lost').length;
+    const pending = getDealsByStatus('pending').length;
+
+    const totalValue = dealsCrud.data.reduce((sum, deal) => sum + (deal.value || 0), 0);
+    const wonValue = getDealsByStatus('won').reduce((sum, deal) => sum + (deal.value || 0), 0);
+    const openValue = getDealsByStatus('open').reduce((sum, deal) => sum + (deal.value || 0), 0);
+
+    const averageDealValue = total > 0 ? totalValue / total : 0;
+    const winRate = total > 0 ? (won / (won + lost)) * 100 : 0;
+
+    const atRisk = getDealsAtRisk().length;
+    const overdue = getOverdueDeals().length;
+
+    return {
+      total,
+      open,
+      won,
+      lost,
+      pending,
+      totalValue,
+      wonValue,
+      openValue,
+      averageDealValue,
+      winRate: Math.round(winRate * 100) / 100,
+      atRisk,
+      overdue,
+      conversionRate: total > 0 ? Math.round((won / total) * 100) : 0
+    };
+  }, [dealsCrud.data, getDealsByStatus, getDealsAtRisk, getOverdueDeals]);
+
+  // Buscar deals com filtros avançados
+  const searchDeals = useCallback(async (searchFilters: {
+    search?: string;
+    status?: Deal['status'];
+    stage?: string;
+    pipelineId?: string;
+    assignedTo?: string;
+    companyId?: string;
+    minValue?: number;
+    maxValue?: number;
+    dateFrom?: string;
+    dateTo?: string;
+  }) => {
+    const filters: any = {
+      tenant_id: user?.tenant_id
+    };
+
+    // Aplicar filtros específicos
+    if (searchFilters.status) {
+      filters.status = searchFilters.status;
+    }
+    if (searchFilters.stage) {
+      filters.stage = searchFilters.stage;
+    }
+    if (searchFilters.pipelineId) {
+      filters.pipeline_id = searchFilters.pipelineId;
+    }
+    if (searchFilters.assignedTo) {
+      filters.assigned_to = searchFilters.assignedTo;
+    }
+    if (searchFilters.companyId) {
+      filters.company_id = searchFilters.companyId;
+    }
+
+    // Buscar com os filtros
+    return dealsCrud.fetchAll({
+      filters,
+      search: searchFilters.search ? {
+        field: 'title,description',
+        value: searchFilters.search
+      } : undefined
+    });
+  }, [user?.tenant_id, dealsCrud.fetchAll]);
+
+  // Mover deal para outro estágio
+  const moveDealToStage = useCallback(async (dealId: string, newStage: string) => {
+    console.log('🔄 [useDeals] Movendo deal para estágio:', { dealId, newStage });
+    
+    const updateData: Partial<Deal> = {
+      stage: newStage
+    };
+
+    // Se moveu para 'won' ou 'lost', atualizar status e data de fechamento
+    if (newStage === 'won' || newStage === 'lost') {
+      updateData.status = newStage;
+      updateData.actual_close_date = new Date().toISOString();
+    }
+
+    return dealsCrud.update(dealId, updateData);
+  }, [dealsCrud.update]);
+
+  // Atribuir deal a um vendedor
+  const assignDeal = useCallback(async (dealId: string, userId: string) => {
+    console.log('👤 [useDeals] Atribuindo deal:', { dealId, userId });
+    
+    return dealsCrud.update(dealId, {
+      assigned_to: userId
+    });
+  }, [dealsCrud.update]);
+
+  // Clonar deal
+  const cloneDeal = useCallback(async (dealId: string) => {
+    const originalDeal = dealsCrud.findOne(deal => deal.id === dealId);
+    if (!originalDeal) {
+      throw new Error('Deal não encontrado para clonagem');
+    }
+
+    console.log('📋 [useDeals] Clonando deal:', dealId);
+
+    const clonedData: Omit<Deal, 'id' | 'created_at' | 'updated_at'> = {
+      ...originalDeal,
+      title: `${originalDeal.title} (Cópia)`,
+      status: 'open',
+      actual_close_date: undefined
+    };
+
+    // Remover campos que não devem ser clonados
+    delete (clonedData as any).id;
+    delete (clonedData as any).created_at;
+    delete (clonedData as any).updated_at;
+    delete (clonedData as any).contact;
+    delete (clonedData as any).company;
+    delete (clonedData as any).assigned_user;
+
+    return dealsCrud.create(clonedData);
+  }, [dealsCrud.findOne, dealsCrud.create]);
+
+  // ============================================
+  // INTERFACE COMPATÍVEL (MANTIDA)
+  // ============================================
 
   return {
-    // Data
-    deals,
-    stats,
-    total,
-    page,
-    limit,
-    hasNext: page * limit < total,
-    hasPrev: page > 1,
+    // ✅ DADOS DO HOOK BASE UNIFICADO
+    deals: dealsCrud.data,
+    loading: dealsCrud.isLoading,
+    error: dealsCrud.error,
+    totalCount: dealsCrud.totalCount,
     
-    // State
-    loading,
-    error,
+    // ✅ OPERAÇÕES DO HOOK BASE UNIFICADO
+    loadDeals: () => dealsCrud.fetchAll({
+      filters: {
+        tenant_id: user?.tenant_id
+      }
+    }),
+    getDealById: dealsCrud.fetchById,
+    createDeal: dealsCrud.create,
+    updateDeal: dealsCrud.update,
+    deleteDeal: dealsCrud.remove,
     
-    // Actions
-    fetchDeals,
-    fetchStats,
-    createDeal,
-    updateDeal,
-    deleteDeal,
-    getDeal,
-    moveDeal,
-    winDeal,
-    loseDeal,
+    // ✅ FUNÇÕES ESPECÍFICAS MANTIDAS
+    getDealsByStatus,
+    getDealsByStage,
+    getDealsByPipeline,
+    getDealsByAssignedUser,
+    getDealsByCompany,
+    getDealsAtRisk,
+    getOverdueDeals,
+    getDealsStats,
+    searchDeals,
+    moveDealToStage,
+    assignDeal,
+    cloneDeal,
     
-    // Pagination
-    nextPage,
-    prevPage,
-    goToPage,
+    // ✅ FUNCIONALIDADES EXTRAS DO HOOK BASE
+    refresh: dealsCrud.refresh,
+    findDeal: (predicate: (deal: Deal) => boolean) => dealsCrud.findOne(predicate),
+    findDeals: (predicate: (deal: Deal) => boolean) => dealsCrud.findMany(predicate),
     
-    // Utilities
-    clearError: () => setError(null),
-    refresh: () => {
-      fetchDeals(page);
-      fetchStats();
-    }
+    // ✅ ESTADOS DETALHADOS
+    states: {
+      isEmpty: dealsCrud.isEmpty,
+      hasData: dealsCrud.hasData,
+      fetchState: dealsCrud.fetchState,
+      createState: dealsCrud.createState,
+      updateState: dealsCrud.updateState,
+      deleteState: dealsCrud.deleteState
+    },
+    
+    // ✅ CONTROLES DE CACHE
+    clearCache: dealsCrud.clearCache
   };
 }; 

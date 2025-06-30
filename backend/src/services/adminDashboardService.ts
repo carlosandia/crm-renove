@@ -192,10 +192,14 @@ class AdminDashboardService {
         team_performance: teamPerformanceData,
         sales_targets: targetsData,
         alerts: alertsData,
-        forecast: forecastData,
+        forecast: {
+          predicted_revenue: (forecastData as any)?.predicted_revenue || 0,
+          confidence_range: (forecastData as any)?.confidence_range || { min: 0, max: 0 },
+          period_breakdown: (forecastData as any)?.period_breakdown || []
+        },
       };
 
-      await getCache().set(cacheKey, metrics, this.CACHE_TTL.DASHBOARD);
+      await getCache().set(cacheKey, metrics, { ttl: this.CACHE_TTL.DASHBOARD });
       return metrics;
 
     } catch (error) {
@@ -272,7 +276,9 @@ class AdminDashboardService {
       const conversionRate = totalLeads > 0 ? (wonDeals.length / totalLeads) * 100 : 0;
       const avgDealSize = wonDeals.length > 0 ? totalRevenue / wonDeals.length : 0;
       const pipelineValue = pipelineDeals?.reduce((sum, d) => sum + ((d.amount || 0) * (d.probability || 0) / 100), 0) || 0;
-      const teamPerformanceAvg = teamPerf?.reduce((sum, t) => sum + (t.performance_score || 0), 0) / Math.max(teamPerf?.length || 1, 1) || 0;
+      const teamPerformanceAvg = (teamPerf && teamPerf.length > 0) 
+        ? teamPerf.reduce((sum, t) => sum + (t.performance_score || 0), 0) / teamPerf.length 
+        : 0;
       const activeTargets = targets?.length || 0;
 
       return {
@@ -390,7 +396,7 @@ class AdminDashboardService {
         growth_rates: snapshot.growth_rates || {},
       })) || [];
 
-      await getCache().set(cacheKey, processedData, this.CACHE_TTL.TEAM_PERFORMANCE);
+      await getCache().set(cacheKey, processedData, { ttl: this.CACHE_TTL.TEAM_PERFORMANCE });
       return processedData;
 
     } catch (error) {
@@ -432,7 +438,7 @@ class AdminDashboardService {
           : undefined
       })) || [];
 
-      await getCache().set(cacheKey, targets, this.CACHE_TTL.TARGETS);
+      await getCache().set(cacheKey, targets, { ttl: this.CACHE_TTL.TARGETS });
       return targets;
 
     } catch (error) {
@@ -506,7 +512,7 @@ class AdminDashboardService {
       if (error) throw error;
 
       const alerts = data || [];
-      await getCache().set(cacheKey, alerts, this.CACHE_TTL.ALERTS);
+      await getCache().set(cacheKey, alerts, { ttl: this.CACHE_TTL.ALERTS });
       return alerts;
 
     } catch (error) {
@@ -566,7 +572,7 @@ class AdminDashboardService {
     const cacheKey = this.CACHE_KEYS.FORECAST(tenantId, scope);
     
     const cached = await getCache().get(cacheKey);
-    if (cached && typeof cached === 'object' && cached.predicted_revenue !== undefined) return cached;
+    if (cached && typeof cached === 'object' && (cached as any).predicted_revenue !== undefined) return cached;
 
     try {
       // Buscar forecast mais recente
@@ -592,7 +598,7 @@ class AdminDashboardService {
         period_breakdown: latestForecast.period_breakdown || [],
       };
 
-      await getCache().set(cacheKey, forecastData, this.CACHE_TTL.FORECAST);
+      await getCache().set(cacheKey, forecastData, { ttl: this.CACHE_TTL.FORECAST });
       return forecastData;
 
     } catch (error) {

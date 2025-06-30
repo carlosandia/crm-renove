@@ -1,6 +1,7 @@
 import React from 'react';
 import { DollarSign, TrendingUp, Target, BarChart3 } from 'lucide-react';
 import { BlurFade } from '../ui/blur-fade';
+import { formatCurrency, formatPercentage } from '@/lib/utils';
 
 interface DealStats {
   totalValue: number;
@@ -20,18 +21,6 @@ export const DealStatsCards: React.FC<DealStatsCardsProps> = ({
   stats,
   loading = false
 }) => {
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(value);
-  };
-
-  const formatPercentage = (value: number) => {
-    return `${value.toFixed(1)}%`;
-  };
 
   const cards = [
     {

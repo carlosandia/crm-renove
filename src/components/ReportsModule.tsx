@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { BlurFade } from './ui/blur-fade';
 import { ShimmerButton } from './ui/shimmer-button';
+import { IconBadge } from './ui/icon-badge';
 
 interface ConsolidatedMetrics {
   total_companies: number;
@@ -359,9 +360,12 @@ const ReportsModule: React.FC = () => {
                 <p className="text-sm font-medium text-gray-600">Total de Empresas</p>
                 <p className="text-2xl font-bold text-gray-900">{metrics.total_companies}</p>
               </div>
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                <Users className="w-6 h-6 text-blue-600" />
-              </div>
+              <IconBadge
+                icon={<Users className="w-6 h-6" />}
+                variant="blue"
+                size="xl"
+                shape="circle"
+              />
             </div>
           </div>
 
@@ -371,9 +375,12 @@ const ReportsModule: React.FC = () => {
                 <p className="text-sm font-medium text-gray-600">Conversão Média Global</p>
                 <p className="text-2xl font-bold text-gray-900">{formatPercentage(metrics.avg_conversion_rate)}</p>
               </div>
-              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-green-600" />
-              </div>
+              <IconBadge
+                icon={<TrendingUp className="w-6 h-6" />}
+                variant="green"
+                size="xl"
+                shape="circle"
+              />
             </div>
           </div>
 
@@ -383,9 +390,12 @@ const ReportsModule: React.FC = () => {
                 <p className="text-sm font-medium text-gray-600">Ticket Médio Global</p>
                 <p className="text-2xl font-bold text-gray-900">{formatCurrency(metrics.global_avg_ticket)}</p>
               </div>
-              <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-purple-600" />
-              </div>
+              <IconBadge
+                icon={<DollarSign className="w-6 h-6" />}
+                variant="purple"
+                size="xl"
+                shape="circle"
+              />
             </div>
           </div>
 
@@ -395,9 +405,12 @@ const ReportsModule: React.FC = () => {
                 <p className="text-sm font-medium text-gray-600">Total de Vendas</p>
                 <p className="text-2xl font-bold text-gray-900">{metrics.total_sales}</p>
               </div>
-              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
-                <Target className="w-6 h-6 text-orange-600" />
-              </div>
+              <IconBadge
+                icon={<Target className="w-6 h-6" />}
+                variant="orange"
+                size="xl"
+                shape="circle"
+              />
             </div>
           </div>
         </div>

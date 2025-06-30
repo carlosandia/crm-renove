@@ -123,11 +123,10 @@ export interface ConversionFunnel {
 }
 
 export interface Recommendation {
-  type: string;
-  priority: 'low' | 'medium' | 'high';
-  title: string;
-  description: string;
-  action?: string;
+  stage: string;
+  issue: string;
+  suggestion: string;
+  priority: 'high' | 'medium' | 'low';
 }
 
 export interface TimeRange {
@@ -433,7 +432,7 @@ class AnalyticsService {
       member.ranking = index + 1;
     });
 
-    await getCache().set(cacheKey, teamPerformance, this.CACHE_TTL.MEDIUM);
+    await getCache().set(cacheKey, teamPerformance, { ttl: this.CACHE_TTL.MEDIUM });
     return teamPerformance;
   }
 
@@ -492,7 +491,7 @@ class AnalyticsService {
       historical_data: historical,
     };
 
-    await getCache().set(cacheKey, forecast, this.CACHE_TTL.LONG);
+    await getCache().set(cacheKey, forecast, { ttl: this.CACHE_TTL.LONG });
     return forecast;
   }
 
@@ -535,7 +534,7 @@ class AnalyticsService {
       const leadsCount = stageLeads?.length || 0;
       
       // Calcular tempo médio no estágio
-      const avgTimeInStage = this.calculateAvgTimeInStage(conversionData, stageName);
+      const avgTimeInStage = this.calculateAvgTimeInStage(conversionData || [], stageName);
       
       // Calcular taxa de conversão
       const conversionRate = i === 0 ? 100 : previousStageCount > 0 
@@ -585,7 +584,7 @@ class AnalyticsService {
       recommendations,
     };
 
-    await getCache().set(cacheKey, funnel, this.CACHE_TTL.MEDIUM);
+    await getCache().set(cacheKey, funnel, { ttl: this.CACHE_TTL.MEDIUM });
     return funnel;
   }
 

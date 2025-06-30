@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { useSupabaseCrud } from './useSupabaseCrud';
 
 export interface User {
   id: string;
@@ -24,51 +25,48 @@ export interface PipelineMember {
 
 export const useMembers = () => {
   const { user } = useAuth();
-  const [members, setMembers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  
+  // ✅ USANDO NOVO HOOK BASE UNIFICADO
+  const usersCrud = useSupabaseCrud<User>({
+    tableName: 'users',
+    selectFields: 'id, first_name, last_name, email, role, phone, is_active, tenant_id, created_at',
+    defaultOrderBy: { column: 'first_name', ascending: true },
+    enableCache: true,
+    cacheKeyPrefix: 'members',
+    cacheDuration: 300000 // 5 minutos
+  });
 
-  // Carregar membros
-  const loadMembers = useCallback(async () => {
-    if (!user?.tenant_id) {
-      setLoading(false);
-      return;
+  // ============================================
+  // CARREGAMENTO AUTOMÁTICO
+  // ============================================
+
+  useEffect(() => {
+    if (user?.tenant_id && (user.role === 'admin' || user.role === 'member' || user.role === 'super_admin')) {
+      // Filtrar usuários do tenant com roles específicos
+      usersCrud.fetchAll({
+        filters: {
+          tenant_id: user.tenant_id
+        }
+      }).catch(error => {
+        console.warn('⚠️ [useMembers] Erro no carregamento automático:', error);
+      });
     }
+  }, [user?.tenant_id, user?.role]);
 
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Buscar todos os usuários do tenant
-      const { data: usersData, error: usersError } = await supabase
-        .from('users')
-        .select('id, first_name, last_name, email, role, phone, is_active, tenant_id, created_at')
-        .eq('tenant_id', user.tenant_id)
-        .in('role', ['admin', 'member', 'super_admin'])
-        .order('first_name', { ascending: true });
-
-      if (usersError) {
-        throw usersError;
-      }
-
-      setMembers(usersData || []);
-    } catch (err: any) {
-      setError(err.message || 'Erro ao carregar membros');
-      console.error('Erro ao carregar membros:', err);
-      setMembers([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.tenant_id]);
+  // ============================================
+  // FUNÇÕES DE CONVENIÊNCIA (MANTIDAS)
+  // ============================================
 
   // Filtrar membros disponíveis (não vinculados a uma pipeline específica)
   const getAvailableMembers = useCallback((excludeMembers: string[] = []): User[] => {
-    return members.filter(member => !excludeMembers.includes(member.id));
-  }, [members]);
+    return usersCrud.data.filter(member => !excludeMembers.includes(member.id));
+  }, [usersCrud.data]);
 
   // Buscar membros de uma pipeline específica
   const getPipelineMembers = useCallback(async (pipelineId: string): Promise<User[]> => {
     try {
+      console.log('🔍 [useMembers] Buscando membros da pipeline:', pipelineId);
+      
       const { data: pipelineMembers, error } = await supabase
         .from('pipeline_members')
         .select('member_id')
@@ -89,9 +87,10 @@ export const useMembers = () => {
 
       if (usersError) throw usersError;
 
+      console.log('✅ [useMembers] Membros da pipeline encontrados:', users?.length || 0);
       return users || [];
     } catch (err: any) {
-      console.error('Erro ao buscar membros da pipeline:', err);
+      console.error('❌ [useMembers] Erro ao buscar membros da pipeline:', err);
       return [];
     }
   }, []);
@@ -99,6 +98,8 @@ export const useMembers = () => {
   // Vincular membro a pipeline
   const linkMemberToPipeline = useCallback(async (pipelineId: string, memberId: string): Promise<boolean> => {
     try {
+      console.log('🔗 [useMembers] Vinculando membro à pipeline:', { pipelineId, memberId });
+      
       const { error } = await supabase
         .from('pipeline_members')
         .insert({
@@ -107,9 +108,11 @@ export const useMembers = () => {
         });
 
       if (error) throw error;
+      
+      console.log('✅ [useMembers] Membro vinculado com sucesso');
       return true;
     } catch (err: any) {
-      console.error('Erro ao vincular membro à pipeline:', err);
+      console.error('❌ [useMembers] Erro ao vincular membro à pipeline:', err);
       return false;
     }
   }, []);
@@ -117,6 +120,8 @@ export const useMembers = () => {
   // Desvincular membro de pipeline
   const unlinkMemberFromPipeline = useCallback(async (pipelineId: string, memberId: string): Promise<boolean> => {
     try {
+      console.log('🔗 [useMembers] Desvinculando membro da pipeline:', { pipelineId, memberId });
+      
       const { error } = await supabase
         .from('pipeline_members')
         .delete()
@@ -124,40 +129,69 @@ export const useMembers = () => {
         .eq('member_id', memberId);
 
       if (error) throw error;
+      
+      console.log('✅ [useMembers] Membro desvinculado com sucesso');
       return true;
     } catch (err: any) {
-      console.error('Erro ao desvincular membro da pipeline:', err);
+      console.error('❌ [useMembers] Erro ao desvincular membro da pipeline:', err);
       return false;
     }
   }, []);
 
   // Obter vendedores (apenas role 'member')
   const getSalesMembers = useCallback((): User[] => {
-    return members.filter(member => member.role === 'member' && member.is_active !== false);
-  }, [members]);
+    return usersCrud.data.filter(member => member.role === 'member' && member.is_active !== false);
+  }, [usersCrud.data]);
 
   // Obter admins
   const getAdminMembers = useCallback((): User[] => {
-    return members.filter(member => member.role === 'admin' && member.is_active !== false);
-  }, [members]);
+    return usersCrud.data.filter(member => member.role === 'admin' && member.is_active !== false);
+  }, [usersCrud.data]);
 
-  // Carregar membros ao montar o hook
-  useEffect(() => {
-    if (user?.tenant_id && (user.role === 'admin' || user.role === 'member' || user.role === 'super_admin')) {
-      loadMembers();
-    }
-  }, [user?.tenant_id, user?.role, loadMembers]);
+  // ============================================
+  // INTERFACE COMPATÍVEL (MANTIDA)
+  // ============================================
 
   return {
-    members,
-    loading,
-    error,
-    loadMembers,
+    // ✅ DADOS DO HOOK BASE UNIFICADO
+    members: usersCrud.data,
+    loading: usersCrud.isLoading,
+    error: usersCrud.error,
+    
+    // ✅ OPERAÇÕES DO HOOK BASE UNIFICADO  
+    loadMembers: () => usersCrud.fetchAll({
+      filters: {
+        tenant_id: user?.tenant_id
+      }
+    }),
+    
+    // ✅ FUNÇÕES ESPECÍFICAS MANTIDAS
     getAvailableMembers,
     getPipelineMembers,
     linkMemberToPipeline,
     unlinkMemberFromPipeline,
     getSalesMembers,
     getAdminMembers,
+    
+    // ✅ FUNCIONALIDADES EXTRAS DO HOOK BASE
+    refresh: usersCrud.refresh,
+    findMember: (predicate: (member: User) => boolean) => usersCrud.findOne(predicate),
+    findMembers: (predicate: (member: User) => boolean) => usersCrud.findMany(predicate),
+    createMember: usersCrud.create,
+    updateMember: usersCrud.update,
+    deleteMember: usersCrud.remove,
+    
+    // ✅ ESTADOS DETALHADOS
+    states: {
+      isEmpty: usersCrud.isEmpty,
+      hasData: usersCrud.hasData,
+      fetchState: usersCrud.fetchState,
+      createState: usersCrud.createState,
+      updateState: usersCrud.updateState,
+      deleteState: usersCrud.deleteState
+    },
+    
+    // ✅ CONTROLES DE CACHE
+    clearCache: usersCrud.clearCache
   };
 }; 

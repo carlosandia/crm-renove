@@ -14,13 +14,13 @@ export interface PipelineStage {
   id: string;
   name: string;
   order_index: number;
-  temperature_score: number;
-  max_days_allowed: number;
-  time_unit?: 'minutes' | 'hours' | 'days';
   color: string;
   is_system_stage?: boolean;
   is_system?: boolean;
   description?: string;
+  pipeline_id?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Lead {

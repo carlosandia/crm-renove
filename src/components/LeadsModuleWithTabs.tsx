@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useStatePersistence, MODULE_PERSISTENCE_CONFIGS } from '../lib/statePersistence';
+// 🔧 Novos hooks para eliminação de código duplicado
+import { useArrayState } from '../hooks/useArrayState';
+import { useAsyncState } from '../hooks/useAsyncState';
 import LeadsListEnhanced from './Leads/LeadsListEnhanced';
 import LeadDetailsModal from './Leads/LeadDetailsModal';
 import LeadFormModal from './Leads/LeadFormModal';
@@ -43,9 +46,25 @@ const LeadsModuleWithTabs: React.FC = () => {
     MODULE_PERSISTENCE_CONFIGS.LEADS_MODULE_WITH_TABS
   );
   
-  const [leads, setLeads] = useState<LeadMaster[]>([]);
-  const [filteredLeads, setFilteredLeads] = useState<LeadMaster[]>([]);
-  const [loading, setLoading] = useState(true);
+  // 🔧 REFATORADO: Usando useArrayState para eliminar duplicação  
+  const leadsState = useArrayState<LeadMaster>([]);
+  const leads = leadsState.items;
+  const filteredLeads = leadsState.filteredItems;
+  const setFilteredLeads = leadsState.setFilteredItems;
+  
+  // 🔧 Wrapper de compatibilidade para setLeads
+  const setLeads = useCallback((updater: LeadMaster[] | ((prev: LeadMaster[]) => LeadMaster[])) => {
+    if (typeof updater === 'function') {
+      leadsState.setItems(updater(leadsState.items));
+    } else {
+      leadsState.setItems(updater);
+    }
+  }, [leadsState]);
+  
+  // 🔧 REFATORADO: Estado assíncrono para carregamento
+  const leadsAsync = useAsyncState<LeadMaster[]>();
+  const loading = leadsAsync.loading;
+  const setLoading = leadsAsync.setLoading;
   const [searchTerm, setSearchTerm] = useState(persistedState.searchTerm || '');
   const [statusFilter, setStatusFilter] = useState(persistedState.statusFilter || 'all');
   const [temperatureFilter, setTemperatureFilter] = useState(persistedState.temperatureFilter || 'all');
@@ -58,12 +77,22 @@ const LeadsModuleWithTabs: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'leads' | 'pending'>(persistedState.activeTab || 'leads');
 
   // ✅ Estado local para leads atualizados (sincronização com LeadDetailsModal)
-  const [localLeads, setLocalLeads] = useState<LeadMaster[]>([]);
+  const localLeadsState = useArrayState<LeadMaster>([]);
+  const localLeads = localLeadsState.items;
+  
+  // 🔧 Wrapper de compatibilidade para setLocalLeads
+  const setLocalLeads = useCallback((updater: LeadMaster[] | ((prev: LeadMaster[]) => LeadMaster[])) => {
+    if (typeof updater === 'function') {
+      localLeadsState.setItems(updater(localLeadsState.items));
+    } else {
+      localLeadsState.setItems(updater);
+    }
+  }, [localLeadsState]);
 
   // ✅ Sincronizar leads locais com estado principal
   useEffect(() => {
-    setLocalLeads(leads);
-  }, [leads]);
+    localLeadsState.replaceAll(leads);
+  }, [leads, localLeadsState]);
 
   // ✅ Callback para atualizar lead específico
   const handleLeadUpdated = useCallback((updatedLead: LeadMaster) => {

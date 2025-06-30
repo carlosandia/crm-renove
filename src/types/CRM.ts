@@ -3,6 +3,114 @@
 // =====================================================
 
 // ============================================
+// ✅ CATEGORIA 5.1: TIPOS ESPECÍFICOS - INTERFACES CUSTOMIZADAS
+// ============================================
+
+/**
+ * ✅ SUBSTITUIÇÃO: settings: Record<string, any> → interface CompanySettings
+ * Configurações específicas da empresa baseadas na análise de uso real
+ */
+export interface CompanySettings {
+  // Form Builder & Lead Qualification
+  qualification_rules?: {
+    prevent_duplicates?: boolean;
+    capture_ip?: boolean;
+    capture_user_agent?: boolean;
+    require_company?: boolean;
+    job_titles?: string;
+    states?: string;
+    min_value?: string;
+  };
+  
+  // WhatsApp Integration
+  whatsapp_number?: string;
+  whatsapp_message?: string;
+  
+  // Form Settings
+  success_message?: string;
+  enable_double_optin?: boolean;
+  redirect_url?: string;
+  pipeline_id?: string;
+  assigned_to?: string;
+  enable_captcha?: boolean;
+  enable_analytics?: boolean;
+  
+  // Global Tracking
+  globalSettings?: {
+    defaultCurrency?: string;
+    trackingEnabled?: boolean;
+    debugMode?: boolean;
+  };
+  
+  // Notification Settings
+  notification_settings?: {
+    showNotifications?: boolean;
+    autoHide?: boolean;
+    hideDelay?: number;
+    successMessage?: string;
+    errorMessage?: string;
+    successBackgroundColor?: string;
+    successTextColor?: string;
+    errorBackgroundColor?: string;
+    errorTextColor?: string;
+  };
+  
+  // Email Settings
+  email_settings?: {
+    enabled?: boolean;
+    recipients?: string[];
+    subject?: string;
+    template?: string;
+    sendOnSubmit?: boolean;
+    sendOnWhatsApp?: boolean;
+    includeLeadData?: boolean;
+    includeMQLScore?: boolean;
+  };
+  
+  // Extensible for future settings
+  [key: string]: unknown;
+}
+
+/**
+ * ✅ SUBSTITUIÇÃO: custom_data: Record<string, any> → interface LeadCustomData
+ * Dados customizados do lead baseados na análise de uso real
+ */
+export interface LeadCustomData {
+  // Contact Information (Portuguese/English variants)
+  email?: string;
+  Email?: string;
+  
+  // Name fields
+  first_name?: string;
+  last_name?: string;
+  nome?: string;
+  sobrenome?: string;
+  
+  // Phone fields
+  phone?: string;
+  telefone?: string;
+  
+  // Company fields
+  company?: string;
+  empresa?: string;
+  
+  // Form tracking fields
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  utm_term?: string;
+  utm_content?: string;
+  
+  // Lead scoring and qualification
+  lead_score?: number;
+  is_mql?: boolean;
+  qualification_status?: 'pending' | 'qualified' | 'unqualified';
+  
+  // Extensible for custom pipeline fields
+  [key: string]: unknown;
+}
+
+// ============================================
 // CORE ENTITIES
 // ============================================
 
@@ -10,7 +118,7 @@ export interface Company {
   id: string;
   name: string;
   domain?: string;
-  settings: Record<string, any>;
+  settings: CompanySettings; // ✅ CATEGORIA 5.1: Record<string, any> → CompanySettings
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -123,7 +231,7 @@ export interface Lead {
   
   // Metadata
   source: string;
-  custom_data: Record<string, any>;
+  custom_data: LeadCustomData; // ✅ CATEGORIA 5.1: Record<string, any> → LeadCustomData
   
   // Audit fields
   created_by: string;
@@ -166,7 +274,7 @@ export interface LegacyLead {
   id: string;
   pipeline_id: string;
   stage_id: string;
-  custom_data: Record<string, any>;
+  custom_data: LeadCustomData; // ✅ CATEGORIA 5.1: Record<string, any> → LeadCustomData
   created_at: string;
   updated_at: string;
   moved_at?: string;
@@ -201,7 +309,7 @@ export interface CreateLeadData {
   contact_phone?: string;
   company_name?: string;
   source?: string;
-  custom_data?: Record<string, any>;
+  custom_data?: LeadCustomData; // ✅ CATEGORIA 5.1: Record<string, any> → LeadCustomData
 }
 
 export interface UpdateLeadData {
@@ -215,7 +323,7 @@ export interface UpdateLeadData {
   company_name?: string;
   stage_id?: string;
   owner_id?: string;
-  custom_data?: Record<string, any>;
+  custom_data?: LeadCustomData; // ✅ CATEGORIA 5.1: Record<string, any> → LeadCustomData
 }
 
 export interface UserPermissions {
@@ -350,28 +458,28 @@ export type FieldType = 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'nu
 export const isAdmin = (user: User): boolean => ['super_admin', 'admin'].includes(user.role);
 export const isManager = (user: User): boolean => ['super_admin', 'admin', 'manager'].includes(user.role);
 export const canViewAllLeads = (user: User): boolean => ['super_admin', 'admin'].includes(user.role);
-export const canManageTeam = (user: User): boolean => ['super_admin', 'admin', 'manager'].includes(user.role);
-
 // ============================================
 // MIGRATION HELPERS
 // ============================================
 
 // Convert legacy lead to new lead structure
 export const migrateLegacyLead = (legacyLead: LegacyLead, companyId: string, ownerId: string): Partial<Lead> => {
+  const customData = legacyLead.custom_data || {};
+  
   return {
     id: legacyLead.id,
     company_id: companyId,
     pipeline_id: legacyLead.pipeline_id,
     stage_id: legacyLead.stage_id,
     owner_id: legacyLead.assigned_to || ownerId,
-    title: legacyLead.custom_data?.nome_lead || legacyLead.custom_data?.title || 'Lead sem título',
-    value: legacyLead.custom_data?.value || 0,
+    title: String((customData as any).nome_lead || (customData as any).title || 'Lead sem título'),
+    value: Number((customData as any).value) || 0,
     currency: 'BRL',
     probability: 0,
-    contact_name: legacyLead.custom_data?.nome_lead,
-    contact_email: legacyLead.custom_data?.email,
-    contact_phone: legacyLead.custom_data?.telefone || legacyLead.custom_data?.phone,
-    company_name: legacyLead.custom_data?.empresa || legacyLead.custom_data?.company,
+    contact_name: String((customData as any).nome_lead || ''),
+    contact_email: String((customData as any).email || ''),
+    contact_phone: String((customData as any).telefone || (customData as any).phone || ''),
+    company_name: String((customData as any).empresa || (customData as any).company || ''),
     source: legacyLead.source || 'manual',
     custom_data: legacyLead.custom_data,
     created_by: legacyLead.created_by || ownerId,
@@ -384,4 +492,4 @@ export const migrateLegacyLead = (legacyLead: LegacyLead, companyId: string, own
     moved_at: legacyLead.moved_at,
     status: legacyLead.status
   };
-}; 
+};

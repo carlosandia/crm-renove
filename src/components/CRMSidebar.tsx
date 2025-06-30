@@ -56,7 +56,6 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate, onTog
   const [collapsed, setCollapsed] = useState(false);
   const [availablePipelines, setAvailablePipelines] = useState<Pipeline[]>([]);
   const [userPipelines, setUserPipelines] = useState<Pipeline[]>([]);
-  const [loading, setLoading] = useState(false);
 
   // Carregar pipelines com logs condicionais
   const loadPipelines = async () => {
@@ -335,7 +334,6 @@ const CRMSidebar: React.FC<CRMSidebarProps> = ({ activeModule, onNavigate, onTog
             {!collapsed && (
               <button
                 onClick={() => {
-                  // TODO: Implementar modal de edição do usuário
                   alert('Funcionalidade de edição do usuário será implementada em breve');
                 }}
                 className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg"

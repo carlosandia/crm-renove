@@ -72,7 +72,7 @@ router.get('/',
       is_active
     } = req.query;
 
-    // 1. Construir query base
+    // 1. ✅ CORREÇÃO: Query simples primeiro, depois buscar admins separadamente
     let query = supabase.from('companies').select('*', { count: 'exact' });
 
     // 2. Admins só veem a própria empresa
@@ -100,11 +100,51 @@ router.get('/',
       .order('created_at', { ascending: false });
 
     // 5. Executar query
-    const { data: companies, error, count } = await query;
+    const { data: companiesRaw, error, count } = await query;
 
     if (error) {
       throw new Error(`Erro ao buscar empresas: ${error.message}`);
     }
+
+    // 6. ✅ CORREÇÃO: Buscar admins separadamente para cada empresa
+    const companies = await Promise.all(
+      (companiesRaw || []).map(async (company: any) => {
+        try {
+          // Buscar admin da empresa
+          const { data: adminData, error: adminError } = await supabase
+            .from('users')
+            .select('id, email, first_name, last_name, is_active, created_at, role')
+            .eq('tenant_id', company.id)
+            .eq('role', 'admin')
+            .maybeSingle();
+
+          const admin = (!adminError && adminData) ? {
+            id: adminData.id,
+            email: adminData.email,
+            first_name: adminData.first_name,
+            last_name: adminData.last_name,
+            is_active: adminData.is_active,
+            created_at: adminData.created_at
+          } : null;
+
+          return {
+            ...company,
+            admin
+          };
+        } catch (err) {
+          console.warn(`⚠️ Erro ao buscar admin da empresa ${company.name}:`, err);
+          return {
+            ...company,
+            admin: null
+          };
+        }
+      })
+    );
+
+    console.log(`✅ [GET-COMPANIES] Retornando ${companies.length} empresas com admins vinculados`);
+    companies.forEach(c => {
+      console.log(`   - ${c.name}: ${c.admin ? `Admin ${c.admin.first_name} (${c.admin.email})` : 'Sem admin'}`);
+    });
 
     const totalPages = Math.ceil((count || 0) / (limit as number));
 
@@ -231,7 +271,7 @@ router.post('/',
       throw new Error(`Erro ao criar empresa: ${companyError.message}`);
     }
 
-    // 4. 🔧 ETAPA 3: Criar admin com senha hasheada corretamente
+    // 4. 🔧 CORREÇÃO COMPLETA: Criar admin na tabela public.users E auth.users
     const adminNames = admin_name.trim().split(' ');
     const firstName = adminNames[0];
     const lastName = adminNames.slice(1).join(' ') || '';
@@ -240,44 +280,148 @@ router.post('/',
     const { hashPassword } = await import('../utils/security');
     const hashedPassword = await hashPassword(admin_password);
 
-    const { data: newAdmin, error: adminError } = await supabase
-      .from('users')
-      .insert([{
-        email: admin_email,
-        first_name: firstName,
-        last_name: lastName,
-        role: 'admin',
-        tenant_id: newCompany.id,
-        is_active: false, // 🔧 ETAPA 3: Admin criado como inativo até ativação
-        password_hash: hashedPassword // 🔧 ETAPA 3: Usar senha hasheada
-      }])
-      .select()
-      .single();
+    let newAdmin;
+    let authUserId;
 
-    if (adminError) {
-      // Rollback: remover empresa criada
+    try {
+      // 🔧 CORREÇÃO TEMPORÁRIA: Criar admin apenas em public.users 
+      // TODO: Configurar Supabase para permitir auth.admin.createUser posteriormente
+      console.log('⚠️ [TEMPORARY] Criando admin apenas em public.users (sem auth.users)...');
+      
+      // Gerar ID único para o admin
+      authUserId = crypto.randomUUID();
+      
+      // ✅ CORREÇÃO CRÍTICA: Criar admin como INATIVO para processo de ativação
+      const { data: publicUser, error: publicError } = await supabase
+        .from('users')
+        .insert([{
+          id: authUserId,
+          email: admin_email,
+          first_name: firstName,
+          last_name: lastName,
+          role: 'admin',
+          tenant_id: newCompany.id,
+          is_active: false, // ✅ CORREÇÃO: Admin criado como INATIVO até ativação via email
+          password_hash: hashedPassword, // Senha temporária até ativação
+          auth_user_id: null // NULL até ativação completa
+        }])
+        .select()
+        .single();
+
+      if (publicError) {
+        throw new Error(`Erro ao criar admin na public.users: ${publicError.message}`);
+      }
+
+      newAdmin = publicUser;
+      console.log(`✅ [INACTIVE] Admin criado como INATIVO: ${admin_email} (ID: ${authUserId})`);
+      console.log(`📧 [ACTIVATION] Admin aguarda ativação via email para acessar sistema`);
+
+    } catch (error) {
+      // Rollback: remover empresa se criada
       await supabase.from('companies').delete().eq('id', newCompany.id);
-      throw new Error(`Erro ao criar admin: ${adminError.message}`);
+      throw new Error(`Erro ao criar admin: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    // 5. Log de auditoria
-    console.log(`✅ Empresa criada: ${name} com admin ${admin_email} por ${req.user?.email}`);
+    // 5. ✅ ENVIO AUTOMÁTICO DE EMAIL DE ATIVAÇÃO
+    console.log('📧 [ACTIVATION] Enviando convite de ativação automaticamente...');
+    
+    try {
+      // Importar emailService
+      const { emailService } = await import('../services/emailService');
+      
+      // Gerar token de ativação único
+      const activationToken = `inv_${Date.now()}_${Math.random().toString(36).substr(2, 16)}`;
+      
+      // Armazenar token no campo segment da empresa (método alternativo)
+      const invitationSegment = `INVITATION:${activationToken}:${new Date().toISOString()}`;
+      const { error: updateError } = await supabase
+        .from('companies')
+        .update({
+          segment: `${newCompany.segment || ''} | ${invitationSegment}`.trim()
+        })
+        .eq('id', newCompany.id);
 
-    const response: ApiResponse = {
-      success: true,
-      data: {
-        company: newCompany,
-        admin: newAdmin,
-        credentials: {
-          email: admin_email,
-          password: admin_password
-        }
-      },
-      message: `Empresa "${name}" e administrador criados com sucesso`,
-      timestamp: new Date().toISOString()
-    };
+      if (updateError) {
+        console.warn('⚠️ [ACTIVATION] Erro ao salvar token de ativação:', updateError.message);
+      } else {
+        console.log('✅ [ACTIVATION] Token de ativação salvo no banco');
+      }
 
-    res.status(201).json(response);
+      // Enviar email de ativação
+      const emailResult = await emailService.sendAdminInvitation({
+        companyName: name,
+        adminName: `${firstName} ${lastName}`.trim(),
+        adminEmail: admin_email,
+        activationToken,
+        expiresIn: '48 horas'
+      });
+
+      // 6. Log de auditoria + resultado email
+      if (emailResult.success) {
+        console.log(`✅ [ACTIVATION] Email enviado com sucesso para ${admin_email} (MessageID: ${emailResult.messageId})`);
+        console.log(`✅ Empresa criada: ${name} com admin ${admin_email} + convite enviado por ${req.user?.email}`);
+        
+        const response: ApiResponse = {
+          success: true,
+          data: {
+            company: newCompany,
+            admin: newAdmin,
+            activation: {
+              email_sent: true,
+              activation_token: activationToken,
+              activation_url: `${process.env.APP_URL || 'http://localhost:8080'}/activate?token=${activationToken}`,
+              expires_in: '48 horas',
+              message_id: emailResult.messageId
+            }
+          },
+          message: `Empresa "${name}" criada e convite de ativação enviado para ${admin_email}`,
+          timestamp: new Date().toISOString()
+        };
+
+        res.status(201).json(response);
+      } else {
+        console.error('❌ [ACTIVATION] Falha no envio do email:', emailResult.error);
+        console.log(`⚠️ Empresa criada: ${name} com admin ${admin_email}, mas email falhou por ${req.user?.email}`);
+        
+        const response: ApiResponse = {
+          success: true,
+          data: {
+            company: newCompany,
+            admin: newAdmin,
+            activation: {
+              email_sent: false,
+              error: emailResult.error,
+              manual_activation_required: true
+            }
+          },
+          message: `Empresa "${name}" criada, mas falha no envio do email de ativação`,
+          timestamp: new Date().toISOString()
+        };
+
+        res.status(201).json(response);
+      }
+      
+    } catch (emailError: any) {
+      console.error('❌ [ACTIVATION] Erro crítico no envio do email:', emailError);
+      console.log(`⚠️ Empresa criada: ${name} com admin ${admin_email}, mas erro crítico no email por ${req.user?.email}`);
+      
+      const response: ApiResponse = {
+        success: true,
+        data: {
+          company: newCompany,
+          admin: newAdmin,
+          activation: {
+            email_sent: false,
+            error: emailError.message,
+            manual_activation_required: true
+          }
+        },
+        message: `Empresa "${name}" criada, mas erro no sistema de email`,
+        timestamp: new Date().toISOString()
+      };
+
+      res.status(201).json(response);
+    }
   })
 );
 
@@ -455,6 +599,212 @@ router.put('/update-expectations',
       success: true,
       data: updatedCompany,
       message: 'Expectativas mensais atualizadas com sucesso',
+      timestamp: new Date().toISOString()
+    };
+
+    res.json(response);
+  })
+);
+
+/**
+ * PUT /api/companies/update-info - Atualizar informações da empresa
+ * IMPORTANTE: Esta rota deve vir ANTES de /:id para evitar conflitos de roteamento
+ */
+router.put('/update-info',
+  requireRole(['super_admin', 'admin']),
+  validateRequest({
+    body: {
+      companyId: { required: true, type: 'string', uuid: true },
+      companyData: { required: true, type: 'object' }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { companyId, companyData } = req.body;
+
+    console.log('🔧 [UPDATE-COMPANY-INFO] Recebendo requisição:', { 
+      companyId: companyId || 'MISSING', 
+      hasCompanyData: !!companyData,
+      user: req.user?.email 
+    });
+
+    // 1. Verificar permissões
+    if (req.user?.role === 'admin' && companyId !== req.user.tenant_id) {
+      console.log('❌ [UPDATE-COMPANY-INFO] Permissão negada:', { 
+        userRole: req.user?.role, 
+        userTenant: req.user?.tenant_id, 
+        requestedCompany: companyId 
+      });
+      throw new ForbiddenError('Admins só podem atualizar a própria empresa');
+    }
+
+    // 2. Verificar se empresa existe
+    const { data: existingCompany } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('id', companyId)
+      .single();
+
+    if (!existingCompany) {
+      console.log('❌ [UPDATE-COMPANY-INFO] Empresa não encontrada:', companyId);
+      throw new NotFoundError('Empresa não encontrada');
+    }
+
+    console.log('✅ [UPDATE-COMPANY-INFO] Empresa encontrada:', existingCompany.name);
+
+    // 3. Preparar dados para atualização (apenas campos permitidos)
+    const allowedFields = ['name', 'industry', 'website', 'phone', 'email', 'address', 'city', 'state', 'country'];
+    const updateData: any = {
+      updated_at: new Date().toISOString()
+    };
+
+    // Filtrar apenas campos permitidos e que tenham valor
+    for (const field of allowedFields) {
+      if (companyData[field] !== undefined && companyData[field] !== null) {
+        updateData[field] = companyData[field];
+      }
+    }
+
+    console.log('🔧 [UPDATE-COMPANY-INFO] Dados para atualização:', updateData);
+
+    // 4. Atualizar empresa
+    const { data: updatedCompany, error } = await supabase
+      .from('companies')
+      .update(updateData)
+      .eq('id', companyId)
+      .select()
+      .single();
+
+    if (error) {
+      console.log('❌ [UPDATE-COMPANY-INFO] Erro ao atualizar:', error.message);
+      throw new Error(`Erro ao atualizar empresa: ${error.message}`);
+    }
+
+    console.log(`✅ [UPDATE-COMPANY-INFO] Empresa "${existingCompany.name}" atualizada com sucesso por ${req.user?.email}`);
+
+    const response: ApiResponse = {
+      success: true,
+      data: updatedCompany,
+      message: 'Informações da empresa atualizadas com sucesso',
+      timestamp: new Date().toISOString()
+    };
+
+    res.json(response);
+  })
+);
+
+/**
+ * PUT /api/companies/update-admin-info - Atualizar informações do administrador
+ * IMPORTANTE: Esta rota deve vir ANTES de /:id para evitar conflitos de roteamento
+ */
+router.put('/update-admin-info',
+  requireRole(['super_admin', 'admin']),
+  validateRequest({
+    body: {
+      companyId: { required: true, type: 'string', uuid: true },
+      adminData: { required: true, type: 'object' }
+    }
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { companyId, adminData } = req.body;
+
+    console.log('🔧 [UPDATE-ADMIN-INFO] Recebendo requisição:', { 
+      companyId: companyId || 'MISSING', 
+      hasAdminData: !!adminData,
+      user: req.user?.email 
+    });
+
+    // 1. Verificar permissões
+    if (req.user?.role === 'admin' && companyId !== req.user.tenant_id) {
+      console.log('❌ [UPDATE-ADMIN-INFO] Permissão negada:', { 
+        userRole: req.user?.role, 
+        userTenant: req.user?.tenant_id, 
+        requestedCompany: companyId 
+      });
+      throw new ForbiddenError('Admins só podem atualizar a própria empresa');
+    }
+
+    // 2. Verificar se empresa existe
+    const { data: existingCompany } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('id', companyId)
+      .single();
+
+    if (!existingCompany) {
+      console.log('❌ [UPDATE-ADMIN-INFO] Empresa não encontrada:', companyId);
+      throw new NotFoundError('Empresa não encontrada');
+    }
+
+    console.log('✅ [UPDATE-ADMIN-INFO] Empresa encontrada:', existingCompany.name);
+
+    // 3. Encontrar admin da empresa
+    const { data: adminUser, error: adminError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('tenant_id', companyId)
+      .eq('role', 'admin')
+      .single();
+
+    if (adminError || !adminUser) {
+      console.log('❌ [UPDATE-ADMIN-INFO] Admin não encontrado:', { 
+        companyId, 
+        error: adminError?.message 
+      });
+      throw new NotFoundError('Administrador da empresa não encontrado');
+    }
+
+    console.log('✅ [UPDATE-ADMIN-INFO] Admin encontrado:', adminUser.email);
+
+    // 4. Preparar dados para atualização (apenas campos permitidos)
+    const updateData: any = {
+      updated_at: new Date().toISOString()
+    };
+
+    // Atualizar nome (dividir em first_name e last_name)
+    if (adminData.name) {
+      const nameParts = adminData.name.trim().split(' ');
+      updateData.first_name = nameParts[0];
+      updateData.last_name = nameParts.slice(1).join(' ') || '';
+    }
+
+    // Atualizar email
+    if (adminData.email && adminData.email !== adminUser.email) {
+      // Verificar se email já está em uso
+      const { data: emailExists } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', adminData.email)
+        .neq('id', adminUser.id)
+        .single();
+
+      if (emailExists) {
+        throw new ConflictError('Email já está em uso por outro usuário');
+      }
+
+      updateData.email = adminData.email;
+    }
+
+    console.log('🔧 [UPDATE-ADMIN-INFO] Dados para atualização:', updateData);
+
+    // 5. Atualizar admin
+    const { data: updatedAdmin, error: updateError } = await supabase
+      .from('users')
+      .update(updateData)
+      .eq('id', adminUser.id)
+      .select('id, email, first_name, last_name, is_active, created_at, role')
+      .single();
+
+    if (updateError) {
+      console.log('❌ [UPDATE-ADMIN-INFO] Erro ao atualizar:', updateError.message);
+      throw new Error(`Erro ao atualizar administrador: ${updateError.message}`);
+    }
+
+    console.log(`✅ [UPDATE-ADMIN-INFO] Admin "${adminUser.email}" da empresa "${existingCompany.name}" atualizado com sucesso por ${req.user?.email}`);
+
+    const response: ApiResponse = {
+      success: true,
+      data: updatedAdmin,
+      message: 'Informações do administrador atualizadas com sucesso',
       timestamp: new Date().toISOString()
     };
 

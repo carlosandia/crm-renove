@@ -19,6 +19,7 @@ import { Badge } from '../ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Input } from '../ui/input';
+import { DetailsModalProps } from '../../types/CommonProps';
 
 interface LeadMaster {
   id: string;
@@ -70,10 +71,9 @@ interface Opportunity {
   created_by_name?: string;
 }
 
-interface LeadViewModalProps {
+interface LeadViewModalProps extends Omit<DetailsModalProps<LeadMaster>, 'item'> {
   leadData: LeadMaster | null;
-  isOpen: boolean;
-  onClose: () => void;
+  item?: LeadMaster | null; // Opcional para compatibilidade
   onLeadUpdated?: (updatedLead: LeadMaster) => void;
 }
 
@@ -87,10 +87,18 @@ interface EditValues {
 
 const LeadViewModal: React.FC<LeadViewModalProps> = ({
   leadData,
+  item, // Nova prop da DetailsModalProps
   isOpen,
   onClose,
-  onLeadUpdated
+  onLeadUpdated,
+  title,
+  loading,
+  canEdit = true,
+  canDelete = false,
+  ...modalProps
 }) => {
+  // Usar item se fornecido, senão usar leadData (compatibilidade)
+  const lead = item || leadData;
   const { user } = useAuth();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('info');
@@ -109,12 +117,12 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
   // EARLY RETURNS SIMPLIFICADOS
   // ============================================
 
-  if (!isOpen || !leadData) {
+  if (!isOpen || !lead) {
     return null;
   }
 
-  // Usar dados locais atualizados se disponíveis, senão usar leadData original
-  const currentLeadData = localLeadData || leadData;
+  // Usar dados locais atualizados se disponíveis, senão usar lead original
+  const currentLeadData = localLeadData || lead;
 
   // ============================================
   // MEMOIZED FUNCTIONS

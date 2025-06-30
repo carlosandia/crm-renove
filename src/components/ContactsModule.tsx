@@ -152,7 +152,21 @@ export function ContactsModule({ className }: ContactsModuleProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {/* TODO: Export functionality */}}
+              onClick={async () => {
+                try {
+                  const csvContent = contacts.map(c => 
+                    `"${c.first_name || ''} ${c.last_name || ''}","${c.email || ''}","${c.phone || ''}","${c.company || ''}","${c.created_at || ''}"`
+                  ).join('\n');
+                  const blob = new Blob([`Nome,Email,Telefone,Empresa,Data\n${csvContent}`], 
+                    { type: 'text/csv;charset=utf-8;' });
+                  const link = document.createElement('a');
+                  link.href = URL.createObjectURL(blob);
+                  link.download = `contatos_${new Date().toISOString().split('T')[0]}.csv`;
+                  link.click();
+                } catch (error) {
+                  console.error('Erro ao exportar:', error);
+                }
+              }}
             >
               <Download className="w-4 h-4 mr-2" />
               Exportar
@@ -161,7 +175,19 @@ export function ContactsModule({ className }: ContactsModuleProps) {
             <Button
               variant="outline"  
               size="sm"
-              onClick={() => {/* TODO: Import functionality */}}
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.csv';
+                input.onchange = (e) => {
+                  const file = (e.target as HTMLInputElement).files?.[0];
+                  if (file) {
+                    console.log('Arquivo selecionado:', file.name);
+                    // Implementação de importação pode ser adicionada aqui
+                  }
+                };
+                input.click();
+              }}
             >
               <Upload className="w-4 h-4 mr-2" />
               Importar

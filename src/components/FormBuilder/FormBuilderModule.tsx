@@ -2,28 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import FormBuilderList from './FormBuilderList';
-import FormBuilderEditor from './FormBuilderEditor';
 import { Plus, FileText, Eye, Settings, TrendingUp, ArrowLeft, Zap, Edit3, Trash2, ExternalLink, Copy, MoreVertical } from 'lucide-react';
-import FormBuilderModal from './FormBuilderModal';
 import ModernFormBuilder from './ModernFormBuilder';
 import PublicFormRenderer from './PublicFormRenderer';
-
-interface CustomForm {
-  id: string;
-  name: string;
-  description?: string;
-  slug: string;
-  is_active: boolean;
-  settings: any;
-  styling: any;
-  redirect_url?: string;
-  pipeline_id?: string;
-  assigned_to?: string;
-  qualification_rules: any;
-  formio_schema?: any;
-  created_at: string;
-  updated_at: string;
-}
+import { CustomForm } from '../../types/Forms';
+import { FormTypeSelector } from './types/FormTypeSelector';
+import { FormTypeConfigurator } from './types/FormTypeConfigurator';
+import { FormType, FormTypeConfig } from './types/FormTypeDefinitions';
 
 interface FormStats {
   total_forms: number;
@@ -46,9 +31,14 @@ const FormBuilderModule: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [editorMode, setEditorMode] = useState<'list' | 'editor'>('list');
   const [editingForm, setEditingForm] = useState<CustomForm | null>(null);
-  const [showModal, setShowModal] = useState(false);
-  const [currentView, setCurrentView] = useState<'list' | 'builder' | 'preview'>('list');
+  const [currentView, setCurrentView] = useState<'list' | 'builder' | 'preview' | 'type-selector' | 'type-configurator'>('list');
   const [selectedForm, setSelectedForm] = useState<CustomForm | null>(null);
+  
+  // NOVOS ESTADOS PARA FORM TYPE EVOLUTION
+  const [isTypeSelectorOpen, setIsTypeSelectorOpen] = useState(false);
+  const [selectedFormType, setSelectedFormType] = useState<FormType | null>(null);
+  const [formTypeConfig, setFormTypeConfig] = useState<FormTypeConfig | null>(null);
+  const [isTypeConfiguratorOpen, setIsTypeConfiguratorOpen] = useState(false);
 
   // Carregar formulários
   const loadForms = async () => {
@@ -120,9 +110,32 @@ const FormBuilderModule: React.FC = () => {
   }, [user?.tenant_id]);
 
   const handleCreateForm = () => {
+    // NOVO FLUXO: Abrir modal de seleção de tipos primeiro
     setEditingForm(null);
     setSelectedForm(null);
+    setSelectedFormType(null);
+    setFormTypeConfig(null);
+    setIsTypeSelectorOpen(true);
+  };
+
+  // NOVOS HANDLERS PARA FORM TYPE EVOLUTION
+  const handleFormTypeSelect = (formType: FormType) => {
+    setSelectedFormType(formType);
+    setIsTypeSelectorOpen(false);
+    setIsTypeConfiguratorOpen(true);
+  };
+
+  const handleFormTypeConfigComplete = (config: FormTypeConfig) => {
+    setFormTypeConfig(config);
+    setIsTypeConfiguratorOpen(false);
     setCurrentView('builder');
+  };
+
+  const handleCancelTypeSelection = () => {
+    setIsTypeSelectorOpen(false);
+    setIsTypeConfiguratorOpen(false);
+    setSelectedFormType(null);
+    setFormTypeConfig(null);
   };
 
   const handleEditForm = (form: CustomForm) => {
@@ -193,7 +206,9 @@ const FormBuilderModule: React.FC = () => {
           description: form.description,
           slug: `${form.slug}-copy-${Date.now()}`,
           is_active: false,
-          formio_schema: form.formio_schema,
+          settings: form.settings,
+          styling: form.styling,
+          qualification_rules: form.qualification_rules,
           tenant_id: user?.tenant_id
         })
         .select()
@@ -224,6 +239,7 @@ const FormBuilderModule: React.FC = () => {
         onSave={handleSaveForm}
         onCancel={handleCancelEdit}
         tenantId={user.tenant_id}
+
       />
     );
   }
@@ -415,17 +431,33 @@ const FormBuilderModule: React.FC = () => {
         />
       </div>
 
-      {/* Modal antigo mantido para compatibilidade */}
-      {showModal && (
-        <FormBuilderModal
-          isOpen={showModal}
-          onClose={() => setShowModal(false)}
-          form={editingForm}
-          onSave={loadForms}
-          onCancel={() => setShowModal(false)}
-          tenantId={user?.tenant_id || 'default'}
+      {/* MODAIS PARA FORM TYPE EVOLUTION */}
+      
+      {/* Modal de Seleção de Tipos */}
+      <FormTypeSelector
+        isOpen={isTypeSelectorOpen}
+        onClose={handleCancelTypeSelection}
+        onSelect={handleFormTypeSelect}
+      />
+
+      {/* Modal de Configuração do Tipo */}
+      {selectedFormType && isTypeConfiguratorOpen && (
+        <FormTypeConfigurator
+          formType={selectedFormType}
+          initialConfig={formTypeConfig || undefined}
+          onConfigChange={setFormTypeConfig}
+          onPreview={() => {
+                                // Preview será implementado em versão futura
+            console.log('Preview solicitado para:', selectedFormType.name);
+          }}
+          onSave={() => {
+            if (formTypeConfig) {
+              handleFormTypeConfigComplete(formTypeConfig);
+            }
+          }}
         />
       )}
+
     </div>
   );
 };

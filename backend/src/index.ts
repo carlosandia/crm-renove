@@ -54,6 +54,10 @@ import automationRoutes from './routes/automation';
 // FASE 4A: Admin Dashboard Routes
 import adminDashboardRoutes from './routes/adminDashboard';
 
+// FASE 4: Form Builder Evolution - Backend Endpoints
+import formEmbedRoutes from './routes/formEmbed';
+import formAnalyticsRoutes from './routes/formAnalytics';
+
 // FASE 4B: Member Tools Routes
 import { memberToolsRoutes } from './routes/memberTools';
 
@@ -316,6 +320,10 @@ app.use('/api', authMiddleware);
 app.use('/api/users', usersRoutes);
 app.use('/api/vendedores', vendedoresRoutes);
 
+// Members/Vendedores Enterprise (Backend API)
+import membersRoutes from './routes/members';
+app.use('/api/members', membersRoutes);
+
 // CRM Core
 app.use('/api/customers', customersRoutes);
 app.use('/api/pipelines', pipelinesRoutes);
@@ -328,6 +336,10 @@ app.use('/api/sales-goals', salesGoalsRoutes);
 
 // Formulários
 app.use('/api/forms', formsRoutes);
+
+// FASE 4: Form Builder Evolution - Sistema de Embed
+app.use('/api/embed', formEmbedRoutes);
+app.use('/api/form-analytics', formAnalyticsRoutes);
 
 // Tarefas de Leads
 app.use('/api/lead-tasks', leadTasksRoutes);

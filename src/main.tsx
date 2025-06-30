@@ -3,14 +3,11 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App'
+import { logger } from './utils/logger'
+import './utils/consoleCleaner' // Ativar limpeza de console
 import './index.css'
-import './styles/formio.css'
-import './utils/consoleFilter' // Filtro automático - importar apenas para executar
 
-// Importar diagnóstico do Supabase (apenas em desenvolvimento)
-if (import.meta.env.DEV) {
-  import('./utils/supabaseDiagnostic');
-}
+// Diagnóstico removido para evitar logs desnecessários no console
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,7 +23,7 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
       .then((registration) => {
-        console.log('SW registered: ', registration);
+        logger.info('Service Worker registrado com sucesso');
         
         // Verificar por atualizações
         registration.addEventListener('updatefound', () => {
@@ -45,7 +42,7 @@ if ('serviceWorker' in navigator) {
         });
       })
       .catch((registrationError) => {
-        console.log('SW registration failed: ', registrationError);
+        logger.warn('Falha ao registrar Service Worker', registrationError.message);
       });
   });
 }

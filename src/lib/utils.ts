@@ -6,13 +6,46 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 // ============================================================================
-// FORMATAÇÃO DE NÚMEROS E VALORES
+// IMPORTAÇÕES DE UTILITÁRIOS UNIFICADOS
+// ============================================================================
+
+// Re-exporta utilitários de formatação e array para acesso centralizado
+export { 
+  formatUtils,
+  formatCurrency,
+  formatDate,
+  formatDateTime,
+  formatNumber,
+  formatPercentage,
+  formatPhone,
+  formatName,
+  formatCEP,
+  formatCPF,
+  formatCNPJ
+} from '../utils/formatUtils';
+
+export {
+  arrayUtils,
+  filterActive,
+  filterInactive,
+  filterByStatus,
+  sortByOrderIndex,
+  sortByFieldOrder,
+  sortByName,
+  sortByCreatedAt,
+  sumByField,
+  groupByField,
+  calculateTotalValue
+} from '../utils/arrayUtils';
+
+// ============================================================================
+// UTILITÁRIOS LEGADOS (MANTIDOS PARA COMPATIBILIDADE)
 // ============================================================================
 
 /**
- * Formata números para exibição
+ * @deprecated Use formatUtils.formatNumber from formatUtils
  */
-export function formatNumber(value: number): string {
+export function formatNumberLegacy(value: number): string {
   if (value >= 1000000) {
     return `${(value / 1000000).toFixed(1)}M`;
   } else if (value >= 1000) {
@@ -22,9 +55,9 @@ export function formatNumber(value: number): string {
 }
 
 /**
- * Formata valores monetários
+ * @deprecated Use formatUtils.formatCurrency from formatUtils
  */
-export function formatCurrency(value: number): string {
+export function formatCurrencyLegacy(value: number): string {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
@@ -32,28 +65,10 @@ export function formatCurrency(value: number): string {
 }
 
 /**
- * Formata percentuais
+ * @deprecated Use formatUtils.formatPercentage from formatUtils
  */
-export function formatPercentage(value: number): string {
+export function formatPercentageLegacy(value: number): string {
   return `${value.toFixed(1)}%`;
-}
-
-export function formatDate(date: string | Date): string {
-  return new Intl.DateTimeFormat('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  }).format(new Date(date))
-}
-
-export function formatDateTime(date: string | Date): string {
-  return new Intl.DateTimeFormat('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(new Date(date))
 }
 
 export function generateId(): string {

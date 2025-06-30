@@ -39,16 +39,21 @@ import { formatNumber, formatPercentage, cn } from '@/lib/utils';
 // INTERFACES E TIPOS
 // ============================================================================
 
+/**
+ * ✅ SUBSTITUIÇÃO: stages: any[] → stages: FunnelStage[]
+ */
+export interface FunnelStage {
+  stage_name: string;
+  stage_order: number;
+  leads_count: number;
+  conversion_rate: number;
+  avg_time_in_stage: number;
+  dropoff_rate: number;
+  bottleneck_score: number;
+}
+
 interface FunnelStageProps {
-  stage: {
-    stage_name: string;
-    stage_order: number;
-    leads_count: number;
-    conversion_rate: number;
-    avg_time_in_stage: number;
-    dropoff_rate: number;
-    bottleneck_score: number;
-  };
+  stage: FunnelStage; // ✅ Usando a interface específica
   isLast: boolean;
   totalLeads: number;
   previousStageCount?: number;
@@ -223,7 +228,7 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({ recommendation 
 };
 
 const FunnelVisualization: React.FC<{
-  stages: any[];
+  stages: FunnelStage[];
 }> = ({ stages }) => {
   const funnelData = stages.map((stage, index) => ({
     name: stage.stage_name,

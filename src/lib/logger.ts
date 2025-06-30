@@ -6,16 +6,16 @@ import { appConfig } from '../config/app';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
-interface LogEntry {
+interface LogEntry<T = unknown> {
   level: LogLevel;
   message: string;
-  data?: any;
+  data?: T;
   timestamp: string;
 }
 
 class Logger {
   private config = appConfig.debug;
-  private logHistory: LogEntry[] = [];
+  private logHistory: LogEntry<unknown>[] = [];
   private maxHistorySize = 100;
 
   /**
@@ -40,7 +40,7 @@ class Logger {
   /**
    * Adicionar entrada ao histórico
    */
-  private addToHistory(entry: LogEntry): void {
+  private addToHistory<T>(entry: LogEntry<T>): void {
     this.logHistory.push(entry);
     
     // Manter apenas as últimas entradas
@@ -67,10 +67,10 @@ class Logger {
   /**
    * Log genérico
    */
-  private log(level: LogLevel, message: string, data?: any): void {
+  private log<T>(level: LogLevel, message: string, data?: T): void {
     if (!this.shouldLog(level)) return;
 
-    const entry: LogEntry = {
+    const entry: LogEntry<T> = {
       level,
       message,
       data,
@@ -101,30 +101,30 @@ class Logger {
   /**
    * Métodos públicos
    */
-  debug(message: string, data?: any): void {
+  debug<T = unknown>(message: string, data?: T): void {
     this.log('debug', message, data);
   }
 
-  info(message: string, data?: any): void {
+  info<T = unknown>(message: string, data?: T): void {
     this.log('info', message, data);
   }
 
-  success(message: string, data?: any): void {
+  success<T = unknown>(message: string, data?: T): void {
     this.log('info', `✅ ${message}`, data);
   }
 
-  warning(message: string, data?: any): void {
+  warning<T = unknown>(message: string, data?: T): void {
     this.log('warn', message, data);
   }
 
-  error(message: string, error?: any): void {
+  error<T = Error | string | unknown>(message: string, error?: T): void {
     this.log('error', message, error);
   }
 
   /**
    * Métodos utilitários
    */
-  getHistory(): LogEntry[] {
+  getHistory(): LogEntry<unknown>[] {
     return [...this.logHistory];
   }
 

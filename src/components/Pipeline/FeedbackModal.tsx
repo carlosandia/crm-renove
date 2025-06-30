@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
+import { logger } from '../../utils/logger';
 
 interface Feedback {
   id: string;
@@ -55,7 +56,9 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
   const loadFeedbacks = async () => {
     setLoading(true);
     try {
-      console.log('🔍 Carregando feedbacks para lead:', leadId);
+      if (import.meta.env.VITE_LOG_LEVEL === 'debug') {
+        logger.debug('FeedbackModal carregando feedbacks para lead', leadId);
+      }
       
       // Tentar carregar do banco primeiro
       const { data: feedbackData, error: feedbackError } = await supabase
@@ -65,8 +68,8 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
         .order('created_at', { ascending: false });
 
       if (feedbackError) {
-        console.log('⚠️ Tabela lead_feedback não existe ou erro no banco:', feedbackError.message);
-        console.log('📋 Usando dados simulados temporariamente');
+        logger.debug('FeedbackModal tabela lead_feedback não existe ou erro no banco', feedbackError.message);
+        logger.debug('FeedbackModal usando dados simulados temporariamente');
         
         // Fallback para dados simulados se a tabela não existir
         const mockFeedbacks = [
@@ -99,7 +102,9 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
       }
 
       // Se chegou aqui, a tabela existe - processar dados
-      console.log('✅ Feedbacks carregados do banco:', feedbackData?.length || 0);
+      if (import.meta.env.VITE_LOG_LEVEL === 'debug') {
+        logger.debug('FeedbackModal feedbacks carregados do banco', `${feedbackData?.length || 0} items`);
+      }
       
       if (feedbackData && feedbackData.length > 0) {
         // Tentar buscar informações dos usuários (opcional)
@@ -115,7 +120,9 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
             
           if (!profilesError && profiles) {
             profilesData = profiles;
-            console.log('✅ Dados dos usuários carregados de profiles');
+            if (import.meta.env.VITE_LOG_LEVEL === 'debug') {
+              logger.debug('FeedbackModal Dados dos usuários carregados de profiles');
+            }
           }
           // Não logar erro se profiles não existir - é opcional
         } catch (error) {

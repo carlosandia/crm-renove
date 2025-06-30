@@ -321,12 +321,12 @@ router.post('/activate',
       let userId;
       
       if (existingUser) {
-        // Atualizar usuário existente
+        // ✅ CORREÇÃO: Atualizar usuário existente e ATIVAR completamente
         const { data: updatedUser, error: updateError } = await supabase
           .from('users')
           .update({
             password_hash: hashedPassword,
-            is_active: true,
+            is_active: true, // ✅ ATIVAÇÃO COMPLETA
             updated_at: new Date().toISOString()
           })
           .eq('id', existingUser.id)
@@ -342,7 +342,12 @@ router.post('/activate',
         }
         
         userId = updatedUser.id;
-        console.log('✅ [ACTIVATION] Usuário existente atualizado:', userId);
+        console.log('✅ [ACTIVATION] Admin existente ATIVADO com sucesso:', {
+          user_id: userId,
+          email: updatedUser.email,
+          is_active: updatedUser.is_active,
+          company_id: foundCompany.id
+        });
       } else {
         // Criar novo usuário admin
         const { data: newUser, error: createError } = await supabase
@@ -370,21 +375,27 @@ router.post('/activate',
         }
         
         userId = newUser.id;
-        console.log('✅ [ACTIVATION] Novo usuário admin criado:', userId);
+        console.log('✅ [ACTIVATION] Novo admin ATIVADO com sucesso:', {
+          user_id: userId,
+          email: newUser.email,
+          is_active: newUser.is_active,
+          company_id: foundCompany.id
+        });
       }
       
-      // Marcar convite como aceito no segment
+      // ✅ MARCAÇÃO COMPLETA: Marcar convite como aceito e admin ativado
       const currentSegment = foundCompany.segment || '';
       
-      // Substituir o token específico por versão aceita
-      const acceptedTokenInfo = `INVITATION:${token}:${timestampStr}:ACCEPTED:${new Date().toISOString()}:${userId}`;
+      // Substituir o token específico por versão aceita com admin ativado
+      const acceptedTokenInfo = `INVITATION:${token}:${timestampStr}:ACCEPTED:${new Date().toISOString()}:${userId}:ADMIN_ACTIVATED`;
       const updatedSegment = currentSegment.replace(
         new RegExp(`INVITATION:${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:[^|]+`),
         acceptedTokenInfo
       );
       
-      console.log(`🔄 [ACTIVATION] Atualizando status no segment de: ${currentSegment}`);
-      console.log(`🔄 [ACTIVATION] Para: ${updatedSegment}`);
+      console.log(`🔄 [ACTIVATION] Marcando admin como ATIVADO no segment:`);
+      console.log(`   - Anterior: ${currentSegment}`);
+      console.log(`   - Novo: ${updatedSegment}`);
       
       const { error: updateSegmentError } = await supabase
         .from('companies')
@@ -397,7 +408,7 @@ router.post('/activate',
         console.error('❌ [ACTIVATION] Erro ao atualizar segment:', updateSegmentError);
         // Não falhar a ativação por causa disso, apenas logar
       } else {
-        console.log('✅ [ACTIVATION] Status atualizado no segment com sucesso');
+        console.log('✅ [ACTIVATION] Status ADMIN_ACTIVATED atualizado no segment com sucesso');
       }
 
       console.log('✅ [ACTIVATION] Conta ativada com sucesso');

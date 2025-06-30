@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../hooks/useAuth';
+import { useAuth } from '../../contexts/AuthContext';
 import { registerStageMove } from '../../utils/historyUtils';
+import { WindowWithGlobals, UserWithProfile } from '../../types/Forms';
 
 // Variáveis globais do sistema de modal (importadas do contexto principal)
 declare global {
@@ -251,9 +252,10 @@ export const StageSelector: React.FC<StageSelectorProps> = ({
     
     // ATIVAR BLOQUEIO RADICAL GLOBAL
     if (typeof window !== 'undefined') {
-      (window as any).GLOBAL_MODAL_BLOCK = true;
-      (window as any).GLOBAL_MODAL_FORCE_OPEN = true;
-      (window as any).GLOBAL_MODAL_LEAD_ID = leadId;
+      const windowWithGlobals = window as WindowWithGlobals;
+      windowWithGlobals.GLOBAL_MODAL_BLOCK = true;
+      windowWithGlobals.GLOBAL_MODAL_FORCE_OPEN = true;
+      windowWithGlobals.GLOBAL_MODAL_LEAD_ID = leadId;
     }
     
     // Iniciar monitor global
@@ -330,7 +332,7 @@ export const StageSelector: React.FC<StageSelectorProps> = ({
               action: 'stage_moved',
               description: `Lead movido de "${oldStageName}" para "${newStageName}"`,
               user_id: user?.id,
-              user_name: user ? `${(user as any).first_name || ''} ${(user as any).last_name || ''}`.trim() || user.email || 'Usuário' : 'Sistema',
+              user_name: user ? `${(user as UserWithProfile).first_name || ''} ${(user as UserWithProfile).last_name || ''}`.trim() || user.email || 'Usuário' : 'Sistema',
               old_values: currentStageId && currentStageId !== 'null' ? { stage_id: currentStageId, stage_name: oldStageName } : {},
               new_values: { stage_id: newStageId, stage_name: newStageName },
               created_at: brasilTime

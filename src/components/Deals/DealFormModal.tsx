@@ -2,12 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, DollarSign } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Deal, DealCreateRequest, DealUpdateRequest } from '../../types/deals';
+import { CrudModalProps } from '../../types/CommonProps';
 
-interface DealFormModalProps {
-  deal?: Deal | null;
-  isOpen: boolean;
-  onClose: () => void;
-  onSave: (dealData: DealCreateRequest | DealUpdateRequest) => Promise<void>;
+interface DealFormModalProps extends CrudModalProps<Deal> {
+  deal?: Deal | null; // Mantido para compatibilidade
+  onSave: (dealData: DealCreateRequest | DealUpdateRequest) => Promise<void>; // Mantido para compatibilidade
 }
 
 export const DealFormModal: React.FC<DealFormModalProps> = ({

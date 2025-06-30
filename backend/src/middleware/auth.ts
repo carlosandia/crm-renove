@@ -296,4 +296,7 @@ export async function optionalAuth(
   }
 
   next();
-} 
+}
+
+// Export alias para compatibilidade com código existente
+export { authMiddleware as authenticateToken };

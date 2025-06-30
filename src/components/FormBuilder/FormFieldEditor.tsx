@@ -1,19 +1,10 @@
 import React from 'react';
 import { Plus, Trash2, GripVertical } from 'lucide-react';
 
-interface FormField {
-  id?: string;
-  field_type: string;
-  field_name: string;
-  field_label: string;
-  field_description?: string;
-  placeholder?: string;
-  is_required: boolean;
-  field_options: any;
-  validation_rules: any;
-  styling: any;
-  order_index: number;
-}
+// ================================================================================
+// MIGRAÇÃO FASE 2.5: Usando tipos unificados de src/types/Forms.ts
+// ================================================================================
+import { FormField } from '../../types/Forms';
 
 interface FormFieldEditorProps {
   fields: FormField[];

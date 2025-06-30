@@ -1,0 +1,278 @@
+/* CRM Form Embed Styles v1.0.0 */
+/* Estilos adicionais e temas para formulários embed */
+
+/* Reset e base styles */
+.crm-form * {
+  box-sizing: border-box;
+}
+
+/* Animações */
+@keyframes crm-fade-in {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes crm-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes crm-scale-in {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* Tema escuro */
+.crm-form.dark {
+  background: #1f2937;
+  color: white;
+  border: 1px solid #374151;
+}
+
+.crm-form.dark .crm-form-title {
+  color: #f3f4f6;
+}
+
+.crm-form.dark .crm-form-description {
+  color: #d1d5db;
+}
+
+.crm-form.dark .crm-label {
+  color: #f3f4f6;
+}
+
+.crm-form.dark .crm-input,
+.crm-form.dark .crm-textarea,
+.crm-form.dark .crm-select {
+  background: #374151;
+  border-color: #4b5563;
+  color: white;
+}
+
+.crm-form.dark .crm-input::placeholder,
+.crm-form.dark .crm-textarea::placeholder {
+  color: #9ca3af;
+}
+
+/* Variações de tamanho */
+.crm-form.compact {
+  padding: 16px;
+  max-width: 400px;
+}
+
+.crm-form.compact .crm-form-title {
+  font-size: 1.25rem;
+}
+
+.crm-form.compact .crm-field {
+  margin-bottom: 12px;
+}
+
+.crm-form.large {
+  padding: 32px;
+  max-width: 600px;
+}
+
+.crm-form.large .crm-form-title {
+  font-size: 2rem;
+}
+
+/* Estilos para tipos específicos */
+.crm-form.exit-intent {
+  animation: crm-scale-in 0.3s ease-out;
+}
+
+.crm-form.scroll-trigger {
+  animation: crm-slide-up 0.3s ease-out;
+}
+
+.crm-form.time-delayed {
+  animation: crm-fade-in 0.5s ease-out;
+}
+
+/* Multi-step progress bar */
+.crm-progress-bar {
+  width: 100%;
+  height: 4px;
+  background: #e5e7eb;
+  border-radius: 2px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.crm-progress-fill {
+  height: 100%;
+  background: var(--primary-color, #3b82f6);
+  transition: width 0.3s ease;
+}
+
+.crm-step-indicator {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.crm-step {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  background: #e5e7eb;
+  color: #6b7280;
+  transition: all 0.3s;
+}
+
+.crm-step.active {
+  background: var(--primary-color, #3b82f6);
+  color: white;
+}
+
+.crm-step.completed {
+  background: #10b981;
+  color: white;
+}
+
+/* Estados de carregamento */
+.crm-form.loading {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.crm-loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid transparent;
+  border-top: 2px solid currentColor;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Estados de sucesso e erro */
+.crm-success-message {
+  text-align: center;
+  padding: 20px;
+}
+
+.crm-success-message h3 {
+  color: #10b981;
+  margin-bottom: 8px;
+}
+
+.crm-error-message {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.crm-error-message p {
+  color: #dc2626;
+  margin: 0;
+  font-size: 14px;
+}
+
+/* Validação de campos */
+.crm-field.error .crm-input,
+.crm-field.error .crm-textarea,
+.crm-field.error .crm-select {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+.crm-field.error .crm-label {
+  color: #dc2626;
+}
+
+.crm-field-error {
+  color: #dc2626;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* Responsividade */
+@media (max-width: 640px) {
+  .crm-form {
+    margin: 0 16px;
+    padding: 20px 16px;
+  }
+  
+  .crm-modal-overlay {
+    padding: 16px;
+  }
+  
+  .crm-modal {
+    max-width: 100%;
+  }
+  
+  .crm-form-title {
+    font-size: 1.25rem !important;
+  }
+}
+
+/* Acessibilidade */
+.crm-form:focus-within {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.crm-submit-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+/* Suporte a high contrast */
+@media (prefers-contrast: high) {
+  .crm-form {
+    border: 2px solid;
+  }
+  
+  .crm-input,
+  .crm-textarea,
+  .crm-select {
+    border-width: 2px;
+  }
+}
+
+/* Suporte a reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .crm-form * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Customizações por tipo de formulário */
+.crm-form[data-type="whatsapp"] .crm-submit-btn {
+  background: #25d366;
+}
+
+.crm-form[data-type="whatsapp"] .crm-submit-btn:hover {
+  background: #22c55e;
+}
+
+.crm-form[data-type="scheduling"] {
+  border-left: 4px solid var(--primary-color, #3b82f6);
+}
+
+.crm-form[data-type="cadence"] {
+  border-top: 3px solid var(--primary-color, #3b82f6);
+}
+
+/* Print styles */
+@media print {
+  .crm-modal-overlay,
+  .crm-form[data-type="exit-intent"],
+  .crm-form[data-type="scroll-trigger"],
+  .crm-form[data-type="time-delayed"] {
+    display: none !important;
+  }
+} 

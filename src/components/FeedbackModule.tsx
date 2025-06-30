@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { logger } from '../utils/logger';
 import { Search, Filter, ThumbsUp, ThumbsDown, Clock, User, Building, Eye, X, ChevronDown, ChevronUp, Facebook, Chrome, Linkedin, Globe, FileText, Zap } from 'lucide-react';
 
 interface FeedbackData {
@@ -213,7 +214,7 @@ const FeedbackModule: React.FC = () => {
       extractFiltersFromData([...formattedFeedbacks, ...getMockFeedbacks()]);
 
     } catch (error) {
-      console.error('❌ Erro ao carregar feedbacks:', error);
+      logger.error('FeedbackModule erro ao carregar feedbacks', (error as any)?.message || 'Unknown error');
       loadMockFeedbacks();
     } finally {
       setLoading(false);
@@ -297,7 +298,7 @@ const FeedbackModule: React.FC = () => {
           .single();
 
         if (userError) {
-          console.warn('⚠️ Erro ao buscar usuário:', feedback.user_id, userError.message);
+          logger.debug('FeedbackModule erro ao buscar usuário', `${feedback.user_id}: ${userError.message}`);
         }
 
         // ✅ BUSCAR NOME DA EMPRESA VIA TENANT_ID → COMPANIES.NAME
@@ -391,7 +392,7 @@ const FeedbackModule: React.FC = () => {
           }
         });
       } catch (error) {
-        console.warn('⚠️ Erro ao enriquecer feedback:', feedback.id, error);
+        logger.warn('FeedbackModule erro ao enriquecer feedback', `${feedback.id}: ${(error as any)?.message || 'Unknown error'}`);
         // Em caso de erro, tentar buscar pelo menos o nome do usuário
         let nomeUsuario = 'Usuário';
         try {
@@ -407,7 +408,7 @@ const FeedbackModule: React.FC = () => {
                          'Usuário';
           }
         } catch (e) {
-          console.warn('⚠️ Erro ao buscar dados básicos do usuário');
+          logger.debug('FeedbackModule erro ao buscar dados básicos do usuário');
         }
 
         enrichedFeedbacks.push({
@@ -797,7 +798,9 @@ const FeedbackModule: React.FC = () => {
 
   const handleStageClick = (feedback: FeedbackData) => {
     // Aqui você pode implementar a navegação para os detalhes da oportunidade
-    console.log('Abrir detalhes da oportunidade:', feedback.lead.id, feedback.stage.name);
+    if (import.meta.env.VITE_LOG_LEVEL === 'debug') {
+      logger.debug('FeedbackModule abrir detalhes da oportunidade', `${feedback.lead.id} - ${feedback.stage.name}`);
+    }
     // Exemplo: navigate(`/pipeline/${feedback.pipeline.id}/lead/${feedback.lead.id}`);
   };
 

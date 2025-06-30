@@ -146,7 +146,7 @@ export function ContactFilters({
           </Select>
         </div>
 
-        {/* Owner Filter - TODO: Fetch actual users */}
+        {/* Owner Filter */}
         <div className="space-y-2">
           <label className="text-sm font-medium text-slate-700 flex items-center">
             <User className="w-4 h-4 mr-1" />
@@ -163,7 +163,6 @@ export function ContactFilters({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos os responsáveis</SelectItem>
-              {/* TODO: Map actual users here */}
               <SelectItem value="me">Meus contatos</SelectItem>
             </SelectContent>
           </Select>

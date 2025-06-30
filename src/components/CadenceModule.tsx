@@ -22,6 +22,8 @@ import {
   CheckCircle,
   X
 } from 'lucide-react';
+import { useArrayState } from '../hooks/useArrayState';
+import { useAsyncState } from '../hooks/useAsyncState';
 
 // Interfaces
 interface Pipeline {
@@ -83,11 +85,30 @@ const ACTION_TYPE_OPTIONS = [
 const CadenceModule: React.FC = () => {
   const { user } = useAuth();
   
-  // Estados principais
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [cadenceConfigs, setCadenceConfigs] = useState<CadenceConfig[]>([]);
+  // ✅ REFATORAÇÃO TAREFA 1: Estados com hooks reutilizáveis
+  const {
+    items: pipelines,
+    replaceAll: setPipelines,
+    isEmpty: hasNoPipelines
+  } = useArrayState<Pipeline>([]);
+
+  const {
+    items: cadenceConfigs,
+    replaceAll: setCadenceConfigs,
+    addItem: addCadenceConfig,
+    removeItem: removeCadenceConfig,
+    updateItem: updateCadenceConfig
+  } = useArrayState<CadenceConfig>([]);
+
+  const {
+    loading,
+    execute: executeAsync,
+    error: asyncError,
+    isIdle
+  } = useAsyncState();
+
+  // Estados específicos do componente mantidos
   const [selectedPipeline, setSelectedPipeline] = useState<string>('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
 
@@ -171,7 +192,6 @@ const CadenceModule: React.FC = () => {
     }
 
     try {
-      setLoading(true);
       setError(''); // Limpar erros anteriores
       
       console.log('🔍 Carregando pipelines para tenant:', user.tenant_id);
@@ -265,8 +285,6 @@ const CadenceModule: React.FC = () => {
       console.error('💥 Erro geral ao carregar pipelines:', error);
       setError(`Erro ao carregar pipelines: ${error.message || 'Erro desconhecido'}`);
       setPipelines([]);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -339,7 +357,6 @@ const CadenceModule: React.FC = () => {
     if (!user?.tenant_id) return;
 
     try {
-      setLoading(true);
       setError('');
 
       // Primeiro, remover configurações existentes para esta pipeline/etapa
@@ -421,8 +438,6 @@ const CadenceModule: React.FC = () => {
       loadCadenceConfigs();
     } catch (error: any) {
       setError(`Erro ao salvar: ${error.message}`);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -431,7 +446,6 @@ const CadenceModule: React.FC = () => {
     if (!confirm('Tem certeza que deseja excluir esta configuração de cadência?')) return;
 
     try {
-      setLoading(true);
       
       // Deletar configuração (as tarefas serão deletadas automaticamente por CASCADE)
       const { error } = await supabase
@@ -448,8 +462,6 @@ const CadenceModule: React.FC = () => {
       loadCadenceConfigs();
     } catch (error: any) {
       setError(`Erro ao deletar: ${error.message}`);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -625,7 +637,6 @@ const CadenceModule: React.FC = () => {
               <button
                 onClick={async () => {
                   try {
-                    setLoading(true);
                     console.log('🔧 Executando debug: carregando todas as pipelines...');
                     
                     const { data: allPipelines, error } = await supabase
@@ -648,8 +659,6 @@ const CadenceModule: React.FC = () => {
                   } catch (error: any) {
                     console.error('❌ Erro no modo debug:', error);
                     setError(`Erro no modo debug: ${error.message}`);
-                  } finally {
-                    setLoading(false);
                   }
                 }}
                 disabled={loading}

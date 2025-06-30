@@ -6,7 +6,24 @@
     "module": "ESNext",
     "skipLibCheck": true,
     "allowJs": true,
+
+    /* ============================================ */
+    /* 🔧 CATEGORIA 7.1: STRICT MODE MELHORADO    */
+    /* ============================================ */
     "strict": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": false,
+    
+    /* Type Safety Adicional */
+    "exactOptionalPropertyTypes": false,
+    "noImplicitOverride": false,
+    "noPropertyAccessFromIndexSignature": false,
+    
+    /* Code Quality */
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "forceConsistentCasingInFileNames": true,
 
     /* Bundler mode */
     "moduleResolution": "bundler",
@@ -16,10 +33,14 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Linting */
+    /* Linting Aprimorado */
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
+    "noImplicitThis": true,
+    
+    /* Compatibility & Performance */
+    "useUnknownInCatchVariables": false,
     
     /* Path mapping */
     "baseUrl": ".",
@@ -27,6 +48,20 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "backend", "vite.config.ts", "*.config.ts"]
+  "include": [
+    "src/**/*",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/types/__tests__/*.ts"
+  ],
+  "exclude": [
+    "node_modules", 
+    "dist", 
+    "backend", 
+    "vite.config.ts", 
+    "*.config.ts",
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts",
+    "src/types/__tests__/**/*"
+  ]
 }

@@ -1,9 +1,9 @@
-import { useState, useContext } from 'react';
+import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { CompanyFormData } from '../types/Company';
 import { useToast } from './useToast';
 import { hashPasswordEnterprise } from '../lib/utils';
-import AuthContext from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 
 // ENTERPRISE ARCHITECTURE - SEGUINDO PADRÕES DOS GRANDES CRMs
 // Company First → Admin Creation → Email Invitation → Professional Flow
@@ -20,13 +20,22 @@ interface CompanyFormResult {
   companyId?: string;
   adminCreated?: boolean;
   invitationSent?: boolean;
+  activationRequired?: boolean;
   message: string;
-  step?: 'company_created' | 'admin_created' | 'invitation_sent' | 'complete';
+  step?: 'company_created' | 'admin_created' | 'invitation_sent' | 'complete' | 'activation_sent' | 'activation_failed';
   invitationDetails?: {
     invitationId: string;
     messageId: string;
     activationUrl: string;
     expiresAt: string;
+  };
+  activationDetails?: {
+    email_sent: boolean;
+    activation_token?: string;
+    activation_url?: string;
+    expires_in?: string;
+    message_id?: string;
+    error?: string;
   };
 }
 
@@ -112,9 +121,8 @@ export const useCompanyForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
   
-  // 🔧 CORREÇÃO 4: Usar contexto de autenticação
-  const authContext = useContext(AuthContext);
-  const authenticatedFetch = authContext?.authenticatedFetch;
+  // 🔧 CORREÇÃO 4: Usar hook useAuth diretamente
+  const { authenticatedFetch } = useAuth();
 
   // Initialize with schema refresh
   useState(() => {
@@ -122,7 +130,7 @@ export const useCompanyForm = () => {
   });
 
   // STEP 1: CREATE COMPANY (ENTERPRISE PATTERN) - VIA BACKEND API
-  const createCompany = async (companyData: CompanyFormData, adminData?: AdminData): Promise<{ success: boolean; companyId?: string; error?: string }> => {
+  const createCompany = async (companyData: CompanyFormData, adminData?: AdminData): Promise<{ success: boolean; companyId?: string; error?: string; data?: any }> => {
     try {
       console.log('🏢 [ENTERPRISE] Creating company via Backend API (Enterprise Pattern)...');
       
@@ -201,7 +209,7 @@ export const useCompanyForm = () => {
         adminCreated: !!result.data.admin
       });
 
-      return { success: true, companyId };
+      return { success: true, companyId, data: result.data };
 
     } catch (error: any) {
       console.error('❌ [ENTERPRISE] Company creation via Backend API failed:', error);
@@ -327,27 +335,80 @@ export const useCompanyForm = () => {
         };
       }
 
-      // FULL SUCCESS: Company + Admin (via Backend API) + Email Invitation
-      return {
+      // ✅ PROCESSO DE ATIVAÇÃO: Verificar se email foi enviado automaticamente
+      const activationData = companyResult.data?.activation;
+      const emailSent = activationData?.email_sent || false;
+      
+      const result = {
         success: true,
         companyId: companyResult.companyId,
         adminCreated: true,
-        invitationSent: true,
-        message: `🎉 **Empresa criada com sucesso via Backend API!**
+        invitationSent: emailSent,
+        activationRequired: true,
+        message: emailSent 
+          ? `🎉 **Empresa e Admin criados com processo de ativação!**
 
 ✅ **Empresa**: ${companyData.name} foi registrada
-✅ **Administrador**: ${adminData.name} foi criado via Backend API
-✅ **Convite enviado**: Email de ativação enviado para ${adminData.email}
+👤 **Administrador**: ${adminData.name} foi criado (AGUARDANDO ATIVAÇÃO)
+📧 **Email de ativação**: Enviado automaticamente para ${adminData.email}
 
-📧 **Próximos passos**: 
-• O administrador receberá um email com link de ativação
-• O link expira em 48 horas
-• Após ativação, o admin poderá definir sua senha e acessar o sistema
+📋 **Status atual**: 
+• ⏳ Admin status: **PENDENTE DE ATIVAÇÃO**
+• 📨 Email enviado: **SIM** (MessageID: ${activationData?.message_id})
+• ⏰ Expira em: **48 horas**
 
-🔗 **Link de ativação**: Verifique o email do administrador`,
-        step: 'complete',
-        invitationDetails: invitationResult.details
+🔔 **Próximos passos**:
+1. O administrador deve verificar seu email
+2. Clicar no link de ativação recebido
+3. Definir uma senha segura
+4. Será automaticamente logado no sistema
+
+⚠️ **Importante**: O admin só poderá acessar após ativar via email!`
+          : `⚠️ **Empresa criada, mas processo de ativação incompleto**
+
+✅ **Empresa**: ${companyData.name} foi registrada
+👤 **Administrador**: ${adminData.name} foi criado (AGUARDANDO ATIVAÇÃO)
+❌ **Email falhou**: ${activationData?.error || 'Erro no envio'}
+
+📋 **Ação necessária**:
+• O convite de ativação deve ser reenviado manualmente
+• Admin não pode acessar até completar ativação`,
+        step: emailSent ? 'activation_sent' : 'activation_failed',
+        activationDetails: activationData
+      } as CompanyFormResult;
+
+      // 🔧 CORREÇÃO ROBUSTA: Múltiplas tentativas de atualização da lista
+      console.log('📢 [ENTERPRISE] Iniciando processo de atualização automática da lista...');
+      
+      // Disparar evento imediatamente
+      const eventDetail = {
+        companyId: companyResult.companyId,
+        companyName: companyData.name,
+        adminEmail: adminData.email,
+        result,
+        timestamp: new Date().toISOString()
       };
+      
+      console.log('📢 [IMMEDIATE] Disparando evento company-created imediatamente...', eventDetail);
+      window.dispatchEvent(new CustomEvent('company-created', { detail: eventDetail }));
+      
+      // 🔥 FORÇA BRUTA: Múltiplas tentativas com timings diferentes
+      setTimeout(() => {
+        console.log('📢 [RETRY-1] Disparando evento company-created após 500ms...');
+        window.dispatchEvent(new CustomEvent('company-created', { detail: { ...eventDetail, retry: 1 } }));
+      }, 500);
+      
+      setTimeout(() => {
+        console.log('📢 [RETRY-2] Disparando evento company-created após 1s...');
+        window.dispatchEvent(new CustomEvent('company-created', { detail: { ...eventDetail, retry: 2 } }));
+      }, 1000);
+      
+      setTimeout(() => {
+        console.log('📢 [RETRY-3] Disparando evento company-created após 2s...');
+        window.dispatchEvent(new CustomEvent('company-created', { detail: { ...eventDetail, retry: 3 } }));
+      }, 2000);
+
+      return result;
 
     } catch (error: any) {
       console.error('❌ [ENTERPRISE] Complete flow via Backend API failed:', error);

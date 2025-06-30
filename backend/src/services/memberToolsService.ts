@@ -845,8 +845,8 @@ export class MemberToolsService {
   ): Promise<MemberDashboardConfig | null> {
     try {
       const cacheKey = `member_dashboard_config:${tenantId}:${memberId}`;
-      const cached = await getCache().get(cacheKey);
-      if (cached && typeof cached === 'object' && cached.id !== undefined) return cached;
+      const cached = await getCache().get<MemberDashboardConfig>(cacheKey);
+      if (cached && typeof cached === 'object' && 'id' in cached) return cached;
 
       const { data, error } = await supabase
         .from('member_dashboard_configs')
@@ -1000,7 +1000,14 @@ export class MemberToolsService {
   }> {
     try {
       const cacheKey = `member_task_summary:${tenantId}:${memberId}`;
-      const cached = await getCache().get(cacheKey);
+      const cached = await getCache().get<{
+        total: number;
+        pending: number;
+        in_progress: number;
+        completed_today: number;
+        overdue: number;
+        due_today: number;
+      }>(cacheKey);
       if (cached) return cached;
 
       const today = new Date().toISOString().split('T')[0];
@@ -1042,7 +1049,14 @@ export class MemberToolsService {
       return summary;
     } catch (error) {
       logger.error('Error in getMemberTaskSummary:', error);
-      throw error;
+      return {
+        total: 0,
+        pending: 0,
+        in_progress: 0,
+        completed_today: 0,
+        overdue: 0,
+        due_today: 0
+      };
     }
   }
 }

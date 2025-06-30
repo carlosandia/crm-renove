@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Plus, RefreshCw, Search, Filter, Download, Upload, Building } from 'lucide-react';
 import { useCompanies } from '../hooks/useCompanies';
 
@@ -23,8 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Skeleton } from './ui/skeleton';
 import { Eye, Edit, Trash2, FileText, Users } from 'lucide-react';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+
 
 // Interfaces
 interface FilterState {
@@ -374,8 +373,27 @@ const EmpresasModule: React.FC = () => {
             mode="create"
             onClose={() => setShowCreateModal(false)}
             onSuccess={() => {
+              console.log('🎉 [EmpresasModule] Modal de criação reportou sucesso, executando refresh...');
               setShowCreateModal(false);
+              
+              // 🔥 FORÇA BRUTA: Múltiplos refreshes para garantir atualização
               handleRefresh();
+              
+              // Refreshes adicionais com delays
+              setTimeout(() => {
+                console.log('🔄 [EmpresasModule] Refresh adicional 1...');
+                handleRefresh();
+              }, 500);
+              
+              setTimeout(() => {
+                console.log('🔄 [EmpresasModule] Refresh adicional 2...');
+                handleRefresh();
+              }, 1500);
+              
+              setTimeout(() => {
+                console.log('🔄 [EmpresasModule] Refresh adicional 3...');
+                handleRefresh();
+              }, 3000);
             }}
           />
         )}

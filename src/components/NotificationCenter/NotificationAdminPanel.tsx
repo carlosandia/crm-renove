@@ -84,11 +84,11 @@ export const NotificationAdminPanel: React.FC<NotificationAdminPanelProps> = ({ 
   const isSuperAdmin = user?.role === 'super_admin';
 
   // Health check da API usando sistema universal
-  const checkApiHealth = async (): Promise<boolean> => {
-    try {
-      const { networkHealth } = await import('../../utils/networkHealthCheck');
-      const result = await networkHealth.checkBackendHealth();
-      return result.isHealthy;
+      const checkApiHealth = async (): Promise<boolean> => {
+      try {
+        const { getSystemStatus } = await import('../../utils/silentFallback');
+        const result = await getSystemStatus();
+        return result === 'online' || result === 'degraded';
     } catch {
       return false;
     }

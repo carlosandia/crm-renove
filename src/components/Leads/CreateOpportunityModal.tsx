@@ -8,6 +8,9 @@ import { Target, DollarSign, Loader2, User } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { showSuccessToast, showErrorToast } from '../../lib/toast';
+import { BaseModalProps } from '../../types/CommonProps';
+import { useArrayState } from '../../hooks/useArrayState';
+import { useAsyncState } from '../../hooks/useAsyncState';
 
 interface Pipeline {
   id: string;
@@ -27,9 +30,7 @@ interface TeamMember {
   email: string;
 }
 
-interface CreateOpportunityModalProps {
-  isOpen: boolean;
-  onClose: () => void;
+interface CreateOpportunityModalProps extends BaseModalProps {
   leadId: string;
   leadName: string;
   onSuccess: () => void;
@@ -43,11 +44,31 @@ const CreateOpportunityModal: React.FC<CreateOpportunityModalProps> = ({
   onSuccess
 }) => {
   const { user } = useAuth();
-  const [loading, setLoading] = useState(false);
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [stages, setStages] = useState<PipelineStage[]>([]);
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   
+  // ✅ REFATORAÇÃO TAREFA 1: Estados com hooks reutilizáveis
+  const {
+    loading,
+    execute: executeAction,
+    isIdle
+  } = useAsyncState();
+
+  const {
+    items: pipelines,
+    replaceAll: setPipelines,
+    isEmpty: hasNoPipelines
+  } = useArrayState<Pipeline>([]);
+
+  const {
+    items: stages,
+    replaceAll: setStages
+  } = useArrayState<PipelineStage>([]);
+
+  const {
+    items: teamMembers,
+    replaceAll: setTeamMembers
+  } = useArrayState<TeamMember>([]);
+
+  // Estados específicos do modal mantidos
   const [formData, setFormData] = useState({
     nome_oportunidade: '',
     valor: '',
@@ -199,114 +220,113 @@ const CreateOpportunityModal: React.FC<CreateOpportunityModalProps> = ({
     
     if (!validateForm()) return;
 
-    setLoading(true);
-    try {
-      // Buscar dados do lead
-      const { data: leadData, error: leadError } = await supabase
-        .from('leads_master')
-        .select('*')
-        .eq('id', leadId)
-        .single();
+    executeAction(async () => {
+      try {
+        // Buscar dados do lead
+        const { data: leadData, error: leadError } = await supabase
+          .from('leads_master')
+          .select('*')
+          .eq('id', leadId)
+          .single();
 
-      if (leadError) throw leadError;
+        if (leadError) throw leadError;
 
-      // Selecionar pipeline (primeira se não especificada)
-      const selectedPipelineId = formData.pipeline_id || pipelines[0]?.id;
-      
-      if (!selectedPipelineId) {
-        throw new Error('Nenhuma pipeline disponível');
+        // Selecionar pipeline (primeira se não especificada)
+        const selectedPipelineId = formData.pipeline_id || pipelines[0]?.id;
+        
+        if (!selectedPipelineId) {
+          throw new Error('Nenhuma pipeline disponível');
+        }
+
+        // Buscar primeiro estágio da pipeline
+        const firstStage = stages.find(stage => stage.pipeline_id === selectedPipelineId);
+        
+        if (!firstStage) {
+          throw new Error('Pipeline não possui estágios configurados');
+        }
+
+        // Processar valor
+        const valorNumerico = formData.valor 
+          ? parseFloat(formData.valor.replace(/[^\d,]/g, '').replace(',', '.'))
+          : 0;
+
+        // Criar oportunidade na pipeline
+        const { error: pipelineError } = await supabase
+          .from('pipeline_leads')
+          .insert({
+            pipeline_id: selectedPipelineId,
+            stage_id: firstStage.id,
+            assigned_to: formData.responsavel_id, // Usar responsável selecionado
+            created_by: user?.id,
+            lead_master_id: leadId, // ✅ VINCULAÇÃO DIRETA COM LEADS_MASTER
+            custom_data: {
+              // ✅ ETAPA 1: DADOS DA OPORTUNIDADE
+              nome_oportunidade: formData.nome_oportunidade,
+              valor: valorNumerico.toString(),
+              
+              // ✅ ETAPA 1: DADOS COMPLETOS DO LEAD DE LEADS_MASTER (FONTE ÚNICA)
+              nome_lead: leadData.first_name && leadData.last_name 
+                ? `${leadData.first_name} ${leadData.last_name}`.trim()
+                : leadData.first_name || 'Lead sem nome',
+              
+              // ✅ CAMPOS DE CONTATO - SEMPRE DE LEADS_MASTER
+              email: leadData.email || '',
+              telefone: leadData.phone || '',
+              
+              // ✅ CAMPOS PROFISSIONAIS - SEMPRE DE LEADS_MASTER
+              empresa: leadData.company || '',
+              cargo: leadData.job_title || '',
+              
+              // ✅ CAMPOS DE ORIGEM E STATUS - SEMPRE DE LEADS_MASTER
+              origem: leadData.lead_source || '',
+              temperatura: leadData.lead_temperature || 'warm',
+              status: leadData.status || 'active',
+              
+              // ✅ CAMPOS DE VALOR E CAMPANHA - SEMPRE DE LEADS_MASTER
+              campanha: leadData.campaign_name || '',
+              
+              // ✅ CAMPOS UTM - SEMPRE DE LEADS_MASTER
+              utm_source: leadData.utm_source || '',
+              utm_medium: leadData.utm_medium || '',
+              utm_campaign: leadData.utm_campaign || '',
+              utm_term: leadData.utm_term || '',
+              utm_content: leadData.utm_content || '',
+              
+              // ✅ CAMPOS DE LOCALIZAÇÃO - SEMPRE DE LEADS_MASTER
+              cidade: leadData.city || '',
+              estado: leadData.state || '',
+              pais: leadData.country || '',
+              
+              // ✅ CAMPOS DE OBSERVAÇÕES - SEMPRE DE LEADS_MASTER
+              observacoes: leadData.notes || '',
+              
+              // ✅ VINCULAÇÃO E METADADOS
+              lead_master_id: leadId,
+              data_source: 'leads_master',
+              created_via: 'CreateOpportunityModal',
+              last_sync_at: new Date().toISOString()
+            }
+          });
+
+        if (pipelineError) throw pipelineError;
+
+        // Atualizar status do lead para indicar que tem oportunidade
+        await supabase
+          .from('leads_master')
+          .update({ 
+            status: 'converted',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', leadId);
+
+        showSuccessToast('Oportunidade criada com sucesso!');
+        onSuccess();
+        onClose();
+      } catch (error) {
+        console.error('Erro ao criar oportunidade:', error);
+        showErrorToast('Erro ao criar oportunidade');
       }
-
-      // Buscar primeiro estágio da pipeline
-      const firstStage = stages.find(stage => stage.pipeline_id === selectedPipelineId);
-      
-      if (!firstStage) {
-        throw new Error('Pipeline não possui estágios configurados');
-      }
-
-      // Processar valor
-      const valorNumerico = formData.valor 
-        ? parseFloat(formData.valor.replace(/[^\d,]/g, '').replace(',', '.'))
-        : 0;
-
-      // Criar oportunidade na pipeline
-      const { error: pipelineError } = await supabase
-        .from('pipeline_leads')
-        .insert({
-          pipeline_id: selectedPipelineId,
-          stage_id: firstStage.id,
-          assigned_to: formData.responsavel_id, // Usar responsável selecionado
-          created_by: user?.id,
-          lead_master_id: leadId, // ✅ VINCULAÇÃO DIRETA COM LEADS_MASTER
-          custom_data: {
-            // ✅ ETAPA 1: DADOS DA OPORTUNIDADE
-            nome_oportunidade: formData.nome_oportunidade,
-            valor: valorNumerico.toString(),
-            
-            // ✅ ETAPA 1: DADOS COMPLETOS DO LEAD DE LEADS_MASTER (FONTE ÚNICA)
-            nome_lead: leadData.first_name && leadData.last_name 
-              ? `${leadData.first_name} ${leadData.last_name}`.trim()
-              : leadData.first_name || 'Lead sem nome',
-            
-            // ✅ CAMPOS DE CONTATO - SEMPRE DE LEADS_MASTER
-            email: leadData.email || '',
-            telefone: leadData.phone || '',
-            
-            // ✅ CAMPOS PROFISSIONAIS - SEMPRE DE LEADS_MASTER
-            empresa: leadData.company || '',
-            cargo: leadData.job_title || '',
-            
-            // ✅ CAMPOS DE ORIGEM E STATUS - SEMPRE DE LEADS_MASTER
-            origem: leadData.lead_source || '',
-            temperatura: leadData.lead_temperature || 'warm',
-            status: leadData.status || 'active',
-            
-            // ✅ CAMPOS DE VALOR E CAMPANHA - SEMPRE DE LEADS_MASTER
-            campanha: leadData.campaign_name || '',
-            
-            // ✅ CAMPOS UTM - SEMPRE DE LEADS_MASTER
-            utm_source: leadData.utm_source || '',
-            utm_medium: leadData.utm_medium || '',
-            utm_campaign: leadData.utm_campaign || '',
-            utm_term: leadData.utm_term || '',
-            utm_content: leadData.utm_content || '',
-            
-            // ✅ CAMPOS DE LOCALIZAÇÃO - SEMPRE DE LEADS_MASTER
-            cidade: leadData.city || '',
-            estado: leadData.state || '',
-            pais: leadData.country || '',
-            
-            // ✅ CAMPOS DE OBSERVAÇÕES - SEMPRE DE LEADS_MASTER
-            observacoes: leadData.notes || '',
-            
-            // ✅ VINCULAÇÃO E METADADOS
-            lead_master_id: leadId,
-            data_source: 'leads_master',
-            created_via: 'CreateOpportunityModal',
-            last_sync_at: new Date().toISOString()
-          }
-        });
-
-      if (pipelineError) throw pipelineError;
-
-      // Atualizar status do lead para indicar que tem oportunidade
-      await supabase
-        .from('leads_master')
-        .update({ 
-          status: 'converted',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', leadId);
-
-      showSuccessToast('Oportunidade criada com sucesso!');
-      onSuccess();
-      onClose();
-    } catch (error) {
-      console.error('Erro ao criar oportunidade:', error);
-      showErrorToast('Erro ao criar oportunidade');
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
   const handleClose = () => {

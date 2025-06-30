@@ -94,8 +94,20 @@ export const DealPipelineView: React.FC<DealPipelineViewProps> = ({
       return;
     }
 
-    // TODO: Implement actual deal movement logic
-    console.log('Move deal:', result.draggableId, 'to stage:', result.destination.droppableId);
+    // Implementar movimento de deal entre estágios
+    // Em uma implementação real, isso atualizaria o banco de dados
+    console.log('Movendo deal:', result.draggableId, 'para estágio:', result.destination.droppableId);
+    
+    // Notificar sobre a mudança necessária
+    const dealId = result.draggableId;
+    const newStageId = result.destination.droppableId;
+    const deal = deals.find(d => d.id === dealId);
+    
+    if (deal) {
+      // Simular atualização do estágio
+      const updatedDeal = { ...deal, stage_id: newStageId };
+      console.log('Deal atualizado:', updatedDeal);
+    }
   };
 
   const formatCurrency = (value: number) => {

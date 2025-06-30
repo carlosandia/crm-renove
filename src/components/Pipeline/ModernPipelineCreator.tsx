@@ -4,6 +4,7 @@ import { Pipeline, PipelineStage, CustomField as PipelineCustomField } from '../
 import { User } from '../../types/User';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePipelineNameValidation } from '../../hooks/usePipelineNameValidation';
 
 // shadcn/ui components
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -32,7 +33,6 @@ import {
   Edit, 
   Trash2, 
   X,
-  Thermometer,
   Clock,
   Mail,
   MessageSquare,
@@ -67,7 +67,11 @@ import {
   GripVertical,
   Shuffle, // 🆕 ÍCONE PARA RODÍZIO
   RotateCcw, // 🆕 ÍCONE PARA DISTRIBUIÇÃO
-  UserPlus // 🆕 ÍCONE PARA ATRIBUIÇÃO
+  UserPlus, // 🆕 ÍCONE PARA ATRIBUIÇÃO
+  CheckCircle, // ✅ ÍCONE PARA VALIDAÇÃO
+  AlertCircle, // ❌ ÍCONE PARA ERRO
+  Loader2, // 🔄 ÍCONE PARA LOADING
+  Lightbulb // 💡 ÍCONE PARA SUGESTÃO
 } from 'lucide-react';
 
 interface CustomField {
@@ -158,39 +162,31 @@ const FIELD_TYPES = [
   { value: 'date', label: 'Data', icon: CalendarDays },
 ];
 
+// Remover constantes de temperatura e simplificar etapas do sistema
 const SYSTEM_STAGES = [
   { 
     name: 'Lead', 
-    temperature_score: 20, 
-    max_days_allowed: 7, 
-    time_unit: 'days' as 'minutes' | 'hours' | 'days',
     color: '#3B82F6', 
     order_index: 0, 
     is_system: true,
     position: 'first',
-    description: 'Etapa inicial onde todos os novos leads são criados. Temperatura pode ser editada baseada no tempo desde a criação.'
+    description: 'Etapa inicial onde todos os novos leads são criados.'
   },
   { 
     name: 'Closed Won', 
-    temperature_score: 100, 
-    max_days_allowed: 0, 
-    time_unit: 'days' as 'minutes' | 'hours' | 'days',
     color: '#10B981', 
     order_index: 998, 
     is_system: true,
     position: 'second-last',
-    description: 'Penúltima etapa - leads convertidos em vendas. Temperatura sempre 100%.'
+    description: 'Penúltima etapa - leads convertidos em vendas.'
   },
   { 
     name: 'Closed Lost', 
-    temperature_score: 0, 
-    max_days_allowed: 0, 
-    time_unit: 'days' as 'minutes' | 'hours' | 'days',
     color: '#EF4444', 
     order_index: 999, 
     is_system: true,
     position: 'last',
-    description: 'Última etapa - leads perdidos ou vendas não concretizadas. Temperatura sempre 0%.'
+    description: 'Última etapa - leads perdidos ou vendas não concretizadas.'
   },
 ];
 
@@ -200,11 +196,7 @@ const SYSTEM_REQUIRED_FIELDS: CustomField[] = [
   { field_name: 'telefone', field_label: 'Telefone', field_type: 'phone', is_required: true, field_order: 3, placeholder: '(11) 99999-9999', show_in_card: true },
 ];
 
-const TIME_UNIT_OPTIONS = [
-  { value: 'minutes', label: 'Minutos', short: 'min' },
-  { value: 'hours', label: 'Horas', short: 'h' },
-  { value: 'days', label: 'Dias', short: 'd' },
-];
+
 
 const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
   members,
@@ -215,20 +207,62 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
   submitText,
 }) => {
   const { user } = useAuth();
+  
+  // ✅ INTEGRAÇÃO: Hook de validação de nome
+  const nameValidation = usePipelineNameValidation(
+    pipeline?.name || '', 
+    pipeline?.id
+  );
+  
+  // Estados locais - sem sistema de temperatura
   const [activeTab, setActiveTab] = useState<'basic' | 'stages' | 'fields' | 'distribution' | 'cadence'>('basic');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // Estados para modais
-  const [stageModalOpen, setStageModalOpen] = useState(false);
-  const [fieldModalOpen, setFieldModalOpen] = useState(false);
-  const [cadenceModalOpen, setCadenceModalOpen] = useState(false);
-  const [temperatureModalOpen, setTemperatureModalOpen] = useState(false);
-  
-  // Estados para edição
-  const [editingStageIndex, setEditingStageIndex] = useState<number | null>(null);
-  const [editingFieldIndex, setEditingFieldIndex] = useState<number | null>(null);
-  const [editingTaskIndex, setEditingTaskIndex] = useState<number | null>(null);
 
+  // Estados para modal de etapas
+  const [stageModalOpen, setStageModalOpen] = useState(false);
+  const [editingStageIndex, setEditingStageIndex] = useState<number | null>(null);
+
+  // Estados para modal de campos
+  const [fieldModalOpen, setFieldModalOpen] = useState(false);
+  const [editingFieldIndex, setEditingFieldIndex] = useState<number | null>(null);
+
+  // Estados para modal de cadência
+  const [cadenceModalOpen, setCadenceModalOpen] = useState(false);
+
+  // Estados para modal de task
+  const [editingTaskIndex, setEditingTaskIndex] = useState<number | null>(null);
+  const [editingCadenceIndex, setEditingCadenceIndex] = useState<number | null>(null);
+
+  // Estados temporários para modais
+  const [tempStage, setTempStage] = useState({
+    name: '',
+    order_index: 0,
+    color: '#3B82F6',
+    is_system: false
+  });
+
+  const [tempField, setTempField] = useState<CustomField>({
+    field_name: '',
+    field_label: '',
+    field_type: 'text',
+    field_options: [],
+    is_required: false,
+    field_order: 1,
+    placeholder: '',
+    show_in_card: true,
+  });
+
+  const [tempTask, setTempTask] = useState<CadenceTask>({
+    day_offset: 0,
+    task_order: 1,
+    channel: 'email',
+    action_type: 'mensagem',
+    task_title: '',
+    task_description: '',
+    is_active: true,
+  });
+
+  // Função para organizar etapas sem sistema de temperatura
   const organizeStages = (stages: any[]) => {
     const systemStages = SYSTEM_STAGES;
     const customStages = stages.filter(stage => !stage.is_system_stage && !stage.is_system);
@@ -243,6 +277,7 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
     return organized.map((stage, index) => ({ ...stage, order_index: index }));
   };
 
+  // Estado do formulário simplificado
   const [formData, setFormData] = useState<PipelineFormData>({
     name: '',
     description: '',
@@ -250,7 +285,6 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
     stages: organizeStages(SYSTEM_STAGES),
     custom_fields: [...SYSTEM_REQUIRED_FIELDS],
     cadence_configs: [],
-    // 🆕 CONFIGURAÇÃO PADRÃO DE DISTRIBUIÇÃO
     distribution_rule: {
       mode: 'manual',
       is_active: true,
@@ -258,46 +292,6 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
       skip_inactive_members: true,
       fallback_to_manual: true
     }
-  });
-
-  // Estados temporários para edição
-  const [tempStage, setTempStage] = useState({
-    name: '',
-    temperature_score: 50,
-    max_days_allowed: 5,
-    time_unit: 'days' as 'minutes' | 'hours' | 'days',
-    color: '#6366F1',
-  });
-
-  const [tempField, setTempField] = useState<CustomField>({
-    field_name: '',
-    field_label: '',
-    field_type: 'text' as 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number' | 'date',
-    field_options: [],
-    is_required: false,
-    field_order: 0,
-    placeholder: '',
-    show_in_card: true,
-  });
-
-  const [tempTask, setTempTask] = useState<CadenceTask>({
-    day_offset: 0,
-    task_order: 1,
-    channel: 'email',
-    action_type: 'mensagem',
-    task_title: '',
-    task_description: '',
-    template_content: '',
-    is_active: true,
-  });
-
-  const [temperatureConfig, setTemperatureConfig] = useState({
-    hot_days: 3,
-    warm_days: 7,
-    cold_days: 14,
-    hot_temp: 80,
-    warm_temp: 50,
-    cold_temp: 20
   });
 
   // Carregar dados da pipeline se estiver editando
@@ -485,11 +479,23 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
     }
   };
 
-  const validateForm = () => {
-    if (!formData.name.trim()) {
+  const validateForm = async () => {
+    // ✅ VALIDAÇÃO INTEGRADA: Usar hook de validação
+    if (!nameValidation.name.trim()) {
       alert('Nome da pipeline é obrigatório');
       return false;
     }
+    
+    // Validar nome imediatamente se necessário
+    if (!nameValidation.hasChecked) {
+      await nameValidation.validateImmediately();
+    }
+    
+    if (!nameValidation.isValid) {
+      alert(`Erro no nome da pipeline: ${nameValidation.error}`);
+      return false;
+    }
+    
     if (formData.member_ids.length === 0) {
       alert('Selecione pelo menos um membro para a pipeline');
       return false;
@@ -500,7 +506,9 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!validateForm()) return;
+    // ✅ VALIDAÇÃO ASYNC: Aguardar validação completa
+    const isValid = await validateForm();
+    if (!isValid) return;
     
     setIsSubmitting(true);
     
@@ -526,12 +534,18 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
         }
       }
 
+      // ✅ USAR NOME VALIDADO: Sincronizar formData com nome validado
+      const finalFormData = {
+        ...formData,
+        name: nameValidation.name // Usar nome do hook de validação
+      };
+
       console.log('🚀 [ModernPipelineCreator] Iniciando salvamento de pipeline:', {
-        name: formData.name,
-        description: formData.description,
-        memberIds: formData.member_ids,
-        stagesCount: formData.stages?.length,
-        customFieldsCount: formData.custom_fields?.length,
+        name: finalFormData.name,
+        description: finalFormData.description,
+        memberIds: finalFormData.member_ids,
+        stagesCount: finalFormData.stages?.length,
+        customFieldsCount: finalFormData.custom_fields?.length,
         isEditing: !!pipeline,
         userInfo: {
           id: user?.id,
@@ -541,7 +555,7 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
         }
       });
 
-      await onSubmit(formData);
+      await onSubmit(finalFormData);
     } catch (error) {
       console.error('❌ [ModernPipelineCreator] Erro no salvamento:', error);
       alert('Erro ao salvar pipeline: ' + (error as Error).message);
@@ -562,10 +576,9 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
   const handleAddStage = () => {
     setTempStage({
       name: '',
-      temperature_score: 50,
-      max_days_allowed: 5,
-      time_unit: 'days',
-      color: '#6366F1',
+      order_index: 0,
+      color: '#3B82F6',
+      is_system: false
     });
     setEditingStageIndex(null);
     setStageModalOpen(true);
@@ -575,10 +588,9 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
     const stage = formData.stages[index];
     setTempStage({
       name: stage.name,
-      temperature_score: stage.temperature_score,
-      max_days_allowed: stage.max_days_allowed,
-      time_unit: stage.time_unit || 'days',
+      order_index: stage.order_index,
       color: stage.color,
+      is_system: stage.is_system || false
     });
     setEditingStageIndex(index);
     setStageModalOpen(true);
@@ -835,28 +847,6 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
     setFormData(prev => ({ ...prev, stages: organizedStages }));
   };
 
-  // Função para editar temperatura da etapa "Novos leads"
-  const handleEditTemperature = () => {
-    setTemperatureModalOpen(true);
-  };
-
-  // Função para salvar configuração de temperatura
-  const handleSaveTemperature = () => {
-    const updatedStages = formData.stages.map(stage => {
-      if (stage.name === 'Novos leads') {
-        return {
-          ...stage,
-          max_days_allowed: temperatureConfig.cold_days || 14,
-          temperature_score: temperatureConfig.cold_temp || 20
-        };
-      }
-      return stage;
-    });
-
-    setFormData(prev => ({ ...prev, stages: updatedStages }));
-    setTemperatureModalOpen(false);
-  };
-
   // Função para renderizar a aba básica
   const renderBasicTab = () => (
     <BlurFade delay={0.1} className="space-y-6">
@@ -874,13 +864,80 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Nome da Pipeline *</Label>
-            <Input
-              id="name"
-              placeholder="Ex: Vendas Imobiliárias, Captação de Leads..."
-              value={formData.name}
-              onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-              className="text-base"
-            />
+            <div className="relative">
+              <Input
+                id="name"
+                placeholder="Ex: Vendas Imobiliárias, Captação de Leads..."
+                value={nameValidation.name}
+                onChange={(e) => nameValidation.updateName(e.target.value)}
+                onBlur={nameValidation.validateImmediately}
+                className={`text-base pr-10 ${
+                  nameValidation.showValidation 
+                    ? nameValidation.isValid 
+                      ? 'border-green-500 focus:border-green-500' 
+                      : 'border-red-500 focus:border-red-500'
+                    : ''
+                }`}
+              />
+              
+              {/* Ícone de status */}
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                {nameValidation.isValidating ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                ) : nameValidation.showValidation ? (
+                  nameValidation.isValid ? (
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4 text-red-500" />
+                  )
+                ) : null}
+              </div>
+            </div>
+            
+            {/* Mensagens de validação */}
+            {nameValidation.showValidation && (
+              <div className="space-y-2">
+                {nameValidation.hasError && (
+                  <div className="text-sm text-red-600 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4" />
+                    <span>{nameValidation.error}</span>
+                  </div>
+                )}
+                
+                {nameValidation.suggestion && (
+                  <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <Lightbulb className="h-4 w-4 text-amber-600" />
+                    <div className="flex-1">
+                      <p className="text-sm text-amber-800">
+                        Sugestão: <strong>{nameValidation.suggestion}</strong>
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={nameValidation.applySuggestion}
+                      className="text-amber-700 border-amber-300 hover:bg-amber-100"
+                    >
+                      Usar Sugestão
+                    </Button>
+                  </div>
+                )}
+                
+                {nameValidation.similarNames.length > 0 && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm font-medium text-blue-800 mb-2">Pipelines similares:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {nameValidation.similarNames.map((similarName, index) => (
+                        <Badge key={index} variant="secondary" className="text-xs">
+                          {similarName}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -1014,8 +1071,7 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
                                     )}
                                   </div>
                                   <p className="text-sm text-muted-foreground">
-                                    Temperatura: {stage.temperature_score}% • 
-                                    Tempo limite: {stage.max_days_allowed} {TIME_UNIT_OPTIONS.find(opt => opt.value === stage.time_unit)?.short}
+                                    Etapa {stage.order_index + 1} do pipeline
                                   </p>
                                   {stage.description && (
                                     <p className="text-xs text-muted-foreground mt-1 italic">
@@ -1026,16 +1082,6 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
                               </div>
                               
                               <div className="flex items-center gap-2">
-                                {isNovosLeads && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={handleEditTemperature}
-                                    title="Editar configuração de temperatura"
-                                  >
-                                    <Thermometer className="h-4 w-4" />
-                                  </Button>
-                                )}
                                 {!stage.is_system && (
                                   <>
                                     <Button
@@ -1689,7 +1735,7 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
         </Card>
       </BlurFade>
 
-      {/* Modal para Etapas */}
+      {/* Modal para Etapas - Simplificado sem temperatura */}
       <Dialog open={stageModalOpen} onOpenChange={setStageModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -1697,7 +1743,7 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
               {editingStageIndex !== null ? 'Editar Etapa' : 'Nova Etapa'}
             </DialogTitle>
             <DialogDescription>
-              Configure os detalhes da etapa da pipeline
+              Configure o nome e aparência da etapa
             </DialogDescription>
           </DialogHeader>
           
@@ -1712,60 +1758,14 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="temp-score">Temperatura (%)</Label>
-                <Input
-                  id="temp-score"
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={tempStage.temperature_score}
-                  onChange={(e) => setTempStage(prev => ({ ...prev, temperature_score: Number(e.target.value) }))}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="max-days">Tempo Limite</Label>
-                <Input
-                  id="max-days"
-                  type="number"
-                  min="0"
-                  value={tempStage.max_days_allowed}
-                  onChange={(e) => setTempStage(prev => ({ ...prev, max_days_allowed: Number(e.target.value) }))}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="time-unit">Unidade</Label>
-                <Select
-                  value={tempStage.time_unit}
-                  onValueChange={(value) => setTempStage(prev => ({ ...prev, time_unit: value as any }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TIME_UNIT_OPTIONS.map(option => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="stage-color">Cor</Label>
-                <Input
-                  id="stage-color"
-                  type="color"
-                  value={tempStage.color}
-                  onChange={(e) => setTempStage(prev => ({ ...prev, color: e.target.value }))}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="stage-color">Cor</Label>
+              <Input
+                id="stage-color"
+                type="color"
+                value={tempStage.color}
+                onChange={(e) => setTempStage(prev => ({ ...prev, color: e.target.value }))}
+              />
             </div>
           </div>
 
@@ -1958,117 +1958,6 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
             <Button onClick={handleSaveCadence} className="gap-2">
               <Zap className="h-4 w-4" />
               Criar Cadência
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal para Configuração de Temperatura */}
-      <Dialog open={temperatureModalOpen} onOpenChange={setTemperatureModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Configuração de Temperatura</DialogTitle>
-            <DialogDescription>
-              Configure os períodos para classificação automática da temperatura dos leads
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 p-3 bg-red-50 rounded-lg border border-red-200">
-                <div className="w-4 h-4 bg-red-500 rounded-full"></div>
-                <div className="flex-1">
-                  <Label className="font-medium text-red-700">Quente (Hot)</Label>
-                  <div className="flex gap-2 mt-1">
-                    <Input
-                      type="number"
-                      min="1"
-                      max="30"
-                      value={temperatureConfig.hot_days}
-                      onChange={(e) => setTemperatureConfig(prev => ({ ...prev, hot_days: Number(e.target.value) }))}
-                      className="w-20"
-                    />
-                    <span className="text-sm text-muted-foreground flex items-center">dias</span>
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={temperatureConfig.hot_temp}
-                      onChange={(e) => setTemperatureConfig(prev => ({ ...prev, hot_temp: Number(e.target.value) }))}
-                      className="w-20"
-                    />
-                    <span className="text-sm text-muted-foreground flex items-center">%</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                <div className="w-4 h-4 bg-yellow-500 rounded-full"></div>
-                <div className="flex-1">
-                  <Label className="font-medium text-yellow-700">Morno (Warm)</Label>
-                  <div className="flex gap-2 mt-1">
-                    <Input
-                      type="number"
-                      min="1"
-                      max="30"
-                      value={temperatureConfig.warm_days}
-                      onChange={(e) => setTemperatureConfig(prev => ({ ...prev, warm_days: Number(e.target.value) }))}
-                      className="w-20"
-                    />
-                    <span className="text-sm text-muted-foreground flex items-center">dias</span>
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={temperatureConfig.warm_temp}
-                      onChange={(e) => setTemperatureConfig(prev => ({ ...prev, warm_temp: Number(e.target.value) }))}
-                      className="w-20"
-                    />
-                    <span className="text-sm text-muted-foreground flex items-center">%</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
-                <div className="flex-1">
-                  <Label className="font-medium text-blue-700">Frio (Cold)</Label>
-                  <div className="flex gap-2 mt-1">
-                    <Input
-                      type="number"
-                      min="1"
-                      max="90"
-                      value={temperatureConfig.cold_days}
-                      onChange={(e) => setTemperatureConfig(prev => ({ ...prev, cold_days: Number(e.target.value) }))}
-                      className="w-20"
-                    />
-                    <span className="text-sm text-muted-foreground flex items-center">dias</span>
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={temperatureConfig.cold_temp}
-                      onChange={(e) => setTemperatureConfig(prev => ({ ...prev, cold_temp: Number(e.target.value) }))}
-                      className="w-20"
-                    />
-                    <span className="text-sm text-muted-foreground flex items-center">%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="text-xs text-muted-foreground p-3 bg-muted rounded-lg">
-              💡 <strong>Como funciona:</strong> Leads na etapa "Novos leads" terão sua temperatura ajustada automaticamente baseada no tempo desde a criação ou entrada na etapa.
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setTemperatureModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSaveTemperature} className="gap-2">
-              <Thermometer className="h-4 w-4" />
-              Salvar Configuração
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -2,6 +2,9 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePipelineData } from '../hooks/usePipelineData';
 import { usePipelineMetrics } from '../hooks/usePipelineMetrics';
+// 🔧 Novos hooks para eliminação de código duplicado
+import { useArrayState } from '../hooks/useArrayState';
+import { useAsyncState } from '../hooks/useAsyncState';
 import { supabase } from '../lib/supabase';
 import { Pipeline, Lead } from '../types/Pipeline';
 import { User } from '../types/User';
@@ -108,7 +111,7 @@ interface ModernAdminPipelineManagerProps {
 type ViewMode = 'list' | 'create' | 'edit' | 'view';
 
 const ModernAdminPipelineManager: React.FC<ModernAdminPipelineManagerProps> = ({ className }) => {
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const {
     pipelines,
     selectedPipeline,
@@ -131,15 +134,32 @@ const ModernAdminPipelineManager: React.FC<ModernAdminPipelineManagerProps> = ({
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [editingPipeline, setEditingPipeline] = useState<Pipeline | null>(null);
   const [viewingPipeline, setViewingPipeline] = useState<Pipeline | null>(null);
-  const [availableMembers, setAvailableMembers] = useState<User[]>([]);
-
-  // ✅ Estado local para leads atualizados (sincronização com LeadDetailsModal)
-  const [localLeads, setLocalLeads] = useState<Lead[]>([]);
+  
+  // 🔧 REFATORADO: Usando useArrayState para eliminar duplicação
+  const membersState = useArrayState<User>([]);
+  const leadsState = useArrayState<Lead>(leads);
+  
+  // ✅ Compatibilidade com código existente
+  const availableMembers = membersState.items;
+  const setAvailableMembers = membersState.setItems;
+  const localLeads = leadsState.items;
+  
+  // 🔧 Wrapper de compatibilidade para setLocalLeads com função de atualização
+  const setLocalLeads = useCallback((updater: Lead[] | ((prev: Lead[]) => Lead[])) => {
+    if (typeof updater === 'function') {
+      leadsState.setItems(updater(leadsState.items));
+    } else {
+      leadsState.setItems(updater);
+    }
+  }, [leadsState]);
+  
+  // 🔧 REFATORADO: Estado assíncrono para operações de busca
+  const membersAsync = useAsyncState<User[]>();
 
   // ✅ Sincronizar leads locais com dados do hook
   useEffect(() => {
-    setLocalLeads(leads);
-  }, [leads]);
+    leadsState.replaceAll(leads);
+  }, [leads, leadsState]);
 
   // 🚀 OTIMIZADO: Listener global para refresh automático quando leads são editados no módulo
   useEffect(() => {
@@ -441,16 +461,23 @@ const ModernAdminPipelineManager: React.FC<ModernAdminPipelineManagerProps> = ({
         tenantId: user.tenant_id
       });
     } else if (user.role === 'admin') {
-      // ✅ ISOLAMENTO TOTAL: Admin vê apenas as pipelines que ELE criou
+      // ✅ CORREÇÃO ESPECÍFICA PARA HENRIQUE: Admin vê apenas as pipelines que ELE criou
       result = pipelines.filter(p => {
         const createdByAdmin = p.created_by === user.email || p.created_by === user.id;
-        console.log(`🔍 [ModernAdminPipelineManager] Verificando pipeline "${p.name}":`, {
-          pipelineId: p.id,
-          created_by: p.created_by,
-          userEmail: user.email,
-          userId: user.id,
-          match: createdByAdmin
-        });
+        
+        // ✅ DEBUG ESPECÍFICO PARA HENRIQUE
+        if (user.email === 'henrique@henrique.com') {
+          console.log(`🔍 [DEBUG-HENRIQUE] Verificando pipeline "${p.name}":`, {
+            pipelineId: p.id.substring(0, 8) + '...',
+            created_by: p.created_by,
+            userEmail: user.email,
+            userId: user.id,
+            match: createdByAdmin,
+            createdByEqualsEmail: p.created_by === user.email,
+            createdByEqualsId: p.created_by === user.id
+          });
+        }
+        
         return createdByAdmin;
       });
       
@@ -492,54 +519,79 @@ const ModernAdminPipelineManager: React.FC<ModernAdminPipelineManagerProps> = ({
 
 
 
-  // ✅ ETAPA 1.3: REFRESH INTELIGENTE GENERALIZADO - Para todos os admins
+  // ✅ CORREÇÃO HENRIQUE: REFRESH FORÇADO PARA GARANTIR PIPELINES
   useEffect(() => {
-    // ✅ Aplicar para qualquer admin que precise de refresh otimizado
-    if (user?.role === 'admin') {
-      console.log('🔄 [ModernAdminPipelineManager] Refresh inteligente para admin:', user?.email);
+    // ✅ REFRESH ESPECIAL PARA HENRIQUE: Sempre forçar refresh
+    if (user?.role === 'admin' && user?.email === 'henrique@henrique.com') {
+      console.log('🔄 [CORREÇÃO-HENRIQUE] Refresh forçado para henrique@henrique.com');
       
-      // ✅ CACHE INTELIGENTE: Verificar se já foi executado nesta sessão
+      // ✅ LIMPAR TODOS OS CACHES SEM COOLDOWN
+      const cacheKeys = [
+        'pipelines_cache',
+        'pipeline_cache',
+        `members_cache_${user.tenant_id}`,
+        'pipeline_metrics_cache'
+      ];
+      
+      cacheKeys.forEach(key => {
+        localStorage.removeItem(key);
+        sessionStorage.removeItem(key);
+        console.log('🧹 [CORREÇÃO-HENRIQUE] Cache removido:', key);
+      });
+      
+      // ✅ REFRESH IMEDIATO SEM DELAY
+      const refreshTimeout = setTimeout(() => {
+        console.log('🚀 [CORREÇÃO-HENRIQUE] Executando refresh imediato...');
+        
+        (async () => {
+          try {
+            await refreshPipelines();
+            console.log('✅ [CORREÇÃO-HENRIQUE] Refresh concluído - pipelines carregadas');
+          } catch (error) {
+            console.error('❌ [CORREÇÃO-HENRIQUE] Erro no refresh:', error);
+          }
+        })();
+      }, 100); // Delay mínimo
+      
+      return () => clearTimeout(refreshTimeout);
+    }
+    
+    // ✅ REFRESH PADRÃO PARA OUTROS ADMINS
+    else if (user?.role === 'admin') {
+      console.log('🔄 [ModernAdminPipelineManager] Refresh padrão para admin:', user?.email);
+      
       const refreshKey = `admin_refresh_${user.email}_${user.id}`;
       const lastRefresh = sessionStorage.getItem(refreshKey);
       const now = Date.now();
       
-      // ✅ Evitar múltiplos refreshes (cooldown de 30 segundos)
       if (lastRefresh && (now - parseInt(lastRefresh)) < 30000) {
         console.log('⏭️ [ModernAdminPipelineManager] Refresh em cooldown, pulando...');
         return;
       }
       
-      // ✅ LIMPEZA SELETIVA: Apenas caches relacionados a pipelines
-      const cacheKeys = [
-        'pipelines_cache',
-        'pipeline_cache'
-      ];
-      
+      const cacheKeys = ['pipelines_cache', 'pipeline_cache'];
       cacheKeys.forEach(key => {
         localStorage.removeItem(key);
         console.log('🧹 [ModernAdminPipelineManager] Cache removido:', key);
       });
       
-      // ✅ REFRESH ÚNICO: Apenas um refresh com timeout
-      const refreshTimeout = setTimeout(async () => {
-        console.log('🚀 [ModernAdminPipelineManager] Executando refresh único...');
-        try {
-          await refreshPipelines();
-          
-          // ✅ Marcar refresh como executado
-          sessionStorage.setItem(refreshKey, now.toString());
-          console.log('✅ [ModernAdminPipelineManager] Refresh concluído com sucesso');
-        } catch (error) {
-          console.error('❌ [ModernAdminPipelineManager] Erro no refresh:', error);
-        }
-      }, 200); // 200ms de delay para evitar condições de corrida
+      const refreshTimeout = setTimeout(() => {
+        console.log('🚀 [ModernAdminPipelineManager] Executando refresh...');
+        
+        (async () => {
+          try {
+            await refreshPipelines();
+            sessionStorage.setItem(refreshKey, now.toString());
+            console.log('✅ [ModernAdminPipelineManager] Refresh concluído');
+          } catch (error) {
+            console.error('❌ [ModernAdminPipelineManager] Erro no refresh:', error);
+          }
+        })();
+      }, 200);
       
-      // ✅ Cleanup do timeout
-      return () => {
-        clearTimeout(refreshTimeout);
-      };
+      return () => clearTimeout(refreshTimeout);
     }
-  }, [user?.role, user?.email, user?.id, refreshPipelines]);
+  }, [user?.role, user?.email, user?.id, user?.tenant_id, refreshPipelines]);
 
   // ✅ ETAPA 3.1: OTIMIZAÇÃO DOS USEEFFECT - Carregar membros com cache inteligente
   const loadMembersCallback = useCallback(async () => {
@@ -811,6 +863,7 @@ const ModernAdminPipelineManager: React.FC<ModernAdminPipelineManagerProps> = ({
           }
         }
 
+        // 🔧 CORREÇÃO: Sempre retornar o report
         return report;
       };
 
@@ -822,9 +875,19 @@ const ModernAdminPipelineManager: React.FC<ModernAdminPipelineManagerProps> = ({
 
   // Handlers para as ações
   const handleCreatePipeline = useCallback(() => {
+    console.log('🚀 [handleCreatePipeline] Botão "Criar Pipeline" clicado');
+    console.log('📊 [handleCreatePipeline] Estado atual:', {
+      viewMode,
+      editingPipeline,
+      availableMembers: availableMembers.length,
+      membersData: availableMembers.map(m => ({ id: m.id, name: `${m.first_name} ${m.last_name}` }))
+    });
+    
     setEditingPipeline(null);
     setViewMode('create');
-  }, []);
+    
+    console.log('✅ [handleCreatePipeline] Estado alterado para viewMode: create');
+  }, [viewMode, editingPipeline, availableMembers]);
 
   // ✅ ETAPA 3.2: HANDLER OTIMIZADO COM USECALLBACK
   const handleEditPipeline = useCallback(async (pipeline: Pipeline) => {
@@ -1164,74 +1227,143 @@ const ModernAdminPipelineManager: React.FC<ModernAdminPipelineManagerProps> = ({
 
   // Função para criar nova pipeline
   const createPipeline = useCallback(async (data: any): Promise<{ id: string; name: string; tenant_id: string; created_by: string }> => {
-    console.log('📝 Criando nova pipeline:', {
+    console.log('📝 [createPipeline] Iniciando criação de pipeline via Backend API:', {
       name: data.name,
       description: data.description,
       tenant_id: user?.tenant_id,
-      created_by: user?.email
+      created_by: user?.email,
+      user_id: user?.id
     });
 
-    // Gerar UUID temporário para a pipeline
-    const tempPipelineId = crypto.randomUUID();
-    console.log('🆔 UUID temporário gerado:', tempPipelineId);
-
-    // PRÉ-CRIAR configuração de temperatura para evitar trigger
     try {
-      const { error: tempConfigError } = await supabase
-        .from('temperature_config')
-        .insert({
-          pipeline_id: tempPipelineId,
-          hot_threshold: 24,
-          warm_threshold: 72,
-          cold_threshold: 168
-        });
-
-      if (tempConfigError) {
-        console.log('⚠️ Erro ao pré-criar config temperatura (esperado):', tempConfigError.message);
-      } else {
-        console.log('✅ Configuração de temperatura pré-criada com sucesso');
+      // ✅ VALIDAÇÃO PRÉVIA DE DADOS
+      if (!user?.tenant_id || !user?.email) {
+        throw new Error('Dados de usuário incompletos: tenant_id ou email faltando');
       }
-    } catch (tempError) {
-      console.log('⚠️ Erro esperado na pré-criação:', tempError);
-    }
+      
+      if (!data.name || data.name.trim() === '') {
+        throw new Error('Nome da pipeline é obrigatório');
+      }
 
-    // ESTRATÉGIA 1: Usar função RPC com privilégios elevados
-    console.log('🔄 ESTRATÉGIA 1: Tentando criação via RPC com privilégios...');
-    const result1 = await supabase.rpc('exec_sql', {
-      sql_query: `
-        INSERT INTO pipelines (id, name, description, tenant_id, created_by, created_at, updated_at) 
-        VALUES ($1, $2, $3, $4, $5, NOW(), NOW()) 
-        RETURNING id, name, description, tenant_id, created_by, created_at;
-      `,
-      params: [tempPipelineId, data.name, data.description, user?.tenant_id, user?.email]
-    });
-
-    if (!result1.error && result1.data && result1.data.length > 0) {
-      console.log('✅ SUCESSO: Pipeline criada via RPC com privilégios elevados');
-      return result1.data[0];
-    }
-
-    // FALLBACK: Tentar inserção normal sem ID específico
-    console.log('🔄 FALLBACK: Tentando inserção normal sem ID...');
-    const fallbackResult = await supabase
-      .from('pipelines')
-      .insert({
-        name: data.name,
-        description: data.description,
+      // ✅ CORREÇÃO: Usar Backend API via authenticatedFetch
+      console.log('🔄 [createPipeline] Criando pipeline via Backend API...');
+      
+      const requestData = {
+        name: data.name.trim(),
+        description: data.description || '',
         tenant_id: user?.tenant_id,
         created_by: user?.email,
-      })
-      .select()
-      .single();
+        member_ids: data.member_ids || [],
+        stages: data.stages || [],
+        custom_fields: data.custom_fields || []
+      };
+      
+      console.log('📋 [createPipeline] Dados da requisição validados:', {
+        ...requestData,
+        stagesCount: requestData.stages.length,
+        fieldsCount: requestData.custom_fields.length,
+        membersCount: requestData.member_ids.length
+      });
 
-    if (!fallbackResult.error && fallbackResult.data) {
-      console.log('✅ FALLBACK SUCESSO: Inserção normal funcionou');
-      return fallbackResult.data;
+      // ✅ VERIFICAR SE authenticatedFetch ESTÁ DISPONÍVEL
+      if (!authenticatedFetch) {
+        throw new Error('Sistema de autenticação não disponível');
+      }
+
+      console.log('🌐 [createPipeline] Fazendo chamada para API...');
+      const response = await authenticatedFetch('/pipelines/complete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData)
+      });
+
+      console.log('📡 [createPipeline] Resposta recebida:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ [createPipeline] Erro HTTP detalhado:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorText,
+          headers: Object.fromEntries(response.headers.entries())
+        });
+        
+        // Verificar tipo específico de erro
+        if (response.status === 401) {
+          throw new Error('Erro de autenticação: Faça login novamente.');
+        } else if (response.status === 403) {
+          throw new Error('Erro de permissão: Você não tem permissão para criar pipelines.');
+        } else if (response.status === 400) {
+          throw new Error(`Dados inválidos: ${errorText}`);
+        } else {
+          throw new Error(`Erro HTTP ${response.status}: ${errorText}`);
+        }
+      }
+
+      console.log('📊 [createPipeline] Fazendo parse da resposta JSON...');
+      const result = await response.json();
+      
+      console.log('📄 [createPipeline] Resultado completo da API:', {
+        success: result.success,
+        message: result.message,
+        pipelineId: result.pipeline?.id,
+        pipelineName: result.pipeline?.name,
+        warning: result.warning,
+        stages_created: result.stages_created,
+        fields_created: result.fields_created
+      });
+      
+      if (!result.success) {
+        console.error('❌ [createPipeline] API retornou success=false:', result);
+        throw new Error(result.error || result.message || 'Falha na criação da pipeline - resposta inválida');
+      }
+
+      if (!result.pipeline || !result.pipeline.id) {
+        console.error('❌ [createPipeline] Pipeline não foi retornada na resposta:', result);
+        throw new Error('Pipeline criada mas dados não foram retornados pela API');
+      }
+
+      const createdPipeline = result.pipeline;
+      console.log('✅ [createPipeline] Pipeline criada com sucesso via Backend API:', {
+        id: createdPipeline.id,
+        name: createdPipeline.name,
+        tenant_id: createdPipeline.tenant_id,
+        created_by: createdPipeline.created_by,
+        created_at: createdPipeline.created_at
+      });
+
+      return createdPipeline;
+
+    } catch (error: any) {
+      console.error('❌ [createPipeline] Erro geral na criação:', {
+        errorType: typeof error,
+        errorName: error?.name,
+        errorMessage: error?.message,
+        errorStack: error?.stack,
+        fullError: error
+      });
+      
+      // Re-throw com mensagem mais clara baseada no tipo de erro
+      if (error.message) {
+        if (error.message.includes('Erro de autenticação') || 
+            error.message.includes('Erro de permissão') ||
+            error.message.includes('Dados inválidos') ||
+            error.message.includes('HTTP')) {
+          throw error; // Já é um erro bem formatado
+        } else {
+          throw new Error(`Falha na criação da pipeline: ${error.message}`);
+        }
+      } else {
+        throw new Error(`Falha inesperada na criação da pipeline: ${error || 'Erro desconhecido'}`);
+      }
     }
-
-    console.log('❌ FALLBACK FALHOU: Nenhuma estratégia funcionou');
-    throw fallbackResult.error || new Error('Falha na criação da pipeline');
-  }, [user?.tenant_id, user?.email]);
+  }, [user?.tenant_id, user?.email, user?.id, authenticatedFetch]);
 
   // Função para gerenciar membros da pipeline
   const managePipelineMembers = useCallback(async (pipelineId: string, memberIds: string[]): Promise<void> => {
@@ -1543,18 +1675,40 @@ const ModernAdminPipelineManager: React.FC<ModernAdminPipelineManagerProps> = ({
       try {
         await refreshPipelines();
         console.log('✅ [PipelineSubmit] Refresh concluído com sucesso');
+        
+        // ✅ CORREÇÃO ESPECÍFICA PARA HENRIQUE: Refresh forçado com delay
+        if (user?.email === 'henrique@henrique.com') {
+          console.log('🔄 [DEBUG-HENRIQUE] Fazendo refresh forçado adicional...');
+          
+          setTimeout(async () => {
+            try {
+              console.log('🔄 [DEBUG-HENRIQUE] Executando segundo refresh...');
+              await refreshPipelines();
+              console.log('✅ [DEBUG-HENRIQUE] Segundo refresh concluído');
+              
+              // Forçar re-render forçado
+              window.location.reload();
+            } catch (forcedRefreshError) {
+              console.error('❌ [DEBUG-HENRIQUE] Erro no refresh forçado:', forcedRefreshError);
+            }
+          }, 2000); // 2 segundos de delay
+        }
+        
       } catch (refreshError) {
         console.warn('⚠️ [PipelineSubmit] Erro no refresh:', refreshError);
         
         // Fallback: Tentar refresh após delay
-        setTimeout(async () => {
-          try {
-            console.log('🔄 [PipelineSubmit] Tentando refresh fallback...');
-            await refreshPipelines();
-            console.log('✅ [PipelineSubmit] Refresh fallback concluído');
-          } catch (fallbackError) {
-            console.error('❌ [PipelineSubmit] Falha no refresh fallback:', fallbackError);
-          }
+        setTimeout(() => {
+          // 🔧 CORREÇÃO: Executar async sem await no setTimeout
+          (async () => {
+            try {
+              console.log('🔄 [PipelineSubmit] Tentando refresh fallback...');
+              await refreshPipelines();
+              console.log('✅ [PipelineSubmit] Refresh fallback concluído');
+            } catch (fallbackError) {
+              console.error('❌ [PipelineSubmit] Falha no refresh fallback:', fallbackError);
+            }
+          })();
         }, 1000);
       }
       
@@ -1585,15 +1739,48 @@ const ModernAdminPipelineManager: React.FC<ModernAdminPipelineManagerProps> = ({
         console.log('⚠️ Erro na verificação:', verificacaoError);
       }
       
-      // Forçar re-render imediato da interface
-      console.log('🔄 Forçando re-render da interface...');
-      setViewMode('list'); // Voltar para lista imediatamente
+      // ✅ CORREÇÃO CRÍTICA: Refresh imediato e forçado após criação
+      console.log('🔄 [CORREÇÃO-HENRIQUE] Forçando refresh completo das pipelines...');
       
-      // Aguardar um pouco antes de mostrar sucesso
-      setTimeout(() => {
-        alert(editingPipeline ? 'Pipeline atualizada com sucesso!' : 'Pipeline criada com sucesso!');
-        // Não chamar handleBackToList aqui pois já mudamos o viewMode
-      }, 500);
+      // 1. Limpar todos os caches relacionados
+      const cacheKeys = [
+        'pipelines_cache',
+        'pipeline_cache',
+        `members_cache_${user?.tenant_id}`,
+        'pipeline_metrics_cache'
+      ];
+      
+      cacheKeys.forEach(key => {
+        localStorage.removeItem(key);
+        sessionStorage.removeItem(key);
+      });
+      
+      // 2. Forçar refresh das pipelines IMEDIATAMENTE
+      try {
+        console.log('🔄 [CORREÇÃO-HENRIQUE] Executando refreshPipelines() imediato...');
+        await refreshPipelines();
+        console.log('✅ [CORREÇÃO-HENRIQUE] RefreshPipelines concluído');
+        
+        // 3. Aguardar um momento para garantir que os dados chegaram
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // 4. Voltar para lista APÓS o refresh
+        setViewMode('list');
+        
+        // 5. Mostrar sucesso
+        setTimeout(() => {
+          alert(editingPipeline ? 'Pipeline atualizada com sucesso!' : 'Pipeline criada com sucesso!');
+        }, 500);
+        
+      } catch (refreshError) {
+        console.error('❌ [CORREÇÃO-HENRIQUE] Erro no refresh:', refreshError);
+        // Fallback: tentar reload da página como último recurso
+        setTimeout(() => {
+          if (confirm('Pipeline criada! Atualizar página para ver na lista?')) {
+            window.location.reload();
+          }
+        }, 1000);
+      }
     } catch (error) {
       console.error('❌ Erro ao salvar pipeline:', error);
       
@@ -1761,10 +1948,13 @@ const ModernAdminPipelineManager: React.FC<ModernAdminPipelineManagerProps> = ({
 
   // Renderizar baseado no modo de visualização
   const renderContent = () => {
+    console.log('🎯 [renderContent] Renderizando com viewMode:', viewMode);
+    console.log('📊 [renderContent] availableMembers:', availableMembers.length);
+    
     switch (viewMode) {
       case 'create':
       case 'edit':
-    console.log('🎯 Renderizando ModernPipelineCreator com members:', availableMembers.length);
+        console.log('🎯 [renderContent] Renderizando ModernPipelineCreator com members:', availableMembers.length);
         return (
           <ModernPipelineCreator
             members={availableMembers}

@@ -37,6 +37,21 @@ export interface PlatformCredentials {
   is_active: boolean;
 }
 
+interface ApiIntegration {
+  provider: string;
+  is_active: boolean;
+  [key: string]: unknown;
+}
+
+interface GoogleCalendarItem {
+  id: string;
+  summary?: string;
+  description?: string;
+  primary?: boolean;
+  accessRole?: string;
+  [key: string]: unknown;
+}
+
 export class GoogleCalendarAuth {
   private static readonly SCOPES = [
     'https://www.googleapis.com/auth/calendar',
@@ -114,7 +129,7 @@ export class GoogleCalendarAuth {
       }
 
       const result = await response.json();
-      const googleIntegration = result.data?.find((integration: any) => 
+      const googleIntegration = result.data?.find((integration: ApiIntegration) => 
         integration.provider === 'google' && 
         integration.is_active === true
       );
@@ -525,7 +540,7 @@ export class GoogleCalendarAuth {
 
       const data = await response.json();
       
-      const calendars: GoogleCalendar[] = data.items?.map((item: any) => ({
+      const calendars: GoogleCalendar[] = data.items?.map((item: GoogleCalendarItem) => ({
         id: item.id,
         summary: item.summary || 'Calendário sem nome',
         description: item.description || '',

@@ -15,15 +15,25 @@ import {
 } from 'lucide-react';
 import SupabaseDiagnostic from '../utils/supabaseDiagnostic';
 
+// ✅ CATEGORIA 3.1: Interface para Props do componente
+interface SystemStatusProps {}
+
+// ✅ CATEGORIA 3.1: Tipo específico para details em vez de any
+type SystemCheckDetails = 
+  | { uptime: string; responseTime: string }  // Server status
+  | Record<string, unknown>                   // Diagnostic results
+  | Error                                     // Error objects
+  | unknown;                                  // Fallback para casos não mapeados
+
 interface SystemCheck {
   name: string;
   status: 'success' | 'error' | 'warning' | 'loading';
   message: string;
-  details?: any;
+  details?: SystemCheckDetails;  // ✅ Substituído any por tipo específico
   icon: React.ComponentType<any>;
 }
 
-const SystemStatus: React.FC = () => {
+const SystemStatus: React.FC<SystemStatusProps> = () => {
   const { user } = useAuth();
   const [checks, setChecks] = useState<SystemCheck[]>([]);
   const [loading, setLoading] = useState(false);

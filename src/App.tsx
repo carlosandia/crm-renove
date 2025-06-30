@@ -6,6 +6,7 @@ import LoginForm from './components/LoginForm'
 import { Toaster } from './components/ui/toaster'
 import SafeErrorBoundary from './components/SafeErrorBoundary'
 import { useAuth } from './contexts/AuthContext'
+import { logger } from './utils/logger'
 import './App.css'
 
 // 🚀 OTIMIZAÇÃO: Lazy loading de componentes pesados
@@ -27,10 +28,10 @@ const LoadingFallback = React.memo(() => (
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
   
-  console.log('🔍 ProtectedRoute - Debug:', { user: user?.email, loading })
+  logger.debug('ProtectedRoute - Debug', `user: ${user?.email}, loading: ${loading}`)
   
   if (loading) {
-    console.log('⏳ Aplicação carregando...')
+    logger.debug('Aplicação carregando...')
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -42,18 +43,18 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
   
   if (!user) {
-    console.log('❌ Usuário não autenticado, redirecionando para login')
+    logger.debug('Usuário não autenticado, redirecionando para login')
     return <Navigate to="/login" replace />
   }
   
-  console.log('✅ Usuário autenticado:', user.email)
+  logger.debug('Usuário autenticado', user.email)
   return <>{children}</>
 }
 
 function AppRoutes() {
   const { user } = useAuth()
   
-  console.log('🚀 AppRoutes - Renderizando com usuário:', user?.email || 'não logado')
+  logger.debug('AppRoutes - Renderizando com usuário', user?.email || 'não logado')
   
   return (
     <SafeErrorBoundary resetKeys={user?.id ? [user.id] : []}>
@@ -83,7 +84,7 @@ function AppRoutes() {
 }
 
 function App() {
-  console.log('🎯 App component renderizado - VERSÃO COMPLETA CORRIGIDA')
+  logger.system('App component renderizado - VERSÃO COMPLETA CORRIGIDA')
   
   return (
     <SafeErrorBoundary>

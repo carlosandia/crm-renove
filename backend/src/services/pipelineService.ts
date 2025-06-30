@@ -26,10 +26,83 @@ export interface UpdatePipelineData {
   description?: string;
 }
 
+export interface PipelineNameValidation {
+  is_valid: boolean;
+  error?: string;
+  suggestion?: string;
+  similar_names?: string[];
+}
+
 export class PipelineService {
-  // Query otimizada única para buscar pipelines com todos os relacionamentos
+  static async validatePipelineName(
+    name: string, 
+    tenantId: string, 
+    pipelineId?: string
+  ): Promise<PipelineNameValidation> {
+    try {
+      console.log('🔍 [PipelineService] Validando nome de pipeline:', {
+        name,
+        tenantId,
+        pipelineId: pipelineId || 'novo'
+      });
+
+      // ✅ TENTAR FUNÇÃO POSTGRESQL PRIMEIRO (tipos corretos baseados na verificação)
+      const { data, error } = await supabase.rpc('validate_pipeline_name_unique', {
+        p_name: name.trim(),
+        p_tenant_id: tenantId, // TEXT - correto conforme verificação
+        p_pipeline_id: pipelineId || null // UUID - será convertido automaticamente
+      });
+
+      if (error) {
+        console.warn('⚠️ [PipelineService] Função PostgreSQL não disponível, usando fallback:', error.message);
+        throw new Error('FALLBACK_NEEDED');
+      }
+
+      console.log('✅ [PipelineService] Validação PostgreSQL concluída:', data);
+
+      // ✅ BUSCAR PIPELINES SIMILARES MANUALMENTE
+      const { data: similarPipelines } = await supabase
+        .from('pipelines')
+        .select('name')
+        .eq('tenant_id', tenantId)
+        .ilike('name', `%${name.trim()}%`)
+        .limit(3);
+
+      return {
+        is_valid: data?.is_valid || false,
+        error: data?.error || undefined,
+        suggestion: data?.suggestion || undefined,
+        similar_names: similarPipelines?.map(p => p.name) || []
+      };
+
+    } catch (error) {
+      console.error('❌ [PipelineService] Erro crítico na validação:', error);
+      
+      const { data: existingPipelines, error: fallbackError } = await supabase
+        .from('pipelines')
+        .select('name')
+        .eq('tenant_id', tenantId)
+        .ilike('name', name.trim())
+        .eq('is_active', true);
+
+      if (fallbackError) {
+        throw new Error(`Erro na validação fallback: ${fallbackError.message}`);
+      }
+
+      const hasConflict = existingPipelines?.some(p => 
+        p.name.toLowerCase().trim() === name.toLowerCase().trim()
+      ) || false;
+
+      return {
+        is_valid: !hasConflict,
+        error: hasConflict ? 'Já existe uma pipeline com este nome' : undefined,
+        suggestion: hasConflict ? `${name} (2)` : undefined,
+        similar_names: existingPipelines?.map(p => p.name) || []
+      };
+    }
+  }
+
   static async getPipelinesByTenant(tenantId: string): Promise<Pipeline[]> {
-    // Primeiro buscar pipelines
     const { data: pipelines, error: pipelinesError } = await supabase
       .from('pipelines')
       .select('*')
@@ -44,16 +117,13 @@ export class PipelineService {
       return [];
     }
 
-    // Para cada pipeline, buscar membros e etapas
     const pipelinesWithDetails = await Promise.all(
       pipelines.map(async (pipeline) => {
-        // Buscar membros
         const { data: pipelineMembers } = await supabase
           .from('pipeline_members')
           .select('*')
           .eq('pipeline_id', pipeline.id);
 
-        // Buscar dados dos usuários membros
         const membersWithUserData = await Promise.all(
           (pipelineMembers || []).map(async (pm) => {
             const { data: userData } = await supabase
@@ -69,7 +139,6 @@ export class PipelineService {
           })
         );
 
-        // Buscar etapas
         const { data: stages } = await supabase
           .from('pipeline_stages')
           .select('*')
@@ -128,7 +197,20 @@ export class PipelineService {
   static async createPipeline(data: CreatePipelineData): Promise<Pipeline> {
     const { member_ids, ...pipelineData } = data;
 
-    // Criar pipeline
+    console.log('🔍 [PipelineService] Validando nome antes de criar pipeline...');
+    const validation = await this.validatePipelineName(
+      pipelineData.name,
+      pipelineData.tenant_id
+    );
+
+    if (!validation.is_valid) {
+      const errorMessage = `${validation.error}${validation.suggestion ? ` Sugestão: "${validation.suggestion}"` : ''}`;
+      console.error('❌ [PipelineService] Validação falhou:', errorMessage);
+      throw new Error(errorMessage);
+    }
+
+    console.log('✅ [PipelineService] Nome validado, criando pipeline...');
+
     const { data: pipeline, error: pipelineError } = await supabase
       .from('pipelines')
       .insert(pipelineData)
@@ -136,10 +218,12 @@ export class PipelineService {
       .single();
 
     if (pipelineError) {
+      if (pipelineError.code === '23505' && pipelineError.message.includes('idx_pipelines_unique_name_per_tenant')) {
+        throw new Error(`Já existe uma pipeline com o nome "${pipelineData.name}" nesta empresa. Escolha um nome diferente.`);
+      }
       throw new Error(`Erro ao criar pipeline: ${pipelineError.message}`);
     }
 
-    // Adicionar membros se fornecidos
     if (member_ids && member_ids.length > 0) {
       const memberInserts = member_ids.map(member_id => ({
         pipeline_id: pipeline.id,
@@ -151,14 +235,43 @@ export class PipelineService {
         .insert(memberInserts);
 
       if (membersError) {
-        console.warn('Erro ao adicionar membros:', membersError);
+        console.warn('⚠️ [PipelineService] Erro ao adicionar membros:', membersError);
       }
     }
+
+    console.log('✅ [PipelineService] Pipeline criada com sucesso:', {
+      id: pipeline.id,
+      name: pipeline.name,
+      tenant_id: pipeline.tenant_id
+    });
 
     return pipeline;
   }
 
   static async updatePipeline(id: string, data: UpdatePipelineData): Promise<Pipeline> {
+    if (data.name) {
+      console.log('🔍 [PipelineService] Validando novo nome para edição...');
+      
+      const currentPipeline = await this.getPipelineById(id);
+      if (!currentPipeline) {
+        throw new Error('Pipeline não encontrada');
+      }
+
+      const validation = await this.validatePipelineName(
+        data.name,
+        currentPipeline.tenant_id,
+        id
+      );
+
+      if (!validation.is_valid) {
+        const errorMessage = `${validation.error}${validation.suggestion ? ` Sugestão: "${validation.suggestion}"` : ''}`;
+        console.error('❌ [PipelineService] Validação de edição falhou:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      console.log('✅ [PipelineService] Nome validado para edição');
+    }
+
     const { data: pipeline, error } = await supabase
       .from('pipelines')
       .update(data)
@@ -167,8 +280,16 @@ export class PipelineService {
       .single();
 
     if (error) {
+      if (error.code === '23505' && error.message.includes('idx_pipelines_unique_name_per_tenant')) {
+        throw new Error(`Já existe uma pipeline com o nome "${data.name}" nesta empresa. Escolha um nome diferente.`);
+      }
       throw new Error(`Erro ao atualizar pipeline: ${error.message}`);
     }
+
+    console.log('✅ [PipelineService] Pipeline atualizada com sucesso:', {
+      id: pipeline.id,
+      name: pipeline.name
+    });
 
     return pipeline;
   }
@@ -185,7 +306,6 @@ export class PipelineService {
   }
 
   static async getPipelinesByMember(memberId: string): Promise<Pipeline[]> {
-    // Query otimizada para buscar pipelines do membro
     const { data: pipelineMembers, error: membersError } = await supabase
       .from('pipeline_members')
       .select('pipeline_id')
@@ -201,7 +321,6 @@ export class PipelineService {
 
     const pipelineIds = pipelineMembers.map(pm => pm.pipeline_id);
 
-    // Buscar pipelines primeiro
     const { data: pipelines, error: pipelinesError } = await supabase
       .from('pipelines')
       .select('*')
@@ -216,17 +335,14 @@ export class PipelineService {
       return [];
     }
 
-    // Para cada pipeline, buscar as etapas e campos customizados separadamente
     const pipelinesWithDetails = await Promise.all(
       pipelines.map(async (pipeline) => {
-        // Buscar etapas
         const { data: stages } = await supabase
           .from('pipeline_stages')
           .select('*')
           .eq('pipeline_id', pipeline.id)
           .order('order_index');
 
-        // Buscar campos customizados
         const { data: customFields } = await supabase
           .from('pipeline_custom_fields')
           .select('*')

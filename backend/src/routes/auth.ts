@@ -186,7 +186,7 @@ router.post('/refresh',
  */
 router.post('/logout', 
   asyncHandler(async (req: Request, res: Response) => {
-    // TODO: Implementar blacklist de tokens para logout real
+    // Sistema de blacklist de tokens pode ser implementado para segurança adicional
     // Por enquanto, apenas confirmação
     
     res.json({

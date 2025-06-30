@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { adminDashboardService, SalesTarget, AdminAlert } from '../services/adminDashboardService';
 import { ApiResponse } from '../types/express';
-import { asyncHandler, ValidationError, NotFoundError, ForbiddenError } from '../middleware/errorHandler';
+import { asyncHandler, ValidationError, ForbiddenError } from '../middleware/errorHandler';
 
 // ============================================================================
 // ADMIN DASHBOARD CONTROLLER
@@ -37,9 +37,7 @@ export class AdminDashboardController {
       data: dashboardData,
       meta: {
         tenant_id: tenantId,
-        time_range: timeRange,
-        generated_at: new Date().toISOString(),
-        cache_enabled: true,
+        time_range: typeof timeRange === 'string' ? timeRange : '30d',
       },
       message: 'Admin dashboard data retrieved successfully',
     };
@@ -53,6 +51,7 @@ export class AdminDashboardController {
 
   static getTeamPerformance = asyncHandler(async (req: Request, res: Response) => {
     const { period = '30d', generateSnapshot = false } = req.query;
+    const periodStr = typeof period === 'string' ? period : '30d';
     const tenantId = req.user?.tenant_id;
 
     if (!tenantId) {
@@ -70,14 +69,14 @@ export class AdminDashboardController {
 
     const teamPerformance = await adminDashboardService.getTeamPerformance(
       tenantId,
-      period as string
+      periodStr
     );
 
     const response: ApiResponse = {
       success: true,
       data: {
         team_performance: teamPerformance,
-        period,
+        period: periodStr,
         total_members: teamPerformance.length,
         snapshot_generated: generateSnapshot === 'true',
       },

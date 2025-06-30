@@ -89,6 +89,15 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
   const [pipelineStats, setPipelineStats] = useState<Record<string, PipelineStats>>({});
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
 
+  // ✅ LOGS ESPECÍFICOS PARA DEBUG HENRIQUE
+  console.log('🔍 [ModernPipelineList] Props recebidas:', {
+    pipelinesCount: pipelines?.length || 0,
+    membersCount: members?.length || 0,
+    loading,
+    userEmail: user?.email,
+    pipelinesData: pipelines?.map(p => ({ id: p.id.substring(0, 8) + '...', name: p.name, created_by: p.created_by })) || []
+  });
+
   // Dados recebidos processados silenciosamente
 
   // Carregar estatísticas das pipelines (OTIMIZADO)
@@ -295,10 +304,11 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
     const matchesSearch = pipeline.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          pipeline.description?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    // Implementar filtro por status quando necessário
+    // ✅ CORREÇÃO: Filtro mais permissivo quando stats não estão carregados
+    const stats = pipelineStats[pipeline.id];
     const matchesFilter = selectedFilter === 'all' || 
-                         (selectedFilter === 'active' && pipelineStats[pipeline.id]?.activeLeads > 0) ||
-                         (selectedFilter === 'archived' && pipelineStats[pipeline.id]?.activeLeads === 0);
+                         (selectedFilter === 'active' && (stats?.activeLeads > 0 || !stats)) ||
+                         (selectedFilter === 'archived' && stats?.activeLeads === 0);
 
     const shouldInclude = matchesSearch && matchesFilter;
     
@@ -321,6 +331,23 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
     
     return a.name.localeCompare(b.name);
   });
+
+  // ✅ LOGS ESPECÍFICOS PARA DEBUG DE FILTROS
+  console.log('🔍 [ModernPipelineList] Pipelines após filtro:', {
+    originalCount: pipelines.length,
+    filteredCount: filteredPipelines.length,
+    searchTerm,
+    selectedFilter,
+    filteredPipelines: filteredPipelines.map(p => ({ id: p.id.substring(0, 8) + '...', name: p.name }))
+  });
+
+  // ✅ LOG ESPECÍFICO PARA RENDERIZAÇÃO DOS CARDS
+  if (filteredPipelines.length > 0) {
+    console.log('🎯 [ModernPipelineList] Renderizando cards:', {
+      count: filteredPipelines.length,
+      pipelines: filteredPipelines.map(p => p.name)
+    });
+  }
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -463,6 +490,7 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
         </BlurFade>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Cards das Pipelines */}
           {filteredPipelines.map((pipeline, index) => {
             const stats = pipelineStats[pipeline.id] || {
               totalLeads: 0,
@@ -496,8 +524,6 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
               });
             });
             
-            // Pipeline processada silenciosamente
-
             return (
               <BlurFade key={pipeline.id} delay={0.1 + index * 0.05}>
                 <div 
