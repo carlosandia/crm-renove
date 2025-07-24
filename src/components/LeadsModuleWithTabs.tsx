@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useStatePersistence, MODULE_PERSISTENCE_CONFIGS } from '../lib/statePersistence';
+import { showSuccessToast, showErrorToast } from '../hooks/useToast';
 // 🔧 Novos hooks para eliminação de código duplicado
 import { useArrayState } from '../hooks/useArrayState';
 import { useAsyncState } from '../hooks/useAsyncState';
@@ -207,15 +208,15 @@ const LeadsModuleWithTabs: React.FC = () => {
 
       if (error) {
         console.error('Erro ao excluir lead:', error);
-        alert('Erro ao excluir lead');
+        showErrorToast('Erro ao excluir', 'Erro ao excluir lead');
         return;
       }
 
       await loadLeads();
-      alert('Lead excluído com sucesso');
+      showSuccessToast('Lead excluído', 'Lead excluído com sucesso');
     } catch (error) {
       console.error('Erro ao excluir lead:', error);
-      alert('Erro ao excluir lead');
+      showErrorToast('Erro ao excluir', 'Erro ao excluir lead');
     }
   };
 

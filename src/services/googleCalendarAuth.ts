@@ -77,7 +77,7 @@ export class GoogleCalendarAuth {
       return this.authenticatedFetch(endpoint, options);
     } else {
       // Fallback para desenvolvimento
-      return fetch(`http://localhost:3001${endpoint}`, options);
+      return fetch(`http://127.0.0.1:3001${endpoint}`, options);
     }
   }
 

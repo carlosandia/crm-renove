@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
 import { Company, CompanyAdmin } from '../types/Company';
 import { useAuth } from '../contexts/AuthContext';
+import { showSuccessToast, showErrorToast } from './useToast';
 
 export const useCompanies = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -243,7 +244,7 @@ export const useCompanies = () => {
         });
       } else {
         // Fallback para desenvolvimento sem autenticação
-        response = await fetch(`http://localhost:3001/api/companies/${company.id}`, {
+        response = await fetch(`http://127.0.0.1:3001/api/companies/${company.id}`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' }
         });
@@ -254,14 +255,14 @@ export const useCompanies = () => {
       if (result.success) {
         console.log(`✅ [useCompanies] Empresa excluída com sucesso: ${company.name}`);
         await fetchCompanies(); // Atualizar dados
-        alert(`✅ Empresa "${company.name}" excluída com sucesso!`);
+        showSuccessToast('Empresa excluída', `Empresa "${company.name}" excluída com sucesso!`);
       } else {
         console.error(`❌ [useCompanies] Erro ao excluir empresa:`, result.error);
-        alert(`❌ Erro ao excluir empresa: ${result.error}`);
+        showErrorToast('Erro ao excluir', `Erro ao excluir empresa: ${result.error}`);
       }
     } catch (error) {
       console.error(`❌ [useCompanies] Erro de conexão:`, error);
-      alert(`❌ Erro de conexão: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+      showErrorToast('Erro de conexão', `${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   }, [fetchCompanies, authenticatedFetch]);
 
@@ -287,7 +288,7 @@ export const useCompanies = () => {
         });
       } else {
         // Fallback para desenvolvimento sem autenticação
-        response = await fetch('http://localhost:3001/api/admin-invitations/send', {
+        response = await fetch('http://127.0.0.1:3001/api/admin-invitations/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

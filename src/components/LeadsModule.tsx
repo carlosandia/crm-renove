@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { showSuccessToast, showErrorToast } from '../hooks/useToast';
 import LeadsListEnhanced from './Leads/LeadsListEnhanced';
 import LeadDetailsModal from './Leads/LeadDetailsModal';
 import LeadFormModal from './Leads/LeadFormModal';
 import PendingLeadsTab from './Pipeline/PendingLeadsTab';
-import { Search, Plus, Filter, Users, TrendingUp, Clock } from 'lucide-react';
+import LeadsImportModal from './Leads/LeadsImportModal';
+import LeadsExportModal from './Leads/LeadsExportModal';
+import { filterLeadsWithoutOpportunity } from '../utils/leadOpportunityUtils';
 
 interface LeadMaster {
   id: string;
@@ -32,6 +35,8 @@ interface LeadMaster {
   utm_source?: string;
   utm_medium?: string;
   utm_campaign?: string;
+  valor?: number;
+  pipeline_leads_count?: number;
 }
 
 const LeadsModule: React.FC = () => {
@@ -39,16 +44,22 @@ const LeadsModule: React.FC = () => {
   const [leads, setLeads] = useState<LeadMaster[]>([]);
   const [filteredLeads, setFilteredLeads] = useState<LeadMaster[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [temperatureFilter, setTemperatureFilter] = useState('all');
   const [selectedLead, setSelectedLead] = useState<LeadMaster | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<LeadMaster | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
+  // 🔍 Estados para filtragem vindos do subheader
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedFilter, setSelectedFilter] = useState('all');
 
   // ✅ Estado local para leads atualizados (sincronização com LeadDetailsModal)
   const [localLeads, setLocalLeads] = useState<LeadMaster[]>([]);
+
+  // 🎯 Estado para controlar quais leads têm oportunidades (mesma lógica do LeadsListEnhanced)
+  const [leadsWithOpportunities, setLeadsWithOpportunities] = useState<Set<string>>(new Set());
 
   // ✅ Sincronizar leads locais com estado principal
   useEffect(() => {
@@ -76,6 +87,59 @@ const LeadsModule: React.FC = () => {
       setSelectedLead(updatedLead);
     }
   }, [selectedLead]);
+
+  // 🎯 Verificar quais leads já têm oportunidades (mesma lógica do LeadsListEnhanced)
+  const checkLeadsWithOpportunities = async () => {
+    try {
+      const leadIds = localLeads.map(lead => lead.id);
+      
+      // Buscar leads que já foram convertidos ou têm oportunidades na pipeline
+      const { data: pipelineLeads, error } = await supabase
+        .from('pipeline_leads')
+        .select('custom_data')
+        .not('custom_data->lead_master_id', 'is', null);
+
+      if (error) throw error;
+
+      const leadsWithOpps = new Set<string>();
+      
+      // Verificar leads convertidos
+      localLeads.forEach(lead => {
+        if (lead.status === 'converted') {
+          leadsWithOpps.add(lead.id);
+        }
+      });
+
+      // Verificar leads com oportunidades na pipeline
+      pipelineLeads?.forEach((pipelineLead: any) => {
+        const leadMasterId = pipelineLead.custom_data?.lead_master_id;
+        if (leadMasterId) {
+          leadsWithOpps.add(leadMasterId);
+        }
+      });
+
+      setLeadsWithOpportunities(leadsWithOpps);
+      console.log('🎯 [LeadsModule] checkLeadsWithOpportunities concluído:', leadsWithOpps.size, 'leads com oportunidades');
+      
+      // 📡 Enviar dados atualizados para o AppDashboard incluindo leadsWithOpportunities
+      sendLeadsDataToAppDashboard(localLeads, leadsWithOpps);
+    } catch (error) {
+      console.error('❌ [LeadsModule] Erro ao verificar oportunidades:', error);
+    }
+  };
+
+  // 📡 Função para enviar dados de leads para AppDashboard
+  const sendLeadsDataToAppDashboard = (leads: LeadMaster[], leadsWithOpps: Set<string>) => {
+    const leadsDataEvent = new CustomEvent('leads-data-updated', {
+      detail: {
+        leads: leads,
+        leadsWithOpportunities: Array.from(leadsWithOpps), // Converter Set para Array para serialização
+        timestamp: new Date().toISOString()
+      }
+    });
+    window.dispatchEvent(leadsDataEvent);
+    console.log('📊 [LeadsModule] Dados completos enviados para AppDashboard:', leads.length, 'leads,', leadsWithOpps.size, 'com oportunidades');
+  };
 
   // Carregar leads
   const loadLeads = async () => {
@@ -117,37 +181,118 @@ const LeadsModule: React.FC = () => {
     }
   };
 
-  // Filtrar leads
+  // 🎯 Verificar oportunidades quando leads mudam
+  useEffect(() => {
+    if (localLeads.length > 0) {
+      checkLeadsWithOpportunities();
+    }
+  }, [localLeads]);
+
+  // 🔍 Aplicar filtragem baseada nos filtros do subheader
   useEffect(() => {
     let filtered = localLeads;
 
-    // Filtro por busca
-    if (searchTerm) {
+    // Aplicar filtro por categoria
+    switch (selectedFilter) {
+      case 'assigned':
+        // Lead tem um vendedor atribuído
+        filtered = filtered.filter(lead => lead.assigned_to);
+        break;
+      case 'not_assigned':
+        // Lead não tem vendedor atribuído
+        filtered = filtered.filter(lead => !lead.assigned_to);
+        break;
+      case 'without_opportunity':
+        // 🎯 Lead sem oportunidade (nunca registrou oportunidade) - usa mesma lógica da tag
+        filtered = filterLeadsWithoutOpportunity(filtered, leadsWithOpportunities);
+        break;
+      case 'all':
+      default:
+        // Todos os leads
+        break;
+    }
+
+    // Aplicar filtro por busca
+    if (searchTerm && searchTerm.trim() !== '') {
+      const searchLower = searchTerm.toLowerCase().trim();
       filtered = filtered.filter(lead =>
-        `${lead.first_name} ${lead.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        lead.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        `${lead.first_name} ${lead.last_name}`.toLowerCase().includes(searchLower) ||
+        (lead.email && lead.email.toLowerCase().includes(searchLower)) ||
         (lead.phone && lead.phone.includes(searchTerm)) ||
-        (lead.company && lead.company.toLowerCase().includes(searchTerm.toLowerCase()))
+        (lead.company && lead.company.toLowerCase().includes(searchLower))
       );
     }
 
-    // Filtro por status
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(lead => lead.status === statusFilter);
-    }
-
-    // Filtro por temperatura
-    if (temperatureFilter !== 'all') {
-      filtered = filtered.filter(lead => lead.lead_temperature === temperatureFilter);
-    }
-
+    console.log('🔍 [LeadsModule] Aplicando filtros:', { selectedFilter, searchTerm, totalLeads: localLeads.length, filteredLeads: filtered.length });
     setFilteredLeads(filtered);
-  }, [localLeads, searchTerm, statusFilter, temperatureFilter]);
+  }, [localLeads, searchTerm, selectedFilter]);
 
   // Carregar leads ao montar componente
   useEffect(() => {
     loadLeads();
   }, [user?.tenant_id]);
+
+  // 🎧 Listener para evento lead-create-requested do subheader
+  useEffect(() => {
+    const handleLeadCreateRequested = (event: CustomEvent) => {
+      console.log('🎯 [LeadsModule] Evento lead-create-requested recebido:', event.detail);
+      handleCreateLead();
+    };
+
+    // Registrar listener
+    window.addEventListener('lead-create-requested', handleLeadCreateRequested as EventListener);
+    console.log('🎧 [LeadsModule] Listener lead-create-requested registrado');
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('lead-create-requested', handleLeadCreateRequested as EventListener);
+      console.log('🧹 [LeadsModule] Listener lead-create-requested removido');
+    };
+  }, []);
+
+  // 🎧 Listener para filtros vindos do subheader
+  useEffect(() => {
+    const handleLeadsFiltersUpdated = (event: CustomEvent) => {
+      console.log('🔍 [LeadsModule] Filtros recebidos do subheader:', event.detail);
+      setSearchTerm(event.detail.searchTerm || '');
+      setSelectedFilter(event.detail.selectedFilter || 'all');
+    };
+
+    // Registrar listener
+    window.addEventListener('leads-filters-updated', handleLeadsFiltersUpdated as EventListener);
+    console.log('🎧 [LeadsModule] Listener leads-filters-updated registrado');
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('leads-filters-updated', handleLeadsFiltersUpdated as EventListener);
+      console.log('🧹 [LeadsModule] Listener leads-filters-updated removido');
+    };
+  }, []);
+
+  // 🎧 Listeners para import/export vindos do subheader
+  useEffect(() => {
+    const handleImportRequested = (event: CustomEvent) => {
+      console.log('📥 [LeadsModule] Evento leads-import-requested recebido:', event.detail);
+      setIsImportModalOpen(true);
+    };
+
+    const handleExportRequested = (event: CustomEvent) => {
+      console.log('📤 [LeadsModule] Evento leads-export-requested recebido:', event.detail);
+      setIsExportModalOpen(true);
+    };
+
+    // Registrar listeners
+    window.addEventListener('leads-import-requested', handleImportRequested as EventListener);
+    window.addEventListener('leads-export-requested', handleExportRequested as EventListener);
+    console.log('🎧 [LeadsModule] Listeners import/export registrados');
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('leads-import-requested', handleImportRequested as EventListener);
+      window.removeEventListener('leads-export-requested', handleExportRequested as EventListener);
+      console.log('🧹 [LeadsModule] Listeners import/export removidos');
+    };
+  }, []);
 
   // Handlers
   const handleViewDetails = (lead: LeadMaster) => {
@@ -176,15 +321,15 @@ const LeadsModule: React.FC = () => {
 
       if (error) {
         console.error('Erro ao excluir lead:', error);
-        alert('Erro ao excluir lead');
+        showErrorToast('Erro ao excluir', 'Erro ao excluir lead');
         return;
       }
 
       await loadLeads();
-      alert('Lead excluído com sucesso');
+      showSuccessToast('Lead excluído', 'Lead excluído com sucesso');
     } catch (error) {
       console.error('Erro ao excluir lead:', error);
-      alert('Erro ao excluir lead');
+      showErrorToast('Erro ao excluir', 'Erro ao excluir lead');
     }
   };
 
@@ -193,11 +338,6 @@ const LeadsModule: React.FC = () => {
     setEditingLead(null);
     await loadLeads();
   };
-
-  // Estatísticas rápidas
-  const totalLeads = leads.length;
-  const hotLeads = leads.filter(l => l.lead_temperature === 'hot').length;
-  const totalValue = leads.reduce((sum, lead) => sum + (lead.estimated_value || 0), 0);
 
   if (!user) {
     return (
@@ -208,113 +348,11 @@ const LeadsModule: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-              <Users className="text-white text-lg" size={20} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-semibold text-gray-900">Gestão de Leads</h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Gerencie todos os seus leads e oportunidades
-              </p>
-            </div>
-          </div>
-          
-          {(user.role === 'admin' || user.role === 'super_admin') && (
-            <button
-              onClick={handleCreateLead}
-              className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus size={16} />
-              <span>Novo Lead</span>
-            </button>
-          )}
-        </div>
-
-        {/* Estatísticas */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="flex items-center space-x-2">
-              <Users size={16} className="text-blue-600" />
-              <span className="text-sm font-medium text-gray-600">Total de Leads</span>
-            </div>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{totalLeads}</p>
-          </div>
-          
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="flex items-center space-x-2">
-              <TrendingUp size={16} className="text-red-600" />
-              <span className="text-sm font-medium text-gray-600">Leads Quentes</span>
-            </div>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{hotLeads}</p>
-          </div>
-          
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="flex items-center space-x-2">
-              <span className="text-sm font-medium text-gray-600">Valor Total Est.</span>
-            </div>
-            <p className="text-2xl font-bold text-gray-900 mt-1">
-              R$ {totalValue.toLocaleString('pt-BR')}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Filtros e Busca */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex flex-col md:flex-row gap-4">
-          {/* Busca */}
-          <div className="flex-1 relative">
-            <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por nome, email, telefone ou empresa..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          {/* Filtros */}
-          <div className="flex gap-4">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Todos os Status</option>
-              <option value="active">Ativo</option>
-              <option value="converted">Convertido</option>
-              <option value="lost">Perdido</option>
-            </select>
-
-            <select
-              value={temperatureFilter}
-              onChange={(e) => setTemperatureFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Todas Temperaturas</option>
-              <option value="hot">Quente</option>
-              <option value="warm">Morno</option>
-              <option value="cold">Frio</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Contador de resultados */}
-        <div className="mt-4 text-sm text-gray-600">
-          Mostrando {filteredLeads.length} de {totalLeads} leads
-        </div>
-      </div>
-
+    <div className="space-y-0">
       {/* Lista de Leads */}
-      <div className="bg-white rounded-xl border border-gray-200">
+      <div className="bg-white">
         <LeadsListEnhanced
-          leads={filteredLeads}
+          leads={filteredLeads} // Usar leads filtrados baseados no subheader
           loading={loading}
           onViewDetails={handleViewDetails}
           onEditLead={handleEditLead}
@@ -344,6 +382,19 @@ const LeadsModule: React.FC = () => {
           tenantId={user.tenant_id}
         />
       )}
+
+      {/* Import Modal */}
+      <LeadsImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportSuccess={loadLeads}
+      />
+
+      {/* Export Modal */}
+      <LeadsExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+      />
     </div>
   );
 };

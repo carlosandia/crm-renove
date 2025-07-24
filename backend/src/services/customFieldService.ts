@@ -10,6 +10,7 @@ export interface CustomField {
   is_required: boolean;
   field_order: number;
   placeholder?: string;
+  show_in_card: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -22,6 +23,7 @@ export interface CreateCustomFieldData {
   field_options?: string[];
   is_required?: boolean;
   placeholder?: string;
+  show_in_card?: boolean;
 }
 
 export class CustomFieldService {
@@ -154,7 +156,9 @@ export class CustomFieldService {
 
     return (fields || []).map(field => ({
       ...field,
-      field_options: field.field_options ? JSON.parse(field.field_options) : undefined
+      field_options: field.field_options ? 
+        (typeof field.field_options === 'string' ? JSON.parse(field.field_options) : field.field_options) : 
+        undefined
     }));
   }
 
@@ -188,7 +192,9 @@ export class CustomFieldService {
 
     return {
       ...field,
-      field_options: field.field_options ? JSON.parse(field.field_options) : undefined
+      field_options: field.field_options ? 
+        (typeof field.field_options === 'string' ? JSON.parse(field.field_options) : field.field_options) : 
+        undefined
     };
   }
 
@@ -211,7 +217,9 @@ export class CustomFieldService {
 
     return {
       ...field,
-      field_options: field.field_options ? JSON.parse(field.field_options) : undefined
+      field_options: field.field_options ? 
+        (typeof field.field_options === 'string' ? JSON.parse(field.field_options) : field.field_options) : 
+        undefined
     };
   }
 

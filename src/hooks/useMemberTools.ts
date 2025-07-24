@@ -172,7 +172,7 @@ interface UseMemberToolsResult {
   recordActivity: (activityData: any) => Promise<boolean>;
 }
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://127.0.0.1:3001';
 
 export function useMemberTools(): UseMemberToolsResult {
   const { user } = useAuth();

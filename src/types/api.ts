@@ -242,7 +242,7 @@ export type EntityQueryParams<T extends Record<string, any> = Record<string, any
 /**
  * ✅ LIST_REQUEST<T> - Request para listagens
  */
-export interface ListRequest<T = any> {
+export interface ListRequest<T extends Record<string, any> = Record<string, any>> {
   params: EntityQueryParams<T>;
   headers?: Record<string, string>;
 }
@@ -587,7 +587,6 @@ export interface HealthCheckResponse {
   // Serviços
   services: {
     database: ServiceStatus;
-    redis?: ServiceStatus;
     email?: ServiceStatus;
     storage?: ServiceStatus;
     integrations?: ServiceStatus;

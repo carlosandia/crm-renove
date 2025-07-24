@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { registerStageMove } from '../../utils/historyUtils';
 import { WindowWithGlobals, UserWithProfile } from '../../types/Forms';
+import { toast } from 'sonner';
 
 // Variáveis globais do sistema de modal (importadas do contexto principal)
 declare global {
@@ -130,8 +131,8 @@ export const StageSelector: React.FC<StageSelectorProps> = ({
               { name: 'Qualified', order_index: 2, temperature_score: 40, color: '#8B5CF6' },
               { name: 'Proposal', order_index: 3, temperature_score: 70, color: '#F59E0B' },
               { name: 'Negotiation', order_index: 4, temperature_score: 90, color: '#EF4444' },
-              { name: 'Closed Won', order_index: 5, temperature_score: 100, color: '#10B981' },
-              { name: 'Closed Lost', order_index: 6, temperature_score: 0, color: '#6B7280' }
+              { name: 'Ganho', order_index: 5, temperature_score: 100, color: '#10B981' },
+              { name: 'Perdido', order_index: 6, temperature_score: 0, color: '#6B7280' }
             ];
             
             const stagesToInsert = defaultStages.map(stage => ({
@@ -356,7 +357,7 @@ export const StageSelector: React.FC<StageSelectorProps> = ({
       }
 
     } catch (error) {
-      alert('Erro ao alterar etapa. Tente novamente.');
+      toast.error('Erro ao alterar etapa. Tente novamente.');
       // Remover proteção em caso de erro
       modalControl.forceCloseModal();
     } finally {

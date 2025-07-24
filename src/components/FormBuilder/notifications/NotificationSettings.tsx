@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { NotificationSettings as NotificationSettingsType, EmailNotificationSettings as EmailNotificationSettingsType } from '../../../types/Forms';
+import { toast } from 'sonner';
 
 export interface NotificationState {
   type: 'success' | 'error';
@@ -128,7 +129,7 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({
         notificationManager.addEmailRecipient(newEmail.trim());
         setNewEmail('');
       } else {
-        alert('Por favor, insira um email válido');
+        toast.error('Por favor, insira um email válido');
       }
     }
   };

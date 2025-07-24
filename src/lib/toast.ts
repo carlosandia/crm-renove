@@ -4,7 +4,7 @@ import {
   showErrorToast, 
   showWarningToast, 
   showInfoToast 
-} from "@/hooks/useToast"
+} from "../hooks/useToast"
 
 // Função de compatibilidade para o sistema antigo
 export const showToast = (options: {

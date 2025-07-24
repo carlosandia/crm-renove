@@ -32,6 +32,10 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
+    
+    /* Module Interop - Corrige problemas com imports */
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
 
     /* Linting Aprimorado */
     "noUnusedLocals": false,

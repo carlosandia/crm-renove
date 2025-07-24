@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import LoginForm from './LoginForm';
+import { ModernLoginForm as LoginForm } from './auth/ModernLoginForm';
 import AppDashboard from './AppDashboard';
 
 const AppContent: React.FC = React.memo(() => {

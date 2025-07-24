@@ -214,8 +214,8 @@ export const MODAL_VARIANTS = {
 export const PIPELINE_STAGES = {
   SYSTEM_STAGES: {
     LEAD: 'Lead',
-    CLOSED_WON: 'Closed Won',
-    CLOSED_LOST: 'Closed Lost'
+    CLOSED_WON: 'Ganho',
+    CLOSED_LOST: 'Perdido'
   },
   DEFAULT_TEMPERATURE: {
     LEAD: 20,
@@ -346,6 +346,40 @@ export const DATE_FORMATS = {
   LONG: 'dd/MM/yyyy HH:mm',
   TIME_ONLY: 'HH:mm',
   ISO: 'yyyy-MM-dd'
+} as const;
+
+// ============================================
+// CONFIGURAÇÕES DE AMBIENTE
+// ============================================
+
+export const isDevelopment = import.meta.env.MODE === 'development';
+export const isProduction = import.meta.env.MODE === 'production';
+export const isTest = import.meta.env.MODE === 'test';
+
+export const ENVIRONMENT = {
+  NODE_ENV: import.meta.env.MODE,
+  IS_DEVELOPMENT: isDevelopment,
+  IS_PRODUCTION: isProduction,
+  IS_TEST: isTest,
+  API_URL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001',
+  SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
+  SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY
+} as const;
+
+// ============================================
+// CONFIGURAÇÕES DE LOGGING
+// ============================================
+
+export const LOGGING = {
+  ENABLED_IN_DEVELOPMENT: true,
+  ENABLED_IN_PRODUCTION: false,
+  MAX_BUFFER_SIZE: 100,
+  DEBOUNCE_DELAYS: {
+    FAST: 500,
+    MEDIUM: 1000,
+    SLOW: 2000
+  },
+  PERFORMANCE_THRESHOLD: 1000 // ms
 } as const;
 
 // ============================================

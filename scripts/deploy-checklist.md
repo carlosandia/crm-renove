@@ -44,15 +44,15 @@ SELECT
     is_system_stage,
     COUNT(*) as count
 FROM pipeline_stages 
-WHERE name IN ('Lead', 'Closed Won', 'Closed Lost')
+WHERE name IN ('Lead', 'Ganho', 'Perdido')
 GROUP BY name, temperature_score, is_system_stage
 ORDER BY name;
 ```
 
 **Resultado esperado:**
 - `Lead` (temperature_score: 20, is_system_stage: true)
-- `Closed Won` (temperature_score: 100, is_system_stage: true)  
-- `Closed Lost` (temperature_score: 0, is_system_stage: true)
+- `Ganho` (temperature_score: 100, is_system_stage: true)  
+- `Perdido` (temperature_score: 0, is_system_stage: true)
 
 ### 3. **DEPLOY DO FRONTEND**
 ```bash
@@ -99,8 +99,9 @@ npm run build
 ```sql
 -- Reverter para nomenclatura antiga
 UPDATE pipeline_stages SET name = 'Novos leads' WHERE name = 'Lead';
-UPDATE pipeline_stages SET name = 'Ganho' WHERE name = 'Closed Won';
-UPDATE pipeline_stages SET name = 'Perdido' WHERE name = 'Closed Lost';
+-- Atualização já aplicada via migração 20250714000000-update-stage-nomenclature-pt-br
+-- UPDATE pipeline_stages SET name = 'Ganho' WHERE name = 'Closed Won';
+-- UPDATE pipeline_stages SET name = 'Perdido' WHERE name = 'Closed Lost';
 ```
 
 ### Reverter Frontend:
@@ -117,12 +118,12 @@ npm run build
 
 ### Antes → Depois
 - `"Novos leads"` → `"Lead"` (20% temperatura)
-- `"Ganho"` → `"Closed Won"` (100% temperatura)  
-- `"Perdido"` → `"Closed Lost"` (0% temperatura)
+- `"Ganho"` (100% temperatura, etapa final de sucesso)
+- `"Perdido"` (0% temperatura, etapa final de insucesso)
 
 ### Alinhamento com Grandes CRMs
-- ✅ **Salesforce**: Lead → Qualified → Proposal → Negotiation → Closed Won/Lost
-- ✅ **HubSpot**: Lead → Qualified → Proposal → Closed Won/Lost  
+- ✅ **Salesforce**: Lead → Qualified → Proposal → Negotiation → Ganho/Perdido
+- ✅ **HubSpot**: Lead → Qualified → Proposal → Ganho/Perdido  
 - ✅ **Pipedrive**: Lead → Qualified → Proposal → Won/Lost
 
 ---

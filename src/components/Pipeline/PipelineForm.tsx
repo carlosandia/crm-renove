@@ -1,19 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Edit, Plus, X } from 'lucide-react';
 import { Pipeline } from '../../types/Pipeline';
-import { User } from '../../hooks/useMembers';
 
 interface PipelineFormProps {
-  members: User[];
   pipeline?: Pipeline;
-  onSubmit: (data: { name: string; description: string; member_ids?: string[] }) => void;
+  onSubmit: (data: { name: string; description: string }) => void;
   onCancel: () => void;
   title: string;
   submitText: string;
 }
 
 const PipelineForm: React.FC<PipelineFormProps> = ({
-  members,
   pipeline,
   onSubmit,
   onCancel,
@@ -23,7 +20,6 @@ const PipelineForm: React.FC<PipelineFormProps> = ({
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    member_ids: [] as string[],
   });
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
@@ -34,7 +30,6 @@ const PipelineForm: React.FC<PipelineFormProps> = ({
       setFormData({
         name: pipeline.name,
         description: pipeline.description || '',
-        member_ids: pipeline.pipeline_members?.map(pm => pm.member_id) || [],
       });
     }
   }, [pipeline]);
@@ -58,14 +53,6 @@ const PipelineForm: React.FC<PipelineFormProps> = ({
     onSubmit(formData);
   };
 
-  const handleMemberToggle = (memberId: string) => {
-    setFormData(prev => ({
-      ...prev,
-      member_ids: prev.member_ids.includes(memberId)
-        ? prev.member_ids.filter(id => id !== memberId)
-        : [...prev.member_ids, memberId]
-    }));
-  };
 
   const isEditing = !!pipeline;
 
@@ -139,46 +126,6 @@ const PipelineForm: React.FC<PipelineFormProps> = ({
           />
         </div>
 
-        {/* Seleção de Membros - apenas na criação */}
-        {!pipeline && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Vendedores da Equipe
-            </label>
-            {members.length === 0 ? (
-              <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
-                <p className="text-gray-500">Nenhum vendedor disponível</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {members.map(member => (
-                  <label 
-                    key={member.id} 
-                    className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={formData.member_ids.includes(member.id)}
-                      onChange={() => handleMemberToggle(member.id)}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900">
-                        {member.first_name} {member.last_name}
-                      </p>
-                      <p className="text-xs text-gray-500 truncate">
-                        {member.email}
-                      </p>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            )}
-            <p className="mt-2 text-xs text-gray-500">
-              Selecione os vendedores que terão acesso a esta pipeline
-            </p>
-          </div>
-        )}
 
         {/* Botões de Ação */}
         <div className="flex items-center justify-end space-x-4 pt-6 border-t border-gray-200">

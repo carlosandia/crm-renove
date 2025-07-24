@@ -2,18 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useSupabaseCrud } from './useSupabaseCrud';
-
-export interface User {
-  id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  role: string;
-  phone?: string;
-  is_active?: boolean;
-  tenant_id?: string;
-  created_at?: string;
-}
+import { UserMemberSchema } from '../shared/schemas/DomainSchemas';
+import type { User } from '../shared/types/Domain';
+import { usePerformanceMonitor } from '../shared/utils/performance';
 
 export interface PipelineMember {
   id: string;
@@ -25,15 +16,18 @@ export interface PipelineMember {
 
 export const useMembers = () => {
   const { user } = useAuth();
+  const performance = usePerformanceMonitor('useMembers');
   
-  // ✅ USANDO NOVO HOOK BASE UNIFICADO
-  const usersCrud = useSupabaseCrud<User>({
+  // ✅ USANDO NOVO HOOK BASE UNIFICADO COM VALIDAÇÃO ZOD
+  const usersCrud = useSupabaseCrud({
     tableName: 'users',
-    selectFields: 'id, first_name, last_name, email, role, phone, is_active, tenant_id, created_at',
+    selectFields: 'id, first_name, last_name, email, role, is_active, tenant_id, created_at',
     defaultOrderBy: { column: 'first_name', ascending: true },
     enableCache: true,
     cacheKeyPrefix: 'members',
-    cacheDuration: 300000 // 5 minutos
+    cacheDuration: 300000, // 5 minutos
+    // AIDEV-NOTE: Schema Zod para validação runtime
+    schema: UserMemberSchema
   });
 
   // ============================================
@@ -82,7 +76,7 @@ export const useMembers = () => {
       
       const { data: users, error: usersError } = await supabase
         .from('users')
-        .select('id, first_name, last_name, email, role, phone, is_active, tenant_id, created_at')
+        .select('id, first_name, last_name, email, role, is_active, tenant_id, created_at')
         .in('id', memberIds);
 
       if (usersError) throw usersError;

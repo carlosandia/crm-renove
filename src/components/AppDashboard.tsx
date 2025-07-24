@@ -1,8 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import RoleBasedMenu from './RoleBasedMenu';
 import CRMLayout from './CRMLayout';
+import { usePipelineSubHeader, useLeadsSubHeader } from '../hooks/useSubHeaderContent';
+import { usePipelineData } from '../hooks/usePipelineData';
+import { usePipelineCache } from '../hooks/usePipelineCache'; // ✅ FASE 2: Importar cache inteligente
+import PipelineSpecificSubHeader from './SubHeader/PipelineSpecificSubHeader';
 import { logger } from '../utils/logger';
 import { CheckCircle, Users, BarChart3, Settings, X } from 'lucide-react';
 
@@ -10,6 +14,68 @@ const AppDashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { pipelines, loading: pipelinesLoading } = usePipelineData();
+  
+  // 🚀 ESTADO LOCAL: Para atualizações imediatas do dropdown
+  const [localPipelines, setLocalPipelines] = useState(pipelines);
+  
+  // 🔄 SINCRONIZAR: Estado local com dados do hook
+  useEffect(() => {
+    setLocalPipelines(pipelines);
+  }, [pipelines]);
+  
+  // 🎯 SUBHEADER: Pipelines reais filtradas por tenant do usuário (MOVIDO PARA CIMA)
+  const userPipelines = useMemo(() => {
+    if (pipelinesLoading || !user || !localPipelines) return [];
+    
+    // Filtrar pipelines do tenant do usuário
+    return localPipelines.filter(pipeline => pipeline.tenant_id === user.tenant_id);
+  }, [localPipelines, user, pipelinesLoading]);
+  
+  // ⚡ LISTENER: Atualização imediata do dropdown após arquivamento
+  useEffect(() => {
+    const handlePipelineArchiveUpdate = (event: CustomEvent) => {
+      const { pipelineId, is_archived, archived_at } = event.detail;
+      
+      console.log(`⚡ [AppDashboard] Recebeu atualização imediata:`, {
+        pipelineId,
+        is_archived,
+        archived_at,
+        localPipelinesLength: localPipelines?.length || 0
+      });
+      
+      // Atualizar pipeline específica no array local imediatamente
+      setLocalPipelines(prevPipelines => {
+        if (!prevPipelines) return prevPipelines;
+        
+        return prevPipelines.map(pipeline => {
+          if (pipeline.id === pipelineId) {
+            const updated = {
+              ...pipeline,
+              is_archived,
+              archived_at,
+              is_active: !is_archived // Manter consistência
+            };
+            
+            console.log(`🎯 [AppDashboard] Pipeline atualizada no dropdown:`, {
+              name: pipeline.name,
+              before: { is_archived: pipeline.is_archived, archived_at: pipeline.archived_at },
+              after: { is_archived: updated.is_archived, archived_at: updated.archived_at }
+            });
+            
+            return updated;
+          }
+          return pipeline;
+        });
+      });
+    };
+
+    window.addEventListener('pipeline-archive-updated', handlePipelineArchiveUpdate as EventListener);
+    
+    return () => {
+      window.removeEventListener('pipeline-archive-updated', handlePipelineArchiveUpdate as EventListener);
+    };
+  }, [localPipelines]);
   
   // 🎉 DETECÇÃO: Verificar se é um admin recém-ativado (CORREÇÃO CRÍTICA #3)
   const [showWelcomeMessage, setShowWelcomeMessage] = useState(false);
@@ -81,6 +147,328 @@ const AppDashboard: React.FC = () => {
     }
   }, []);
 
+  // ✅ FASE 2: Cache inteligente de pipeline para acesso direto 
+  const { 
+    lastViewedPipeline, 
+    setLastViewedPipeline, 
+    clearCache,
+    isLoading: cacheLoading 
+  } = usePipelineCache({
+    tenantId: user?.tenant_id || '',
+    pipelines: userPipelines, // ✅ CORRIGIDO: Agora userPipelines está definido antes
+    fallbackToPipelineId: undefined // Pode ser usado para pipeline específica
+  });
+
+  // 🎯 SUBHEADER: Estados para módulo de Pipelines
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedFilter, setSelectedFilter] = useState<'all' | 'active' | 'archived'>('active');
+  
+  // 🎯 SUBHEADER: Estados para visualização de pipeline simplificados
+  const [pipelineSearchTerm, setPipelineSearchTerm] = useState('');
+
+  // 🎯 SUBHEADER: Estados para módulo de Leads
+  const [leadsSearchTerm, setLeadsSearchTerm] = useState('');
+  const [leadsSelectedFilter, setLeadsSelectedFilter] = useState<'all' | 'assigned' | 'not_assigned' | 'without_opportunity'>('all');
+  const [leadsData, setLeadsData] = useState<any[]>([]);
+  const [leadsWithOpportunities, setLeadsWithOpportunities] = useState<Set<string>>(new Set());
+
+  // ✅ REMOVIDO: userPipelines já definido no topo do componente
+
+  // 🎯 SUBHEADER: Handlers para Pipelines
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchTerm(value);
+  }, []);
+
+  const handleFilterChange = useCallback((filterId: string) => {
+    setSelectedFilter(filterId as 'all' | 'active' | 'archived');
+  }, []);
+
+  const handleCreatePipeline = useCallback(() => {
+    console.log('🎯 [AppDashboard] Solicitando criação de nova pipeline via evento');
+    
+    // Enviar evento customizado para comunicar com o componente de pipeline
+    const createPipelineEvent = new CustomEvent('pipeline-create-requested', {
+      detail: {
+        timestamp: new Date().toISOString(),
+        source: 'subheader-button'
+      }
+    });
+    
+    window.dispatchEvent(createPipelineEvent);
+  }, []);
+
+  // 🎯 SUBHEADER: Handlers para Leads
+  const handleLeadsSearchChange = useCallback((value: string) => {
+    setLeadsSearchTerm(value);
+  }, []);
+
+  const handleLeadsFilterChange = useCallback((filterId: string) => {
+    setLeadsSelectedFilter(filterId as 'all' | 'assigned' | 'not_assigned' | 'without_opportunity');
+  }, []);
+
+  const handleCreateLead = useCallback(() => {
+    console.log('🎯 [AppDashboard] Solicitando criação de novo lead via evento');
+    
+    // Enviar evento customizado para comunicar com o componente de leads
+    const createLeadEvent = new CustomEvent('lead-create-requested', {
+      detail: {
+        timestamp: new Date().toISOString(),
+        source: 'subheader-button'
+      }
+    });
+    
+    window.dispatchEvent(createLeadEvent);
+  }, []);
+
+  const handleImportLeads = useCallback(() => {
+    console.log('📥 [AppDashboard] Solicitando importação de leads via evento');
+    
+    const importLeadsEvent = new CustomEvent('leads-import-requested', {
+      detail: {
+        timestamp: new Date().toISOString(),
+        source: 'subheader-menu'
+      }
+    });
+    
+    window.dispatchEvent(importLeadsEvent);
+  }, []);
+
+  const handleExportLeads = useCallback(() => {
+    console.log('📤 [AppDashboard] Solicitando exportação de leads via evento');
+    
+    const exportLeadsEvent = new CustomEvent('leads-export-requested', {
+      detail: {
+        timestamp: new Date().toISOString(),
+        source: 'subheader-menu'
+      }
+    });
+    
+    window.dispatchEvent(exportLeadsEvent);
+  }, []);
+
+  // ✅ FASE 4: Handlers para pipeline management no subheader
+  const handleCreatePipelineFromSubHeader = useCallback(() => {
+    console.log('➕ [AppDashboard] Criando nova pipeline via subheader');
+    
+    const createPipelineEvent = new CustomEvent('pipeline-create-requested', {
+      detail: {
+        timestamp: new Date().toISOString(),
+        source: 'subheader-dropdown'
+      }
+    });
+    
+    window.dispatchEvent(createPipelineEvent);
+  }, []);
+
+  const handleEditPipelineFromSubHeader = useCallback((pipeline: any) => {
+    console.log('✏️ [AppDashboard] Editando pipeline via subheader:', pipeline.name);
+    
+    const editPipelineEvent = new CustomEvent('pipeline-edit-requested', {
+      detail: {
+        pipeline,
+        timestamp: new Date().toISOString(),
+        source: 'subheader-dropdown'
+      }
+    });
+    
+    window.dispatchEvent(editPipelineEvent);
+  }, []);
+
+  const handleArchivePipelineFromSubHeader = useCallback((pipeline: any) => {
+    console.log('📁 [AppDashboard] Arquivando pipeline via subheader:', pipeline.name);
+    
+    const archivePipelineEvent = new CustomEvent('pipeline-archive-requested', {
+      detail: {
+        pipelineId: pipeline.id,
+        shouldArchive: true,
+        pipeline,
+        timestamp: new Date().toISOString(),
+        source: 'subheader-dropdown'
+      }
+    });
+    
+    window.dispatchEvent(archivePipelineEvent);
+  }, []);
+
+  const handleUnarchivePipelineFromSubHeader = useCallback((pipeline: any) => {
+    console.log('📂 [AppDashboard] Desarquivando pipeline via subheader:', pipeline.name);
+    
+    const unarchivePipelineEvent = new CustomEvent('pipeline-archive-requested', {
+      detail: {
+        pipelineId: pipeline.id,
+        shouldArchive: false,
+        pipeline,
+        timestamp: new Date().toISOString(),
+        source: 'subheader-dropdown'
+      }
+    });
+    
+    window.dispatchEvent(unarchivePipelineEvent);
+  }, []);
+
+  // 🎯 SUBHEADER: Gerar conteúdo do subheader baseado no módulo ativo
+  const pipelinesToShow = useMemo(() => 
+    activeModule === 'Gestão de pipeline' ? userPipelines : [], 
+    [activeModule, userPipelines]
+  );
+
+  const pipelineSubHeaderContent = usePipelineSubHeader({
+    pipelines: pipelinesToShow,
+    searchTerm,
+    selectedFilter,
+    onSearchChange: handleSearchChange,
+    onFilterChange: handleFilterChange,
+    onCreatePipeline: handleCreatePipeline
+  });
+
+  const leadsSubHeaderContent = useLeadsSubHeader({
+    leads: leadsData,
+    leadsWithOpportunities: leadsWithOpportunities,
+    searchTerm: leadsSearchTerm,
+    selectedFilter: leadsSelectedFilter,
+    onSearchChange: handleLeadsSearchChange,
+    onFilterChange: handleLeadsFilterChange,
+    onCreateLead: handleCreateLead,
+    onImportClick: handleImportLeads,
+    onExportClick: handleExportLeads
+  });
+
+  // ✅ FASE 2: Pipeline específico simplificado - APENAS cache inteligente para acesso direto
+  const pipelineSpecificSubHeader = useMemo(() => {
+    // Aguardar carregamento do cache e pipelines
+    if (cacheLoading || pipelinesLoading || !user) {
+      return null;
+    }
+
+    // ✅ FASE 2: LÓGICA UNIFICADA - Acesso direto ao pipeline com cache inteligente (Members E Admins)
+    if ((activeModule === 'Pipeline' || activeModule === 'Gestão de pipeline') && userPipelines.length > 0) {
+      // ✅ AGUARDAR: Cache deve estar completamente carregado
+      if (cacheLoading) {
+        console.log('⏳ [AppDashboard] Aguardando cache carregar antes de criar SubHeader');
+        return null; // Aguarda cache carregar para evitar conflitos de inicialização
+      }
+      
+      // ✅ DECISÃO INTELIGENTE: Cache válido > primeira disponível
+      const pipeline = lastViewedPipeline && userPipelines.find(p => p.id === lastViewedPipeline.id) 
+        ? lastViewedPipeline 
+        : userPipelines[0];
+      
+      if (!pipeline) {
+        console.warn('🎯 [AppDashboard] Nenhuma pipeline disponível para acesso direto');
+        return null;
+      }
+      
+      console.log('🎯 [AppDashboard] Criando SubHeader com cache inteligente unificado:', {
+        pipelineId: pipeline.id,
+        pipelineName: pipeline.name,
+        activeModule,
+        userRole: user.role,
+        fromCache: !!lastViewedPipeline,
+        cacheMatched: lastViewedPipeline?.id === pipeline.id,
+        totalPipelines: userPipelines.length,
+        logic: 'unified-cache-direct'
+      });
+      
+      return (
+        <PipelineSpecificSubHeader
+          selectedPipeline={pipeline}
+          pipelines={userPipelines}
+          isLoading={pipelinesLoading}
+          onPipelineChange={(newPipeline) => {
+            console.log('🔄 [AppDashboard] Pipeline alterada pelo usuário via SubHeader:', {
+              from: pipeline.id,
+              to: newPipeline.id,
+              userRole: user.role,
+              action: 'user-selection'
+            });
+            
+            // ✅ IMEDIATO: Salvar no cache (sempre respeitar escolha do usuário)
+            setLastViewedPipeline(newPipeline as any);
+            
+            // ✅ EVENTO: Notificar componentes filhos sobre a mudança
+            window.dispatchEvent(new CustomEvent('pipeline-view-changed', { 
+              detail: { 
+                pipeline: newPipeline,
+                source: 'user-selection-subheader',
+                userRole: user.role
+              } 
+            }));
+          }}
+          onSearchChange={(value) => {
+            setPipelineSearchTerm(value);
+            window.dispatchEvent(new CustomEvent('pipeline-search-changed', {
+              detail: { searchTerm: value }
+            }));
+          }}
+          onDateRangeChange={(dateRange) => {
+            console.log('🗓️ [AppDashboard] Filtro de data alterado:', dateRange);
+            window.dispatchEvent(new CustomEvent('pipeline-date-filter-changed', {
+              detail: { dateRange }
+            }));
+          }}
+          onCreateOpportunity={() => {
+            console.log('➕ [AppDashboard] Solicitação de criação de oportunidade');
+            window.dispatchEvent(new CustomEvent('create-opportunity-requested', {
+              detail: { 
+                pipelineId: pipeline.id,
+                timestamp: new Date().toISOString()
+              }
+            }));
+          }}
+          // ✅ FASE 4: Novos handlers para pipeline management
+          onCreatePipeline={handleCreatePipelineFromSubHeader}
+          onEditPipeline={handleEditPipelineFromSubHeader}
+          onArchivePipeline={handleArchivePipelineFromSubHeader}
+          onUnarchivePipeline={handleUnarchivePipelineFromSubHeader}
+          searchValue={pipelineSearchTerm}
+          searchPlaceholder="Buscar oportunidades, leads..."
+        />
+      );
+    }
+    
+    // Caso sem pipeline disponível ou contexto inválido
+    console.log('🎯 [AppDashboard] SubHeader não será criado:', {
+      activeModule,
+      userPipelinesLength: userPipelines.length,
+      cacheLoading,
+      pipelinesLoading,
+      hasUser: !!user,
+      logic: 'no-pipeline-context'
+    });
+    
+    return null;
+  }, [
+    // ✅ FASE 2: DEPENDÊNCIAS SIMPLIFICADAS - removidas dependências conflitantes
+    userPipelines, 
+    pipelineSearchTerm, 
+    activeModule,
+    lastViewedPipeline,
+    setLastViewedPipeline,
+    cacheLoading,
+    pipelinesLoading,
+    user,
+    // ✅ FASE 4: Incluir novos handlers
+    handleCreatePipelineFromSubHeader,
+    handleEditPipelineFromSubHeader,
+    handleArchivePipelineFromSubHeader,
+    handleUnarchivePipelineFromSubHeader
+  ]);
+
+  // ✅ FASE 2: Selecionar o subheader correto com acesso direto ao pipeline
+  const subHeaderContent = useMemo(() => {
+    switch (activeModule) {
+      case 'Gestão de pipeline':
+        // ✅ FASE 2: Sempre usar acesso direto ao pipeline (sem lista intermediária)
+        return pipelineSpecificSubHeader;
+      case 'Pipeline':
+        return pipelineSpecificSubHeader;
+      case 'Leads':
+        return leadsSubHeaderContent;
+      default:
+        return undefined;
+    }
+  }, [activeModule, pipelineSpecificSubHeader, leadsSubHeaderContent]);
+
   // 🎉 CORREÇÃO CRÍTICA #3: Detecção melhorada de admins recém-ativados
   useEffect(() => {
     // 📍 MÉTODO 1: Detecção via location.state (redirecionamento direto)
@@ -133,6 +521,48 @@ const AppDashboard: React.FC = () => {
       console.log('🧹 [CRITICAL-FIX-3] Listener admin-activated removido');
     };
   }, [user?.email]);
+
+  // 🎧 Listener para receber dados de leads do LeadsModule
+  useEffect(() => {
+    const handleLeadsDataUpdated = (event: CustomEvent) => {
+      console.log('📊 [AppDashboard] Dados de leads recebidos:', event.detail);
+      setLeadsData(event.detail.leads || []);
+      
+      // 🎯 Converter array de volta para Set
+      if (event.detail.leadsWithOpportunities) {
+        setLeadsWithOpportunities(new Set(event.detail.leadsWithOpportunities));
+        console.log('🎯 [AppDashboard] leadsWithOpportunities recebido:', event.detail.leadsWithOpportunities.length, 'leads com oportunidades');
+      }
+    };
+
+    // Registrar listener
+    window.addEventListener('leads-data-updated', handleLeadsDataUpdated as EventListener);
+    console.log('🎧 [AppDashboard] Listener leads-data-updated registrado');
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('leads-data-updated', handleLeadsDataUpdated as EventListener);
+      console.log('🧹 [AppDashboard] Listener leads-data-updated removido');
+    };
+  }, []);
+
+  // ✅ FASE 2: REMOVIDO - Listeners de pipeline-view-entered/exited causavam ciclo infinito
+  // Agora usando apenas cache inteligente sem eventos conflitantes
+
+  // 📡 Enviar filtros de leads para o LeadsModule quando mudarem
+  useEffect(() => {
+    if (activeModule === 'Leads') {
+      const leadsFiltersEvent = new CustomEvent('leads-filters-updated', {
+        detail: {
+          searchTerm: leadsSearchTerm,
+          selectedFilter: leadsSelectedFilter,
+          timestamp: new Date().toISOString()
+        }
+      });
+      window.dispatchEvent(leadsFiltersEvent);
+      console.log('🔍 [AppDashboard] Filtros de leads enviados:', { searchTerm: leadsSearchTerm, selectedFilter: leadsSelectedFilter });
+    }
+  }, [leadsSearchTerm, leadsSelectedFilter, activeModule]);
 
   // 🔄 PERSISTÊNCIA: Sincronizar com mudanças de usuário (corrigido para evitar loop)
   useEffect(() => {
@@ -312,10 +742,17 @@ const AppDashboard: React.FC = () => {
       onLogout={handleLogout}
       activeModule={activeModule}
       onNavigate={handleNavigateWithPersistence}
+      subHeaderContent={subHeaderContent}
     >
       <RoleBasedMenu 
         selectedItem={activeModule}
         userRole={user?.role || 'member'}
+        searchTerm={searchTerm}
+        selectedFilter={selectedFilter}
+        // ✅ CORREÇÃO: Props de cache para UnifiedPipelineManager
+        selectedPipeline={lastViewedPipeline}
+        onPipelineChange={setLastViewedPipeline}
+        cacheLoading={cacheLoading}
       />
     </CRMLayout>
       

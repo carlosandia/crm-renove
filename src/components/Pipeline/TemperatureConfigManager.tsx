@@ -1,28 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
-import { supabase } from '../../lib/supabase';
-import { useToast } from '../../hooks/useToast';
-
-interface TemperatureConfig {
-  id: string;
-  pipeline_id: string;
-  tenant_id: string;
-  hot_threshold: number;
-  warm_threshold: number;
-  cold_threshold: number;
-  hot_color: string;
-  warm_color: string;
-  cold_color: string;
-  frozen_color: string;
-  hot_icon: string;
-  warm_icon: string;
-  cold_icon: string;
-  frozen_icon: string;
-}
+import { useTemperatureAPI, TemperatureConfig } from '../../hooks/useTemperatureAPI';
+import { showSuccessToast, showErrorToast } from '../../hooks/useToast';
 
 interface TemperatureConfigManagerProps {
   pipelineId: string;
@@ -31,146 +14,66 @@ interface TemperatureConfigManagerProps {
 }
 
 function TemperatureConfigManager({ pipelineId, tenantId, onConfigUpdated }: TemperatureConfigManagerProps) {
-  const [config, setConfig] = useState<TemperatureConfig | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [editingConfig, setEditingConfig] = useState<TemperatureConfig | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const { toast } = useToast();
+  
+  const { 
+    config, 
+    loading, 
+    saving, 
+    error, 
+    loadConfig, 
+    saveConfig 
+  } = useTemperatureAPI({ 
+    pipelineId,
+    autoLoad: true 
+  });
 
-  const defaultConfig: Partial<TemperatureConfig> = {
-    hot_threshold: 24,
-    warm_threshold: 72,
-    cold_threshold: 168,
-    hot_color: '#ef4444',
-    warm_color: '#f97316',
-    cold_color: '#3b82f6',
-    frozen_color: '#6b7280',
-    hot_icon: '🔥',
-    warm_icon: '🌡️',
-    cold_icon: '❄️',
-    frozen_icon: '🧊'
-  };
+  // Mostrar error se houver
+  if (error) {
+    showErrorToast('Erro', error);
+  }
 
-  useEffect(() => {
-    loadConfig();
-  }, [pipelineId, tenantId]);
-
-  const loadConfig = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('temperature_config')
-        .select('*')
-        .eq('pipeline_id', pipelineId)
-        .eq('tenant_id', tenantId)
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        throw error;
-      }
-
-      if (data) {
-        setConfig(data);
-      } else {
-        // Criar configuração padrão se não existir
-        setConfig({
-          id: '',
-          pipeline_id: pipelineId,
-          tenant_id: tenantId,
-          ...defaultConfig
-        } as TemperatureConfig);
-      }
-    } catch (error) {
-      console.error('Erro ao carregar configuração de temperatura:', error);
-      toast({
-        title: 'Erro',
-        description: 'Erro ao carregar configurações de temperatura',
-        variant: 'destructive'
-      });
-    } finally {
-      setLoading(false);
+  // Função para iniciar edição
+  const handleStartEdit = () => {
+    if (config) {
+      setEditingConfig({ ...config });
+      setIsEditing(true);
     }
   };
 
-  const saveConfig = async () => {
-    if (!config) return;
+  // Função para cancelar edição
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditingConfig(null);
+  };
 
-    try {
-      setSaving(true);
+  // Função para salvar configuração
+  const handleSaveConfig = async () => {
+    if (!editingConfig) return;
 
-      const configData = {
-        pipeline_id: pipelineId,
-        tenant_id: tenantId,
-        hot_threshold: config.hot_threshold,
-        warm_threshold: config.warm_threshold,
-        cold_threshold: config.cold_threshold,
-        hot_color: config.hot_color,
-        warm_color: config.warm_color,
-        cold_color: config.cold_color,
-        frozen_color: config.frozen_color,
-        hot_icon: config.hot_icon,
-        warm_icon: config.warm_icon,
-        cold_icon: config.cold_icon,
-        frozen_icon: config.frozen_icon,
-        updated_at: new Date().toISOString()
-      };
+    // Validar sequência lógica
+    if (editingConfig.hot_threshold >= editingConfig.warm_threshold || 
+        editingConfig.warm_threshold >= editingConfig.cold_threshold) {
+      showErrorToast('Configuração inválida', 'Os períodos devem seguir ordem crescente: Quente < Morno < Frio');
+      return;
+    }
 
-      let result;
-      if (config.id) {
-        // Atualizar existente
-        result = await supabase
-          .from('temperature_config')
-          .update(configData)
-          .eq('id', config.id)
-          .select()
-          .single();
-      } else {
-        // Criar novo
-        result = await supabase
-          .from('temperature_config')
-          .insert(configData)
-          .select()
-          .single();
-      }
-
-      if (result.error) throw result.error;
-
-      setConfig(result.data);
+    const success = await saveConfig(editingConfig);
+    if (success) {
       setIsEditing(false);
-      toast({
-        title: 'Sucesso',
-        description: 'Configurações de temperatura salvas com sucesso!',
-        variant: 'success'
-      });
+      setEditingConfig(null);
+      showSuccessToast('Sucesso', 'Configurações de temperatura salvas com sucesso!');
       
-      // Atualizar temperaturas de todos os leads desta pipeline
-      await updateAllTemperatures();
-      
-      if (onConfigUpdated) onConfigUpdated();
-    } catch (error) {
-      console.error('Erro ao salvar configuração:', error);
-      toast({
-        title: 'Erro',
-        description: 'Erro ao salvar configurações de temperatura',
-        variant: 'destructive'
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const updateAllTemperatures = async () => {
-    try {
-      const { error } = await supabase.rpc('update_all_temperatures');
-      if (error) throw error;
-    } catch (error) {
-      console.error('Erro ao atualizar temperaturas:', error);
+      if (onConfigUpdated) {
+        onConfigUpdated();
+      }
     }
   };
 
   const handleInputChange = (field: keyof TemperatureConfig, value: any) => {
-    if (!config) return;
-    setConfig({ ...config, [field]: value });
+    if (!editingConfig) return;
+    setEditingConfig({ ...editingConfig, [field]: value });
   };
 
   const getTemperaturePreview = (level: string) => {
@@ -230,7 +133,7 @@ function TemperatureConfigManager({ pipelineId, tenantId, onConfigUpdated }: Tem
             <Button 
               variant="outline" 
               size="sm"
-              onClick={() => setIsEditing(true)}
+              onClick={handleStartEdit}
             >
               Editar
             </Button>
@@ -239,16 +142,13 @@ function TemperatureConfigManager({ pipelineId, tenantId, onConfigUpdated }: Tem
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => {
-                  setIsEditing(false);
-                  loadConfig(); // Recarregar dados originais
-                }}
+                onClick={handleCancelEdit}
               >
                 Cancelar
               </Button>
               <Button 
                 size="sm"
-                onClick={saveConfig}
+                onClick={handleSaveConfig}
                 disabled={saving}
               >
                 {saving ? 'Salvando...' : 'Salvar'}
@@ -268,13 +168,13 @@ function TemperatureConfigManager({ pipelineId, tenantId, onConfigUpdated }: Tem
               <Input
                 id="hot_threshold"
                 type="number"
-                value={config.hot_threshold}
+                value={isEditing ? editingConfig?.hot_threshold : config?.hot_threshold}
                 onChange={(e) => handleInputChange('hot_threshold', parseInt(e.target.value))}
                 disabled={!isEditing}
                 min="1"
                 max="23"
               />
-              <span className="text-xs text-gray-500">Até {config.hot_threshold}h</span>
+              <span className="text-xs text-gray-500">Até {isEditing ? editingConfig?.hot_threshold : config?.hot_threshold}h</span>
             </div>
             
             <div>
@@ -282,13 +182,13 @@ function TemperatureConfigManager({ pipelineId, tenantId, onConfigUpdated }: Tem
               <Input
                 id="warm_threshold"
                 type="number"
-                value={config.warm_threshold}
+                value={isEditing ? editingConfig?.warm_threshold : config?.warm_threshold}
                 onChange={(e) => handleInputChange('warm_threshold', parseInt(e.target.value))}
                 disabled={!isEditing}
-                min={config.hot_threshold + 1}
+                min={(isEditing ? editingConfig?.hot_threshold : config?.hot_threshold) ? (isEditing ? editingConfig!.hot_threshold + 1 : config!.hot_threshold + 1) : 1}
                 max="167"
               />
-              <span className="text-xs text-gray-500">De {config.hot_threshold}h até {config.warm_threshold}h</span>
+              <span className="text-xs text-gray-500">De {isEditing ? editingConfig?.hot_threshold : config?.hot_threshold}h até {isEditing ? editingConfig?.warm_threshold : config?.warm_threshold}h</span>
             </div>
             
             <div>
@@ -296,16 +196,16 @@ function TemperatureConfigManager({ pipelineId, tenantId, onConfigUpdated }: Tem
               <Input
                 id="cold_threshold"
                 type="number"
-                value={config.cold_threshold}
+                value={isEditing ? editingConfig?.cold_threshold : config?.cold_threshold}
                 onChange={(e) => handleInputChange('cold_threshold', parseInt(e.target.value))}
                 disabled={!isEditing}
-                min={config.warm_threshold + 1}
+                min={(isEditing ? editingConfig?.warm_threshold : config?.warm_threshold) ? (isEditing ? editingConfig!.warm_threshold + 1 : config!.warm_threshold + 1) : 1}
               />
-              <span className="text-xs text-gray-500">De {config.warm_threshold}h até {config.cold_threshold}h</span>
+              <span className="text-xs text-gray-500">De {isEditing ? editingConfig?.warm_threshold : config?.warm_threshold}h até {isEditing ? editingConfig?.cold_threshold : config?.cold_threshold}h</span>
             </div>
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            🧊 Gelado: Acima de {config.cold_threshold}h
+            🧊 Gelado: Acima de {isEditing ? editingConfig?.cold_threshold : config?.cold_threshold}h
           </p>
         </div>
 
@@ -332,12 +232,12 @@ function TemperatureConfigManager({ pipelineId, tenantId, onConfigUpdated }: Tem
                     <Input
                       id="hot_color"
                       type="color"
-                      value={config.hot_color}
+                      value={editingConfig?.hot_color}
                       onChange={(e) => handleInputChange('hot_color', e.target.value)}
                       className="w-16 h-8"
                     />
                     <Input
-                      value={config.hot_color}
+                      value={editingConfig?.hot_color}
                       onChange={(e) => handleInputChange('hot_color', e.target.value)}
                       placeholder="#ef4444"
                     />
@@ -348,7 +248,7 @@ function TemperatureConfigManager({ pipelineId, tenantId, onConfigUpdated }: Tem
                   <Label htmlFor="hot_icon">Ícone Quente</Label>
                   <Input
                     id="hot_icon"
-                    value={config.hot_icon}
+                    value={editingConfig?.hot_icon}
                     onChange={(e) => handleInputChange('hot_icon', e.target.value)}
                     placeholder="🔥"
                   />
@@ -362,12 +262,12 @@ function TemperatureConfigManager({ pipelineId, tenantId, onConfigUpdated }: Tem
                     <Input
                       id="warm_color"
                       type="color"
-                      value={config.warm_color}
+                      value={editingConfig?.warm_color}
                       onChange={(e) => handleInputChange('warm_color', e.target.value)}
                       className="w-16 h-8"
                     />
                     <Input
-                      value={config.warm_color}
+                      value={editingConfig?.warm_color}
                       onChange={(e) => handleInputChange('warm_color', e.target.value)}
                       placeholder="#f97316"
                     />
@@ -378,7 +278,7 @@ function TemperatureConfigManager({ pipelineId, tenantId, onConfigUpdated }: Tem
                   <Label htmlFor="warm_icon">Ícone Morno</Label>
                   <Input
                     id="warm_icon"
-                    value={config.warm_icon}
+                    value={editingConfig?.warm_icon}
                     onChange={(e) => handleInputChange('warm_icon', e.target.value)}
                     placeholder="🌡️"
                   />
@@ -392,12 +292,12 @@ function TemperatureConfigManager({ pipelineId, tenantId, onConfigUpdated }: Tem
                     <Input
                       id="cold_color"
                       type="color"
-                      value={config.cold_color}
+                      value={editingConfig?.cold_color}
                       onChange={(e) => handleInputChange('cold_color', e.target.value)}
                       className="w-16 h-8"
                     />
                     <Input
-                      value={config.cold_color}
+                      value={editingConfig?.cold_color}
                       onChange={(e) => handleInputChange('cold_color', e.target.value)}
                       placeholder="#3b82f6"
                     />
@@ -408,7 +308,7 @@ function TemperatureConfigManager({ pipelineId, tenantId, onConfigUpdated }: Tem
                   <Label htmlFor="cold_icon">Ícone Frio</Label>
                   <Input
                     id="cold_icon"
-                    value={config.cold_icon}
+                    value={editingConfig?.cold_icon}
                     onChange={(e) => handleInputChange('cold_icon', e.target.value)}
                     placeholder="❄️"
                   />
@@ -422,12 +322,12 @@ function TemperatureConfigManager({ pipelineId, tenantId, onConfigUpdated }: Tem
                     <Input
                       id="frozen_color"
                       type="color"
-                      value={config.frozen_color}
+                      value={editingConfig?.frozen_color}
                       onChange={(e) => handleInputChange('frozen_color', e.target.value)}
                       className="w-16 h-8"
                     />
                     <Input
-                      value={config.frozen_color}
+                      value={editingConfig?.frozen_color}
                       onChange={(e) => handleInputChange('frozen_color', e.target.value)}
                       placeholder="#6b7280"
                     />
@@ -438,7 +338,7 @@ function TemperatureConfigManager({ pipelineId, tenantId, onConfigUpdated }: Tem
                   <Label htmlFor="frozen_icon">Ícone Gelado</Label>
                   <Input
                     id="frozen_icon"
-                    value={config.frozen_icon}
+                    value={editingConfig?.frozen_icon}
                     onChange={(e) => handleInputChange('frozen_icon', e.target.value)}
                     placeholder="🧊"
                   />

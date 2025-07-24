@@ -261,11 +261,24 @@ function mapFormFieldsToLeadsMaster(form_data: any, form_fields: any[] = []): an
   leadData.job_title = form_data.cargo || form_data.job_title || '';
   leadData.estimated_value = form_data.valor_estimado || form_data.valor || form_data.value || form_data.budget || 0;
   
-  // Campos UTM
+  // ✅ CAMPOS UTM COMPLETOS
   leadData.utm_source = form_data.utm_source || '';
   leadData.utm_medium = form_data.utm_medium || '';
   leadData.utm_campaign = form_data.utm_campaign || '';
-  leadData.campaign_name = form_data.campaign_name || '';
+  leadData.utm_term = form_data.utm_term || '';
+  leadData.utm_content = form_data.utm_content || '';
+  leadData.campaign_name = form_data.campaign_name || form_data.utm_campaign || '';
+  
+  // ✅ DADOS DE RASTREAMENTO COMPLETOS
+  leadData.referrer = form_data.referrer || '';
+  leadData.landing_page = form_data.landing_page || '';
+  leadData.lead_source = form_data.lead_source || form_data.origem || 'website';
+  leadData.source = form_data.origem || form_data.traffic_source || 'Website';
+  
+  // ✅ DADOS DE GEOLOCALIZAÇÃO
+  leadData.city = form_data.city || '';
+  leadData.state = form_data.state || '';
+  leadData.country = form_data.country || '';
 
   return leadData;
 }
@@ -308,7 +321,7 @@ router.post('/create-simple-lead', async (req, res) => {
     // 2. Mapear campos do formulário para leads_master
     const mappedLeadData = mapFormFieldsToLeadsMaster(form_data, form.fields);
     
-    // 3. Criar lead na tabela leads_master
+    // 3. Criar lead na tabela leads_master com DADOS UTM COMPLETOS
     const { data: lead, error: leadError } = await supabase
       .from('leads_master')
       .insert({
@@ -319,16 +332,27 @@ router.post('/create-simple-lead', async (req, res) => {
         company: mappedLeadData.company || '',
         job_title: mappedLeadData.job_title || '',
         estimated_value: mappedLeadData.estimated_value || 0,
-        lead_source: 'Form',
-        lead_temperature: 'Frio',
-        status: 'Novo',
-        origem: 'Formulário',
+        lead_source: mappedLeadData.lead_source || 'website',
+        lead_temperature: 'warm',
+        status: 'new',
         tenant_id: tenant_id,
         created_by: null, // Form público
-        utm_source: mappedLeadData.utm_source,
-        utm_medium: mappedLeadData.utm_medium,
-        utm_campaign: mappedLeadData.utm_campaign,
-        campaign_name: mappedLeadData.campaign_name
+        // ✅ DADOS UTM COMPLETOS
+        utm_source: mappedLeadData.utm_source || '',
+        utm_medium: mappedLeadData.utm_medium || '',
+        utm_campaign: mappedLeadData.utm_campaign || '',
+        utm_term: mappedLeadData.utm_term || '',
+        utm_content: mappedLeadData.utm_content || '',
+        campaign_name: mappedLeadData.campaign_name || '',
+        // ✅ DADOS DE RASTREAMENTO COMPLETOS  
+        referrer: mappedLeadData.referrer || '',
+        landing_page: mappedLeadData.landing_page || '',
+        ip_address: ip_address || 'unknown',
+        user_agent: user_agent || 'unknown',
+        // ✅ DADOS DE GEOLOCALIZAÇÃO COMPLETOS
+        city: mappedLeadData.city || '',
+        state: mappedLeadData.state || '',
+        country: mappedLeadData.country || ''
       })
       .select()
       .single();
@@ -347,27 +371,30 @@ router.post('/create-simple-lead', async (req, res) => {
     // 4. Configurar visibilidade do lead
     await configureLeadVisibility(lead.id, form_id, destination_config.visibility);
 
-    // 5. 🆕 APLICAR SISTEMA DE RODÍZIO INTEGRADO
+    // 5. ✅ SISTEMA DE DISTRIBUIÇÃO UNIFICADO
     let assignedTo = null;
     let distributionDetails = null;
     
-    if (destination_config.distribution && destination_config.distribution.auto_assign) {
-      console.log('🎯 Aplicando sistema de rodízio integrado...');
+    if (destination_config.distribution && destination_config.distribution.auto_assign && destination_config.pipeline_id) {
+      console.log('🎯 Usando LeadDistributionService para distribuição...');
       
-      // Verificar se há pipeline específica configurada
-      if (destination_config.pipeline_id) {
-        // Usar distribuição da pipeline específica
-        assignedTo = await applyPipelineDistribution(destination_config.pipeline_id, tenant_id);
-        distributionDetails = { method: 'pipeline_round_robin', pipeline_id: destination_config.pipeline_id };
-      } else {
-        // Usar distribuição geral do tenant
-        assignedTo = await distributeLeadToMember(
-          lead.id, 
-          destination_config.distribution,
-          destination_config.visibility?.specific_members,
-          tenant_id
-        );
-        distributionDetails = { method: 'general_round_robin', tenant_id: tenant_id };
+      try {
+        // Usar o LeadDistributionService unificado para pipelines
+        assignedTo = await LeadDistributionService.distributeLeadToMember(lead.id, destination_config.pipeline_id);
+        
+        if (assignedTo) {
+          distributionDetails = { 
+            method: 'unified_pipeline_distribution', 
+            pipeline_id: destination_config.pipeline_id,
+            service: 'LeadDistributionService'
+          };
+          console.log('✅ Lead distribuído via LeadDistributionService para:', assignedTo);
+        } else {
+          console.log('📝 Distribuição não aplicada - modo manual ou sem membros ativos');
+        }
+      } catch (distributionError) {
+        console.warn('⚠️ Erro na distribuição unificada:', distributionError);
+        assignedTo = null;
       }
 
       // 🆕 SINCRONIZAR COM SISTEMA DE PIPELINE SE NECESSÁRIO
@@ -375,6 +402,8 @@ router.post('/create-simple-lead', async (req, res) => {
         console.log('🔄 Sincronizando com sistema de pipeline...');
         await createPipelineOpportunityFromLead(lead, assignedTo, destination_config);
       }
+    } else if (destination_config.distribution && destination_config.distribution.auto_assign) {
+      console.log('⚠️ Distribuição automática requer pipeline_id configurado');
     }
 
     // 6. Registrar submissão
@@ -485,179 +514,14 @@ async function configureLeadVisibility(leadId: string, formId: string, visibilit
   }
 }
 
-// Função auxiliar para distribuir lead para member usando ROUND-ROBIN
-async function distributeLeadToMember(leadId: string, distributionConfig: any, availableMembers?: string[], tenant_id?: string) {
-  try {
-    console.log('🎯 Iniciando distribuição automática:', { leadId, distributionConfig });
-    
-    // Buscar members disponíveis para distribuição
-    let targetMembers = availableMembers;
-    
-    if (!targetMembers || targetMembers.length === 0) {
-      console.log('🔍 Buscando todos os members ativos do tenant...');
-      
-      const { data: allMembers, error: membersError } = await supabase
-        .from('users')
-        .select('id, first_name, email')
-        .eq('tenant_id', tenant_id)
-        .eq('role', 'member')
-        .eq('is_active', true);
-      
-      if (membersError) {
-        console.error('❌ Erro ao buscar members:', membersError);
-        return null;
-      }
-        
-      targetMembers = allMembers?.map(m => m.id) || [];
-      console.log(`👥 Encontrados ${targetMembers.length} members ativos`);
-    }
+// ✅ FUNÇÃO REMOVIDA: distributeLeadToMember
+// Esta funcionalidade agora é fornecida pelo LeadDistributionService.distributeLeadToMember()
 
-    if (!targetMembers || targetMembers.length === 0) {
-      console.log('⚠️ Nenhum member disponível para distribuição');
-      return null;
-    }
+// ✅ FUNÇÃO REMOVIDA: applyRoundRobinDistribution
+// Esta funcionalidade agora é fornecida pelo LeadDistributionService.assignLeadByRoundRobin()
 
-    let selectedMemberId: string | null = null;
-
-    // Aplicar lógica de distribuição baseada no modo configurado
-    switch (distributionConfig.mode) {
-      case 'round-robin':
-        console.log('🔄 Aplicando distribuição round-robin...');
-        selectedMemberId = await applyRoundRobinDistribution(targetMembers, tenant_id);
-        break;
-      
-      case 'workload-based':
-        console.log('📊 Aplicando distribuição por carga de trabalho...');
-        selectedMemberId = await getFirstAvailableMember(targetMembers);
-        break;
-      
-      case 'manual':
-      default:
-        console.log('✋ Distribuição manual - nenhuma atribuição automática');
-        return null;
-    }
-
-    if (!selectedMemberId) {
-      console.log('⚠️ Nenhum member selecionado para distribuição');
-      return null;
-    }
-
-    // Atribuir lead ao member selecionado
-    const { error: updateError } = await supabase
-      .from('leads_master')
-      .update({ 
-        assigned_to: selectedMemberId,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', leadId);
-
-    if (updateError) {
-      console.error('❌ Erro ao atribuir lead:', updateError);
-      return null;
-    }
-
-    console.log('✅ Lead distribuído com sucesso para member:', selectedMemberId);
-    
-    // Registrar histórico de distribuição
-    await recordDistributionHistory(leadId, selectedMemberId, distributionConfig.mode, 'form_submission');
-    
-    return selectedMemberId;
-
-  } catch (error) {
-    console.error('❌ Erro na distribuição automática:', error);
-    return null;
-  }
-}
-
-// Função para aplicar distribuição round-robin
-async function applyRoundRobinDistribution(memberIds: string[], tenant_id?: string): Promise<string | null> {
-  try {
-    console.log('🎯 Aplicando lógica round-robin para', memberIds.length, 'members');
-    
-    // Buscar o último member que recebeu um lead
-    const { data: lastAssignment, error: historyError } = await supabase
-      .from('leads_master')
-      .select('assigned_to')
-      .eq('tenant_id', tenant_id)
-      .in('assigned_to', memberIds)
-      .not('assigned_to', 'is', null)
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    if (historyError) {
-      console.warn('⚠️ Erro ao buscar histórico, usando primeiro member:', historyError);
-      return memberIds[0];
-    }
-
-    if (!lastAssignment || lastAssignment.length === 0) {
-      console.log('📍 Nenhum histórico encontrado, usando primeiro member');
-      return memberIds[0];
-    }
-
-    const lastAssignedMemberId = lastAssignment[0].assigned_to;
-    const currentIndex = memberIds.indexOf(lastAssignedMemberId);
-    
-    if (currentIndex === -1) {
-      console.log('📍 Último member não encontrado na lista atual, usando primeiro');
-      return memberIds[0];
-    }
-
-    // Próximo member no rodízio
-    const nextIndex = (currentIndex + 1) % memberIds.length;
-    const nextMemberId = memberIds[nextIndex];
-    
-    console.log(`🔄 Round-robin: ${lastAssignedMemberId} → ${nextMemberId}`);
-    return nextMemberId;
-
-  } catch (error) {
-    console.error('❌ Erro no round-robin, usando primeiro member:', error);
-    return memberIds[0];
-  }
-}
-
-// Função auxiliar para encontrar member com menor carga
-async function getFirstAvailableMember(memberIds: string[]): Promise<string> {
-  try {
-    console.log('📊 Buscando member com menor carga de trabalho...');
-    
-    // Contar leads ativos por member
-    const { data: workloadData, error } = await supabase
-      .from('leads_master')
-      .select('assigned_to')
-      .in('assigned_to', memberIds)
-      .eq('status', 'Novo')
-      .not('assigned_to', 'is', null);
-
-    if (error) {
-      console.warn('⚠️ Erro ao calcular carga, usando primeiro member:', error);
-      return memberIds[0];
-    }
-
-    // Contar leads por member
-    const workloadCount: Record<string, number> = {};
-    memberIds.forEach(id => workloadCount[id] = 0);
-    
-    workloadData?.forEach(lead => {
-      if (lead.assigned_to && workloadCount[lead.assigned_to] !== undefined) {
-        workloadCount[lead.assigned_to]++;
-      }
-    });
-
-    // Encontrar member com menor carga
-    const memberWithLeastLoad = memberIds.reduce((min, current) => 
-      workloadCount[current] < workloadCount[min] ? current : min
-    );
-
-    console.log('📊 Carga de trabalho:', workloadCount);
-    console.log('👤 Member selecionado:', memberWithLeastLoad);
-    
-    return memberWithLeastLoad;
-
-  } catch (error) {
-    console.error('❌ Erro ao calcular carga, usando primeiro member:', error);
-    return memberIds[0];
-  }
-}
+// ✅ FUNÇÃO REMOVIDA: getFirstAvailableMember
+// Funcionalidade de distribuição por carga pode ser implementada no LeadDistributionService quando necessário
 
 // Função para registrar histórico de distribuição
 async function recordDistributionHistory(leadId: string, assignedTo: string, method: string, context: string) {
@@ -776,103 +640,10 @@ async function createPipelineOpportunityFromLead(leadMaster: any, assignedTo: st
   }
 }
 
-// 🆕 FUNÇÃO AUXILIAR PARA APLICAR DISTRIBUIÇÃO NA PIPELINE
-async function applyPipelineDistribution(pipelineId: string, tenantId: string): Promise<string | null> {
-  try {
-    console.log('🎯 Aplicando distribuição na pipeline:', pipelineId);
+// ✅ FUNÇÃO REMOVIDA: applyPipelineDistribution
+// Esta funcionalidade agora é fornecida pelo LeadDistributionService.distributeLeadToMember()
 
-    // 1. Verificar se há regra de distribuição configurada para esta pipeline
-    const { data: distributionRule, error: ruleError } = await supabase
-      .from('pipeline_distribution_rules')
-      .select('*')
-      .eq('pipeline_id', pipelineId)
-      .eq('is_active', true)
-      .single();
-
-    if (ruleError || !distributionRule || distributionRule.mode !== 'rodizio') {
-      console.log('⚠️ Nenhuma regra de rodízio ativa encontrada para esta pipeline');
-      return null;
-    }
-
-    // 2. Buscar members vinculados à pipeline
-    const { data: pipelineMembers, error: membersError } = await supabase
-      .from('pipeline_members')
-      .select('member_id, users(id, first_name, is_active)')
-      .eq('pipeline_id', pipelineId);
-
-    if (membersError || !pipelineMembers || pipelineMembers.length === 0) {
-      console.log('⚠️ Nenhum member vinculado à pipeline');
-      return null;
-    }
-
-    // Filtrar apenas members ativos
-    const activeMembers = pipelineMembers
-      .filter((pm: any) => pm.users && pm.users.is_active)
-      .map((pm: any) => pm.member_id)
-      .filter(Boolean);
-
-    if (activeMembers.length === 0) {
-      console.log('⚠️ Nenhum member ativo encontrado');
-      return null;
-    }
-
-    console.log(`👥 Encontrados ${activeMembers.length} members ativos na pipeline`);
-
-    // 3. Aplicar algoritmo round-robin
-    const nextMember = await getNextRoundRobinMember(activeMembers, distributionRule, pipelineId);
-
-    if (nextMember) {
-      // 4. Atualizar último member atribuído na regra
-      await supabase
-        .from('pipeline_distribution_rules')
-        .update({
-          last_assigned_member_id: nextMember,
-          assignment_count: (distributionRule.assignment_count || 0) + 1,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', distributionRule.id);
-
-      console.log('✅ Próximo member no rodízio:', nextMember);
-    }
-
-    return nextMember;
-
-  } catch (error) {
-    console.error('❌ Erro na distribuição da pipeline:', error);
-    return null;
-  }
-}
-
-// Função para calcular próximo member no round-robin
-async function getNextRoundRobinMember(memberIds: string[], rule: any, pipelineId: string): Promise<string | null> {
-  try {
-    const lastAssignedId = rule.last_assigned_member_id;
-
-    if (!lastAssignedId) {
-      // Primeira atribuição - usar primeiro member
-      console.log('📍 Primeira atribuição na pipeline');
-      return memberIds[0];
-    }
-
-    const currentIndex = memberIds.indexOf(lastAssignedId);
-    
-    if (currentIndex === -1) {
-      // Member anterior não está mais na lista - usar primeiro
-      console.log('📍 Member anterior não encontrado, usando primeiro');
-      return memberIds[0];
-    }
-
-    // Próximo member no rodízio circular
-    const nextIndex = (currentIndex + 1) % memberIds.length;
-    const nextMemberId = memberIds[nextIndex];
-
-    console.log(`🔄 Round-robin pipeline: ${lastAssignedId} → ${nextMemberId}`);
-    return nextMemberId;
-
-  } catch (error) {
-    console.error('❌ Erro no cálculo round-robin:', error);
-    return memberIds[0];
-  }
-}
+// ✅ FUNÇÃO REMOVIDA: getNextRoundRobinMember
+// Esta funcionalidade agora é fornecida pelo LeadDistributionService.assignLeadByRoundRobin()
 
 export default router; 

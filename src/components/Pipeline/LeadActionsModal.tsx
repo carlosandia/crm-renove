@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Clock, User, Send, MessageSquare, Edit, Trash2, FileText, Mail, Phone, Calendar, Plus, RotateCcw, Sparkles } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { showSuccessToast, showErrorToast, showWarningToast } from '../../hooks/useToast';
 
 interface LeadActionsModalProps {
   isOpen: boolean;
@@ -177,7 +178,7 @@ Atenciosamente,
 
       if (error) {
         console.error('Erro ao adicionar anotação:', error);
-        alert('Erro ao adicionar anotação');
+        showErrorToast('Erro ao adicionar', 'Erro ao adicionar anotação');
         return;
       }
 
@@ -194,7 +195,7 @@ Atenciosamente,
       setNewAnnotation('');
     } catch (error) {
       console.error('Erro ao adicionar anotação:', error);
-      alert('Erro ao adicionar anotação');
+      showErrorToast('Erro ao adicionar', 'Erro ao adicionar anotação');
     }
   };
 
@@ -212,7 +213,7 @@ Atenciosamente,
 
       if (error) {
         console.error('Erro ao editar anotação:', error);
-        alert('Erro ao editar anotação');
+        showErrorToast('Erro ao editar', 'Erro ao editar anotação');
         return;
       }
 
@@ -226,7 +227,7 @@ Atenciosamente,
       setEditingContent('');
     } catch (error) {
       console.error('Erro ao editar anotação:', error);
-      alert('Erro ao editar anotação');
+      showErrorToast('Erro ao editar', 'Erro ao editar anotação');
     }
   };
 
@@ -241,14 +242,14 @@ Atenciosamente,
 
       if (error) {
         console.error('Erro ao excluir anotação:', error);
-        alert('Erro ao excluir anotação');
+        showErrorToast('Erro ao excluir', 'Erro ao excluir anotação');
         return;
       }
 
       setAnnotations(annotations.filter(annotation => annotation.id !== annotationId));
     } catch (error) {
       console.error('Erro ao excluir anotação:', error);
-      alert('Erro ao excluir anotação');
+      showErrorToast('Erro ao excluir', 'Erro ao excluir anotação');
     }
   };
 
@@ -285,7 +286,7 @@ Atenciosamente,
 
   const handleSendEmail = async () => {
     if (!emailSubject.trim() || !emailContent.trim()) {
-      alert('Preencha o assunto e a mensagem do email');
+      showWarningToast('Campos obrigatórios', 'Preencha o assunto e a mensagem do email');
       return;
     }
 
@@ -309,12 +310,12 @@ Atenciosamente,
       // Aqui você integraria com um serviço de email real
       console.log('Enviando email:', { subject: emailSubject, content: emailContent });
       
-      alert('Email enviado com sucesso!');
+      showSuccessToast('Email enviado', 'Email enviado com sucesso!');
       setEmailSubject('');
       setEmailContent('');
     } catch (error) {
       console.error('Erro ao enviar email:', error);
-      alert('Erro ao enviar email');
+      showErrorToast('Erro ao enviar', 'Erro ao enviar email');
     }
   };
 

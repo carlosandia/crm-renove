@@ -5,7 +5,7 @@ import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
 import { Textarea } from '../../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../ui/dialog';
+// ✅ CORREÇÃO: Removido imports de Dialog - substituído por expansão inline
 import { Badge } from '../../ui/badge';
 import { Switch } from '../../ui/switch';
 import { AnimatedCard } from '../../ui/animated-card';
@@ -34,7 +34,13 @@ import {
   EyeOff
 } from 'lucide-react';
 
-interface CadenceTask {
+// Shared components
+import { SectionHeader } from '../shared/SectionHeader';
+
+// Constants
+import { PIPELINE_UI_CONSTANTS } from '../../../styles/pipeline-constants';
+
+export interface CadenceTask {
   id?: string;
   day_offset: number;
   task_order: number;
@@ -46,7 +52,7 @@ interface CadenceTask {
   is_active: boolean;
 }
 
-interface CadenceConfig {
+export interface CadenceConfig {
   id?: string;
   stage_name: string;
   stage_order: number;
@@ -54,14 +60,16 @@ interface CadenceConfig {
   is_active: boolean;
 }
 
-interface UseCadenceManagerProps {
+export interface UseCadenceManagerProps {
   initialCadences?: CadenceConfig[];
   availableStages?: Array<{ name: string; order_index: number }>;
   onCadencesChange?: (cadences: CadenceConfig[]) => void;
 }
 
-interface UseCadenceManagerReturn {
+export interface UseCadenceManagerReturn {
   cadenceConfigs: CadenceConfig[];
+  // ✅ BUGFIX CRÍTICO: Alias para compatibilidade com ModernPipelineCreatorRefactored
+  cadences: CadenceConfig[];
   setCadenceConfigs: React.Dispatch<React.SetStateAction<CadenceConfig[]>>;
   editingCadence: CadenceConfig | null;
   setEditingCadence: React.Dispatch<React.SetStateAction<CadenceConfig | null>>;
@@ -300,6 +308,8 @@ export function useCadenceManager({
 
   return {
     cadenceConfigs,
+    // ✅ BUGFIX CRÍTICO: Alias para compatibilidade com ModernPipelineCreatorRefactored
+    cadences: cadenceConfigs,
     setCadenceConfigs,
     editingCadence,
     setEditingCadence,
@@ -329,7 +339,7 @@ export function useCadenceManager({
 }
 
 // Componente de renderização do gerenciador de cadências
-interface CadenceManagerRenderProps {
+export interface CadenceManagerRenderProps {
   cadenceManager: UseCadenceManagerReturn;
   availableStages?: Array<{ name: string; order_index: number }>;
 }
@@ -360,26 +370,21 @@ export function CadenceManagerRender({ cadenceManager, availableStages = [] }: C
   } = cadenceManager;
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h3 className="text-lg font-semibold flex items-center gap-2">
-            <Zap className="h-5 w-5 text-yellow-500" />
-            Automação de Cadência
-          </h3>
-          <p className="text-sm text-muted-foreground mt-1">
-            Configure follow-ups automáticos para cada etapa do pipeline.
-          </p>
-        </div>
-        <Button onClick={handleAddCadence} size="sm">
-          <Plus className="h-4 w-4 mr-2" />
-          Adicionar Cadência
-        </Button>
-      </div>
+    <div className={PIPELINE_UI_CONSTANTS.spacing.section}>
+      <SectionHeader
+        icon={Zap}
+        title="Automação de Cadência"
+        action={
+          <Button type="button" onClick={handleAddCadence} size="sm">
+            <Plus className="h-4 w-4 mr-2" />
+            Adicionar Cadência
+          </Button>
+        }
+      />
 
       <div className="space-y-4">
         {cadenceConfigs.map((cadence, cadenceIndex) => (
-          <BlurFade key={cadenceIndex} delay={0.1 * cadenceIndex} inView>
+          <BlurFade key={cadenceIndex} delay={0.03 * cadenceIndex} inView>
             <AnimatedCard>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -404,6 +409,7 @@ export function CadenceManagerRender({ cadenceManager, availableStages = [] }: C
                       onCheckedChange={() => handleToggleCadenceActive(cadenceIndex)}
                     />
                     <Button
+                      type="button"
                       variant="ghost"
                       size="sm"
                       onClick={() => handleEditCadence(cadenceIndex)}
@@ -411,6 +417,7 @@ export function CadenceManagerRender({ cadenceManager, availableStages = [] }: C
                       <Edit className="h-4 w-4" />
                     </Button>
                     <Button
+                      type="button"
                       variant="ghost"
                       size="sm"
                       onClick={() => handleDeleteCadence(cadenceIndex)}
@@ -453,6 +460,7 @@ export function CadenceManagerRender({ cadenceManager, availableStages = [] }: C
                           <EyeOff className="h-4 w-4 text-gray-400" />
                         )}
                         <Button
+                          type="button"
                           variant="ghost"
                           size="sm"
                           onClick={() => handleToggleTaskActive(cadenceIndex, taskIndex)}
@@ -460,6 +468,7 @@ export function CadenceManagerRender({ cadenceManager, availableStages = [] }: C
                           {task.is_active ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
                         </Button>
                         <Button
+                          type="button"
                           variant="ghost"
                           size="sm"
                           onClick={() => handleEditTask(cadenceIndex, taskIndex)}
@@ -467,6 +476,7 @@ export function CadenceManagerRender({ cadenceManager, availableStages = [] }: C
                           <Edit className="h-3 w-3" />
                         </Button>
                         <Button
+                          type="button"
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDeleteTask(cadenceIndex, taskIndex)}
@@ -479,6 +489,7 @@ export function CadenceManagerRender({ cadenceManager, availableStages = [] }: C
                   ))}
 
                   <Button
+                    type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => handleAddTask(cadenceIndex)}
@@ -494,112 +505,174 @@ export function CadenceManagerRender({ cadenceManager, availableStages = [] }: C
         ))}
       </div>
 
-      {/* Modal de Cadência */}
-      <Dialog open={showCadenceModal} onOpenChange={setShowCadenceModal}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>
-              {editingCadence?.stage_name ? `Editar Cadência: ${editingCadence.stage_name}` : 'Nova Cadência'}
-            </DialogTitle>
-            <DialogDescription>
-              Configure a cadência de automação para uma etapa.
-            </DialogDescription>
-          </DialogHeader>
-
-          {editingCadence && (
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="stageName">Etapa</Label>
-                <Select
-                  value={editingCadence.stage_name}
-                  onValueChange={(value) => {
-                    const stage = availableStages.find(s => s.name === value);
-                    setEditingCadence({
-                      ...editingCadence,
-                      stage_name: value,
-                      stage_order: stage?.order_index || 0
-                    });
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione uma etapa" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableStages.map(stage => (
-                      <SelectItem key={stage.name} value={stage.name}>
-                        {stage.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+      {/* ✅ FORMULÁRIO INLINE EXPANSÍVEL DE CADÊNCIA - Substitui modal sobreposto */}
+      {showCadenceModal && (
+        <BlurFade>
+          <div className="mt-6 p-6 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg space-y-4">
+            {/* Header do Formulário Inline */}
+            <div className="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-2">
+                <h4 className="text-lg font-semibold">
+                  {editingCadence?.stage_name ? `Editar Cadência: ${editingCadence.stage_name}` : 'Nova Cadência'}
+                </h4>
               </div>
-
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="cadenceActive"
-                  checked={editingCadence.is_active}
-                  onCheckedChange={(checked) => setEditingCadence({
-                    ...editingCadence,
-                    is_active: checked
-                  })}
-                />
-                <Label htmlFor="cadenceActive">Cadência ativa</Label>
-              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowCadenceModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </Button>
             </div>
-          )}
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowCadenceModal(false)}
-            >
-              Cancelar
-            </Button>
-            <Button onClick={handleSaveCadence}>
-              <Save className="h-4 w-4 mr-2" />
-              Salvar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Configure a cadência de automação para uma etapa.
+            </p>
 
-      {/* Modal de Tarefa */}
-      <Dialog open={showTaskModal} onOpenChange={setShowTaskModal}>
-        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editingTask?.task_title ? `Editar Tarefa: ${editingTask.task_title}` : 'Nova Tarefa'}
-            </DialogTitle>
-            <DialogDescription>
-              Configure os detalhes da tarefa de automação.
-            </DialogDescription>
-          </DialogHeader>
-
-          {editingTask && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            {editingCadence && (
+              <div className="space-y-4">
                 <div>
-                  <Label htmlFor="dayOffset">Dia de Execução</Label>
-                  <Input
-                    id="dayOffset"
-                    type="number"
-                    min="0"
-                    value={editingTask.day_offset}
-                    onChange={(e) => setEditingTask({
-                      ...editingTask,
-                      day_offset: parseInt(e.target.value) || 0
+                  <Label htmlFor="stageName">Etapa</Label>
+                  <Select
+                    value={editingCadence.stage_name}
+                    onValueChange={(value) => {
+                      const stage = availableStages.find(s => s.name === value);
+                      setEditingCadence({
+                        ...editingCadence,
+                        stage_name: value,
+                        stage_order: stage?.order_index || 0
+                      });
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma etapa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableStages.map(stage => (
+                        <SelectItem key={stage.name} value={stage.name}>
+                          {stage.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="cadenceActive"
+                    checked={editingCadence.is_active}
+                    onCheckedChange={(checked) => setEditingCadence({
+                      ...editingCadence,
+                      is_active: checked
                     })}
                   />
+                  <Label htmlFor="cadenceActive">Cadência ativa</Label>
+                </div>
+
+                {/* Botões de Ação Inline */}
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowCadenceModal(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button 
+                    onClick={handleSaveCadence}
+                    disabled={!editingCadence?.stage_name}
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    Salvar
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </BlurFade>
+      )}
+
+      {/* ✅ FORMULÁRIO INLINE EXPANSÍVEL DE TAREFA - Substitui modal sobreposto */}
+      {showTaskModal && (
+        <BlurFade>
+          <div className="mt-6 p-6 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg space-y-4">
+            {/* Header do Formulário Inline */}
+            <div className="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-2">
+                <h4 className="text-lg font-semibold">
+                  {editingTask?.task_title ? `Editar Tarefa: ${editingTask.task_title}` : 'Nova Tarefa'}
+                </h4>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowTaskModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </Button>
+            </div>
+
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Configure os detalhes da tarefa de automação.
+            </p>
+
+            {editingTask && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="dayOffset">Dia de Execução</Label>
+                    <Input
+                      id="dayOffset"
+                      type="number"
+                      min="0"
+                      value={editingTask.day_offset}
+                      onChange={(e) => setEditingTask({
+                        ...editingTask,
+                        day_offset: parseInt(e.target.value) || 0
+                      })}
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="channel">Canal</Label>
+                    <Select
+                      value={editingTask.channel}
+                      onValueChange={(value: CadenceTask['channel']) => 
+                        setEditingTask({
+                          ...editingTask,
+                          channel: value
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CHANNEL_OPTIONS.map(channel => {
+                          const IconComponent = channel.icon;
+                          return (
+                            <SelectItem key={channel.value} value={channel.value}>
+                              <div className="flex items-center gap-2">
+                                <IconComponent className="h-4 w-4" />
+                                {channel.label}
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 <div>
-                  <Label htmlFor="channel">Canal</Label>
+                  <Label htmlFor="actionType">Tipo de Ação</Label>
                   <Select
-                    value={editingTask.channel}
-                    onValueChange={(value: CadenceTask['channel']) => 
+                    value={editingTask.action_type}
+                    onValueChange={(value: CadenceTask['action_type']) => 
                       setEditingTask({
                         ...editingTask,
-                        channel: value
+                        action_type: value
                       })
                     }
                   >
@@ -607,13 +680,13 @@ export function CadenceManagerRender({ cadenceManager, availableStages = [] }: C
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {CHANNEL_OPTIONS.map(channel => {
-                        const IconComponent = channel.icon;
+                      {ACTION_TYPE_OPTIONS.map(action => {
+                        const IconComponent = action.icon;
                         return (
-                          <SelectItem key={channel.value} value={channel.value}>
+                          <SelectItem key={action.value} value={action.value}>
                             <div className="flex items-center gap-2">
                               <IconComponent className="h-4 w-4" />
-                              {channel.label}
+                              {action.label}
                             </div>
                           </SelectItem>
                         );
@@ -621,110 +694,81 @@ export function CadenceManagerRender({ cadenceManager, availableStages = [] }: C
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
 
-              <div>
-                <Label htmlFor="actionType">Tipo de Ação</Label>
-                <Select
-                  value={editingTask.action_type}
-                  onValueChange={(value: CadenceTask['action_type']) => 
-                    setEditingTask({
+                <div>
+                  <Label htmlFor="taskTitle">Título da Tarefa</Label>
+                  <Input
+                    id="taskTitle"
+                    value={editingTask.task_title}
+                    onChange={(e) => setEditingTask({
                       ...editingTask,
-                      action_type: value
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ACTION_TYPE_OPTIONS.map(action => {
-                      const IconComponent = action.icon;
-                      return (
-                        <SelectItem key={action.value} value={action.value}>
-                          <div className="flex items-center gap-2">
-                            <IconComponent className="h-4 w-4" />
-                            {action.label}
-                          </div>
-                        </SelectItem>
-                      );
+                      task_title: e.target.value
                     })}
-                  </SelectContent>
-                </Select>
-              </div>
+                    placeholder="Ex: Primeiro contato"
+                  />
+                </div>
 
-              <div>
-                <Label htmlFor="taskTitle">Título da Tarefa</Label>
-                <Input
-                  id="taskTitle"
-                  value={editingTask.task_title}
-                  onChange={(e) => setEditingTask({
-                    ...editingTask,
-                    task_title: e.target.value
-                  })}
-                  placeholder="Ex: Primeiro contato"
-                />
-              </div>
+                <div>
+                  <Label htmlFor="taskDescription">Descrição</Label>
+                  <Textarea
+                    id="taskDescription"
+                    value={editingTask.task_description}
+                    onChange={(e) => setEditingTask({
+                      ...editingTask,
+                      task_description: e.target.value
+                    })}
+                    placeholder="Descreva o que deve ser feito nesta tarefa..."
+                    rows={3}
+                  />
+                </div>
 
-              <div>
-                <Label htmlFor="taskDescription">Descrição</Label>
-                <Textarea
-                  id="taskDescription"
-                  value={editingTask.task_description}
-                  onChange={(e) => setEditingTask({
-                    ...editingTask,
-                    task_description: e.target.value
-                  })}
-                  placeholder="Descreva o que deve ser feito nesta tarefa..."
-                  rows={3}
-                />
-              </div>
+                <div>
+                  <Label htmlFor="templateContent">Template/Conteúdo</Label>
+                  <Textarea
+                    id="templateContent"
+                    value={editingTask.template_content || ''}
+                    onChange={(e) => setEditingTask({
+                      ...editingTask,
+                      template_content: e.target.value
+                    })}
+                    placeholder="Template de mensagem ou roteiro de ligação..."
+                    rows={4}
+                  />
+                </div>
 
-              <div>
-                <Label htmlFor="templateContent">Template/Conteúdo</Label>
-                <Textarea
-                  id="templateContent"
-                  value={editingTask.template_content || ''}
-                  onChange={(e) => setEditingTask({
-                    ...editingTask,
-                    template_content: e.target.value
-                  })}
-                  placeholder="Template de mensagem ou roteiro de ligação..."
-                  rows={4}
-                />
-              </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="taskActive"
+                    checked={editingTask.is_active}
+                    onCheckedChange={(checked) => setEditingTask({
+                      ...editingTask,
+                      is_active: checked
+                    })}
+                  />
+                  <Label htmlFor="taskActive">Tarefa ativa</Label>
+                </div>
 
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="taskActive"
-                  checked={editingTask.is_active}
-                  onCheckedChange={(checked) => setEditingTask({
-                    ...editingTask,
-                    is_active: checked
-                  })}
-                />
-                <Label htmlFor="taskActive">Tarefa ativa</Label>
+                {/* Botões de Ação Inline */}
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowTaskModal(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button 
+                    onClick={handleSaveTask}
+                    disabled={!editingTask?.task_title}
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    Salvar
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowTaskModal(false)}
-            >
-              Cancelar
-            </Button>
-            <Button 
-              onClick={handleSaveTask}
-              disabled={!editingTask?.task_title}
-            >
-              <Save className="h-4 w-4 mr-2" />
-              Salvar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            )}
+          </div>
+        </BlurFade>
+      )}
     </div>
   );
 }

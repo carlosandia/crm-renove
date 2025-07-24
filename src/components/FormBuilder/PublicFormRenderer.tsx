@@ -504,12 +504,22 @@ const PublicFormRenderer: React.FC<PublicFormRendererProps> = ({
       
       console.log('🎯 Dados de origem processados:', originData);
       
-      // Preparar dados da submissão com origem
+      // ✅ Obter dados completos de geolocalização
+      const locationData = await getClientLocationData();
+      
+      // Preparar dados da submissão com origem e geolocalização
       const submissionData = {
         form_id: formId,
-        form_data: { ...formValues, ...originData },
+        form_data: { 
+          ...formValues, 
+          ...originData,
+          // ✅ Incluir dados de geolocalização no form_data
+          city: locationData.city,
+          state: locationData.state,
+          country: locationData.country
+        },
         tenant_id: formData.tenant_id,
-        ip_address: await getClientIP(),
+        ip_address: locationData.ip,
         user_agent: navigator.userAgent,
         submitted_at: new Date().toISOString(),
         referrer: document.referrer,
@@ -553,7 +563,7 @@ const PublicFormRenderer: React.FC<PublicFormRendererProps> = ({
 
       console.log(`🚀 Enviando para: ${submitEndpoint}`);
 
-      const API_BASE_URL = 'http://localhost:3001';
+      const API_BASE_URL = 'http://127.0.0.1:3001';
       const response = await fetch(`${API_BASE_URL}${submitEndpoint}`, {
         method: 'POST',
         headers: {
@@ -605,15 +615,42 @@ const PublicFormRenderer: React.FC<PublicFormRendererProps> = ({
     }
   };
 
-  // Função auxiliar para obter IP do cliente
-  const getClientIP = async (): Promise<string> => {
+  // ✅ Função auxiliar MELHORADA para obter IP e geolocalização do cliente
+  const getClientLocationData = async (): Promise<{ip: string, city?: string, state?: string, country?: string}> => {
     try {
-      const response = await fetch('https://api.ipify.org?format=json');
+      // Tentar obter dados completos de geolocalização via ipinfo.io
+      const response = await fetch('https://ipinfo.io/json');
       const data = await response.json();
-      return data.ip;
+      
+      return {
+        ip: data.ip || 'unknown',
+        city: data.city || '',
+        state: data.region || '',
+        country: data.country || ''
+      };
     } catch (error) {
-      console.warn('Não foi possível obter IP do cliente:', error);
-      return 'unknown';
+      console.warn('Não foi possível obter dados de geolocalização, tentando apenas IP...', error);
+      
+      try {
+        // Fallback: apenas IP via ipify
+        const ipResponse = await fetch('https://api.ipify.org?format=json');
+        const ipData = await ipResponse.json();
+        
+        return {
+          ip: ipData.ip || 'unknown',
+          city: '',
+          state: '',
+          country: ''
+        };
+      } catch (ipError) {
+        console.warn('Não foi possível obter nem mesmo o IP:', ipError);
+        return {
+          ip: 'unknown',
+          city: '',
+          state: '',
+          country: ''
+        };
+      }
     }
   };
 

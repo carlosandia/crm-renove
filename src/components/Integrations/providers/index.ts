@@ -3,9 +3,8 @@ export {
   MetaAdsIntegrationRender 
 } from './MetaAdsIntegration';
 
-export { 
-  useGoogleAdsIntegration, 
-  GoogleAdsIntegrationRender 
-} from './GoogleAdsIntegration';
-
-export default MetaAdsIntegrationRender; 
+// AIDEV-NOTE: Arquivo GoogleAdsIntegration não existe ainda
+// export { 
+//   useGoogleAdsIntegration, 
+//   GoogleAdsIntegrationRender 
+// } from './GoogleAdsIntegration'; 

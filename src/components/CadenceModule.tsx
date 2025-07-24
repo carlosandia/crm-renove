@@ -22,6 +22,17 @@ import {
   CheckCircle,
   X
 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from './ui/alert-dialog';
 import { useArrayState } from '../hooks/useArrayState';
 import { useAsyncState } from '../hooks/useAsyncState';
 
@@ -443,7 +454,6 @@ const CadenceModule: React.FC = () => {
 
   // Deletar configuração
   const deleteCadenceConfig = async (configId: string, pipelineId: string) => {
-    if (!confirm('Tem certeza que deseja excluir esta configuração de cadência?')) return;
 
     try {
       
@@ -535,10 +545,8 @@ const CadenceModule: React.FC = () => {
   };
 
   const deleteTask = (taskIndex: number) => {
-    if (confirm('Tem certeza que deseja excluir esta tarefa?')) {
-      const updatedTasks = modalForm.tasks.filter((_, index) => index !== taskIndex);
-      setModalForm(prev => ({ ...prev, tasks: updatedTasks }));
-    }
+    const updatedTasks = modalForm.tasks.filter((_, index) => index !== taskIndex);
+    setModalForm(prev => ({ ...prev, tasks: updatedTasks }));
   };
 
   // Filtrar configurações por pipeline selecionada
@@ -808,12 +816,30 @@ const CadenceModule: React.FC = () => {
                       >
                         <Edit className="w-4 h-4" />
                       </button>
-                      <button
-                        onClick={() => deleteCadenceConfig(config.id!, config.pipeline_id)}
-                        className="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <button className="p-2 text-gray-400 hover:text-red-600 transition-colors">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Tem certeza que deseja excluir esta configuração de cadência? Esta ação não pode ser desfeita.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteCadenceConfig(config.id!, config.pipeline_id)}
+                              className="bg-red-600 hover:bg-red-700"
+                            >
+                              Excluir
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                   </div>
 
@@ -1213,13 +1239,33 @@ const CadenceModule: React.FC = () => {
                                       >
                                         <Edit className="w-4 h-4" />
                                       </button>
-                                      <button
-                                        onClick={() => deleteTask(index)}
-                                        className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                                        title="Excluir tarefa"
-                                      >
-                                        <Trash2 className="w-4 h-4" />
-                                      </button>
+                                      <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                          <button
+                                            className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                            title="Excluir tarefa"
+                                          >
+                                            <Trash2 className="w-4 h-4" />
+                                          </button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                          <AlertDialogHeader>
+                                            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                              Tem certeza que deseja excluir esta tarefa? Esta ação não pode ser desfeita.
+                                            </AlertDialogDescription>
+                                          </AlertDialogHeader>
+                                          <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                            <AlertDialogAction
+                                              onClick={() => deleteTask(index)}
+                                              className="bg-red-600 hover:bg-red-700"
+                                            >
+                                              Excluir
+                                            </AlertDialogAction>
+                                          </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                      </AlertDialog>
                                     </div>
                                   </div>
                                 </div>

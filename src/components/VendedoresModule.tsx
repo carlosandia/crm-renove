@@ -60,6 +60,7 @@ const VendedoresModule: React.FC = React.memo(() => {
   const [editingVendedor, setEditingVendedor] = useState<Vendedor | null>(null);
   const [showGoalsModal, setShowGoalsModal] = useState(false);
   const [selectedVendedor, setSelectedVendedor] = useState<Vendedor | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ vendedorId: string; vendedorName: string } | null>(null);
 
   // Estados do formulário
   const [formData, setFormData] = useState({
@@ -523,10 +524,17 @@ const VendedoresModule: React.FC = React.memo(() => {
     setShowForm(true);
   }, []);
 
-  const handleDelete = useCallback(async (vendedorId: string) => {
-    if (!confirm('Tem certeza que deseja excluir este vendedor?')) {
-      return;
-    }
+  const confirmDelete = useCallback((vendedorId: string) => {
+    const vendedor = vendedores.find(v => v.id === vendedorId);
+    const vendedorName = vendedor ? `${vendedor.first_name} ${vendedor.last_name}` : 'este vendedor';
+    setDeleteConfirm({ vendedorId, vendedorName });
+  }, [vendedores]);
+
+  const executeDelete = useCallback(async () => {
+    if (!deleteConfirm) return;
+    
+    const { vendedorId } = deleteConfirm;
+    setDeleteConfirm(null);
 
     try {
       if (vendedorId.startsWith('mock-')) {
@@ -551,7 +559,7 @@ const VendedoresModule: React.FC = React.memo(() => {
       logger.error('Erro ao excluir vendedor:', error);
       showErrorToast('Erro ao excluir', 'Erro ao excluir vendedor: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
     }
-  }, [vendedores, fetchVendedores]);
+  }, [deleteConfirm, vendedores, setVendedores, fetchVendedores]);
 
   const toggleVendedorStatus = useCallback(async (vendedorId: string, currentStatus: boolean) => {
     const newStatus = !currentStatus;
@@ -635,11 +643,13 @@ const VendedoresModule: React.FC = React.memo(() => {
       };
 
       try {
-        const { data, error } = await supabase
+        // 🔧 CORREÇÃO RLS: Gerar UUID manualmente para contornar problema de SELECT após INSERT
+        const goalId = crypto.randomUUID();
+        const metaDataWithId = { ...metaData, id: goalId };
+        
+        const { error } = await supabase
           .from('sales_goals')
-          .insert([metaData])
-          .select()
-          .single();
+          .insert([metaDataWithId]);
 
         if (error) {
           if (error.message.includes('duplicate key') || error.message.includes('unique constraint')) {
@@ -1155,7 +1165,7 @@ const VendedoresModule: React.FC = React.memo(() => {
                     </button>
                     
                     <button
-                      onClick={() => handleDelete(vendedor.id)}
+                      onClick={() => confirmDelete(vendedor.id)}
                       className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                       title="Excluir vendedor"
                     >
@@ -1277,6 +1287,45 @@ const VendedoresModule: React.FC = React.memo(() => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal de Confirmação de Exclusão */}
+      {deleteConfirm && createPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                  <Trash2 className="w-5 h-5 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Confirmar Exclusão</h3>
+                  <p className="text-sm text-gray-600">Esta ação não pode ser desfeita</p>
+                </div>
+              </div>
+              
+              <p className="text-gray-700 mb-6">
+                Tem certeza que deseja excluir o vendedor <strong>{deleteConfirm.vendedorName}</strong>?
+              </p>
+              
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={executeDelete}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                >
+                  Excluir
+                </button>
+              </div>
             </div>
           </div>
         </div>,

@@ -1,6 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { PipelineStage } from '@/types/Pipeline';
-import { Card, CardContent } from '@/components/ui/card';
+import { CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,8 +7,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { AnimatedCard } from '@/components/ui/animated-card';
-import { GripVertical, Edit, Trash2, Save, Plus } from 'lucide-react';
+import { Edit, Trash2, Save, Plus, UserPlus, Trophy, XCircle, Lock, Info, HelpCircle, Target, ChevronUp, ChevronDown } from 'lucide-react';
 import { BlurFade } from '@/components/ui/blur-fade';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 // Interface simplificada para etapas sem sistema de temperatura
 interface StageData {
@@ -27,23 +27,51 @@ const SYSTEM_STAGES: StageData[] = [
     color: '#3B82F6', 
     order_index: 0, 
     is_system_stage: true,
-    description: 'Etapa inicial onde todos os novos leads são criados.'
+    description: 'Etapa inicial onde todos os novos leads são criados. Esta etapa é obrigatória e não pode ser removida.'
   },
   { 
-    name: 'Closed Won', 
+    name: 'Ganho', 
     color: '#10B981', 
     order_index: 998, 
     is_system_stage: true,
-    description: 'Penúltima etapa - leads convertidos em vendas.'
+    description: 'Etapa de vendas ganhas. Leads que se tornaram clientes são movidos para cá automaticamente.'
   },
   { 
-    name: 'Closed Lost', 
+    name: 'Perdido', 
     color: '#EF4444', 
     order_index: 999, 
     is_system_stage: true,
-    description: 'Última etapa - leads perdidos ou vendas não concretizadas.'
+    description: 'Etapa final para leads perdidos. Vendas não concretizadas ficam aqui para análise posterior.'
   },
 ];
+
+// Função para obter ícone da etapa do sistema
+const getSystemStageIcon = (stageName: string) => {
+  switch (stageName) {
+    case 'Lead':
+      return UserPlus;
+    case 'Ganho':
+      return Trophy;
+    case 'Perdido':
+      return XCircle;
+    default:
+      return Info;
+  }
+};
+
+// Função para obter tooltip educativo
+const getSystemStageTooltip = (stageName: string) => {
+  switch (stageName) {
+    case 'Lead':
+      return 'Etapa obrigatória para todos os novos leads. Baseada em boas práticas de CRM como Salesforce e HubSpot.';
+    case 'Ganho':
+      return 'Etapa padrão para vendas ganhas. Facilita relatórios de conversão e ROI.';
+    case 'Perdido':
+      return 'Etapa padrão para análise de perdas. Essencial para otimização do funil de vendas.';
+    default:
+      return 'Etapa do sistema';
+  }
+};
 
 interface UseStageManagerProps {
   initialStages?: StageData[];
@@ -63,7 +91,8 @@ interface UseStageManagerReturn {
   handleEditStage: (index: number) => void;
   handleSaveStage: () => void;
   handleDeleteStage: (index: number) => void;
-  handleStagesDragEnd: (result: DropResult) => void;
+  moveStageUp: (index: number) => void;
+  moveStageDown: (index: number) => void;
   organizeStages: (stages: StageData[]) => StageData[];
 }
 
@@ -92,8 +121,8 @@ export function useStageManager({
 
     // Encontrar etapas do sistema por nome
     const leadStage = systemStages.find(s => s.name === 'Lead');
-    const closedWonStage = systemStages.find(s => s.name === 'Closed Won');
-    const closedLostStage = systemStages.find(s => s.name === 'Closed Lost');
+    const closedWonStage = systemStages.find(s => s.name === 'Ganho');
+    const closedLostStage = systemStages.find(s => s.name === 'Perdido');
 
     const organized = [];
     
@@ -105,12 +134,12 @@ export function useStageManager({
     // Etapas customizadas no meio
     organized.push(...reindexedStages);
     
-    // Closed Won penúltimo
+    // Ganho penúltimo
     if (closedWonStage) {
       organized.push({ ...closedWonStage, order_index: organized.length });
     }
     
-    // Closed Lost último
+    // Perdido último
     if (closedLostStage) {
       organized.push({ ...closedLostStage, order_index: organized.length });
     }
@@ -130,7 +159,18 @@ export function useStageManager({
   };
 
   const handleEditStage = (index: number) => {
-    setEditingStage({ ...stages[index] });
+    const stage = stages[index];
+    
+    // Para etapas do sistema, apenas mostrar informações (visualização)
+    if (stage.is_system_stage) {
+      setEditingStage({ ...stage });
+      setEditStageIndex(index);
+      setShowStageModal(true);
+      return;
+    }
+    
+    // Para etapas customizadas, permitir edição normal
+    setEditingStage({ ...stage });
     setEditStageIndex(index);
     setShowStageModal(true);
   };
@@ -138,9 +178,26 @@ export function useStageManager({
   const handleSaveStage = () => {
     if (!editingStage || !editingStage.name.trim()) return;
 
+    // BLOQUEIO: Impedir qualquer salvamento de etapas do sistema
+    if (editingStage.is_system_stage) {
+      console.warn('⚠️ Tentativa de editar etapa do sistema bloqueada:', editingStage.name);
+      setShowStageModal(false);
+      setEditingStage(null);
+      setEditStageIndex(null);
+      return;
+    }
+
     const newStages = [...stages];
     
     if (editStageIndex !== null) {
+      // Verificação adicional: se o índice corresponde a uma etapa do sistema, abortar
+      if (stages[editStageIndex]?.is_system_stage) {
+        console.warn('⚠️ Tentativa de sobrescrever etapa do sistema bloqueada');
+        setShowStageModal(false);
+        setEditingStage(null);
+        setEditStageIndex(null);
+        return;
+      }
       newStages[editStageIndex] = editingStage;
     } else {
       newStages.push(editingStage);
@@ -163,21 +220,29 @@ export function useStageManager({
     onStagesChange?.(organizedStages);
   };
 
-  const handleStagesDragEnd = (result: DropResult) => {
-    if (!result.destination) return;
+  const moveStageUp = (index: number) => {
+    if (index <= 0 || stages[index].is_system_stage) return;
+    
+    // Não permitir mover para posição de etapa do sistema
+    if (stages[index - 1].is_system_stage) return;
+    
+    const newStages = [...stages];
+    [newStages[index], newStages[index - 1]] = [newStages[index - 1], newStages[index]];
+    
+    const organizedStages = organizeStages(newStages);
+    setStages(organizedStages);
+    onStagesChange?.(organizedStages);
+  };
 
-    const sourceIndex = result.source.index;
-    const destinationIndex = result.destination.index;
-
-    if (sourceIndex === destinationIndex) return;
-
-    // Não permitir mover etapas do sistema
-    if (stages[sourceIndex].is_system_stage) return;
-
-    const newStages = Array.from(stages);
-    const [reorderedStage] = newStages.splice(sourceIndex, 1);
-    newStages.splice(destinationIndex, 0, reorderedStage);
-
+  const moveStageDown = (index: number) => {
+    if (index >= stages.length - 1 || stages[index].is_system_stage) return;
+    
+    // Não permitir mover para posição de etapa do sistema
+    if (stages[index + 1].is_system_stage) return;
+    
+    const newStages = [...stages];
+    [newStages[index], newStages[index + 1]] = [newStages[index + 1], newStages[index]];
+    
     const organizedStages = organizeStages(newStages);
     setStages(organizedStages);
     onStagesChange?.(organizedStages);
@@ -196,9 +261,177 @@ export function useStageManager({
     handleEditStage,
     handleSaveStage,
     handleDeleteStage,
-    handleStagesDragEnd,
+    moveStageUp,
+    moveStageDown,
     organizeStages
   };
+}
+
+// Componente StageItem simplificado sem drag and drop
+interface StageItemProps {
+  stage: StageData;
+  index: number;
+  onEdit: (index: number) => void;
+  onDelete: (index: number) => void;
+  onMoveUp: (index: number) => void;
+  onMoveDown: (index: number) => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+}
+
+function StageItem({ stage, index, onEdit, onDelete, onMoveUp, onMoveDown, canMoveUp, canMoveDown }: StageItemProps) {
+  const SystemIcon = stage.is_system_stage ? getSystemStageIcon(stage.name) : null;
+
+  return (
+    <TooltipProvider>
+      <BlurFade delay={index * 0.1}>
+        <AnimatedCard
+          className={`h-full ${
+            stage.is_system_stage 
+              ? 'border-2 border-dashed border-blue-300 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-700' 
+              : 'border-solid'
+          }`}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {/* Ícone de Sistema ou Controles de Ordem */}
+                {stage.is_system_stage ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="p-1 rounded-md bg-blue-100 dark:bg-blue-900/50">
+                        {SystemIcon && <SystemIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs text-sm">{getSystemStageTooltip(stage.name)}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <div className="flex flex-col">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onMoveUp(index)}
+                      disabled={!canMoveUp}
+                      className="h-4 w-4 p-0 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                    >
+                      <ChevronUp className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onMoveDown(index)}
+                      disabled={!canMoveDown}
+                      className="h-4 w-4 p-0 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                    >
+                      <ChevronDown className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
+                
+                {/* Indicador de Cor */}
+                <div
+                  className={`w-4 h-4 rounded-full border-2 ${
+                    stage.is_system_stage ? 'border-white shadow-md' : 'border-gray-200'
+                  }`}
+                  style={{ backgroundColor: stage.color }}
+                />
+                
+                {/* Informações da Etapa */}
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <h4 className={`font-medium ${
+                      stage.is_system_stage ? 'text-blue-900 dark:text-blue-100' : ''
+                    }`}>
+                      {stage.name}
+                    </h4>
+                    {stage.is_system_stage && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/50 dark:text-blue-200">
+                            <Lock className="h-3 w-3 mr-1" />
+                            Sistema
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs text-sm">Esta etapa é parte do sistema e não pode ser removida ou reordenada.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                  {stage.description && (
+                    <p className={`text-sm mt-1 ${
+                      stage.is_system_stage 
+                        ? 'text-blue-700 dark:text-blue-300' 
+                        : 'text-muted-foreground'
+                    }`}>
+                      {stage.description}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Ações */}
+              <div className="flex items-center gap-2">
+                {stage.is_system_stage ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onEdit(index)}
+                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900/50"
+                      >
+                        <Info className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Ver informações da etapa do sistema</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onEdit(index)}
+                          className="hover:bg-gray-100 dark:hover:bg-gray-800"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Editar etapa</p>
+                      </TooltipContent>
+                    </Tooltip>
+                    
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onDelete(index)}
+                          className="text-destructive hover:text-destructive hover:bg-red-100 dark:hover:bg-red-900/20"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Excluir etapa</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </AnimatedCard>
+      </BlurFade>
+    </TooltipProvider>
+  );
 }
 
 interface StageManagerRenderProps {
@@ -216,8 +449,37 @@ export function StageManagerRender({ stageManager }: StageManagerRenderProps) {
     handleEditStage,
     handleSaveStage,
     handleDeleteStage,
-    handleStagesDragEnd
+    moveStageUp,
+    moveStageDown
   } = stageManager;
+
+  const [localName, setLocalName] = useState('');
+  const [localDescription, setLocalDescription] = useState('');
+  const [localColor, setLocalColor] = useState('#3B82F6');
+
+  // Limpar campos quando modal abrir
+  React.useEffect(() => {
+    if (showStageModal && editingStage) {
+      setLocalName(editingStage.name || '');
+      setLocalDescription(editingStage.description || '');
+      setLocalColor(editingStage.color || '#3B82F6');
+    } else if (showStageModal) {
+      setLocalName('');
+      setLocalDescription('');
+      setLocalColor('#3B82F6');
+    }
+  }, [showStageModal, editingStage]);
+
+  const handleSaveLocal = () => {
+    setEditingStage({
+      ...editingStage,
+      name: localName,
+      description: localDescription,
+      color: localColor,
+      order_index: editingStage?.order_index || stages.length,
+    } as StageData);
+    handleSaveStage();
+  };
 
   return (
     <div className="space-y-6">
@@ -236,122 +498,215 @@ export function StageManagerRender({ stageManager }: StageManagerRenderProps) {
       </div>
 
       {/* Lista de Etapas */}
-      <div className="space-y-3">
-        {stages.map((stage, index) => (
-          <BlurFade key={`${stage.name}-${index}`} delay={index * 0.1}>
-            <AnimatedCard className="transition-all duration-200"
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              {!stage.is_system_stage && (
-                                <div className="cursor-grab">
-                                  <GripVertical className="h-4 w-4" />
-                                </div>
-                              )}
-                              
-                              <div
-                                className="w-4 h-4 rounded-full"
-                                style={{ backgroundColor: stage.color }}
-                              />
-                              
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <h4 className="font-medium">{stage.name}</h4>
-                                  {stage.is_system_stage && (
-                                    <Badge variant="secondary" className="text-xs">
-                                      Sistema
-                                    </Badge>
-                                  )}
-                                </div>
-                                {stage.description && (
-                                  <p className="text-sm text-muted-foreground">
-                                    {stage.description}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
+      <div className="space-y-4">
+        {/* Etapas do Sistema */}
+        {stages.some(stage => stage.is_system_stage) && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-gradient-to-r from-blue-200 to-blue-100 dark:from-blue-800 dark:to-blue-900"></div>
+              <div className="flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full dark:bg-blue-900/50 dark:text-blue-200">
+                <Lock className="h-3 w-3" />
+                Etapas do Sistema
+              </div>
+              <div className="flex-1 h-px bg-gradient-to-l from-blue-200 to-blue-100 dark:from-blue-800 dark:to-blue-900"></div>
+            </div>
+            
+            {stages
+              .filter(stage => stage.is_system_stage)
+              .map((stage, originalIndex) => {
+                const stageIndex = stages.findIndex(s => s === stage);
+                return (
+                  <StageItem
+                    key={`${stage.name}-${stageIndex}`}
+                    stage={stage}
+                    index={stageIndex}
+                    onEdit={handleEditStage}
+                    onDelete={handleDeleteStage}
+                    onMoveUp={moveStageUp}
+                    onMoveDown={moveStageDown}
+                    canMoveUp={false}
+                    canMoveDown={false}
+                  />
+                );
+              })
+            }
+          </div>
+        )}
 
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleEditStage(index)}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              
-                              {!stage.is_system_stage && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleDeleteStage(index)}
-                                  className="text-destructive hover:text-destructive"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </AnimatedCard>
-                    </BlurFade>
-        ))}
+        {/* Etapas Customizadas */}
+        {stages.some(stage => !stage.is_system_stage) && (
+          <div className="space-y-3">
+            {stages.some(stage => stage.is_system_stage) && (
+              <div className="flex items-center gap-3 mt-6">
+                <div className="flex-1 h-px bg-gradient-to-r from-gray-200 to-gray-100 dark:from-gray-700 dark:to-gray-800"></div>
+                <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 text-gray-700 text-sm font-medium rounded-full dark:bg-gray-800 dark:text-gray-300">
+                  <Target className="h-3 w-3" />
+                  Etapas Customizadas
+                </div>
+                <div className="flex-1 h-px bg-gradient-to-l from-gray-200 to-gray-100 dark:from-gray-700 dark:to-gray-800"></div>
+              </div>
+            )}
+            
+            {stages
+              .filter(stage => !stage.is_system_stage)
+              .map((stage, originalIndex) => {
+                const stageIndex = stages.findIndex(s => s === stage);
+                const customStages = stages.filter(s => !s.is_system_stage);
+                const customIndex = customStages.findIndex(s => s === stage);
+                
+                return (
+                  <StageItem
+                    key={`${stage.name}-${stageIndex}`}
+                    stage={stage}
+                    index={stageIndex}
+                    onEdit={handleEditStage}
+                    onDelete={handleDeleteStage}
+                    onMoveUp={moveStageUp}
+                    onMoveDown={moveStageDown}
+                    canMoveUp={customIndex > 0}
+                    canMoveDown={customIndex < customStages.length - 1}
+                  />
+                );
+              })
+            }
+            
+            {stages.filter(stage => !stage.is_system_stage).length === 0 && (
+              <div className="p-8 text-center bg-gray-50 dark:bg-gray-900/50 rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700">
+                <Target className="h-8 w-8 text-gray-400 mx-auto mb-3" />
+                <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1">
+                  Nenhuma etapa customizada
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  Adicione etapas personalizadas para seu processo de vendas
+                </p>
+                <Button onClick={handleAddStage} size="sm">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Criar primeira etapa
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Modal de Edição - Apenas Nome, Descrição e Cor */}
+      {/* Modal de Edição/Visualização */}
       <Dialog open={showStageModal} onOpenChange={setShowStageModal}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
-            <DialogTitle>
-              {editingStage?.name ? `Editar Etapa: ${editingStage.name}` : 'Nova Etapa'}
+            <DialogTitle className="flex items-center gap-2">
+              {editingStage?.is_system_stage && (
+                <>
+                  {(() => {
+                    const SystemIcon = getSystemStageIcon(editingStage.name);
+                    return <SystemIcon className="h-5 w-5 text-blue-600" />;
+                  })()}
+                </>
+              )}
+              {editingStage?.name ? (
+                editingStage.is_system_stage 
+                  ? `Etapa do Sistema: ${editingStage.name}` 
+                  : `Editar Etapa: ${editingStage.name}`
+              ) : 'Nova Etapa'}
+              {editingStage?.is_system_stage && (
+                <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">
+                  <Lock className="h-3 w-3 mr-1" />
+                  Sistema
+                </Badge>
+              )}
             </DialogTitle>
             <DialogDescription>
-              Configure o nome e aparência da etapa.
+              {editingStage?.is_system_stage
+                ? 'Esta é uma etapa padrão do sistema. Visualize as informações abaixo.'
+                : 'Configure o nome, descrição e aparência da etapa.'
+              }
             </DialogDescription>
           </DialogHeader>
 
           {editingStage && (
             <div className="space-y-4">
+              {/* Aviso especial para etapas do sistema */}
+              {editingStage.is_system_stage && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg dark:bg-blue-950/20 dark:border-blue-800">
+                  <div className="flex items-start gap-3">
+                    <Info className="h-5 w-5 text-blue-600 mt-0.5" />
+                    <div className="flex-1">
+                      <h4 className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                        Etapa do Sistema
+                      </h4>
+                      <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                        {getSystemStageTooltip(editingStage.name)}
+                      </p>
+                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                        💡 Esta configuração segue as melhores práticas dos principais CRMs do mercado.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div>
-                <Label htmlFor="stageName">Nome da Etapa</Label>
+                <Label htmlFor="stageName" className="flex items-center gap-2">
+                  Nome da Etapa
+                  {editingStage.is_system_stage && <Lock className="h-3 w-3 text-gray-400" />}
+                </Label>
                 <Input
                   id="stageName"
-                  value={editingStage.name}
-                  onChange={(e) => setEditingStage({
-                    ...editingStage,
-                    name: e.target.value
-                  })}
+                  value={localName}
+                  onChange={(e) => setLocalName(e.target.value)}
                   placeholder="Ex: Contato Inicial"
                   disabled={editingStage.is_system_stage}
+                  className={editingStage.is_system_stage ? 'bg-gray-50 dark:bg-gray-900' : ''}
                 />
+                {editingStage.is_system_stage && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Este nome não pode ser alterado pois é uma etapa padrão do sistema.
+                  </p>
+                )}
               </div>
 
               <div>
-                <Label htmlFor="stageDescription">Descrição</Label>
+                <Label htmlFor="stageDescription">
+                  Descrição
+                  {!editingStage.is_system_stage && <span className="text-xs text-gray-500 ml-1">(opcional)</span>}
+                </Label>
                 <Textarea
                   id="stageDescription"
-                  value={editingStage.description || ''}
-                  onChange={(e) => setEditingStage({
-                    ...editingStage,
-                    description: e.target.value
-                  })}
+                  value={localDescription}
+                  onChange={(e) => setLocalDescription(e.target.value)}
                   placeholder="Descreva o que acontece nesta etapa..."
                   rows={3}
+                  disabled={editingStage.is_system_stage}
+                  className={editingStage.is_system_stage ? 'bg-gray-50 dark:bg-gray-900' : ''}
                 />
               </div>
 
               <div>
-                <Label htmlFor="stageColor">Cor</Label>
-                <Input
-                  id="stageColor"
-                  type="color"
-                  value={editingStage.color}
-                  onChange={(e) => setEditingStage({
-                    ...editingStage,
-                    color: e.target.value
-                  })}
-                />
+                <Label htmlFor="stageColor" className="flex items-center gap-2">
+                  Cor da Etapa
+                  {editingStage.is_system_stage && <Lock className="h-3 w-3 text-gray-400" />}
+                </Label>
+                <div className="flex items-center gap-3">
+                  <Input
+                    id="stageColor"
+                    type="color"
+                    value={localColor}
+                    onChange={(e) => setLocalColor(e.target.value)}
+                    disabled={editingStage.is_system_stage}
+                    className={`w-16 h-10 ${editingStage.is_system_stage ? 'opacity-75' : ''}`}
+                  />
+                  <div 
+                    className="w-4 h-4 rounded-full border"
+                    style={{ backgroundColor: localColor }}
+                  />
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    {localColor.toUpperCase()}
+                  </span>
+                </div>
+                {editingStage.is_system_stage && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    A cor desta etapa foi definida seguindo padrões UX de CRMs profissionais.
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -361,12 +716,14 @@ export function StageManagerRender({ stageManager }: StageManagerRenderProps) {
               variant="outline"
               onClick={() => setShowStageModal(false)}
             >
-              Cancelar
+              {editingStage?.is_system_stage ? 'Fechar' : 'Cancelar'}
             </Button>
-            <Button onClick={handleSaveStage}>
-              <Save className="h-4 w-4 mr-2" />
-              Salvar
-            </Button>
+            {!editingStage?.is_system_stage && (
+              <Button onClick={handleSaveLocal}>
+                <Save className="h-4 w-4 mr-2" />
+                Salvar
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

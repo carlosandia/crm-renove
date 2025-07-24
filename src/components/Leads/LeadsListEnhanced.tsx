@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Eye, Trash2, Target, UserPlus, Edit2 } from 'lucide-react';
+import { Eye, Trash2, Target, UserPlus, Edit2, Mail } from 'lucide-react';
 import { BlurFade } from '../ui/blur-fade';
 import LeadStatusTag from './LeadStatusTag';
 import LeadAssignmentDropdown from './LeadAssignmentDropdown';
 import CreateOpportunityModal from './CreateOpportunityModal';
-import LeadToOpportunityModal from './LeadToOpportunityModal';
+import CreateOpportunityModalSimple from './CreateOpportunityModalSimple';
 import LeadViewModal from './LeadViewModal';
 import { supabase } from '../../integrations/supabase/client';
 import { useAuth } from '../../contexts/AuthContext';
@@ -78,6 +78,7 @@ const AssignmentDisplay: React.FC<{
   onAssign: (leadId: string, memberId: string) => void;
 }> = ({ lead, assignedUserName, isAdmin, onAssign }) => {
   const [showDropdown, setShowDropdown] = useState(false);
+  const [isAssigning, setIsAssigning] = useState(false);
 
   if (!isAdmin) {
     // Member só visualiza
@@ -93,10 +94,16 @@ const AssignmentDisplay: React.FC<{
     // Não atribuído - mostrar dropdown para atribuir
     return (
       <div className="flex items-center gap-2">
-        <span className="text-sm text-gray-500">Não atribuído</span>
         <LeadAssignmentDropdown
           currentAssignedTo={lead.assigned_to}
-          onAssign={(memberId) => onAssign(lead.id, memberId)}
+          onAssign={async (memberId) => {
+            setIsAssigning(true);
+            try {
+              await onAssign(lead.id, memberId);
+            } finally {
+              setIsAssigning(false);
+            }
+          }}
           className="inline-block"
         />
       </div>
@@ -118,11 +125,16 @@ const AssignmentDisplay: React.FC<{
         <div className="relative">
           <LeadAssignmentDropdown
             currentAssignedTo={lead.assigned_to}
-            onAssign={(memberId) => {
-              onAssign(lead.id, memberId);
-              setShowDropdown(false);
+            onAssign={async (memberId) => {
+              setIsAssigning(true);
+              try {
+                await onAssign(lead.id, memberId);
+                setShowDropdown(false);
+              } finally {
+                setIsAssigning(false);
+              }
             }}
-            className="absolute top-0 left-0 z-10"
+            className="absolute top-0 left-0 z-50"
           />
         </div>
       )}
@@ -173,8 +185,8 @@ const LeadsListEnhanced: React.FC<LeadsListProps> = ({
     );
   }, []);
 
-  // Novos estados para os novos modais
-  const [leadToOpportunityModal, setLeadToOpportunityModal] = useState<{
+  // Estado para o novo modal simplificado
+  const [createOpportunitySimpleModal, setCreateOpportunitySimpleModal] = useState<{
     isOpen: boolean;
     lead: LeadMaster | null;
   }>({
@@ -311,9 +323,9 @@ const LeadsListEnhanced: React.FC<LeadsListProps> = ({
     });
   };
 
-  // Novo handler para LeadToOpportunityModal
+  // Handler para o novo modal simplificado
   const handleCreateOpportunityWithNewModal = (lead: LeadMaster) => {
-    setLeadToOpportunityModal({
+    setCreateOpportunitySimpleModal({
       isOpen: true,
       lead: lead
     });
@@ -327,13 +339,12 @@ const LeadsListEnhanced: React.FC<LeadsListProps> = ({
     });
   };
 
-  // Handler para submissão do LeadToOpportunityModal
-  const handleLeadToOpportunitySubmit = async (opportunityData: any) => {
+  // Handler para submissão do novo modal simplificado
+  const handleCreateOpportunitySimpleSubmit = async (opportunityData: any) => {
     try {
-      console.log('🚀 Iniciando criação de oportunidade:', {
-        leadId: leadToOpportunityModal.lead?.id,
+      console.log('🚀 Iniciando criação de oportunidade via modal simplificado:', {
+        leadId: createOpportunitySimpleModal.lead?.id,
         pipelineId: opportunityData.pipeline_id,
-        stageId: opportunityData.stage_id,
         responsavel: opportunityData.responsavel,
         user: user?.id,
         tenantId: user?.tenant_id
@@ -371,44 +382,48 @@ const LeadsListEnhanced: React.FC<LeadsListProps> = ({
 
       const insertData = {
         pipeline_id: opportunityData.pipeline_id,
-        stage_id: opportunityData.stage_id || firstStage.id,
-        assigned_to: opportunityData.responsavel, // Usar responsável selecionado
+        stage_id: firstStage.id,
+        assigned_to: opportunityData.responsavel,
         created_by: user?.id,
-        // tenant_id será preenchido automaticamente pelo trigger
+        updated_by: user?.id,  // Incluir updated_by obrigatório
+        tenant_id: user?.tenant_id,  // Incluir tenant_id explicitamente
         custom_data: {
           // Dados da oportunidade
           nome_oportunidade: opportunityData.nome_oportunidade,
           valor: valorNumerico.toString(),
           
-          // Dados do lead (usar lead_data do modal)
-          nome_lead: opportunityData.lead_data?.nome || `${leadToOpportunityModal.lead?.first_name} ${leadToOpportunityModal.lead?.last_name}`,
-          email: opportunityData.lead_data?.email || leadToOpportunityModal.lead?.email,
-          telefone: opportunityData.lead_data?.telefone || leadToOpportunityModal.lead?.phone,
-          empresa: opportunityData.lead_data?.empresa || leadToOpportunityModal.lead?.company,
-          cargo: opportunityData.lead_data?.cargo || leadToOpportunityModal.lead?.job_title,
+          // Dados do lead
+          nome_lead: opportunityData.lead_data?.nome || `${createOpportunitySimpleModal.lead?.first_name} ${createOpportunitySimpleModal.lead?.last_name}`,
+          email: opportunityData.lead_data?.email || createOpportunitySimpleModal.lead?.email,
+          telefone: opportunityData.lead_data?.telefone || createOpportunitySimpleModal.lead?.phone,
+          empresa: opportunityData.lead_data?.empresa || createOpportunitySimpleModal.lead?.company,
           
           // Metadados
-          lead_master_id: leadToOpportunityModal.lead?.id,
-          source: 'Lead Master → Pipeline (LeadToOpportunityModal)',
-          
-          // Campos customizados se existirem
-          ...opportunityData.custom_fields
+          lead_master_id: createOpportunitySimpleModal.lead?.id,
+          source: 'Lead Master → Pipeline (CreateOpportunityModalSimple)'
         }
       };
 
       console.log('📋 Dados para inserção:', insertData);
 
       // Criar oportunidade na pipeline
-      const { error: pipelineError } = await supabase
+      const { data: insertResult, error: pipelineError } = await supabase
         .from('pipeline_leads')
-        .insert(insertData);
+        .insert(insertData)
+        .select('id, custom_data->>"nome_oportunidade" as nome');
 
       if (pipelineError) {
         console.error('❌ Erro ao inserir na pipeline_leads:', pipelineError);
+        console.error('💥 Detalhes do erro:', {
+          message: pipelineError.message,
+          details: pipelineError.details,
+          hint: pipelineError.hint,
+          code: pipelineError.code
+        });
         throw pipelineError;
       }
 
-      console.log('✅ Oportunidade criada com sucesso!');
+      console.log('✅ Oportunidade criada com sucesso!', insertResult);
 
       // Mostrar mensagem de sucesso
       showSuccessToast(
@@ -417,14 +432,14 @@ const LeadsListEnhanced: React.FC<LeadsListProps> = ({
       );
 
       // Atualizar status do lead
-      if (leadToOpportunityModal.lead?.id) {
+      if (createOpportunitySimpleModal.lead?.id) {
         const { error: updateError } = await supabase
           .from('leads_master')
           .update({ 
             status: 'converted',
             updated_at: new Date().toISOString()
           })
-          .eq('id', leadToOpportunityModal.lead.id);
+          .eq('id', createOpportunitySimpleModal.lead.id);
 
         if (updateError) {
           console.warn('⚠️ Erro ao atualizar status do lead:', updateError);
@@ -441,10 +456,10 @@ const LeadsListEnhanced: React.FC<LeadsListProps> = ({
       checkLeadsWithOpportunities();
       
       // Fechar modal
-      setLeadToOpportunityModal({ isOpen: false, lead: null });
+      setCreateOpportunitySimpleModal({ isOpen: false, lead: null });
       
     } catch (error) {
-      console.error('❌ Erro ao criar oportunidade via LeadToOpportunityModal:', error);
+      console.error('❌ Erro ao criar oportunidade via CreateOpportunityModalSimple:', error);
       
       // Mostrar erro mais específico
       let errorMessage = 'Erro ao criar oportunidade: ';
@@ -511,42 +526,49 @@ const LeadsListEnhanced: React.FC<LeadsListProps> = ({
 
   return (
     <>
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
+      <div className="overflow-x-auto max-w-full">
+        <table className="w-full divide-y divide-gray-200 table-fixed">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="w-[22%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Nome
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="w-[15%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Telefone
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="w-[25%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Email
+              </th>
+              <th className="w-[20%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Usuário Atribuído
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="w-[15%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Criar Oportunidade
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="w-[8%] px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Ações
               </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {localLeads.map((lead, index) => (
-              <BlurFade key={lead.id} delay={index * 0.05}>
-                <tr className="hover:bg-gray-50 transition-colors duration-200">
-                  <td className="px-6 py-4 whitespace-nowrap">
+              <BlurFade 
+                key={lead.id} 
+                delay={index * 0.05} 
+                as="tr"
+                className="hover:bg-gray-50 transition-colors duration-200"
+              >
+                  <td className="w-[22%] px-4 py-4">
                     <div className="flex items-center">
-                      <div className="flex-shrink-0 h-10 w-10">
-                        <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
-                          <span className="text-sm font-medium text-gray-700">
+                      <div className="flex-shrink-0 h-8 w-8">
+                        <div className="h-8 w-8 rounded-full bg-gray-300 flex items-center justify-center">
+                          <span className="text-xs font-medium text-gray-700">
                             {lead.first_name.charAt(0).toUpperCase()}
                           </span>
                         </div>
                       </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">
+                      <div className="ml-3 overflow-hidden">
+                        <div className="text-sm font-medium text-gray-900 truncate">
                           {lead.first_name} {lead.last_name}
                         </div>
                         {/* Tag de status de oportunidade */}
@@ -556,12 +578,20 @@ const LeadsListEnhanced: React.FC<LeadsListProps> = ({
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
+                  <td className="w-[15%] px-4 py-4">
+                    <div className="text-sm text-gray-900 truncate">
                       {lead.phone || 'Não informado'}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="w-[25%] px-4 py-4">
+                    <div className="flex items-center gap-2">
+                      <Mail size={14} className="text-gray-400 flex-shrink-0" />
+                      <div className="text-sm text-gray-900 truncate" title={lead.email}>
+                        {lead.email}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="w-[20%] px-4 py-4">
                     <AssignmentDisplay
                       lead={lead}
                       assignedUserName={getAssignedUserName(lead.assigned_to)}
@@ -569,26 +599,27 @@ const LeadsListEnhanced: React.FC<LeadsListProps> = ({
                       onAssign={handleAssignLead}
                     />
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="w-[15%] px-2 py-4">
                     {/* Botão Criar Oportunidade - SEMPRE VISÍVEL */}
                     <button
                       onClick={() => handleCreateOpportunityWithNewModal(lead)}
-                      className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded-md text-sm font-medium transition-colors flex items-center gap-1"
+                      className="bg-purple-600 hover:bg-purple-700 text-white px-1 py-1 rounded text-xs font-medium transition-colors flex items-center gap-1 justify-center min-w-0"
                       title="Criar oportunidade"
                     >
-                      <Target size={14} />
-                      Criar Oportunidade
+                      <Target size={12} />
+                      <span className="hidden lg:inline whitespace-nowrap">Criar Oportunidade</span>
+                      <span className="lg:hidden">Oportunidade</span>
                     </button>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex items-center space-x-2">
+                  <td className="w-[8%] px-2 py-4 text-sm font-medium">
+                    <div className="flex items-center justify-center space-x-1">
                       {/* Visualizar - sempre disponível - AGORA ABRE LeadViewModal */}
                       <button
                         onClick={() => handleViewLeadDetails(lead)}
                         className="text-blue-600 hover:text-blue-900 p-1 rounded transition-colors hover:bg-blue-50"
                         title="Ver detalhes completos"
                       >
-                        <Eye size={16} />
+                        <Eye size={14} />
                       </button>
                       
                       {/* Excluir - apenas admin */}
@@ -598,12 +629,11 @@ const LeadsListEnhanced: React.FC<LeadsListProps> = ({
                           className="text-red-600 hover:text-red-900 p-1 rounded transition-colors hover:bg-red-50"
                           title="Excluir"
                         >
-                          <Trash2 size={16} />
+                          <Trash2 size={14} />
                         </button>
                       )}
                     </div>
                   </td>
-                </tr>
               </BlurFade>
             ))}
           </tbody>
@@ -619,13 +649,13 @@ const LeadsListEnhanced: React.FC<LeadsListProps> = ({
         onSuccess={handleOpportunitySuccess}
       />
 
-      {/* Novo LeadToOpportunityModal */}
-      {leadToOpportunityModal.isOpen && leadToOpportunityModal.lead && (
-        <LeadToOpportunityModal
-          leadData={leadToOpportunityModal.lead}
-          isOpen={leadToOpportunityModal.isOpen}
-          onClose={() => setLeadToOpportunityModal({ isOpen: false, lead: null })}
-          onSubmit={handleLeadToOpportunitySubmit}
+      {/* Novo CreateOpportunityModalSimple */}
+      {createOpportunitySimpleModal.isOpen && createOpportunitySimpleModal.lead && (
+        <CreateOpportunityModalSimple
+          leadData={createOpportunitySimpleModal.lead}
+          isOpen={createOpportunitySimpleModal.isOpen}
+          onClose={() => setCreateOpportunitySimpleModal({ isOpen: false, lead: null })}
+          onSubmit={handleCreateOpportunitySimpleSubmit}
         />
       )}
 

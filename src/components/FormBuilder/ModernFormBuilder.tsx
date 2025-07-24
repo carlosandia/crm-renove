@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, memo, useMemo, useCallback, Suspense, lazy } from 'react';
+import { DragStartEvent, DragEndEvent } from '@dnd-kit/core';
 
 // ================================================================================
 // FASE 3.7: INTEGRAÇÃO DE UTILIDADES CENTRALIZADAS E HOOKS CUSTOMIZADOS
@@ -372,13 +373,33 @@ Enviado automaticamente pelo sistema CRM Marketing`,
     }
   };
 
+  // Estados locais simplificados
+  const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveFieldId(event.active.id as string);
+  }, []);
+
   // 🚀 OTIMIZAÇÃO: useCallback para onDragEnd
-  const onDragEnd = useCallback((result: any) => {
-    if (!result.destination) return;
+  const onDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveFieldId(null);
+    
+    if (!over) return;
+
+    const sourceId = active.id as string;
+    const targetId = over.id as string;
+    
+    if (sourceId === targetId) return;
+
+    const sourceIndex = fields.findIndex(field => field.id === sourceId);
+    const targetIndex = fields.findIndex(field => field.id === targetId);
+    
+    if (sourceIndex === -1 || targetIndex === -1) return;
 
     const newFields = Array.from(fields);
-    const [reorderedField] = newFields.splice(result.source.index, 1);
-    newFields.splice(result.destination.index, 0, reorderedField);
+    const [reorderedField] = newFields.splice(sourceIndex, 1);
+    newFields.splice(targetIndex, 0, reorderedField);
 
     newFields.forEach((field, index) => {
       field.order_index = index;
@@ -390,7 +411,22 @@ Enviado automaticamente pelo sistema CRM Marketing`,
   const handleSave = async () => {
     saveState.setLoading(true);
     try {
-      await onSave();
+      // Preparar dados para salvar
+      const formToSave = {
+        ...formData,
+        fields: fields,
+        scoring_rules: scoringRules,
+        scoring_threshold: scoringThreshold,
+        notification_settings: notificationSettings,
+        email_settings: emailNotificationSettings,
+        pipeline_connection: selectedPipeline ? {
+          pipeline_id: selectedPipeline.id,
+          field_mappings: pipelineConnection.field_mappings
+        } : null,
+        tenant_id: tenantId
+      };
+
+      await onSave(formToSave);
     } catch (error) {
       console.error('Erro ao salvar:', error);
     } finally {
@@ -466,7 +502,7 @@ Enviado automaticamente pelo sistema CRM Marketing`,
       
       // Primeira tentativa: API backend
       try {
-              const API_BASE_URL = 'http://localhost:3001';
+              const API_BASE_URL = 'http://127.0.0.1:3001';
       const token = localStorage.getItem('token');
       console.log('🔑 Token encontrado:', token ? 'Sim' : 'Não');
         
@@ -566,7 +602,7 @@ Enviado automaticamente pelo sistema CRM Marketing`,
       
       // Primeira tentativa: API backend
       try {
-              const API_BASE_URL = 'http://localhost:3001';
+              const API_BASE_URL = 'http://127.0.0.1:3001';
       const response = await fetch(`${API_BASE_URL}/api/pipelines/${pipelineId}/details`, {
           method: 'GET',
           headers: {
@@ -1050,16 +1086,16 @@ Enviado automaticamente pelo sistema CRM Marketing`,
               </div>
             </div>
           }>
-            <FormPreview
-              fields={fields}
-              formData={formData}
-              formStyle={formStyle}
-              previewMode={previewMode}
-              selectedField={selectedField}
-              onFieldSelect={setSelectedField}
-              removeField={removeField}
-              duplicateField={duplicateField}
-            />
+              <FormPreview
+                fields={fields}
+                formData={formData}
+                formStyle={formStyle}
+                previewMode={previewMode}
+                selectedField={selectedField}
+                onFieldSelect={setSelectedField}
+                removeField={removeField}
+                duplicateField={duplicateField}
+              />
           </Suspense>
         </div>
 

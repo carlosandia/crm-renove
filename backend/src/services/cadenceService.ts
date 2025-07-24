@@ -20,7 +20,6 @@ export interface CadenceConfig {
   tasks: CadenceTask[];
   is_active: boolean;
   tenant_id: string;
-  created_by?: string;
 }
 
 export class CadenceService {
@@ -36,7 +35,7 @@ export class CadenceService {
     try {
       // Primeiro, remover configurações existentes para esta pipeline
       const { error: deleteError } = await supabase
-        .from('cadence_config')
+        .from('cadence_configs')
         .delete()
         .eq('pipeline_id', pipelineId)
         .eq('tenant_id', tenantId);
@@ -53,16 +52,16 @@ export class CadenceService {
           continue; // Pular etapas sem tarefas
         }
 
-        // Inserir configuração principal
+        // Inserir configuração com tasks como JSONB (estrutura unificada)
         const { data: configData, error: configError } = await supabase
-          .from('cadence_config')
+          .from('cadence_configs')
           .insert({
             pipeline_id: pipelineId,
             stage_name: config.stage_name,
             stage_order: config.stage_order,
+            tasks: config.tasks, // Salvar tasks como JSONB direto
             is_active: config.is_active,
-            tenant_id: tenantId,
-            created_by: createdBy
+            tenant_id: tenantId
           })
           .select()
           .single();
@@ -71,48 +70,15 @@ export class CadenceService {
           throw new Error(`Erro ao salvar configuração para etapa "${config.stage_name}": ${configError.message}`);
         }
 
-        // Inserir tarefas da configuração
-        const tasksToInsert = config.tasks.map(task => ({
-          cadence_config_id: configData.id,
-          day_offset: task.day_offset,
-          task_order: task.task_order,
-          channel: task.channel,
-          action_type: task.action_type,
-          task_title: task.task_title,
-          task_description: task.task_description,
-          template_content: task.template_content,
-          is_active: task.is_active
-        }));
-
-        const { data: tasksData, error: tasksError } = await supabase
-          .from('cadence_tasks')
-          .insert(tasksToInsert)
-          .select();
-
-        if (tasksError) {
-          throw new Error(`Erro ao salvar tarefas para etapa "${config.stage_name}": ${tasksError.message}`);
-        }
-
         // Montar configuração salva
         savedConfigs.push({
           id: configData.id,
           pipeline_id: pipelineId,
           stage_name: config.stage_name,
           stage_order: config.stage_order,
-          tasks: tasksData.map(task => ({
-            id: task.id,
-            day_offset: task.day_offset,
-            task_order: task.task_order,
-            channel: task.channel,
-            action_type: task.action_type,
-            task_title: task.task_title,
-            task_description: task.task_description,
-            template_content: task.template_content,
-            is_active: task.is_active
-          })),
+          tasks: config.tasks,
           is_active: config.is_active,
-          tenant_id: tenantId,
-          created_by: createdBy
+          tenant_id: tenantId
         });
       }
 
@@ -139,13 +105,10 @@ export class CadenceService {
     tenantId: string
   ): Promise<{ success: boolean; message: string; configs?: CadenceConfig[] }> {
     try {
-      // Buscar configurações com suas tarefas
+      // Buscar configurações com tasks como JSONB
       const { data: configs, error: configError } = await supabase
-        .from('cadence_config')
-        .select(`
-          *,
-          cadence_tasks (*)
-        `)
+        .from('cadence_configs')
+        .select('*')
         .eq('pipeline_id', pipelineId)
         .eq('tenant_id', tenantId)
         .order('stage_order', { ascending: true });
@@ -160,22 +123,9 @@ export class CadenceService {
         pipeline_id: config.pipeline_id,
         stage_name: config.stage_name,
         stage_order: config.stage_order,
-        tasks: (config.cadence_tasks || [])
-          .sort((a: any, b: any) => a.day_offset - b.day_offset || a.task_order - b.task_order)
-          .map((task: any) => ({
-            id: task.id,
-            day_offset: task.day_offset,
-            task_order: task.task_order,
-            channel: task.channel,
-            action_type: task.action_type,
-            task_title: task.task_title,
-            task_description: task.task_description,
-            template_content: task.template_content,
-            is_active: task.is_active
-          })),
+        tasks: Array.isArray(config.tasks) ? config.tasks : [],
         is_active: config.is_active,
-        tenant_id: config.tenant_id,
-        created_by: config.created_by
+        tenant_id: config.tenant_id
       }));
 
       return {
@@ -202,7 +152,7 @@ export class CadenceService {
   ): Promise<{ success: boolean; message: string }> {
     try {
       const { error } = await supabase
-        .from('cadence_config')
+        .from('cadence_configs')
         .delete()
         .eq('pipeline_id', pipelineId)
         .eq('tenant_id', tenantId);
@@ -235,11 +185,8 @@ export class CadenceService {
   ): Promise<{ success: boolean; config?: CadenceConfig; tasks?: CadenceTask[] }> {
     try {
       const { data: config, error } = await supabase
-        .from('cadence_config')
-        .select(`
-          *,
-          cadence_tasks (*)
-        `)
+        .from('cadence_configs')
+        .select('*')
         .eq('pipeline_id', pipelineId)
         .eq('stage_name', stageName)
         .eq('tenant_id', tenantId)
@@ -250,20 +197,9 @@ export class CadenceService {
         return { success: false };
       }
 
-      const tasks: CadenceTask[] = (config.cadence_tasks || [])
-        .sort((a: any, b: any) => a.day_offset - b.day_offset || a.task_order - b.task_order)
-        .filter((task: any) => task.is_active)
-        .map((task: any) => ({
-          id: task.id,
-          day_offset: task.day_offset,
-          task_order: task.task_order,
-          channel: task.channel,
-          action_type: task.action_type,
-          task_title: task.task_title,
-          task_description: task.task_description,
-          template_content: task.template_content,
-          is_active: task.is_active
-        }));
+      const tasks: CadenceTask[] = Array.isArray(config.tasks) 
+        ? config.tasks.filter((task: any) => task.is_active)
+        : [];
 
       return {
         success: true,
@@ -274,8 +210,7 @@ export class CadenceService {
           stage_order: config.stage_order,
           tasks,
           is_active: config.is_active,
-          tenant_id: config.tenant_id,
-          created_by: config.created_by
+          tenant_id: config.tenant_id
         },
         tasks
       };

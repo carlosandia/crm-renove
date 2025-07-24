@@ -12,6 +12,17 @@ import {
   Target,
   Users
 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '../../ui/alert-dialog';
 
 // ============================================
 // INTERFACES E TIPOS
@@ -65,6 +76,7 @@ export const useTaskManager = ({ tasks, onTasksChange, onError }: TaskManagerPro
   // Estados do formulário de tarefa
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [editingTaskIndex, setEditingTaskIndex] = useState<number | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<number | null>(null);
   const [taskForm, setTaskForm] = useState<CadenceTask>({
     day_offset: 0,
     task_order: 1,
@@ -129,11 +141,16 @@ export const useTaskManager = ({ tasks, onTasksChange, onError }: TaskManagerPro
   }, [taskForm, tasks, editingTaskIndex, onTasksChange, closeTaskForm, onError]);
 
   const deleteTask = useCallback((taskIndex: number) => {
-    if (confirm('Tem certeza que deseja excluir esta tarefa?')) {
-      const updatedTasks = tasks.filter((_, index) => index !== taskIndex);
+    setTaskToDelete(taskIndex);
+  }, []);
+
+  const confirmDeleteTask = useCallback(() => {
+    if (taskToDelete !== null) {
+      const updatedTasks = tasks.filter((_, index) => index !== taskToDelete);
       onTasksChange(updatedTasks);
+      setTaskToDelete(null);
     }
-  }, [tasks, onTasksChange]);
+  }, [taskToDelete, tasks, onTasksChange]);
 
   const getTasksStats = useCallback(() => {
     const totalTasks = tasks.length;
@@ -153,12 +170,15 @@ export const useTaskManager = ({ tasks, onTasksChange, onError }: TaskManagerPro
   return {
     showTaskForm,
     editingTaskIndex,
+    taskToDelete,
+    setTaskToDelete,
     taskForm,
     setTaskForm,
     openTaskForm,
     closeTaskForm,
     saveTask,
     deleteTask,
+    confirmDeleteTask,
     resetTaskForm,
     getTasksStats
   };
@@ -172,12 +192,15 @@ export const TaskManager: React.FC<TaskManagerProps> = (props) => {
   const {
     showTaskForm,
     editingTaskIndex,
+    taskToDelete,
+    setTaskToDelete,
     taskForm,
     setTaskForm,
     openTaskForm,
     closeTaskForm,
     saveTask,
     deleteTask,
+    confirmDeleteTask,
     getTasksStats
   } = useTaskManager(props);
   
@@ -426,13 +449,33 @@ export const TaskManager: React.FC<TaskManagerProps> = (props) => {
                         >
                           <Edit className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => deleteTask(originalIndex)}
-                          className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                          title="Excluir tarefa"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <button
+                              className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                              title="Excluir tarefa"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Tem certeza que deseja excluir esta tarefa? Esta ação não pode ser desfeita.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => deleteTask(originalIndex)}
+                                className="bg-red-600 hover:bg-red-700"
+                              >
+                                Excluir
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </div>
                   </div>

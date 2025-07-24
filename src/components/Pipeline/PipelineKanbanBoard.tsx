@@ -1,6 +1,7 @@
-import React, { memo, useRef, useCallback, useMemo } from 'react';
-import { DndContext, DragEndEvent } from '@dnd-kit/core';
+import React, { memo, useCallback, useMemo, useState, useDebugValue } from 'react';
+import { logger, LogContext } from '../../utils/loggerOptimized';
 import KanbanColumn from './KanbanColumn';
+import { Pipeline, PipelineStage, Lead } from '../../types/Pipeline';
 
 interface CustomField {
   id: string;
@@ -11,39 +12,6 @@ interface CustomField {
   is_required: boolean;
   field_order: number;
   placeholder?: string;
-}
-
-interface PipelineStage {
-  id: string;
-  name: string;
-  order_index: number;
-  temperature_score: number;
-  max_days_allowed: number;
-  color: string;
-  is_system_stage?: boolean;
-}
-
-interface Lead {
-  id: string;
-  pipeline_id: string;
-  stage_id: string;
-  custom_data: Record<string, any>;
-  created_at: string;
-  updated_at: string;
-  status?: 'active' | 'won' | 'lost';
-  // Additional fields for compatibility
-  owner_id?: string;
-  assigned_to?: string;
-  created_by?: string;
-}
-
-interface Pipeline {
-  id: string;
-  name: string;
-  pipeline_stages?: PipelineStage[];
-  stages?: PipelineStage[];
-  pipeline_custom_fields?: CustomField[];
-  custom_fields?: CustomField[];
 }
 
 interface LeadFilters {
@@ -63,12 +31,13 @@ interface PipelineKanbanBoardProps {
   leads: Lead[];
   customFields: CustomField[];
   onAddLead: (stageId?: string) => void;
-  onDragEnd: (result: DragEndEvent) => void;
   
   // Optional props for backward compatibility
   onUpdateLead?: (leadId: string, updatedData: any) => void;
   onEditLead?: (lead: Lead) => void;
+  onViewDetails?: (lead: Lead) => void;
   stageMetrics?: any;
+  userRole?: 'admin' | 'member' | 'super_admin';
   
   // New props for V2 components
   pipeline?: Pipeline;
@@ -86,8 +55,9 @@ const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = memo(({
   onAddLead,
   onUpdateLead,
   onEditLead,
-  onDragEnd,
+  onViewDetails,
   stageMetrics,
+  userRole,
   // V2 props
   pipeline,
   filters,
@@ -96,24 +66,26 @@ const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = memo(({
   onLeadCreate,
   canEdit = true
 }) => {
-  // Ref para evitar re-renders desnecessários
-  const dragContextRef = useRef<HTMLDivElement>(null);
   
-  // 🚀 MEMOIZAÇÃO OTIMIZADA - Agrupar leads por stage uma única vez
+  // ✅ OTIMIZAÇÃO: Agrupar leads por stage sem logs verbosos
   const leadsByStage = useMemo(() => {
     const grouped: Record<string, Lead[]> = {};
     
     // Inicializar todos os stages com array vazio
-    stages.forEach(stage => {
-      grouped[stage.id] = [];
-    });
+    if (stages?.length > 0) {
+      stages.forEach(stage => {
+        grouped[stage.id] = [];
+      });
+    }
     
-    // Agrupar leads por stage
-    leads.forEach(lead => {
-      if (grouped[lead.stage_id]) {
-        grouped[lead.stage_id].push(lead);
-      }
-    });
+    // Agrupar leads por stage com validação otimizada
+    if (leads?.length > 0) {
+      leads.forEach(lead => {
+        if (grouped[lead.stage_id]) {
+          grouped[lead.stage_id].push(lead);
+        }
+      });
+    }
     
     return grouped;
   }, [leads, stages]);
@@ -123,36 +95,23 @@ const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = memo(({
     return leadsByStage[stageId] || [];
   }, [leadsByStage]);
 
-  // 🚀 CALLBACK OTIMIZADO - Handler mais direto usando @dnd-kit
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    
-    if (!over) return;
-    
-    if (active.id === over.id) {
-      return;
-    }
+  // Debug value para monitoramento do componente
+  const debugValue = useMemo(() => ({
+    stagesCount: stages?.length || 0,
+    totalLeads: leads?.length || 0,
+    leadsDistribution: Object.entries(leadsByStage).map(([stageId, stageLeads]) => ({
+      stageId: stageId.substring(0, 8),
+      count: stageLeads.length
+    }))
+  }), [stages?.length, leads?.length, leadsByStage]);
 
-    // Call onLeadMove if available (V2 components)
-    if (onLeadMove && over) {
-      const leadId = String(active.id);
-      const newStageId = String(over.id);
-      onLeadMove(leadId, newStageId);
-    }
+  useDebugValue(debugValue, (state) => 
+    `Kanban: ${state.stagesCount}S ${state.totalLeads}L`
+  );
 
-    // Call legacy onDragEnd - convert to DropResult format for compatibility
-    const legacyResult = {
-      draggableId: String(active.id),
-      source: { droppableId: String(active.id), index: 0 },
-      destination: { droppableId: String(over.id), index: 0 },
-      type: 'DEFAULT'
-    };
-    onDragEnd(legacyResult as any);
-  }, [onDragEnd, onLeadMove]);
 
-  // ✅ HANDLER ATUALIZAR LEAD UNIFICADO
+  // ✅ HANDLER ATUALIZAR LEAD UNIFICADO - Debounced para evitar spam
   const handleUpdateLead = useCallback((leadId: string, data: any) => {
-    console.log('📝 PipelineKanbanBoard: Atualizando lead', { leadId: leadId.substring(0, 8) + '...', data });
     if (onLeadUpdate) {
       onLeadUpdate(leadId, data);
     } else if (onUpdateLead) {
@@ -160,36 +119,42 @@ const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = memo(({
     }
   }, [onLeadUpdate, onUpdateLead]);
 
-  // Verificar se há dados suficientes para renderizar
+  // ✅ CORREÇÃO: Não mostrar loading se parent já está controlando
+  // Parent (UnifiedPipelineManager) já controla loading principal
   if (stages.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="text-gray-500">Carregando stages...</div>
+        <div className="text-gray-500">Nenhuma etapa configurada</div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <DndContext onDragEnd={handleDragEnd}>
-        {/* Container Kanban com altura flexível e scroll horizontal */}
-        <div 
-          ref={dragContextRef}
-          className="flex-1 flex overflow-x-auto overflow-y-hidden p-6 gap-4 min-h-0"
-        >
-          {stages.map((stage) => (
+    <div className="flex-1 flex flex-col overflow-hidden" style={{ backgroundColor: '#F1F1FA' }}>
+      {/* Container Kanban com altura flexível e scroll horizontal */}
+      <div 
+        className="flex-1 flex overflow-x-auto overflow-y-hidden p-2 gap-2 min-h-0"
+        style={{ backgroundColor: '#F1F1FA' }}
+      >
+        {stages && stages.length > 0 ? (
+          stages.map((stage) => (
             <KanbanColumn
               key={stage.id}
               stage={stage}
               leads={getLeadsByStage(stage.id)}
               customFields={customFields}
+              userRole={userRole || 'member'}
               onAddLead={onAddLead}
               onUpdateLead={handleUpdateLead}
-              onEditLead={onEditLead}
+              onViewDetails={onViewDetails}
             />
-          ))}
-        </div>
-      </DndContext>
+          ))
+        ) : (
+          <div className="flex items-center justify-center w-full h-64">
+            <p className="text-muted-foreground">Nenhuma etapa configurada para esta pipeline.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 });

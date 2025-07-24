@@ -12,10 +12,9 @@ interface DatabaseConfig {
 
 interface CacheConfig {
   enabled: boolean;
-  provider: 'memory' | 'redis' | 'memcached';
+  provider: 'memory'; // ✅ Cache simplificado conforme CLAUDE.md
   ttl: number;
   maxSize: number;
-  url?: string;
 }
 
 interface SecurityConfig {
@@ -134,10 +133,9 @@ class ConfigurationManager {
       
       cache: {
         enabled: import.meta.env.VITE_CACHE_ENABLED !== 'false',
-        provider: (import.meta.env.VITE_CACHE_PROVIDER || 'memory') as 'memory' | 'redis' | 'memcached',
+        provider: 'memory', // ✅ Cache simplificado para desenvolvimento
         ttl: parseInt(import.meta.env.VITE_CACHE_TTL || '300000'), // 5 minutos
-        maxSize: parseInt(import.meta.env.VITE_CACHE_MAX_SIZE || '100'),
-        url: import.meta.env.VITE_CACHE_URL
+        maxSize: parseInt(import.meta.env.VITE_CACHE_MAX_SIZE || '100')
       },
       
       security: {
@@ -201,7 +199,7 @@ class ConfigurationManager {
       },
       
       api: {
-        baseUrl: import.meta.env.VITE_API_BASE_URL || '/api',
+        baseUrl: import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001',
         timeout: parseInt(import.meta.env.VITE_API_TIMEOUT || '30000'),
         retries: parseInt(import.meta.env.VITE_API_RETRIES || '3'),
         retryDelay: parseInt(import.meta.env.VITE_API_RETRY_DELAY || '1000')

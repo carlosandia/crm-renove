@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -372,14 +373,14 @@ const EnhancedLeadModal: React.FC<EnhancedLeadModalProps> = ({
     );
 
     if (missingFields.length > 0) {
-      alert(`Campos obrigatórios não preenchidos:\n${missingFields.map(f => f.label).join('\n')}`);
+      toast.error(`Campos obrigatórios não preenchidos:\n${missingFields.map(f => f.label).join('\n')}`);
       return;
     }
 
     // Verificar se há erros de validação
     const hasValidationErrors = Object.values(fieldValidation).some(error => error.length > 0);
     if (hasValidationErrors) {
-      alert('Corrija os erros de validação antes de continuar');
+      toast.error('Corrija os erros de validação antes de continuar');
       return;
     }
 

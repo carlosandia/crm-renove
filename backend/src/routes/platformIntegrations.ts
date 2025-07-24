@@ -199,73 +199,7 @@ router.get('/stats',
   }
 );
 
-/**
- * @route GET /api/platform-integrations/credentials/:provider
- * @desc Get platform integration credentials for OAuth2 (Admin/Member only)
- * @access Admin, Member
- */
-router.get('/credentials/:provider',
-  platformRateLimit,
-  requireRole(['admin', 'member']),
-  async (req: Request, res: Response) => {
-    try {
-      const { provider } = req.params;
-      const user = (req as any).user;
-      const tenantId = user.company_id;
-
-      if (!provider) {
-        return res.status(400).json({
-          success: false,
-          error: 'Provider is required'
-        });
-      }
-
-      // Check if integration is available and enabled for tenant
-      const { data: platformIntegration, error: platformError } = await supabase
-        .from('platform_integrations')
-        .select('id, client_id, redirect_uri, scopes, is_active')
-        .eq('provider', provider)
-        .eq('is_active', true)
-        .single();
-
-      if (platformError || !platformIntegration) {
-        return res.status(404).json({
-          success: false,
-          error: 'Integration not found or not active'
-        });
-      }
-
-      // Check if tenant has this integration enabled
-      const { data: tenantIntegration, error: tenantError } = await supabase
-        .from('tenant_integrations')
-        .select('is_enabled')
-        .eq('tenant_id', tenantId)
-        .eq('platform_integration_id', platformIntegration.id)
-        .single();
-
-      if (tenantError || !tenantIntegration?.is_enabled) {
-        return res.status(403).json({
-          success: false,
-          error: 'Integration not enabled for your company'
-        });
-      }
-
-      // Return only necessary credentials (no client_secret for security)
-      res.json({
-        success: true,
-        client_id: platformIntegration.client_id,
-        redirect_uri: platformIntegration.redirect_uri,
-        scopes: platformIntegration.scopes
-      });
-    } catch (error) {
-      logger.error('Error in GET /credentials/:provider:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error'
-      });
-    }
-  }
-);
+// ✅ CORREÇÃO: Rota duplicada removida - implementação mais completa mantida abaixo
 
 // =====================================================
 // ADMIN ROUTES - TENANT INTEGRATIONS
@@ -496,7 +430,7 @@ router.get('/credentials/:provider',
           )
         `)
         .eq('tenant_id', tenantId)
-        .eq('platform_integrations.provider_name', provider)
+        .eq('platform_integrations.provider', provider)
         .eq('platform_integrations.is_active', true)
         .single();
 
@@ -507,7 +441,7 @@ router.get('/credentials/:provider',
         const { data: platformIntegration, error: platformError } = await supabase
           .from('platform_integrations')
           .select('client_id, redirect_uri, scopes, is_active')
-          .eq('provider_name', provider)
+          .eq('provider', provider)
           .eq('is_active', true)
           .single();
 

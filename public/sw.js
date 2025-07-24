@@ -114,6 +114,12 @@ self.addEventListener('fetch', (event) => {
 // Estratégia Cache First
 async function cacheFirst(request, cacheName) {
   try {
+    // ✅ CORREÇÃO: Só trabalhar com cache para requisições GET
+    if (request.method !== 'GET') {
+      // Para requisições não-GET, apenas fazer fetch direto
+      return await fetch(request);
+    }
+
     const cache = await caches.open(cacheName);
     const cachedResponse = await cache.match(request);
     
@@ -123,9 +129,9 @@ async function cacheFirst(request, cacheName) {
       return cachedResponse;
     }
     
-    // Buscar da rede e cachear
+    // Buscar da rede e cachear (apenas GET)
     const networkResponse = await fetch(request);
-    if (networkResponse.ok) {
+    if (networkResponse.ok && request.method === 'GET') {
       cache.put(request, networkResponse.clone());
     }
     
@@ -142,7 +148,8 @@ async function networkFirst(request, cacheName) {
   try {
     const networkResponse = await fetch(request);
     
-    if (networkResponse.ok) {
+    // ✅ CORREÇÃO: Só cachear requisições GET (Cache API não suporta POST/PUT/DELETE)
+    if (networkResponse.ok && request.method === 'GET') {
       const cache = await caches.open(cacheName);
       cache.put(request, networkResponse.clone());
     }
@@ -152,11 +159,14 @@ async function networkFirst(request, cacheName) {
   } catch (error) {
     console.log('[SW] Network failed, trying cache:', request.url);
     
-    const cache = await caches.open(cacheName);
-    const cachedResponse = await cache.match(request);
-    
-    if (cachedResponse) {
-      return cachedResponse;
+    // ✅ CORREÇÃO: Só buscar no cache requisições GET
+    if (request.method === 'GET') {
+      const cache = await caches.open(cacheName);
+      const cachedResponse = await cache.match(request);
+      
+      if (cachedResponse) {
+        return cachedResponse;
+      }
     }
     
     return getCachedOrOffline(request);
@@ -165,12 +175,22 @@ async function networkFirst(request, cacheName) {
 
 // Estratégia Stale While Revalidate
 async function staleWhileRevalidate(request, cacheName) {
+  // ✅ CORREÇÃO: Só trabalhar com cache em requisições GET
+  if (request.method !== 'GET') {
+    // Para requisições não-GET, apenas fazer fetch direto
+    try {
+      return await fetch(request);
+    } catch (error) {
+      return getCachedOrOffline(request);
+    }
+  }
+
   const cache = await caches.open(cacheName);
   const cachedResponse = await cache.match(request);
   
-  // Atualizar cache em background
+  // Atualizar cache em background (apenas para GET)
   const networkPromise = fetch(request).then((networkResponse) => {
-    if (networkResponse.ok) {
+    if (networkResponse.ok && request.method === 'GET') {
       cache.put(request, networkResponse.clone());
     }
     return networkResponse;
@@ -194,9 +214,12 @@ async function staleWhileRevalidate(request, cacheName) {
 // Atualizar cache em background
 async function updateCacheInBackground(request, cache) {
   try {
-    const networkResponse = await fetch(request);
-    if (networkResponse.ok) {
-      cache.put(request, networkResponse.clone());
+    // ✅ CORREÇÃO: Só atualizar cache para requisições GET
+    if (request.method === 'GET') {
+      const networkResponse = await fetch(request);
+      if (networkResponse.ok) {
+        cache.put(request, networkResponse.clone());
+      }
     }
   } catch (error) {
     // Falha silenciosa

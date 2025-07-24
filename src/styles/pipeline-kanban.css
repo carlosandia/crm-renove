@@ -6,7 +6,7 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #f8fafc;
+  background: #F1F1FA;
   overflow: hidden;
 }
 
@@ -20,9 +20,9 @@
 
 .kanban-board-full {
   display: flex;
-  gap: 16px;
+  gap: 4px;
   height: 100%;
-  padding-bottom: 8px;
+  padding-bottom: 4px;
   min-width: max-content;
 }
 
@@ -31,18 +31,16 @@
 /* ============================================ */
 
 .kanban-column {
-  flex: 0 0 300px;
-  background: white;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  flex: 0 0 280px;
+  background: #F1F1FA;
+  border-radius: 6px;
   display: flex;
   flex-direction: column;
   height: 100%;
 }
 
 .kanban-column:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  /* Removido border-color para eliminar bordas */
 }
 
 .kanban-column.drag-over {
@@ -53,7 +51,6 @@
 
 .column-header {
   padding: 16px;
-  border-bottom: 1px solid #f1f5f9;
   flex-shrink: 0;
 }
 
@@ -265,7 +262,7 @@
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2) !important;
   border: 2px solid #3b82f6 !important;
   background: white !important;
-  z-index: 10000 !important;
+  z-index: 9999 !important;
 }
 
 /* Hover states melhorados */

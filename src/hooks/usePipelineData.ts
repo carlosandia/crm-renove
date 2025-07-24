@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../integrations/supabase/client';
 import { useAuth } from '../contexts/AuthContext';
 import { Pipeline, PipelineStage, CustomField, PipelineMember } from '../types/Pipeline';
-import { Lead } from '../types/CRM';
+import { Lead } from '../types/Pipeline';
 
 // ✅ INTERFACE COMPLETA
 interface UsePipelineDataReturn {
@@ -36,114 +36,186 @@ export const usePipelineData = (): UsePipelineDataReturn => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Log helper
-  const log = (message: string, ...args: any[]) => {
-    console.log(`🔄 [UsePipelineData] ${message}`, ...args);
+  // ✅ SISTEMA DE LOG LEVELS OTIMIZADO
+  const logLevel = import.meta.env.VITE_LOG_LEVEL || 'warn';
+  const isDev = import.meta.env.DEV;
+  
+  const logger = {
+    debug: (message: string, ...args: any[]) => {
+      if (logLevel === 'debug') {
+        console.log(`🔍 [UsePipelineData] ${message}`, ...args);
+      }
+    },
+    info: (message: string, ...args: any[]) => {
+      if (['debug', 'info'].includes(logLevel)) {
+        console.log(`ℹ️ [UsePipelineData] ${message}`, ...args);
+      }
+    },
+    warn: (message: string, ...args: any[]) => {
+      if (['debug', 'info', 'warn'].includes(logLevel)) {
+        console.warn(`⚠️ [UsePipelineData] ${message}`, ...args);
+      }
+    },
+    error: (message: string, ...args: any[]) => {
+      console.error(`❌ [UsePipelineData] ${message}`, ...args);
+    }
   };
+
+  // ✅ CACHE INTELIGENTE - TEMPORARIAMENTE DESABILITADO PARA DEBUG
+  const CACHE_KEY = `pipelines_${user?.tenant_id}`;
+  const CACHE_DURATION = 0; // Desabilitado para debug
+
+  const getCachedPipelines = useCallback(() => {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        const isExpired = Date.now() - timestamp > CACHE_DURATION;
+        if (!isExpired && Array.isArray(data)) {
+          logger.debug('Cache válido encontrado:', data.length, 'pipelines');
+          return data;
+        }
+      }
+    } catch (error) {
+      localStorage.removeItem(CACHE_KEY);
+    }
+    return null;
+  }, [CACHE_KEY, CACHE_DURATION]);
+
+  const setCachedPipelines = useCallback((data: Pipeline[]) => {
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        data,
+        timestamp: Date.now()
+      }));
+      logger.debug('Cache atualizado:', data.length, 'pipelines');
+    } catch (error) {
+      logger.warn('Erro ao salvar cache:', error);
+    }
+  }, [CACHE_KEY]);
 
   /**
    * ✅ FUNÇÃO PRINCIPAL DE BUSCA DE PIPELINES
    */
   const fetchPipelines = useCallback(async (): Promise<void> => {
     if (!user) {
-      log('⚠️ Usuário não autenticado');
+      logger.warn('Usuário não autenticado');
       setPipelines([]);
       setLoading(false);
       return;
     }
 
-    setLoading(true);
-    setError(null);
-    log('🔄 Iniciando busca de pipelines para:', user.email);
-
-    // ✅ CORREÇÃO PONTUAL: Forçar renovação de token antes da busca
-    if (refreshTokens) {
-      try {
-        log('🔄 Renovando token antes da busca...');
-        await refreshTokens();
-        log('✅ Token renovado com sucesso');
-      } catch (error) {
-        log('⚠️ Erro na renovação de token, mas continuando...', error);
-      }
+    // ✅ CACHE TEMPORARIAMENTE DESABILITADO PARA DEBUG
+    // const cachedPipelines = getCachedPipelines();
+    // if (cachedPipelines) {
+    //   setPipelines(cachedPipelines);
+    //   setLoading(false);
+    //   return;
+    // }
+    
+    // Limpar cache existente apenas em debug mode
+    if (logLevel === 'debug') {
+      localStorage.removeItem(CACHE_KEY);
+      logger.debug('Cache limpo para debug');
     }
 
+    setLoading(true);
+    setError(null);
+    logger.info('Buscando pipelines da API para:', user.email);
+
     try {
-      // ✅ USAR API BACKEND PARA ADMIN/SUPER_ADMIN
-      if ((user.role === 'admin' || user.role === 'super_admin') && authenticatedFetch) {
+      // ✅ SEMPRE USAR SUPABASE DIRETO PARA GARANTIR FILTRO CORRETO DE TENANT_ID
+      logger.debug('Buscando pipelines via Supabase:', {
+        userEmail: user.email,
+        userRole: user.role,
+        tenantId: user.tenant_id
+      });
+      
+      // ✅ CORREÇÃO: Buscar pipelines usando queries separadas (JOIN não funciona)
+      const { data: supabasePipelines, error: supabaseError } = await supabase
+        .from('pipelines')
+        .select('*')
+        .eq('tenant_id', user.tenant_id)
+        .order('created_at', { ascending: false });
         
-        log('📡 Fazendo requisição para /pipelines via API backend...');
-        const response = await authenticatedFetch('/pipelines');
-        
-        if (!response.ok) {
-          throw new Error(`API retornou: ${response.status} ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        log('📥 Resposta da API recebida:', { 
-          success: data.success,
-          pipelinesCount: data.pipelines?.length || 0
-        });
-        
-        if (data.success && data.pipelines) {
-          let pipelinesData = data.pipelines;
+      if (supabaseError) {
+        logger.error('Erro no Supabase:', supabaseError);
+        throw supabaseError;
+      }
+      
+      // ✅ Para cada pipeline, buscar stages e members separadamente
+      const pipelinesData = await Promise.all(
+        (supabasePipelines || []).map(async (pipeline) => {
+          // Buscar stages da pipeline
+          const { data: stages, error: stagesError } = await supabase
+            .from('pipeline_stages')
+            .select('*')
+            .eq('pipeline_id', pipeline.id)
+            .order('order_index');
           
-          // ✅ APLICAR FILTROS BASEADOS NO ROLE (PRESERVANDO ISOLAMENTO)
-          if (user.role === 'admin') {
-            const adminIdentifiers = [user.id, user.email].filter(Boolean);
-            const adminPipelines = pipelinesData.filter((p: any) => 
-              adminIdentifiers.some(id => p.created_by === id)
-            );
-            
-            log('🔍 FILTRO ADMIN aplicado:', {
-              totalPipelines: pipelinesData.length,
-              adminPipelines: adminPipelines.length,
-              pipelineNames: adminPipelines.map((p: any) => p.name)
-            });
-            
-            pipelinesData = adminPipelines;
+          if (stagesError) {
+            logger.warn('Erro ao buscar stages:', stagesError);
           }
           
-          setPipelines(pipelinesData);
-          log('✅ Pipelines carregadas com sucesso:', pipelinesData.length);
-        } else {
-          log('⚠️ API retornou estrutura inesperada:', data);
-          setPipelines([]);
-        }
-        
-      } else {
-        // ✅ FALLBACK PARA MEMBERS OU QUANDO API NÃO DISPONÍVEL
-        log('🔄 Buscando pipelines via Supabase (fallback)');
-        
-        const { data: supabasePipelines, error: supabaseError } = await supabase
-          .from('pipelines')
-          .select('*')
-          .eq('tenant_id', user.tenant_id)
-          .eq('is_active', true)
-          .order('created_at', { ascending: false });
+          // Buscar members da pipeline
+          const { data: members, error: membersError } = await supabase
+            .from('pipeline_members')
+            .select('*')
+            .eq('pipeline_id', pipeline.id);
           
-        if (supabaseError) {
-          throw supabaseError;
-        }
-        
-        const pipelinesData = (supabasePipelines || []).map(p => ({
-          ...p,
-          pipeline_stages: [],
-          pipeline_custom_fields: [],
-          pipeline_members: []
-        }));
-        
-        setPipelines(pipelinesData);
-        log('✅ Pipelines carregadas via Supabase:', pipelinesData.length);
+          if (membersError) {
+            logger.warn('Erro ao buscar members:', membersError);
+          }
+          
+          // Combinar dados
+          return {
+            ...pipeline,
+            pipeline_stages: stages || [],
+            pipeline_members: members || [],
+            pipeline_custom_fields: [] // Manter vazio por enquanto para compatibilidade
+          };
+        })
+      );
+      
+      logger.info('Pipelines carregadas:', {
+        total: pipelinesData.length,
+        pipelines: pipelinesData.map(p => ({
+          name: p.name,
+          id: p.id.substring(0, 8),
+          isActive: p.is_active,
+          tenantId: p.tenant_id,
+          createdBy: p.created_by,
+          stagesCount: p.pipeline_stages?.length || 0,
+          membersCount: p.pipeline_members?.length || 0,
+          hasAllFields: !!(p.id && p.name && p.tenant_id)
+        }))
+      });
+      
+      // ✅ VERIFICAÇÃO DE INTEGRIDADE
+      const pipelinesWithoutTenant = pipelinesData.filter(p => !p.tenant_id);
+      if (pipelinesWithoutTenant.length > 0) {
+        logger.error('Pipelines sem tenant_id:', pipelinesWithoutTenant);
       }
+      
+      // ✅ DEBUG APENAS EM MODO DEBUG
+      if (logLevel === 'debug' && pipelinesData.length > 0) {
+        logger.debug('Primeira pipeline detalhada:', {
+          ...pipelinesData[0],
+          tenant_id_type: typeof pipelinesData[0].tenant_id
+        });
+      }
+      
+      setPipelines(pipelinesData);
+      setCachedPipelines(pipelinesData);
 
     } catch (fetchError: any) {
-      console.error('❌ Erro ao buscar pipelines:', fetchError);
+      logger.error('Erro ao buscar pipelines:', fetchError);
       setPipelines([]);
       setError('Erro ao carregar pipelines');
     } finally {
       setLoading(false);
     }
-  }, [user, authenticatedFetch, refreshTokens]);
+  }, [user, authenticatedFetch, getCachedPipelines, setCachedPipelines]);
 
   /**
    * ✅ BUSCAR LEADS DE UMA PIPELINE
@@ -151,20 +223,28 @@ export const usePipelineData = (): UsePipelineDataReturn => {
   const fetchLeads = useCallback(async (pipelineId?: string): Promise<void> => {
     if (!pipelineId || !user) return;
 
+    logger.debug('fetchLeads chamado:', { pipelineId, userId: user.id });
+
     try {
       const { data, error } = await supabase
         .from('pipeline_leads')
         .select('*')
         .eq('pipeline_id', pipelineId)
+        .eq('tenant_id', user.tenant_id)
         .order('created_at', { ascending: false });
 
       if (error) {
         throw error;
       }
 
+      logger.info('Leads buscados:', {
+        pipelineId,
+        leadsCount: data?.length || 0
+      });
+
       setLeads(data || []);
     } catch (error) {
-      console.error('❌ Erro ao buscar leads:', error);
+      logger.error('Erro ao buscar leads:', error);
       setLeads([]);
     }
   }, [user]);
@@ -173,17 +253,183 @@ export const usePipelineData = (): UsePipelineDataReturn => {
    * ✅ IMPLEMENTAR FUNÇÕES NECESSÁRIAS
    */
   const handleCreateLead = useCallback(async (stageId: string, leadData: any): Promise<Lead | null> => {
-    // Implementação placeholder
-    log('🔧 handleCreateLead chamado:', { stageId, leadData });
-    return null;
-  }, []);
+    try {
+      logger.debug('handleCreateLead chamado:', { stageId, leadData });
+
+      if (!user?.id) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Primeiro, criar o lead master se não existe
+      let leadMasterId: string;
+      
+      if (leadData.lead_master_id) {
+        leadMasterId = leadData.lead_master_id;
+      } else {
+        // 🔧 CORREÇÃO RLS: Gerar UUID manualmente para contornar problema de SELECT após INSERT
+        leadMasterId = crypto.randomUUID();
+        
+        const leadMasterData = {
+          id: leadMasterId,
+          first_name: leadData.first_name || leadData.nome || '',
+          last_name: leadData.last_name || leadData.sobrenome || '',
+          email: leadData.email || '',
+          phone: leadData.phone || leadData.telefone || '',
+          company: leadData.company || leadData.empresa || '',
+          source: leadData.source || 'Manual',
+          tenant_id: user.tenant_id,
+          created_by: user.id,
+          custom_data: leadData.custom_data || {}
+        };
+
+        const { error: leadMasterError } = await supabase
+          .from('leads_master')
+          .insert([leadMasterData]);
+
+        if (leadMasterError) {
+          console.error('Erro ao criar lead master:', leadMasterError);
+          throw new Error('Erro ao criar lead master');
+        }
+      }
+
+      // Buscar pipeline para encontrar a primeira etapa
+      const pipeline = pipelines?.find(p => p.id === leadData.pipeline_id);
+      if (!pipeline) {
+        throw new Error('Pipeline não encontrada');
+      }
+
+      // Encontrar a primeira etapa (etapa "Lead" com order_index 0)
+      const firstStage = pipeline.pipeline_stages
+        ?.sort((a, b) => a.order_index - b.order_index)[0];
+
+      if (!firstStage) {
+        throw new Error('Nenhuma etapa encontrada na pipeline');
+      }
+
+      // Buscar regra de distribuição para a pipeline
+      let assignedTo = leadData.assigned_to || user.id;
+      
+      try {
+        const { data: distributionRule } = await supabase
+          .from('pipeline_distribution_rules')
+          .select('*')
+          .eq('pipeline_id', leadData.pipeline_id)
+          .single();
+
+        if (distributionRule && distributionRule.is_active && distributionRule.mode === 'rodizio') {
+          // Aplicar distribuição por rodízio
+          const { data: pipelineMembers } = await supabase
+            .from('pipeline_members')
+            .select('member_id, users!member_id(id, first_name, last_name, is_active)')
+            .eq('pipeline_id', leadData.pipeline_id);
+
+          if (pipelineMembers && pipelineMembers.length > 0) {
+            // Filtrar membros ativos se configurado
+            const eligibleMembers = distributionRule.skip_inactive_members 
+              ? pipelineMembers.filter(pm => {
+                  const user = pm.users as any;
+                  return user?.is_active !== false;
+                })
+              : pipelineMembers;
+
+            if (eligibleMembers.length > 0) {
+              // Determinar próximo membro na sequência
+              const lastAssignedIndex = distributionRule.last_assigned_member_id 
+                ? eligibleMembers.findIndex(m => m.member_id === distributionRule.last_assigned_member_id)
+                : -1;
+              
+              const nextIndex = (lastAssignedIndex + 1) % eligibleMembers.length;
+              assignedTo = eligibleMembers[nextIndex].member_id;
+
+              // Atualizar regra de distribuição
+              await supabase
+                .from('pipeline_distribution_rules')
+                .update({
+                  last_assigned_member_id: assignedTo,
+                  total_assignments: (distributionRule.total_assignments || 0) + 1,
+                  last_assignment_at: new Date().toISOString()
+                })
+                .eq('pipeline_id', leadData.pipeline_id);
+
+              // Registrar histórico de atribuição
+              await supabase
+                .from('lead_assignment_history')
+                .insert({
+                  pipeline_id: leadData.pipeline_id,
+                  assigned_to: assignedTo,
+                  assignment_method: 'round_robin',
+                  round_robin_position: nextIndex,
+                  total_eligible_members: eligibleMembers.length,
+                  status: 'success'
+                });
+            }
+          }
+        }
+      } catch (distributionError) {
+        console.warn('Erro ao aplicar distribuição, usando atribuição manual:', distributionError);
+      }
+
+      // 🔧 CORREÇÃO RLS: Gerar UUID manualmente para contornar problema de SELECT após INSERT
+      const pipelineLeadId = crypto.randomUUID();
+      
+      const pipelineLeadData = {
+        id: pipelineLeadId,
+        pipeline_id: leadData.pipeline_id,
+        stage_id: firstStage.id, // Sempre usar a primeira etapa (Lead)
+        lead_master_id: leadMasterId,
+        assigned_to: assignedTo,
+        created_by: user.id,
+        tenant_id: user.tenant_id,
+        custom_data: {
+          ...leadData.custom_data,
+          created_via: 'pipeline_management',
+          distribution_method: leadData.assigned_to ? 'manual' : 'auto'
+        }
+      };
+
+      const { error: pipelineLeadError } = await supabase
+        .from('pipeline_leads')
+        .insert([pipelineLeadData]);
+
+      if (pipelineLeadError) {
+        console.error('Erro ao criar pipeline lead:', pipelineLeadError);
+        throw new Error('Erro ao criar lead na pipeline');
+      }
+
+      logger.info('Lead criado com sucesso na primeira etapa:', {
+        leadId: pipelineLeadId,
+        stage: firstStage.name,
+        assignedTo
+      });
+
+      // 🔧 CORREÇÃO RLS: Retornar dados simulados sem dependência do SELECT
+      const simulatedLead = {
+        id: pipelineLeadId,
+        pipeline_id: leadData.pipeline_id,
+        stage_id: firstStage.id,
+        lead_master_id: leadMasterId,
+        assigned_to: assignedTo,
+        created_by: user.id,
+        tenant_id: user.tenant_id,
+        custom_data: pipelineLeadData.custom_data,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      return simulatedLead as Lead;
+
+    } catch (error) {
+      logger.error('Erro ao criar lead:', error);
+      throw error;
+    }
+  }, [pipelines, user, supabase]);
 
   const updateLeadStage = useCallback(async (leadId: string, stageId: string): Promise<void> => {
-    log('🔧 updateLeadStage chamado:', { leadId, stageId });
+    logger.debug('updateLeadStage chamado:', { leadId, stageId });
   }, []);
 
   const updateLeadData = useCallback(async (leadId: string, data: any): Promise<void> => {
-    log('🔧 updateLeadData chamado:', { leadId, data });
+    logger.debug('updateLeadData chamado:', { leadId, data });
   }, []);
 
   const refreshLeads = useCallback(async (): Promise<void> => {
@@ -212,17 +458,17 @@ export const usePipelineData = (): UsePipelineDataReturn => {
   }, [pipelines]);
 
   const linkMemberToPipeline = useCallback(async (memberId: string, pipelineId: string): Promise<boolean> => {
-    log('🔧 linkMemberToPipeline chamado:', { memberId, pipelineId });
+    logger.debug('linkMemberToPipeline chamado:', { memberId, pipelineId });
     return true;
   }, []);
 
   const unlinkMemberFromPipeline = useCallback(async (memberId: string, pipelineId: string): Promise<boolean> => {
-    log('🔧 unlinkMemberFromPipeline chamado:', { memberId, pipelineId });
+    logger.debug('unlinkMemberFromPipeline chamado:', { memberId, pipelineId });
     return true;
   }, []);
 
   const getPipelineMembers = useCallback(async (pipelineId: string): Promise<PipelineMember[]> => {
-    log('🔧 getPipelineMembers chamado:', pipelineId);
+    logger.debug('getPipelineMembers chamado:', pipelineId);
     return [];
   }, []);
 
@@ -251,7 +497,15 @@ export const usePipelineData = (): UsePipelineDataReturn => {
     handleCreateLead,
     updateLeadStage,
     updateLeadData,
-    refreshPipelines: fetchPipelines,
+    refreshPipelines: useCallback(async () => {
+      // ✅ ENTERPRISE: Otimizado para React Query - menos cache clearing
+      localStorage.removeItem(CACHE_KEY);
+      
+      logger.info('🔄 [REFRESH] Cache pipeline limpo, recarregando dados...');
+      
+      // ✅ REACT QUERY FRIENDLY: Sem setLoading manual se React Query está controlando
+      await fetchPipelines();
+    }, [CACHE_KEY, fetchPipelines]),
     refreshLeads,
     getUserPipelines,
     getAdminCreatedPipelines,

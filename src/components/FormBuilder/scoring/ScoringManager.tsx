@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { ScoringRule, FormField } from '../../../types/Forms';
+import { toast } from 'sonner';
 
 export interface ScoringManagerProps {
   scoringRules: ScoringRule[];
@@ -224,7 +225,7 @@ export const ScoringManager: React.FC<ScoringManagerProps> = ({
           description: ''
         });
       } else {
-        alert('Erro na regra: ' + validation.errors.join(', '));
+        toast.error('Erro na regra: ' + validation.errors.join(', '));
       }
     }
   };

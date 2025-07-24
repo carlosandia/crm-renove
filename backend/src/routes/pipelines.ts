@@ -2,10 +2,12 @@ import express, { Router, Request, Response } from 'express';
 import { PipelineController } from '../controllers/PipelineController';
 import { CustomFieldController } from '../controllers/customFieldController';
 import { LeadController } from '../controllers/leadController';
-import { supabase } from '../config/supabase';
-// FASE 1: Cache Integration
+import { supabase, createUserSupabaseClient } from '../config/supabase';
+// FASE 1: Cache Integration (simplified)
 import { cacheMiddlewares } from '../middleware/cacheMiddleware';
-import { CacheTTL } from '../services/cacheService';
+import { authenticateToken } from '../middleware/auth';
+// ✅ IMPORTAR SISTEMA DE DISTRIBUIÇÃO UNIFICADO
+import { LeadDistributionService } from '../services/leadDistributionService';
 
 const supabaseAdmin = supabase;
 const router = express.Router();
@@ -15,13 +17,17 @@ const router = express.Router();
 // ============================================
 
 // GET /api/pipelines/validate-name - Validar nome de pipeline em tempo real
-router.get('/validate-name', PipelineController.validatePipelineName);
+router.get('/validate-name', authenticateToken, PipelineController.validatePipelineName);
 
-// GET /api/pipelines - Listar pipelines do tenant (com cache)
-router.get('/', cacheMiddlewares.pipeline(CacheTTL.medium), PipelineController.getPipelines);
+// GET /api/pipelines - Listar pipelines do tenant
+router.get('/', (req, res, next) => {
+  console.log('🔍 [PIPELINE ROUTE] Rota acessada');
+  console.log('🔍 [PIPELINE ROUTE] Headers:', req.headers.authorization);
+  next();
+}, authenticateToken, cacheMiddlewares.pipeline(), PipelineController.getPipelines);
 
-// GET /api/pipelines/available - Listar pipelines disponíveis para conexão com formulários (com cache)
-router.get('/available', cacheMiddlewares.pipeline(CacheTTL.long), async (req, res) => {
+// GET /api/pipelines/available - Listar pipelines disponíveis para conexão com formulários
+router.get('/available', cacheMiddlewares.pipeline(), async (req, res) => {
   try {
     const { data: pipelines, error } = await supabase
       .from('pipelines')
@@ -167,13 +173,16 @@ router.get('/:id/details', async (req, res) => {
 });
 
 // GET /api/pipelines/:id - Buscar pipeline específica
-router.get('/:id', PipelineController.getPipelineById);
+router.get('/:id', authenticateToken, PipelineController.getPipelineById);
 
 // POST /api/pipelines - Criar nova pipeline
 router.post('/', PipelineController.createPipeline);
 
-// POST /api/pipelines/complete - Criar pipeline com etapas e campos customizados
-router.post('/complete', async (req, res) => {
+// POST /api/pipelines/complete - Criar pipeline com etapas e campos customizados  
+router.post('/complete', PipelineController.createPipelineWithStagesAndFields);
+
+// POST /api/pipelines/complete-old - BACKUP da implementação inline anterior
+router.post('/complete-old', async (req, res) => {
   try {
     console.log('🔧 Iniciando criação de pipeline completa...');
     console.log('📝 Dados recebidos:', JSON.stringify(req.body, null, 2));
@@ -317,6 +326,19 @@ router.post('/complete', async (req, res) => {
       }
     }
 
+    // ✅ BUGFIX CRÍTICO: Garantir criação das etapas do sistema
+    console.log('🔄 [POST /complete] Criando etapas do sistema...');
+    const { error: ensureStagesError } = await supabaseAdmin.rpc('ensure_pipeline_stages', {
+      pipeline_id_param: pipelineId
+    });
+
+    if (ensureStagesError) {
+      console.error('❌ [POST /complete] Erro ao criar etapas do sistema:', ensureStagesError);
+      // Não falhar completamente, mas registrar o erro
+    } else {
+      console.log('✅ [POST /complete] Etapas do sistema criadas');
+    }
+
     console.log('✅ Pipeline completa criada com sucesso');
 
     res.status(201).json({ 
@@ -341,7 +363,7 @@ router.post('/complete', async (req, res) => {
 });
 
 // PUT /api/pipelines/:id - Atualizar pipeline
-router.put('/:id', PipelineController.updatePipeline);
+router.put('/:id', authenticateToken, PipelineController.updatePipeline);
 
 // DELETE /api/pipelines/:id - Excluir pipeline
 router.delete('/:id', PipelineController.deletePipeline);
@@ -463,19 +485,19 @@ router.delete('/:id/stages/:stage_id', async (req, res) => {
 // ============================================
 
 // GET /api/pipelines/:pipeline_id/custom-fields - Listar campos customizados
-router.get('/:pipeline_id/custom-fields', CustomFieldController.getCustomFields);
+router.get('/:pipeline_id/custom-fields', authenticateToken, CustomFieldController.getCustomFields);
 
 // POST /api/pipelines/:pipeline_id/custom-fields - Criar campo customizado
-router.post('/:pipeline_id/custom-fields', CustomFieldController.createCustomField);
+router.post('/:pipeline_id/custom-fields', authenticateToken, CustomFieldController.createCustomField);
 
 // PUT /api/pipelines/:pipeline_id/custom-fields/:field_id - Atualizar campo
-router.put('/:pipeline_id/custom-fields/:field_id', CustomFieldController.updateCustomField);
+router.put('/:pipeline_id/custom-fields/:field_id', authenticateToken, CustomFieldController.updateCustomField);
 
 // DELETE /api/pipelines/:pipeline_id/custom-fields/:field_id - Excluir campo
-router.delete('/:pipeline_id/custom-fields/:field_id', CustomFieldController.deleteCustomField);
+router.delete('/:pipeline_id/custom-fields/:field_id', authenticateToken, CustomFieldController.deleteCustomField);
 
 // PUT /api/pipelines/:pipeline_id/custom-fields/reorder - Reordenar campos
-router.put('/:pipeline_id/custom-fields/reorder', CustomFieldController.reorderFields);
+router.put('/:pipeline_id/custom-fields/reorder', authenticateToken, CustomFieldController.reorderFields);
 
 // ============================================
 // ROTAS DE LEADS
@@ -674,6 +696,147 @@ router.post('/test-create-with-stages', async (req, res) => {
       error: 'Erro no teste de etapas',
       details: error instanceof Error ? error.message : 'Erro desconhecido'
     });
+  }
+});
+
+// ============================================
+// ROTA DE MÉTRICAS ESPECÍFICAS DA PIPELINE
+// ============================================
+// GET /api/pipelines/:pipeline_id/metrics - Obter métricas específicas de uma pipeline
+router.get('/:pipeline_id/metrics', async (req, res) => {
+  try {
+    const { pipeline_id } = req.params;
+    const { tenant_id } = req.query;
+
+    console.log('📊 [getMetricsByPipeline] Buscando métricas:', {
+      pipeline_id,
+      tenant_id
+    });
+
+    if (!pipeline_id) {
+      return res.status(400).json({ error: 'pipeline_id é obrigatório' });
+    }
+
+    if (!tenant_id) {
+      return res.status(400).json({ error: 'tenant_id é obrigatório' });
+    }
+
+    // Buscar informações da pipeline
+    const { data: pipeline, error: pipelineError } = await supabase
+      .from('pipelines')
+      .select('id, name, tenant_id')
+      .eq('id', pipeline_id)
+      .eq('tenant_id', tenant_id)
+      .single();
+
+    if (pipelineError || !pipeline) {
+      console.error('❌ [getMetricsByPipeline] Pipeline não encontrada:', pipelineError);
+      return res.status(404).json({ error: 'Pipeline não encontrada' });
+    }
+
+    // Buscar métricas dos leads da pipeline
+    const { data: leads, error: leadsError } = await supabase
+      .from('pipeline_leads')
+      .select('id, stage_id, lead_master_id, created_at, updated_at, custom_data, pipeline_stages(name, stage_type)')
+      .eq('pipeline_id', pipeline_id)
+      .eq('tenant_id', tenant_id);
+
+    if (leadsError) {
+      console.error('❌ [getMetricsByPipeline] Erro ao buscar leads:', leadsError);
+      return res.status(500).json({ error: 'Erro ao buscar dados da pipeline' });
+    }
+
+    // ✅ CORREÇÃO: Calcular métricas corretamente
+    const totalOpportunityCards = leads?.length || 0; // Total de cards/oportunidades
+    const uniqueLeadsCount = leads?.length > 0 ? 
+      new Set(leads.map(lead => lead.lead_master_id).filter(Boolean)).size : 0; // Leads únicos
+    const qualifiedLeads = leads?.filter(lead => lead.custom_data?.is_qualified === true).length || 0;
+    
+    // Contar leads por tipo de stage
+    const wonDeals = leads?.filter(lead => {
+      // AIDEV-NOTE: Corrigir acesso ao stage - pode ser objeto ou array
+      const stage = Array.isArray(lead.pipeline_stages) ? lead.pipeline_stages[0] : lead.pipeline_stages;
+      return stage?.stage_type === 'won' || stage?.name === 'Ganho';
+    }).length || 0;
+    
+    const lostDeals = leads?.filter(lead => {
+      // AIDEV-NOTE: Corrigir acesso ao stage - pode ser objeto ou array
+      const stage = Array.isArray(lead.pipeline_stages) ? lead.pipeline_stages[0] : lead.pipeline_stages;
+      return stage?.stage_type === 'lost' || stage?.name === 'Perdido';
+    }).length || 0;
+    
+    const activeOpportunities = totalOpportunityCards - wonDeals - lostDeals;
+    
+    // Calcular receita total (assumindo que está no custom_data.valor)
+    const totalRevenue = leads?.reduce((sum, lead) => {
+      const value = parseFloat(lead.custom_data?.valor || '0');
+      // AIDEV-NOTE: Corrigir acesso ao stage - pode ser objeto ou array
+      const stage = Array.isArray(lead.pipeline_stages) ? lead.pipeline_stages[0] : lead.pipeline_stages;
+      if (stage?.stage_type === 'won' || stage?.name === 'Ganho') {
+        return sum + value;
+      }
+      return sum;
+    }, 0) || 0;
+    
+    // Calcular métricas derivadas
+    const averageDealSize = wonDeals > 0 ? totalRevenue / wonDeals : 0;
+    const conversionRate = totalOpportunityCards > 0 ? (wonDeals / totalOpportunityCards) * 100 : 0;
+    const winRate = (wonDeals + lostDeals) > 0 ? (wonDeals / (wonDeals + lostDeals)) * 100 : 0;
+    const lossRate = (wonDeals + lostDeals) > 0 ? (lostDeals / (wonDeals + lostDeals)) * 100 : 0;
+    
+    // Calcular tempo médio de ciclo (simplificado)
+    const averageCycleTime = leads?.filter(lead => {
+      // AIDEV-NOTE: Corrigir acesso ao stage - pode ser objeto ou array
+      const stage = Array.isArray(lead.pipeline_stages) ? lead.pipeline_stages[0] : lead.pipeline_stages;
+      return stage?.stage_type === 'won';
+    }).reduce((sum, lead) => {
+      const createdDate = new Date(lead.created_at);
+      const updatedDate = new Date(lead.updated_at || lead.created_at);
+      const daysDiff = Math.abs(updatedDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24);
+      return sum + daysDiff;
+    }, 0) || 0;
+    
+    const avgCycleTimeFinal = wonDeals > 0 ? averageCycleTime / wonDeals : 0;
+
+    const metricsData = {
+      pipeline_name: pipeline.name,
+      // ✅ CORREÇÃO: Adicionar campos esperados pelo frontend
+      unique_leads_count: uniqueLeadsCount, // Leads únicos (leads_master)
+      total_opportunity_cards: totalOpportunityCards, // Total de cards/oportunidades
+      total_leads: totalOpportunityCards, // Manter compatibilidade
+      qualified_leads: qualifiedLeads,
+      won_deals: wonDeals,
+      lost_deals: lostDeals,
+      total_revenue: totalRevenue,
+      average_deal_size: averageDealSize,
+      conversion_rate: conversionRate,
+      win_rate: winRate,
+      loss_rate: lossRate,
+      average_cycle_time: avgCycleTimeFinal,
+      active_opportunities: activeOpportunities,
+      pending_follow_ups: 0, // Implementar quando houver tabela de follow-ups
+      overdue_tasks: 0 // Implementar quando houver tabela de tasks
+    };
+
+    console.log('✅ [getMetricsByPipeline] Métricas calculadas:', {
+      pipeline_id,
+      pipeline_name: pipeline.name,
+      unique_leads_count: uniqueLeadsCount,
+      total_opportunity_cards: totalOpportunityCards,
+      won_deals: wonDeals,
+      total_revenue: totalRevenue,
+      conversion_rate: conversionRate.toFixed(2) + '%'
+    });
+
+    res.json({
+      success: true,
+      data: metricsData,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ [getMetricsByPipeline] Erro interno:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
@@ -1105,30 +1268,14 @@ router.post('/create-lead-from-form', async (req, res) => {
       targetStageId = firstStage.id;
     }
 
-    // 5. 🆕 APLICAR SISTEMA DE RODÍZIO INTEGRADO
-    let assignedTo = null;
-    let distributionApplied = false;
-    
-    if (auto_assign) {
-      console.log('🎯 Aplicando sistema de rodízio na pipeline...');
-      assignedTo = await applyPipelineDistribution(pipeline_id, tenant_id);
-      distributionApplied = !!assignedTo;
-      
-      if (assignedTo) {
-        console.log('✅ Lead atribuído via rodízio:', assignedTo);
-      } else {
-        console.log('⚠️ Rodízio não aplicado, usando distribuição manual');
-      }
-    }
-
-    // 6. Criar lead na pipeline
+    // 6. Criar lead na pipeline (inicialmente sem atribuição)
     const { data: pipelineLead, error: leadError } = await supabase
       .from('pipeline_leads')
       .insert({
         pipeline_id: pipeline_id,
         stage_id: targetStageId,
         lead_data: mappedData,
-        assigned_to: assignedTo,
+        assigned_to: null, // Será definido pela distribuição
         created_by: null, // Formulário público
         tenant_id: tenant_id || pipeline.tenant_id,
         lead_score: lead_score,
@@ -1148,7 +1295,37 @@ router.post('/create-lead-from-form', async (req, res) => {
       });
     }
 
-    // 7. 🆕 ATUALIZAR LEADS_MASTER COM REFERÊNCIA À PIPELINE
+    // 7. ✅ APLICAR SISTEMA DE DISTRIBUIÇÃO UNIFICADO
+    let assignedTo = null;
+    let distributionApplied = false;
+    
+    if (auto_assign) {
+      console.log('🎯 Aplicando sistema de distribuição unificado na pipeline...');
+      
+      try {
+        // Usar o LeadDistributionService para aplicar distribuição
+        assignedTo = await LeadDistributionService.distributeLeadToMember(pipelineLead.id, pipeline_id);
+        distributionApplied = !!assignedTo;
+        
+        if (assignedTo) {
+          console.log('✅ Lead distribuído via LeadDistributionService:', assignedTo);
+          
+          // Atualizar o lead com a atribuição
+          await supabase
+            .from('pipeline_leads')
+            .update({ assigned_to: assignedTo })
+            .eq('id', pipelineLead.id);
+        } else {
+          console.log('⚠️ Distribuição não aplicada - modo manual ou sem membros ativos');
+        }
+      } catch (distributionError) {
+        console.warn('⚠️ Erro na distribuição unificada:', distributionError);
+        assignedTo = null;
+        distributionApplied = false;
+      }
+    }
+
+    // 8. 🆕 ATUALIZAR LEADS_MASTER COM REFERÊNCIA À PIPELINE
     if (leadMaster) {
       await supabase
         .from('leads_master')
@@ -1159,7 +1336,7 @@ router.post('/create-lead-from-form', async (req, res) => {
         .eq('id', leadMaster.id);
     }
 
-    // 8. Criar tarefa automática se configurado
+    // 9. Criar tarefa automática se configurado
     if (create_task && assignedTo) {
       console.log('📝 Criando tarefa automática...');
       
@@ -1188,7 +1365,7 @@ router.post('/create-lead-from-form', async (req, res) => {
       }
     }
 
-    // 9. Registrar histórico de entrada
+    // 10. Registrar histórico de entrada
     await supabase
       .from('pipeline_lead_history')
       .insert({
@@ -1202,7 +1379,7 @@ router.post('/create-lead-from-form', async (req, res) => {
 
     console.log('🎉 Lead criado na pipeline com sucesso:', pipelineLead.id);
 
-    // 10. Resposta integrada
+    // 11. Resposta integrada
     res.status(201).json({
       success: true,
       message: 'Lead criado na pipeline com sucesso',
@@ -1228,108 +1405,15 @@ router.post('/create-lead-from-form', async (req, res) => {
   }
 });
 
-// Função auxiliar para aplicar distribuição na pipeline
-async function applyPipelineDistribution(pipelineId: string, tenantId: string): Promise<string | null> {
-  try {
-    console.log('🎯 Aplicando distribuição na pipeline:', pipelineId);
+// ✅ FUNÇÃO REMOVIDA: applyPipelineDistribution
+// Esta funcionalidade agora é fornecida pelo LeadDistributionService.distributeLeadToMember()
 
-    // 1. Verificar se há regra de distribuição configurada para esta pipeline
-    const { data: distributionRule, error: ruleError } = await supabase
-      .from('pipeline_distribution_rules')
-      .select('*')
-      .eq('pipeline_id', pipelineId)
-      .eq('is_active', true)
-      .single();
-
-    if (ruleError || !distributionRule || distributionRule.mode !== 'rodizio') {
-      console.log('⚠️ Nenhuma regra de rodízio ativa encontrada para esta pipeline');
-      return null;
-    }
-
-    // 2. Buscar members vinculados à pipeline
-    const { data: pipelineMembers, error: membersError } = await supabase
-      .from('pipeline_members')
-      .select('member_id, users(id, first_name, is_active)')
-      .eq('pipeline_id', pipelineId);
-
-    if (membersError || !pipelineMembers || pipelineMembers.length === 0) {
-      console.log('⚠️ Nenhum member vinculado à pipeline');
-      return null;
-    }
-
-    // Filtrar apenas members ativos
-    const activeMembers = pipelineMembers
-      .filter((pm: any) => pm.users && pm.users.is_active)
-      .map((pm: any) => pm.member_id)
-      .filter(Boolean);
-
-    if (activeMembers.length === 0) {
-      console.log('⚠️ Nenhum member ativo encontrado');
-      return null;
-    }
-
-    console.log(`👥 Encontrados ${activeMembers.length} members ativos na pipeline`);
-
-    // 3. Aplicar algoritmo round-robin
-    const nextMember = await getNextRoundRobinMember(activeMembers, distributionRule, pipelineId);
-
-    if (nextMember) {
-      // 4. Atualizar último member atribuído na regra
-      await supabase
-        .from('pipeline_distribution_rules')
-        .update({
-          last_assigned_member_id: nextMember,
-          assignment_count: (distributionRule.assignment_count || 0) + 1,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', distributionRule.id);
-
-      console.log('✅ Próximo member no rodízio:', nextMember);
-    }
-
-    return nextMember;
-
-  } catch (error) {
-    console.error('❌ Erro na distribuição da pipeline:', error);
-    return null;
-  }
-}
-
-// Função para calcular próximo member no round-robin
-async function getNextRoundRobinMember(memberIds: string[], rule: any, pipelineId: string): Promise<string | null> {
-  try {
-    const lastAssignedId = rule.last_assigned_member_id;
-
-    if (!lastAssignedId) {
-      // Primeira atribuição - usar primeiro member
-      console.log('📍 Primeira atribuição na pipeline');
-      return memberIds[0];
-    }
-
-    const currentIndex = memberIds.indexOf(lastAssignedId);
-    
-    if (currentIndex === -1) {
-      // Member anterior não está mais na lista - usar primeiro
-      console.log('📍 Member anterior não encontrado, usando primeiro');
-      return memberIds[0];
-    }
-
-    // Próximo member no rodízio circular
-    const nextIndex = (currentIndex + 1) % memberIds.length;
-    const nextMemberId = memberIds[nextIndex];
-
-    console.log(`🔄 Round-robin pipeline: ${lastAssignedId} → ${nextMemberId}`);
-    return nextMemberId;
-
-  } catch (error) {
-    console.error('❌ Erro no cálculo round-robin:', error);
-    return memberIds[0];
-  }
-}
+// ✅ FUNÇÃO REMOVIDA: getNextRoundRobinMember
+// Esta funcionalidade agora é fornecida pelo LeadDistributionService.assignLeadByRoundRobin()
 
 // 🆕 ENDPOINT PARA GERENCIAR REGRAS DE DISTRIBUIÇÃO
 // POST /api/pipelines/:pipelineId/distribution-rule - Salvar regra de distribuição
-router.post('/:pipelineId/distribution-rule', async (req: Request, res: Response) => {
+router.post('/:pipelineId/distribution-rule', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { pipelineId } = req.params;
     const { mode, is_active, working_hours_only, skip_inactive_members, fallback_to_manual } = req.body;
@@ -1369,6 +1453,7 @@ router.post('/:pipelineId/distribution-rule', async (req: Request, res: Response
     // Preparar dados para inserção/atualização
     const distributionRuleData = {
       pipeline_id: pipelineId,
+      tenant_id: pipeline.tenant_id, // ✅ BUGFIX: Incluir tenant_id para multi-tenant
       mode: mode || 'manual',
       is_active: is_active ?? true,
       working_hours_only: working_hours_only ?? false,
@@ -1414,7 +1499,7 @@ router.post('/:pipelineId/distribution-rule', async (req: Request, res: Response
 });
 
 // GET /api/pipelines/:pipelineId/distribution-rule - Buscar regra de distribuição
-router.get('/:pipelineId/distribution-rule', async (req: Request, res: Response) => {
+router.get('/:pipelineId/distribution-rule', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { pipelineId } = req.params;
 
@@ -1473,7 +1558,7 @@ router.get('/:pipelineId/distribution-rule', async (req: Request, res: Response)
 });
 
 // GET /api/pipelines/:pipelineId/distribution-stats - Estatísticas de distribuição
-router.get('/:pipelineId/distribution-stats', async (req: Request, res: Response) => {
+router.get('/:pipelineId/distribution-stats', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { pipelineId } = req.params;
 
@@ -1540,5 +1625,356 @@ router.get('/:pipelineId/distribution-stats', async (req: Request, res: Response
     });
   }
 });
+
+// POST /api/pipelines/:pipelineId/distribution-test - Testar distribuição
+router.post('/:pipelineId/distribution-test', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { pipelineId } = req.params;
+
+    console.log('🧪 Testando distribuição para pipeline:', pipelineId);
+
+    // Buscar regra de distribuição
+    const { data: distributionRule, error: ruleError } = await supabase
+      .from('pipeline_distribution_rules')
+      .select('*')
+      .eq('pipeline_id', pipelineId)
+      .single();
+
+    if (ruleError || !distributionRule) {
+      return res.status(404).json({
+        success: false,
+        error: 'Regra de distribuição não encontrada'
+      });
+    }
+
+    if (!distributionRule.is_active) {
+      return res.status(400).json({
+        success: false,
+        message: 'Distribuição não está ativa para esta pipeline'
+      });
+    }
+
+    if (distributionRule.mode === 'manual') {
+      return res.status(200).json({
+        success: false,
+        message: 'Distribuição está em modo manual - teste não aplicável'
+      });
+    }
+
+    // Buscar membros da pipeline para rodízio
+    const { data: pipelineMembers, error: membersError } = await supabase
+      .from('pipeline_members')
+      .select(`
+        member_id,
+        users!member_id (
+          id,
+          first_name,
+          last_name,
+          email,
+          is_active
+        )
+      `)
+      .eq('pipeline_id', pipelineId);
+
+    if (membersError || !pipelineMembers || pipelineMembers.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nenhum membro encontrado na pipeline'
+      });
+    }
+
+    // Filtrar membros ativos se configurado
+    const eligibleMembers = distributionRule.skip_inactive_members 
+      ? pipelineMembers.filter(pm => {
+          const user = pm.users as any;
+          return user?.is_active !== false;
+        })
+      : pipelineMembers;
+
+    if (eligibleMembers.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nenhum membro elegível encontrado para distribuição'
+      });
+    }
+
+    // Simular próxima atribuição
+    const lastAssignedIndex = distributionRule.last_assigned_member_id 
+      ? eligibleMembers.findIndex(m => m.member_id === distributionRule.last_assigned_member_id)
+      : -1;
+    
+    const nextIndex = (lastAssignedIndex + 1) % eligibleMembers.length;
+    const nextMember = eligibleMembers[nextIndex];
+
+    // Registrar teste no histórico
+    await supabase
+      .from('lead_assignment_history')
+      .insert({
+        pipeline_id: pipelineId,
+        assigned_to: nextMember.member_id,
+        assignment_method: 'test_simulation',
+        round_robin_position: nextIndex,
+        total_eligible_members: eligibleMembers.length,
+        status: 'test'
+      });
+
+    res.status(200).json({
+      success: true,
+      assigned_to: nextMember.member_id,
+      member_name: `${(nextMember.users as any)?.first_name || ''} ${(nextMember.users as any)?.last_name || ''}`.trim(),
+      message: `Teste realizado: próximo lead seria atribuído a ${(nextMember.users as any)?.first_name || 'Membro'}`
+    });
+
+    console.log('✅ Teste de distribuição realizado com sucesso:', {
+      pipelineId,
+      nextMember: nextMember.member_id,
+      position: nextIndex
+    });
+
+  } catch (error) {
+    console.error('Erro no teste de distribuição:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// ============================================
+// ROTAS DE CONFIGURAÇÃO DE TEMPERATURA
+// ============================================
+
+// GET /api/pipelines/:pipelineId/temperature-config - Buscar configuração de temperatura
+router.get('/:pipelineId/temperature-config', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { pipelineId } = req.params;
+    const tenantId = req.user?.tenant_id;
+
+    console.log('🌡️ Buscando configuração de temperatura:', { pipelineId, tenantId });
+
+    // Buscar configuração existente
+    const { data: config, error } = await supabase
+      .from('temperature_config')
+      .select('*')
+      .eq('pipeline_id', pipelineId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+
+    if (!config) {
+      // Retornar configuração padrão se não existir
+      const defaultConfig = {
+        pipeline_id: pipelineId,
+        tenant_id: tenantId,
+        hot_threshold: 24,
+        warm_threshold: 72,
+        cold_threshold: 168,
+        hot_color: '#ef4444',
+        warm_color: '#f97316',
+        cold_color: '#3b82f6',
+        frozen_color: '#6b7280',
+        hot_icon: '🔥',
+        warm_icon: '🌡️',
+        cold_icon: '❄️',
+        frozen_icon: '🧊'
+      };
+
+      return res.status(200).json({
+        success: true,
+        data: defaultConfig,
+        message: 'Configuração padrão retornada - ainda não salva'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: config,
+      message: 'Configuração de temperatura encontrada'
+    });
+
+  } catch (error) {
+    console.error('Erro ao buscar configuração de temperatura:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// POST /api/pipelines/:pipelineId/temperature-config - Criar/Atualizar configuração de temperatura
+router.post('/:pipelineId/temperature-config', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { pipelineId } = req.params;
+    const tenantId = req.user?.tenant_id;
+    const {
+      hot_threshold,
+      warm_threshold,
+      cold_threshold,
+      hot_color,
+      warm_color,
+      cold_color,
+      frozen_color,
+      hot_icon,
+      warm_icon,
+      cold_icon,
+      frozen_icon
+    } = req.body;
+
+    console.log('🌡️ Salvando configuração de temperatura:', { 
+      pipelineId, 
+      tenantId,
+      config: req.body
+    });
+
+    // Validar se tenantId existe
+    if (!tenantId) {
+      console.error('❌ tenantId não encontrado no token do usuário');
+      return res.status(400).json({
+        success: false,
+        error: 'tenantId não encontrado no token'
+      });
+    }
+
+    // Validar sequência lógica
+    if (hot_threshold >= warm_threshold || warm_threshold >= cold_threshold) {
+      return res.status(400).json({
+        success: false,
+        error: 'Os períodos devem seguir ordem crescente: Quente < Morno < Frio'
+      });
+    }
+
+    // Validar se o usuário tem acesso a esta pipeline
+    console.log('🔐 Validando acesso do usuário à pipeline');
+    const { data: pipelineAccess, error: pipelineError } = await supabase
+      .from('pipelines')
+      .select('tenant_id')
+      .eq('id', pipelineId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (pipelineError || !pipelineAccess) {
+      console.error('❌ Usuário não tem acesso a esta pipeline:', { pipelineId, tenantId, error: pipelineError });
+      return res.status(403).json({
+        success: false,
+        error: 'Acesso negado à pipeline'
+      });
+    }
+
+    console.log('✅ Acesso à pipeline validado');
+
+    // Verificar se já existe configuração (usando service role mas com validação manual)
+    const { data: existingConfig } = await supabase
+      .from('temperature_config')
+      .select('id')
+      .eq('pipeline_id', pipelineId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    const configData = {
+      pipeline_id: pipelineId,
+      tenant_id: tenantId,
+      hot_threshold: hot_threshold || 24,
+      warm_threshold: warm_threshold || 72,
+      cold_threshold: cold_threshold || 168,
+      hot_color: hot_color || '#ef4444',
+      warm_color: warm_color || '#f97316',
+      cold_color: cold_color || '#3b82f6',
+      frozen_color: frozen_color || '#6b7280',
+      hot_icon: hot_icon || '🔥',
+      warm_icon: warm_icon || '🌡️',
+      cold_icon: cold_icon || '❄️',
+      frozen_icon: frozen_icon || '🧊'
+    };
+
+    let result;
+    if (existingConfig) {
+      // Atualizar existente (usando service role - validação manual feita acima)
+      result = await supabase
+        .from('temperature_config')
+        .update(configData)
+        .eq('id', existingConfig.id)
+        .select()
+        .single();
+    } else {
+      // Criar novo (usando service role - validação manual feita acima)
+      result = await supabase
+        .from('temperature_config')
+        .insert(configData)
+        .select()
+        .single();
+    }
+
+    if (result.error) {
+      console.error('Erro no Supabase ao salvar temperatura:', result.error);
+      throw result.error;
+    }
+
+    console.log('✅ Configuração de temperatura salva:', result.data);
+
+    res.status(200).json({
+      success: true,
+      data: result.data,
+      message: 'Configuração de temperatura salva com sucesso'
+    });
+
+  } catch (error) {
+    console.error('Erro ao salvar configuração de temperatura:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// DELETE /api/pipelines/:pipelineId/temperature-config - Deletar configuração de temperatura
+router.delete('/:pipelineId/temperature-config', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { pipelineId } = req.params;
+    const tenantId = req.user?.tenant_id;
+
+    console.log('🌡️ Deletando configuração de temperatura:', { pipelineId, tenantId });
+
+    const { error } = await supabase
+      .from('temperature_config')
+      .delete()
+      .eq('pipeline_id', pipelineId)
+      .eq('tenant_id', tenantId);
+
+    if (error) {
+      throw error;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Configuração de temperatura deletada com sucesso'
+    });
+
+  } catch (error) {
+    console.error('Erro ao deletar configuração de temperatura:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// ============================================
+// ✅ FASE 1.3: ROTAS DE ARQUIVAMENTO DE PIPELINES
+// ============================================
+
+// POST /api/pipelines/:id/duplicate - Duplicar pipeline
+router.post('/:id/duplicate', authenticateToken, PipelineController.duplicatePipeline);
+
+// POST /api/pipelines/:id/archive - Arquivar pipeline
+router.post('/:id/archive', authenticateToken, PipelineController.archivePipeline);
+
+// POST /api/pipelines/:id/unarchive - Desarquivar pipeline
+router.post('/:id/unarchive', authenticateToken, PipelineController.unarchivePipeline);
+
+// GET /api/pipelines/archived - Listar pipelines arquivadas
+router.get('/archived', authenticateToken, PipelineController.getArchivedPipelines);
 
 export default router;

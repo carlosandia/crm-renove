@@ -5,9 +5,14 @@ export class CustomFieldController {
   static async getCustomFields(req: Request, res: Response) {
     try {
       const { pipeline_id } = req.params;
+      const user = (req as any).user;
 
       if (!pipeline_id) {
         return res.status(400).json({ error: 'pipeline_id é obrigatório' });
+      }
+
+      if (!user?.tenant_id) {
+        return res.status(400).json({ error: 'Usuário deve pertencer a uma empresa' });
       }
 
       const fields = await CustomFieldService.getCustomFieldsByPipeline(pipeline_id);
@@ -24,12 +29,17 @@ export class CustomFieldController {
   static async createCustomField(req: Request, res: Response) {
     try {
       const { pipeline_id } = req.params;
-      const { field_name, field_label, field_type, field_options, is_required, placeholder } = req.body;
+      const { field_name, field_label, field_type, field_options, is_required, placeholder, show_in_card } = req.body;
+      const user = (req as any).user;
 
       if (!field_name || !field_label || !field_type) {
         return res.status(400).json({ 
           error: 'field_name, field_label e field_type são obrigatórios' 
         });
+      }
+
+      if (!user?.tenant_id) {
+        return res.status(400).json({ error: 'Usuário deve pertencer a uma empresa' });
       }
 
       const field = await CustomFieldService.createCustomField({
@@ -39,7 +49,8 @@ export class CustomFieldController {
         field_type,
         field_options,
         is_required,
-        placeholder
+        placeholder,
+        show_in_card
       });
 
       res.status(201).json({ 
@@ -58,14 +69,15 @@ export class CustomFieldController {
   static async updateCustomField(req: Request, res: Response) {
     try {
       const { field_id } = req.params;
-      const { field_label, field_type, field_options, is_required, placeholder } = req.body;
+      const { field_label, field_type, field_options, is_required, placeholder, show_in_card } = req.body;
 
       const field = await CustomFieldService.updateCustomField(field_id, {
         field_label,
         field_type,
         field_options,
         is_required,
-        placeholder
+        placeholder,
+        show_in_card
       });
 
       res.json({ 

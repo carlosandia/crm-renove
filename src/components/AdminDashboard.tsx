@@ -41,6 +41,8 @@ import { Badge } from './ui/badge';
 import { PageContainer, PageHeader, PageTitle, PageActions, PageContent } from './ui/page-container';
 import { EmptyState } from './ui/empty-state';
 import { LoadingState } from './ui/loading-state';
+// ✅ FASE 4: Import do componente de métricas de no-show
+import NoShowMetrics from './Pipeline/metrics/NoShowMetrics';
 
 interface AdminDashboardProps {
   className?: string;
@@ -194,7 +196,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ className }) => {
     return (
       <PageContainer>
         <PageHeader>
-          <PageTitle>Dashboard Administrativo</PageTitle>
+          <PageTitle>Dashboard Admin</PageTitle>
         </PageHeader>
         <PageContent>
           <LoadingState />
@@ -206,7 +208,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ className }) => {
   return (
     <PageContainer className={className}>
       <PageHeader>
-        <PageTitle>Dashboard Administrativo</PageTitle>
+        <PageTitle>Dashboard Admin</PageTitle>
         <PageActions>
           <Button onClick={refreshDashboard} variant="outline" size="sm">
             <RefreshCw className="w-4 h-4 mr-2" />
@@ -248,6 +250,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ className }) => {
            <TabsContent value="overview" className="space-y-6">
              {/* Stats Cards */}
              <ModernStatsCards stats={statsData} />
+             
+             {/* ✅ FASE 4: Métricas de No-Show e Conversão */}
+             <NoShowMetrics 
+               leads={[]} // TODO: Passar leads reais do dashboard
+               stages={[]} // TODO: Passar stages reais do dashboard
+               className="mt-6"
+             />
 
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

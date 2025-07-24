@@ -106,7 +106,7 @@ export const NotificationAdminPanel: React.FC<NotificationAdminPanelProps> = ({ 
         return;
       }
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
       const response = await fetch(`${apiUrl}/api/users`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -144,7 +144,7 @@ export const NotificationAdminPanel: React.FC<NotificationAdminPanelProps> = ({ 
         return;
       }
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
       const response = await fetch(`${apiUrl}/api/notifications/admin`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -182,7 +182,7 @@ export const NotificationAdminPanel: React.FC<NotificationAdminPanelProps> = ({ 
         return;
       }
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
       const response = await fetch(`${apiUrl}/api/notifications/analytics`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -227,7 +227,7 @@ export const NotificationAdminPanel: React.FC<NotificationAdminPanelProps> = ({ 
         return;
       }
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
       const response = await fetch(`${apiUrl}/api/notifications/create`, {
         method: 'POST',
         headers: {
@@ -303,6 +303,7 @@ export const NotificationAdminPanel: React.FC<NotificationAdminPanelProps> = ({ 
       }, 5000);
       return () => clearTimeout(timer);
     }
+    return undefined; // ✅ CORREÇÃO TS7030: Retorno explícito para todos os caminhos
   }, [error, success]);
 
   if (!isSuperAdmin) {

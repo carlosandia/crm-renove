@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { BlurFade } from './ui/blur-fade';
 import { ShimmerButton } from './ui/shimmer-button';
+import { showSuccessToast, showErrorToast, showWarningToast, showInfoToast } from '../hooks/useToast';
 
 const AcompanhamentoModule: React.FC = () => {
   const { user } = useAuth();
@@ -130,13 +131,14 @@ const AcompanhamentoModule: React.FC = () => {
       if (success) {
         setExecutingTask(null);
         setExecutionNotes('');
+        showSuccessToast('Tarefa concluída', 'A tarefa foi marcada como concluída com sucesso.');
       } else {
-        alert('Erro ao marcar tarefa como concluída');
+        showErrorToast('Erro ao concluir tarefa', 'Não foi possível marcar a tarefa como concluída. Tente novamente.');
       }
       
     } catch (error) {
       console.error('Erro ao completar tarefa:', error);
-      alert('Erro ao marcar tarefa como concluída');
+      showErrorToast('Erro ao concluir tarefa', 'Ocorreu um erro inesperado. Tente novamente.');
     }
   };
 

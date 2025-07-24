@@ -20,6 +20,8 @@ import {
 import { BlurFade } from './ui/blur-fade';
 import { ShimmerButton } from './ui/shimmer-button';
 import { IconBadge } from './ui/icon-badge';
+// ✅ OUTCOME REASONS: Importar analytics
+import OutcomeReasonsAnalytics from './Analytics/OutcomeReasonsAnalytics';
 
 interface ConsolidatedMetrics {
   total_companies: number;
@@ -415,6 +417,19 @@ const ReportsModule: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ✅ OUTCOME REASONS: Analytics Dashboard */}
+      <div className="mb-6">
+        <OutcomeReasonsAnalytics
+          pipelineId="all" // Super admin vê todos os pipelines
+          tenantId={user?.tenant_id || ''}
+          userRole={user?.role || 'member'}
+          dateRange={{
+            start: filters.startDate,
+            end: filters.endDate
+          }}
+        />
+      </div>
 
       {/* Tabela de Performance por Empresa */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">

@@ -1,5 +1,6 @@
 import express from 'express';
 import { CadenceService } from '../services/cadenceService';
+import { authenticateToken } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -7,7 +8,7 @@ const router = express.Router();
  * POST /api/cadence/save
  * Salvar configuração de cadência para uma pipeline
  */
-router.post('/save', async (req, res) => {
+router.post('/save', authenticateToken, async (req, res) => {
   try {
     const {
       pipeline_id,
@@ -59,7 +60,7 @@ router.post('/save', async (req, res) => {
  * GET /api/cadence/load/:pipeline_id
  * Carregar configurações de cadência de uma pipeline
  */
-router.get('/load/:pipeline_id', async (req, res) => {
+router.get('/load/:pipeline_id', authenticateToken, async (req, res) => {
   try {
     const { pipeline_id } = req.params;
     const { tenant_id } = req.query;
@@ -98,7 +99,7 @@ router.get('/load/:pipeline_id', async (req, res) => {
  * DELETE /api/cadence/delete/:pipeline_id
  * Deletar configurações de cadência de uma pipeline
  */
-router.delete('/delete/:pipeline_id', async (req, res) => {
+router.delete('/delete/:pipeline_id', authenticateToken, async (req, res) => {
   try {
     const { pipeline_id } = req.params;
     const { tenant_id } = req.query;
@@ -136,7 +137,7 @@ router.delete('/delete/:pipeline_id', async (req, res) => {
  * GET /api/cadence/stage/:pipeline_id/:stage_name
  * Buscar configuração de cadência para uma etapa específica
  */
-router.get('/stage/:pipeline_id/:stage_name', async (req, res) => {
+router.get('/stage/:pipeline_id/:stage_name', authenticateToken, async (req, res) => {
   try {
     const { pipeline_id, stage_name } = req.params;
     const { tenant_id } = req.query;

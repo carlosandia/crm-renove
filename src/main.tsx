@@ -1,61 +1,149 @@
-import React from 'react'
+import React, { Suspense, lazy } from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import App from './App'
-import { logger } from './utils/logger'
-import './utils/consoleCleaner' // Ativar limpeza de console
+import { useAuth } from './contexts/AuthContext'
 import './index.css'
 
-// Diagnóstico removido para evitar logs desnecessários no console
+console.log('🚀 Main.tsx carregado - renderizando App completo com React Router v7 Future Flags')
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
-      retry: 1,
-    },
-  },
+// 🚀 OTIMIZAÇÃO: Lazy loading de componentes pesados
+const AppDashboard = lazy(() => import('./components/AppDashboard'))
+const PublicFormRoute = lazy(() => import('./components/FormBuilder/PublicFormRoute'))
+const GoogleCalendarCallback = lazy(() => import('./components/GoogleCalendarCallback'))
+const AccountActivation = lazy(() => import('./components/AccountActivation'))
+const ModernLoginForm = lazy(() => import('./components/auth/ModernLoginForm').then(module => ({ default: module.ModernLoginForm })))
+
+// ✅ CORREÇÃO: Loading mais rápido e menos intrusivo
+const LoadingFallback = React.memo(() => (
+  <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+      <p className="mt-2 text-sm text-gray-500">Iniciando...</p>
+    </div>
+  </div>
+))
+
+// 🔧 CORREÇÃO: Componente wrapper para rotas protegidas (sem Navigate)
+const ProtectedDashboard = React.memo(() => {
+  const { user, loading } = useAuth()
+  
+  React.useEffect(() => {
+    if (!loading && !user) {
+      // Usar window.location para redirecionamento sem warnings
+      window.location.replace('/login')
+    }
+  }, [user, loading])
+  
+  if (loading) {
+    return <LoadingFallback />
+  }
+  
+  if (!user) {
+    return <LoadingFallback />
+  }
+  
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <AppDashboard />
+    </Suspense>
+  )
 })
 
-// Registrar Service Worker para cache offline-first
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then((registration) => {
-        logger.info('Service Worker registrado com sucesso');
-        
-        // Verificar por atualizações
-        registration.addEventListener('updatefound', () => {
-          const newWorker = registration.installing;
-          if (newWorker) {
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // Nova versão disponível
-                if (confirm('Nova versão disponível! Recarregar para atualizar?')) {
-                  newWorker.postMessage({ type: 'SKIP_WAITING' });
-                  window.location.reload();
-                }
-              }
-            });
-          }
-        });
-      })
-      .catch((registrationError) => {
-        logger.warn('Falha ao registrar Service Worker', registrationError.message);
-      });
-  });
-}
+// 🔧 CORREÇÃO: Componente wrapper para login com redirecionamento (sem Navigate)
+const LoginWrapper = React.memo(() => {
+  const { user } = useAuth()
+  
+  React.useEffect(() => {
+    if (user) {
+      // Usar window.location para redirecionamento sem warnings
+      window.location.replace('/')
+    }
+  }, [user])
+  
+  if (user) {
+    return <LoadingFallback />
+  }
+  
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <ModernLoginForm />
+    </Suspense>
+  )
+})
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <QueryClientProvider client={queryClient}>
-    <BrowserRouter
+// 🔧 CORREÇÃO: Configurar React Router com Future Flags para v7 e rotas completas
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <App />,
+    children: [
+      {
+        path: "form/:slug",
+        element: (
+          <Suspense fallback={<LoadingFallback />}>
+            <PublicFormRoute />
+          </Suspense>
+        )
+      },
+      {
+        path: "auth/google/callback",
+        element: (
+          <Suspense fallback={<LoadingFallback />}>
+            <GoogleCalendarCallback />
+          </Suspense>
+        )
+      },
+      {
+        path: "activate",
+        element: (
+          <Suspense fallback={<LoadingFallback />}>
+            <AccountActivation />
+          </Suspense>
+        )
+      },
+      {
+        path: "login",
+        element: <LoginWrapper />
+      },
+      {
+        path: "",
+        element: <ProtectedDashboard />
+      },
+      {
+        path: "*",
+        loader: () => {
+          // Redirecionamento usando loader (sem Navigate)
+          return Response.redirect('/', 302)
+        },
+        element: <LoadingFallback />
+      }
+    ]
+  }
+], {
+  future: {
+    // 🚀 OTIMIZAÇÃO: Future flags para React Router v7
+    v7_startTransition: true,           // Wrapping state updates em React.startTransition
+    v7_relativeSplatPath: true,         // Resolução aprimorada de paths relativos
+    v7_fetcherPersist: true,            // Persistência de estado do fetcher
+    v7_normalizeFormMethod: true,       // Normalização de métodos de formulário
+    v7_partialHydration: true,          // Hidratação parcial em SSR
+    v7_skipActionErrorRevalidation: true // Evitar revalidação em erros de ação
+  }
+})
+
+// Renderizar a aplicação completa
+const root = document.getElementById('root')
+if (root) {
+  console.log('✅ Elemento root encontrado')
+  ReactDOM.createRoot(root).render(
+    <RouterProvider 
+      router={router} 
       future={{
-        v7_startTransition: true,
-        v7_relativeSplatPath: true,
+        v7_startTransition: true
       }}
-    >
-      <App />
-    </BrowserRouter>
-  </QueryClientProvider>,
-)
+    />
+  )
+} else {
+  console.error('❌ Elemento root não encontrado')
+}

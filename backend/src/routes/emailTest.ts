@@ -133,7 +133,7 @@ router.get('/config',
   asyncHandler(async (req: Request, res: Response) => {
     const config = {
       provider: process.env.EMAIL_PROVIDER || 'mailtrap',
-      appUrl: process.env.APP_URL || 'http://localhost:8080',
+      appUrl: process.env.APP_URL || 'http://127.0.0.1:8080',
       companyName: process.env.COMPANY_NAME || 'CRM Marketing',
       mailtrap: {
         host: process.env.MAILTRAP_HOST || 'smtp.mailtrap.io',
@@ -227,7 +227,7 @@ router.post('/send-admin-invitation',
           messageId: emailResult.messageId,
           to: adminEmail,
           expiresAt: expiresAt.toISOString(),
-          activationUrl: `${process.env.APP_URL || 'http://localhost:8080'}/activate?token=${activationToken}`,
+          activationUrl: `${process.env.APP_URL || 'http://127.0.0.1:8080'}/activate?token=${activationToken}`,
           provider: process.env.EMAIL_PROVIDER || 'mailtrap',
           timestamp: new Date().toISOString()
         });

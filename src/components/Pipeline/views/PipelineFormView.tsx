@@ -1,12 +1,12 @@
 import React from 'react';
 import { Pipeline } from '../../../types/Pipeline';
 import { User } from '../../../types/User';
-import ModernPipelineCreator from '../ModernPipelineCreator';
+import ModernPipelineCreatorRefactored from '../ModernPipelineCreatorRefactored';
 
 export interface PipelineFormViewProps {
   editingPipeline: Pipeline | null;
   availableMembers: User[];
-  onSubmit: (data: any) => Promise<void>;
+  onSubmit: (data: any, shouldRedirect?: boolean, options?: any) => Promise<void>;
   onCancel: () => void;
   isEdit?: boolean;
 }
@@ -18,10 +18,15 @@ export const PipelineFormView: React.FC<PipelineFormViewProps> = ({
   onCancel,
   isEdit = false
 }) => {
-  console.log('🎯 [PipelineFormView] Renderizando ModernPipelineCreator com members:', availableMembers.length);
+  console.log('🎯 [PipelineFormView] Renderizando ModernPipelineCreator:', {
+    membersCount: availableMembers.length,
+    isEdit,
+    hasEditingPipeline: !!editingPipeline,
+    editingPipelineId: editingPipeline?.id
+  });
   
   return (
-    <ModernPipelineCreator
+    <ModernPipelineCreatorRefactored
       members={availableMembers}
       pipeline={editingPipeline || undefined}
       onSubmit={onSubmit}

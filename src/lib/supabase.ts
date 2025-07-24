@@ -242,7 +242,6 @@ export const fetchPipelinesWithFallback = async (tenantId: string) => {
             order_index: 0,
             color: '#3B82F6',
             temperature_score: 0,
-            max_days_allowed: 30,
             is_system_stage: true,
             pipeline_id: '3c5d0e6d-55af-467a-a4c1-a5fbab1d7bc4'
           },
@@ -252,7 +251,6 @@ export const fetchPipelinesWithFallback = async (tenantId: string) => {
             order_index: 1,
             color: '#10B981',
             temperature_score: 100,
-            max_days_allowed: 0,
             is_system_stage: true,
             pipeline_id: '3c5d0e6d-55af-467a-a4c1-a5fbab1d7bc4'
           },
@@ -262,7 +260,6 @@ export const fetchPipelinesWithFallback = async (tenantId: string) => {
             order_index: 2,
             color: '#EF4444',
             temperature_score: 0,
-            max_days_allowed: 0,
             is_system_stage: true,
             pipeline_id: '3c5d0e6d-55af-467a-a4c1-a5fbab1d7bc4'
           }
@@ -339,7 +336,6 @@ export const fetchPipelinesWithFallback = async (tenantId: string) => {
               order_index: 0,
               color: '#3B82F6',
               temperature_score: 20,
-              max_days_allowed: 30,
               is_system_stage: true,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString()
@@ -347,11 +343,10 @@ export const fetchPipelinesWithFallback = async (tenantId: string) => {
             {
               id: `${pipeline.id}-stage-won`,
               pipeline_id: pipeline.id,
-              name: 'Closed Won',
+              name: 'Ganho',
               order_index: 1,
               color: '#10B981',
               temperature_score: 100,
-              max_days_allowed: 0,
               is_system_stage: true,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString()
@@ -359,11 +354,10 @@ export const fetchPipelinesWithFallback = async (tenantId: string) => {
             {
               id: `${pipeline.id}-stage-lost`,
               pipeline_id: pipeline.id,
-              name: 'Closed Lost',
+              name: 'Perdido',
               order_index: 2,
               color: '#EF4444',
               temperature_score: 0,
-              max_days_allowed: 0,
               is_system_stage: true,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString()
@@ -542,7 +536,6 @@ export const fetchPipelineStagesWithFallback = async (pipelineId: string) => {
           order_index: 0,
           color: '#3B82F6',
           temperature_score: 20,
-          max_days_allowed: 30,
           is_system_stage: true
         },
         {
@@ -552,7 +545,6 @@ export const fetchPipelineStagesWithFallback = async (pipelineId: string) => {
           order_index: 1,
           color: '#8B5CF6',
           temperature_score: 40,
-          max_days_allowed: 15,
           is_system_stage: false
         },
         {
@@ -562,27 +554,24 @@ export const fetchPipelineStagesWithFallback = async (pipelineId: string) => {
           order_index: 2,
           color: '#F59E0B',
           temperature_score: 70,
-          max_days_allowed: 10,
           is_system_stage: false
         },
         {
           id: `${pipelineId}-stage-4`,
           pipeline_id: pipelineId,
-          name: 'Closed Won',
+          name: 'Ganho',
           order_index: 3,
           color: '#10B981',
           temperature_score: 100,
-          max_days_allowed: 0,
           is_system_stage: true
         },
         {
           id: `${pipelineId}-stage-5`,
           pipeline_id: pipelineId,
-          name: 'Closed Lost',
+          name: 'Perdido',
           order_index: 4,
           color: '#EF4444',
           temperature_score: 0,
-          max_days_allowed: 0,
           is_system_stage: true
         }
       ];
@@ -716,7 +705,6 @@ export async function ensurePipelineStages() {
         name: 'Lead',
         order_index: 0,
         temperature_score: 20,
-        max_days_allowed: 30,
         color: '#3B82F6',
         is_system_stage: true,
         created_at: new Date().toISOString(),
@@ -728,7 +716,6 @@ export async function ensurePipelineStages() {
         name: 'Qualified',
         order_index: 1,
         temperature_score: 40,
-        max_days_allowed: 15,
         color: '#8B5CF6',
         is_system_stage: false,
         created_at: new Date().toISOString(),
@@ -740,7 +727,6 @@ export async function ensurePipelineStages() {
         name: 'Proposal',
         order_index: 2,
         temperature_score: 70,
-        max_days_allowed: 7,
         color: '#F59E0B',
         is_system_stage: false,
         created_at: new Date().toISOString(),
@@ -749,10 +735,9 @@ export async function ensurePipelineStages() {
       {
         id: crypto.randomUUID(),
         pipeline_id: pipeline.id,
-        name: 'Closed Won',
+        name: 'Ganho',
         order_index: 3,
         temperature_score: 100,
-        max_days_allowed: null,
         color: '#10B981',
         is_system_stage: true,
         created_at: new Date().toISOString(),
@@ -761,10 +746,9 @@ export async function ensurePipelineStages() {
       {
         id: crypto.randomUUID(),
         pipeline_id: pipeline.id,
-        name: 'Closed Lost',
+        name: 'Perdido',
         order_index: 4,
         temperature_score: 0,
-        max_days_allowed: null,
         color: '#EF4444',
         is_system_stage: true,
         created_at: new Date().toISOString(),
@@ -778,10 +762,17 @@ export async function ensurePipelineStages() {
     // Abordagem 1: Insert direto
     try {
       console.log('📝 Tentativa 1: Insert direto no Supabase...');
-      const { data: createdStages, error: createError } = await supabase
+      // 🔧 CORREÇÃO RLS: Aplicar UUIDs manuais aos stages
+      const stagesWithIds = stagesToCreate.map(stage => ({
+        ...stage,
+        id: crypto.randomUUID()
+      }));
+      
+      const { error: createError } = await supabase
         .from('pipeline_stages')
-        .insert(stagesToCreate)
-        .select();
+        .insert(stagesWithIds);
+        
+      const createdStages = createError ? null : stagesWithIds;
 
       if (!createError && createdStages && createdStages.length > 0) {
         console.log('✅ Sucesso! Criados', createdStages.length, 'stages via insert direto');
@@ -804,13 +795,13 @@ export async function ensurePipelineStages() {
             query: `
               INSERT INTO pipeline_stages (
                 id, pipeline_id, name, order_index, temperature_score, 
-                max_days_allowed, color, is_system_stage, created_at, updated_at
+                color, is_system_stage, created_at, updated_at
               ) VALUES 
-              ('${stagesToCreate[0].id}', '${pipeline.id}', 'Novos Leads', 0, 1, 30, '#3B82F6', false, NOW(), NOW()),
-              ('${stagesToCreate[1].id}', '${pipeline.id}', 'Qualificado', 1, 2, 15, '#F59E0B', false, NOW(), NOW()),
-              ('${stagesToCreate[2].id}', '${pipeline.id}', 'Agendado', 2, 3, 7, '#10B981', false, NOW(), NOW()),
-              ('${stagesToCreate[3].id}', '${pipeline.id}', 'Ganho', 3, 5, NULL, '#059669', true, NOW(), NOW()),
-              ('${stagesToCreate[4].id}', '${pipeline.id}', 'Perdido', 4, 0, NULL, '#DC2626', true, NOW(), NOW())
+              ('${stagesToCreate[0].id}', '${pipeline.id}', 'Novos Leads', 0, 1, '#3B82F6', false, NOW(), NOW()),
+              ('${stagesToCreate[1].id}', '${pipeline.id}', 'Qualificado', 1, 2, '#F59E0B', false, NOW(), NOW()),
+              ('${stagesToCreate[2].id}', '${pipeline.id}', 'Agendado', 2, 3, '#10B981', false, NOW(), NOW()),
+              ('${stagesToCreate[3].id}', '${pipeline.id}', 'Ganho', 3, 5, '#059669', true, NOW(), NOW()),
+              ('${stagesToCreate[4].id}', '${pipeline.id}', 'Perdido', 4, 0, '#DC2626', true, NOW(), NOW())
               RETURNING *;
             `
           })
@@ -916,13 +907,13 @@ export async function forceCreateStagesSQL(pipelineId: string): Promise<boolean>
       sql_query: `
         INSERT INTO pipeline_stages (
           id, pipeline_id, name, order_index, temperature_score, 
-          max_days_allowed, color, is_system_stage, created_at, updated_at
+          color, is_system_stage, created_at, updated_at
         ) VALUES 
-        ('${crypto.randomUUID()}', '${pipelineId}', 'Novos Leads', 0, 1, 30, '#3B82F6', false, NOW(), NOW()),
-        ('${crypto.randomUUID()}', '${pipelineId}', 'Qualificado', 1, 2, 15, '#F59E0B', false, NOW(), NOW()),
-        ('${crypto.randomUUID()}', '${pipelineId}', 'Agendado', 2, 3, 7, '#10B981', false, NOW(), NOW()),
-        ('${crypto.randomUUID()}', '${pipelineId}', 'Ganho', 3, 5, NULL, '#059669', true, NOW(), NOW()),
-        ('${crypto.randomUUID()}', '${pipelineId}', 'Perdido', 4, 0, NULL, '#DC2626', true, NOW(), NOW())
+        ('${crypto.randomUUID()}', '${pipelineId}', 'Novos Leads', 0, 1, '#3B82F6', false, NOW(), NOW()),
+        ('${crypto.randomUUID()}', '${pipelineId}', 'Qualificado', 1, 2, '#F59E0B', false, NOW(), NOW()),
+        ('${crypto.randomUUID()}', '${pipelineId}', 'Agendado', 2, 3, '#10B981', false, NOW(), NOW()),
+        ('${crypto.randomUUID()}', '${pipelineId}', 'Ganho', 3, 5, '#059669', true, NOW(), NOW()),
+        ('${crypto.randomUUID()}', '${pipelineId}', 'Perdido', 4, 0, '#DC2626', true, NOW(), NOW())
         ON CONFLICT (id) DO NOTHING
         RETURNING *;
       `
@@ -933,9 +924,9 @@ export async function forceCreateStagesSQL(pipelineId: string): Promise<boolean>
       
       // Fallback: tentativa manual direta
       const stages = [
-        { id: crypto.randomUUID(), pipeline_id: pipelineId, name: 'Novos Leads', order_index: 0, temperature_score: 1, max_days_allowed: 30, color: '#3B82F6', is_system_stage: false },
-        { id: crypto.randomUUID(), pipeline_id: pipelineId, name: 'Qualificado', order_index: 1, temperature_score: 2, max_days_allowed: 15, color: '#F59E0B', is_system_stage: false },
-        { id: crypto.randomUUID(), pipeline_id: pipelineId, name: 'Ganho', order_index: 2, temperature_score: 5, max_days_allowed: null, color: '#10B981', is_system_stage: true }
+        { id: crypto.randomUUID(), pipeline_id: pipelineId, name: 'Novos Leads', order_index: 0, temperature_score: 1, color: '#3B82F6', is_system_stage: false },
+        { id: crypto.randomUUID(), pipeline_id: pipelineId, name: 'Qualificado', order_index: 1, temperature_score: 2, color: '#F59E0B', is_system_stage: false },
+        { id: crypto.randomUUID(), pipeline_id: pipelineId, name: 'Ganho', order_index: 2, temperature_score: 5, color: '#10B981', is_system_stage: true }
       ];
 
       let success = 0;

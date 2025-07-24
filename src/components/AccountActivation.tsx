@@ -75,7 +75,7 @@ const AccountActivation: React.FC = () => {
       console.log('🔍 [ACTIVATION] Validando token:', token);
       
       // Fazer requisição real para o backend - usando rota unificada
-      const response = await fetch('http://localhost:3001/api/admin-invitations/validate-token', {
+      const response = await fetch('http://127.0.0.1:3001/api/admin-invitations/validate-token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -145,7 +145,7 @@ const AccountActivation: React.FC = () => {
       console.log('🔑 [ACTIVATION] Ativando conta...');
       
       // Fazer requisição real para o backend - usando rota unificada
-      const response = await fetch('http://localhost:3001/api/admin-invitations/activate', {
+      const response = await fetch('http://127.0.0.1:3001/api/admin-invitations/activate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -178,7 +178,7 @@ const AccountActivation: React.FC = () => {
             console.log(`⏱️ [CRITICAL-FIX-2] Aguardando ${delay}ms para sincronização...`);
             await new Promise(resolve => setTimeout(resolve, delay));
             
-          const loginResponse = await fetch('http://localhost:3001/api/auth/login', {
+          const loginResponse = await fetch('http://127.0.0.1:3001/api/auth/login', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

@@ -21,6 +21,11 @@ export { Alert, AlertDescription } from './alert';
 export { Badge } from './badge';
 export { Tabs, TabsContent, TabsList, TabsTrigger } from './tabs';
 export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './dialog';
+export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip';
+export { Progress } from './progress';
+export { Popover, PopoverContent, PopoverTrigger } from './popover';
+export { Calendar } from './calendar';
+export { default as Modal } from './modal';
 
 // Tipos úteis
 export type { 

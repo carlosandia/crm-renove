@@ -86,6 +86,16 @@ export interface DashboardMetrics {
     unread_alerts: number;
     critical_alerts: number;
   };
+  // ✅ FASE 4: Métricas de no-show e conversão
+  noshow_metrics: {
+    total_meetings: number;
+    scheduled_meetings: number;
+    completed_meetings: number;
+    noshow_meetings: number;
+    noshow_rate: number;
+    show_rate: number;
+    benchmark_comparison: 'good' | 'warning' | 'critical';
+  };
 }
 
 interface UseAdminDashboardResult {
@@ -109,7 +119,7 @@ interface UseAdminDashboardResult {
   clearCache: () => Promise<boolean>;
 }
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
 
 export function useAdminDashboard(): UseAdminDashboardResult {
   const { user } = useAuth();

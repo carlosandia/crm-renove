@@ -12,88 +12,231 @@ import {
   Settings,
   Clock,
   UserCheck,
-  AlertTriangle
+  AlertTriangle,
+  Save,
+  RefreshCw,
+  TestTube,
+  Loader2
 } from 'lucide-react';
+
+// Shared components
+import { SectionHeader } from '../shared/SectionHeader';
+
+// Constants
+import { PIPELINE_UI_CONSTANTS } from '../../../styles/pipeline-constants';
+import { useDistributionManager } from '../../../hooks/useDistributionApi';
+import { toast } from 'sonner';
 
 // ================================================================================
 // INTERFACES E TIPOS
 // ================================================================================
-interface DistributionRule {
-  mode: 'manual' | 'rodizio';
-  is_active: boolean;
-  working_hours_only: boolean;
-  skip_inactive_members: boolean;
-  fallback_to_manual: boolean;
-}
+import type { 
+  DistributionRule, 
+  SaveDistributionRuleRequest
+} from '../../../services/distributionApi';
 
-interface UseDistributionManagerProps {
-  initialRule?: DistributionRule;
+import type {
+  UseDistributionManagerReturn as ApiDistributionManagerReturn 
+} from '../../../hooks/useDistributionApi';
+
+interface DistributionManagerProps {
+  pipelineId: string;
   onRuleChange?: (rule: DistributionRule) => void;
 }
 
-interface UseDistributionManagerReturn {
-  distributionRule: DistributionRule;
-  setDistributionRule: React.Dispatch<React.SetStateAction<DistributionRule>>;
+export interface UseLocalDistributionManagerProps {
+  pipelineId: string;
+  onRuleChange?: (rule: DistributionRule) => void;
+}
+
+export interface UseLocalDistributionManagerReturn {
+  // Estado local
+  localRule: DistributionRule | null;
+  rule: DistributionRule | null; // Alias para facilitar acesso
+  hasUnsavedChanges: boolean;
+  
+  // Dados da API
+  apiData: ApiDistributionManagerReturn;
+  
+  // Handlers locais
   handleModeChange: (mode: 'manual' | 'rodizio') => void;
   handleToggleActive: () => void;
   handleToggleWorkingHours: () => void;
   handleToggleSkipInactive: () => void;
   handleToggleFallback: () => void;
+  
+  // Ações de persistência
+  handleSave: () => Promise<void>;
+  handleReset: () => void;
+  handleTest: () => Promise<void>;
+  handleResetDistribution: () => Promise<void>;
 }
-
-const DEFAULT_RULE: DistributionRule = {
-  mode: 'manual',
-  is_active: true,
-  working_hours_only: false,
-  skip_inactive_members: true,
-  fallback_to_manual: true
-};
 
 // ================================================================================
 // HOOKS CUSTOMIZADOS
 // ================================================================================
-export function useDistributionManager({ 
-  initialRule, 
+export function useLocalDistributionManager({ 
+  pipelineId,
   onRuleChange 
-}: UseDistributionManagerProps = {}): UseDistributionManagerReturn {
-  const [distributionRule, setDistributionRule] = useState<DistributionRule>(
-    initialRule || DEFAULT_RULE
-  );
-
-  useEffect(() => {
-    if (onRuleChange) {
-      onRuleChange(distributionRule);
+}: UseLocalDistributionManagerProps): UseLocalDistributionManagerReturn {
+  
+  // 🔧 CORREÇÃO: Verificar se já foi inicializado para evitar logs excessivos
+  const [initialized, setInitialized] = useState(false);
+  const isCreationMode = !pipelineId || pipelineId.length === 0;
+  const hasValidPipelineId = !!(pipelineId && pipelineId.length > 0);
+  
+  // ============================================
+  // OTIMIZADO: Logs removidos para evitar HMR excessivo
+  // ============================================
+  React.useEffect(() => {
+    if (!initialized) {
+      setInitialized(true);
     }
-  }, [distributionRule, onRuleChange]);
+  }, [pipelineId, hasValidPipelineId, isCreationMode, initialized]);
+  
+  // ✅ CORREÇÃO: Só usar API se há pipelineId válido
+  const apiData = useDistributionManager(hasValidPipelineId ? pipelineId : undefined);
+  
+  // 🔧 CORREÇÃO: Memoizar defaultRule para evitar re-criação constante
+  const defaultRule = React.useMemo<DistributionRule>(() => ({
+    pipeline_id: '', // Será preenchido quando houver pipelineId válido
+    mode: 'manual',
+    is_active: true,
+    working_hours_only: false,
+    skip_inactive_members: true,
+    fallback_to_manual: true
+  }), []);
+  
+  // ✅ CORREÇÃO: Inicializar estado local com valor padrão em modo criação
+  const [localRule, setLocalRule] = useState<DistributionRule | null>(() => {
+    // Se não há pipelineId válido (modo criação), inicializar com valor padrão
+    if (isCreationMode) {
+      return defaultRule;
+    }
+    
+    // Modo edição: inicializar com null para aguardar dados da API
+    return null;
+  });
 
+  // 🔧 CORREÇÃO: Inicializar com dados da API quando disponível (modo edição)
+  useEffect(() => {
+    if (hasValidPipelineId && apiData.rule && !localRule) {
+      setLocalRule(apiData.rule);
+    }
+  }, [apiData.rule, localRule, hasValidPipelineId]);
+
+  // 🔧 CORREÇÃO: Memoizar verificação de mudanças para evitar comparações desnecessárias
+  const hasUnsavedChanges = React.useMemo(() => {
+    return localRule && apiData.rule ? 
+      JSON.stringify(localRule) !== JSON.stringify(apiData.rule) : false;
+  }, [localRule, apiData.rule]);
+
+  // 🔧 CORREÇÃO: Memoizar callback de notificação
+  const notifyRuleChange = React.useCallback((rule: DistributionRule) => {
+    if (onRuleChange) {
+      onRuleChange(rule);
+    }
+  }, [onRuleChange]);
+
+  // Notificar mudanças via callback
+  useEffect(() => {
+    if (localRule) {
+      notifyRuleChange(localRule);
+    }
+  }, [localRule, notifyRuleChange]);
+
+  // Handlers para mudanças locais
   const handleModeChange = (mode: 'manual' | 'rodizio') => {
-    setDistributionRule(prev => ({ ...prev, mode }));
+    if (localRule) {
+      setLocalRule(prev => prev ? { ...prev, mode } : null);
+    }
   };
 
   const handleToggleActive = () => {
-    setDistributionRule(prev => ({ ...prev, is_active: !prev.is_active }));
+    if (localRule) {
+      setLocalRule(prev => prev ? { ...prev, is_active: !prev.is_active } : null);
+    }
   };
 
   const handleToggleWorkingHours = () => {
-    setDistributionRule(prev => ({ ...prev, working_hours_only: !prev.working_hours_only }));
+    if (localRule) {
+      setLocalRule(prev => prev ? { ...prev, working_hours_only: !prev.working_hours_only } : null);
+    }
   };
 
   const handleToggleSkipInactive = () => {
-    setDistributionRule(prev => ({ ...prev, skip_inactive_members: !prev.skip_inactive_members }));
+    if (localRule) {
+      setLocalRule(prev => prev ? { ...prev, skip_inactive_members: !prev.skip_inactive_members } : null);
+    }
   };
 
   const handleToggleFallback = () => {
-    setDistributionRule(prev => ({ ...prev, fallback_to_manual: !prev.fallback_to_manual }));
+    if (localRule) {
+      setLocalRule(prev => prev ? { ...prev, fallback_to_manual: !prev.fallback_to_manual } : null);
+    }
+  };
+
+  // Ações de persistência
+  const handleSave = async () => {
+    if (!localRule) return;
+    
+    try {
+      const saveData: SaveDistributionRuleRequest = {
+        mode: localRule.mode,
+        is_active: localRule.is_active,
+        working_hours_only: localRule.working_hours_only,
+        skip_inactive_members: localRule.skip_inactive_members,
+        fallback_to_manual: localRule.fallback_to_manual
+      };
+      
+      await apiData.saveRule(saveData);
+      
+      // Sincronizar estado local com dados salvos
+      if (apiData.rule) {
+        setLocalRule(apiData.rule);
+      }
+    } catch (error) {
+      // Erro já tratado no hook da API
+    }
+  };
+
+  const handleReset = () => {
+    if (apiData.rule) {
+      setLocalRule(apiData.rule);
+      toast.info('Alterações descartadas');
+    }
+  };
+
+  const handleTest = async () => {
+    try {
+      await apiData.testDistribution();
+    } catch (error) {
+      // Erro já tratado no hook da API
+    }
+  };
+
+  const handleResetDistribution = async () => {
+    try {
+      await apiData.resetDistribution();
+    } catch (error) {
+      // Erro já tratado no hook da API
+    }
   };
 
   return {
-    distributionRule,
-    setDistributionRule,
+    localRule,
+    rule: localRule, // ✅ CORREÇÃO: Alias para facilitar acesso
+    hasUnsavedChanges,
+    apiData,
     handleModeChange,
     handleToggleActive,
     handleToggleWorkingHours,
     handleToggleSkipInactive,
-    handleToggleFallback
+    handleToggleFallback,
+    handleSave,
+    handleReset,
+    handleTest,
+    handleResetDistribution
   };
 }
 
@@ -101,30 +244,103 @@ export function useDistributionManager({
 // COMPONENTE DE RENDERIZAÇÃO DE DISTRIBUIÇÃO
 // ================================================================================
 interface DistributionManagerRenderProps {
-  distributionManager: UseDistributionManagerReturn;
+  distributionManager: UseLocalDistributionManagerReturn;
 }
 
 export function DistributionManagerRender({ distributionManager }: DistributionManagerRenderProps) {
   const {
-    distributionRule,
+    localRule,
+    hasUnsavedChanges,
+    apiData,
     handleModeChange,
     handleToggleActive,
     handleToggleWorkingHours,
     handleToggleSkipInactive,
-    handleToggleFallback
+    handleToggleFallback,
+    handleSave,
+    handleReset,
+    handleTest,
+    handleResetDistribution
   } = distributionManager;
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <RotateCcw className="h-5 w-5 text-orange-500" />
-          Distribuição de Leads
-        </h3>
-        <p className="text-sm text-muted-foreground mt-1">
-          Configure como os novos leads serão distribuídos entre os vendedores.
-        </p>
+  // Estados de carregamento
+  const { isLoading, isSaving, isTesting, isResetting } = apiData;
+
+  // ============================================
+  // OTIMIZADO: Logs removidos para evitar HMR excessivo
+  // ============================================
+
+  // ✅ CORREÇÃO: Só mostrar loading se realmente não há regra local
+  // Em modo criação, localRule deve ser definida imediatamente com valores padrão
+  if (!localRule) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Loader2 className="h-5 w-5 text-orange-500 animate-spin" />
+            Carregando Distribuição...
+          </h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Buscando configurações de distribuição da pipeline.
+          </p>
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div className={PIPELINE_UI_CONSTANTS.spacing.section}>
+      <SectionHeader
+        icon={RotateCcw}
+        title="Distribuição de Leads"
+        action={
+          <div className="flex items-center gap-2">
+            {hasUnsavedChanges && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded-full">
+                  Não salvo
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReset}
+                  disabled={isSaving}
+                >
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                  Descartar
+                </Button>
+              </div>
+            )}
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleTest}
+              disabled={isTesting || localRule.mode === 'manual'}
+            >
+              {isTesting ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <TestTube className="h-4 w-4 mr-1" />
+              )}
+              Testar
+            </Button>
+            
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={!hasUnsavedChanges || isSaving}
+            >
+              {isSaving ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-1" />
+              )}
+              Salvar
+            </Button>
+          </div>
+        }
+      />
 
       <BlurFade delay={0.1} inView>
         <AnimatedCard>
@@ -137,9 +353,10 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <Button
-                variant={distributionRule.mode === 'manual' ? 'default' : 'outline'}
+                variant={localRule.mode === 'manual' ? 'default' : 'outline'}
                 onClick={() => handleModeChange('manual')}
                 className="h-20 flex-col gap-2"
+                disabled={isSaving}
               >
                 <UserPlus className="h-6 w-6" />
                 <div className="text-center">
@@ -149,9 +366,10 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
               </Button>
 
               <Button
-                variant={distributionRule.mode === 'rodizio' ? 'default' : 'outline'}
+                variant={localRule.mode === 'rodizio' ? 'default' : 'outline'}
                 onClick={() => handleModeChange('rodizio')}
                 className="h-20 flex-col gap-2"
+                disabled={isSaving}
               >
                 <Shuffle className="h-6 w-6" />
                 <div className="text-center">
@@ -163,10 +381,10 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
 
             <div className="p-4 bg-muted/50 rounded-lg">
               <p className="text-sm">
-                <strong>Modo atual:</strong> {distributionRule.mode === 'manual' ? 'Manual' : 'Rodízio Automático'}
+                <strong>Modo atual:</strong> {localRule.mode === 'manual' ? 'Manual' : 'Rodízio Automático'}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                {distributionRule.mode === 'manual' 
+                {localRule.mode === 'manual' 
                   ? 'Leads serão atribuídos manualmente pelos administradores'
                   : 'Leads serão distribuídos automaticamente entre os vendedores ativos'
                 }
@@ -176,8 +394,8 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
         </AnimatedCard>
       </BlurFade>
 
-      {distributionRule.mode === 'rodizio' && (
-        <BlurFade delay={0.2} inView>
+      {localRule.mode === 'rodizio' && (
+        <BlurFade delay={0.05} inView>
           <AnimatedCard>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
@@ -200,8 +418,9 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
                   </div>
                 </div>
                 <Switch
-                  checked={distributionRule.working_hours_only}
+                  checked={localRule.working_hours_only}
                   onCheckedChange={handleToggleWorkingHours}
+                  disabled={isSaving}
                 />
               </div>
 
@@ -216,8 +435,9 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
                   </div>
                 </div>
                 <Switch
-                  checked={distributionRule.skip_inactive_members}
+                  checked={localRule.skip_inactive_members}
                   onCheckedChange={handleToggleSkipInactive}
+                  disabled={isSaving}
                 />
               </div>
 
@@ -232,10 +452,78 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
                   </div>
                 </div>
                 <Switch
-                  checked={distributionRule.fallback_to_manual}
+                  checked={localRule.fallback_to_manual}
                   onCheckedChange={handleToggleFallback}
+                  disabled={isSaving}
                 />
               </div>
+            </CardContent>
+          </AnimatedCard>
+        </BlurFade>
+      )}
+
+      {/* Seção de estatísticas básicas */}
+      {apiData.stats && (
+        <BlurFade delay={0.08} inView>
+          <AnimatedCard>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" />
+                Estatísticas de Distribuição
+              </CardTitle>
+              <CardDescription>
+                Métricas sobre a distribuição de leads
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">
+                    {apiData.stats.total_assignments}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Total Atribuições
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {apiData.stats.assignment_success_rate}%
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Taxa de Sucesso
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-amber-600">
+                    {apiData.stats.recent_assignments.length}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Recentes
+                  </div>
+                </div>
+              </div>
+              
+              {localRule.mode === 'rodizio' && (
+                <div className="pt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetDistribution}
+                    disabled={isResetting}
+                    className="w-full"
+                  >
+                    {isResetting ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    Resetar Rodízio
+                  </Button>
+                  <p className="text-xs text-muted-foreground text-center mt-2">
+                    Limpa o histórico e reinicia a distribuição
+                  </p>
+                </div>
+              )}
             </CardContent>
           </AnimatedCard>
         </BlurFade>
@@ -245,6 +533,29 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
 }
 
 // ================================================================================
-// COMPONENTE PRINCIPAL
+// COMPONENTE PRINCIPAL CONECTADO
 // ================================================================================
-export default DistributionManagerRender; 
+interface ConnectedDistributionManagerProps {
+  pipelineId: string;
+  onRuleChange?: (rule: DistributionRule) => void;
+}
+
+export function ConnectedDistributionManager({ 
+  pipelineId, 
+  onRuleChange 
+}: ConnectedDistributionManagerProps) {
+  const distributionManager = useLocalDistributionManager({
+    pipelineId,
+    onRuleChange
+  });
+
+  return <DistributionManagerRender distributionManager={distributionManager} />;
+}
+
+// ================================================================================
+// EXPORTAÇÕES
+// ================================================================================
+export default ConnectedDistributionManager;
+
+// Manter compatibilidade com versão anterior (sem backend)
+export { DistributionManagerRender as DistributionManagerOffline }; 

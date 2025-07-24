@@ -151,6 +151,14 @@ export const usePipelineNameValidation = (initialName: string = '', pipelineId?:
   }, [validateWithDebounce]);
 
   /**
+   * Inicializar nome sem validar (para modo edição)
+   */
+  const initializeName = useCallback((newName: string) => {
+    setName(newName);
+    // Não validar automaticamente - só definir o nome
+  }, []);
+
+  /**
    * Validação manual imediata (para onBlur ou submit)
    */
   const validateImmediately = useCallback(async () => {
@@ -231,20 +239,23 @@ export const usePipelineNameValidation = (initialName: string = '', pipelineId?:
   }, [debounceTimer]);
 
   /**
-   * Validar nome inicial se fornecido
+   * Validar nome inicial se fornecido - ✅ CORREÇÃO ERRO 3: Evitar loop infinito
    */
   useEffect(() => {
-    if (initialName && initialName.trim() && !validationState.hasChecked) {
+    if (initialName && initialName.trim() && !validationState.hasChecked && name === initialName) {
+      console.log('🔍 [usePipelineNameValidation] Validação inicial para:', initialName);
       validateWithDebounce(initialName);
     }
-  }, [initialName, validationState.hasChecked, validateWithDebounce]);
+  }, [initialName]); // ✅ Apenas initialName como dependência
 
   // Estados derivados para facilitar uso
   const isValid = validationState.validation?.is_valid === true;
   const hasError = validationState.validation?.error !== undefined;
   const isNameEmpty = !name.trim();
   const showValidation = validationState.hasChecked && !validationState.isValidating;
-  const canSubmit = isValid && !isNameEmpty && !validationState.isValidating;
+  // Para edição, permitir submit se nome não mudou ou se é válido
+  const canSubmit = (!isNameEmpty && !validationState.isValidating) && 
+    (pipelineId ? (isValid || !validationState.hasChecked) : isValid);
 
   return {
     // Estado principal
@@ -262,6 +273,7 @@ export const usePipelineNameValidation = (initialName: string = '', pipelineId?:
     
     // Ações
     updateName,
+    initializeName,
     validateImmediately,
     applySuggestion,
     reset,

@@ -2497,7 +2497,6 @@ export interface PipelineStage {
   order_index: number;
   color: string;
   temperature_score?: number;
-  max_days_allowed?: number;
   is_system_stage?: boolean;
   created_at: string;
   

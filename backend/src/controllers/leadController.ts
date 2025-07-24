@@ -1,37 +1,113 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
+import { LeadDistributionService, CreateLeadPayload } from '../services/leadDistributionService';
 
 export class LeadController {
   // GET /api/pipelines/:pipeline_id/leads - Buscar leads de uma pipeline
   static async getLeadsByPipeline(req: Request, res: Response) {
     try {
       const { pipeline_id } = req.params;
+      const { tenant_id, start_date, end_date } = req.query;
+      
+      console.log('🔍 [getLeadsByPipeline] Buscando leads:', {
+        pipeline_id,
+        tenant_id,
+        start_date,
+        end_date,
+        query: req.query
+      });
 
       if (!pipeline_id) {
+        console.warn('⚠️ [getLeadsByPipeline] pipeline_id não fornecido');
         return res.status(400).json({ error: 'pipeline_id é obrigatório' });
       }
 
-      // Usar lead_data que é a coluna que existe na tabela
-      const { data: leads, error } = await supabase
+      // ✅ Query com JOIN para pegar dados do leads_master
+      let query = supabase
         .from('pipeline_leads')
-        .select('*')
+        .select(`
+          *,
+          leads_master:lead_master_id(
+            id,
+            first_name,
+            last_name,
+            email,
+            phone,
+            company,
+            estimated_value
+          )
+        `)
         .eq('pipeline_id', pipeline_id)
         .order('created_at', { ascending: false });
+      
+      if (tenant_id) {
+        query = query.eq('tenant_id', tenant_id);
+      }
+
+      // ✅ FILTRO POR PERÍODO: Aplicar filtros de data se fornecidos
+      if (start_date && end_date) {
+        console.log('🗓️ [getLeadsByPipeline] Aplicando filtro de período:', { start_date, end_date });
+        
+        // Converter datas para formato ISO com hora para garantir comparação correta
+        const startDateTime = `${start_date}T00:00:00.000Z`;
+        const endDateTime = `${end_date}T23:59:59.999Z`;
+        
+        query = query
+          .gte('created_at', startDateTime)
+          .lte('created_at', endDateTime);
+      }
+      
+      const { data: leads, error } = await query;
 
       if (error) {
-        console.error('Erro ao buscar leads:', error);
+        console.error('❌ [getLeadsByPipeline] Erro ao buscar leads:', error);
         return res.status(500).json({ error: 'Erro ao buscar leads', details: error.message });
       }
 
-      // Renomear lead_data para custom_data no retorno para manter compatibilidade
+      console.log('📋 [getLeadsByPipeline] Leads encontrados:', {
+        pipeline_id,
+        total: leads?.length || 0,
+        leads: leads?.map(l => ({
+          id: l.id.substring(0, 8),
+          stage_id: l.stage_id,
+          has_custom_data: !!l.custom_data,
+          has_lead_data: !!l.lead_data,
+          has_leads_master: !!l.leads_master,
+          lead_name: l.leads_master ? `${l.leads_master.first_name} ${l.leads_master.last_name}`.trim() : 'N/A'
+        })) || []
+      });
+
+      // ✅ CORREÇÃO: Combinar dados do pipeline_leads e leads_master
       const leadsResponse = (leads || []).map(lead => ({
         ...lead,
-        custom_data: lead.lead_data
+        custom_data: lead.custom_data || lead.lead_data || {},
+        // ✅ INCLUIR: Dados do leads_master diretamente no lead para evitar hook adicional
+        first_name: lead.leads_master?.first_name || lead.custom_data?.nome_lead?.split(' ')[0] || '',
+        last_name: lead.leads_master?.last_name || lead.custom_data?.nome_lead?.split(' ').slice(1).join(' ') || '',
+        email: lead.leads_master?.email || lead.custom_data?.email || '',
+        phone: lead.leads_master?.phone || lead.custom_data?.telefone || '',
+        company: lead.leads_master?.company || lead.custom_data?.empresa || '',
+        estimated_value: lead.leads_master?.estimated_value || lead.custom_data?.valor || 0,
+        // Manter referência ao leads_master para compatibilidade
+        lead_master_data: lead.leads_master
       }));
 
-      res.json({ leads: leadsResponse });
+      console.log('✅ [getLeadsByPipeline] Resposta processada:', {
+        pipeline_id,
+        leads_count: leadsResponse.length,
+        first_lead: leadsResponse[0] ? {
+          id: leadsResponse[0].id.substring(0, 8),
+          stage_id: leadsResponse[0].stage_id,
+          has_custom_data: !!leadsResponse[0].custom_data,
+          name: `${leadsResponse[0].first_name} ${leadsResponse[0].last_name}`.trim(),
+          email: leadsResponse[0].email
+        } : null
+      });
+
+      // ✅ CORREÇÃO: Retornar dados diretamente para compatibilidade com frontend
+      res.json(leadsResponse);
     } catch (error) {
-      console.error('Erro ao buscar leads:', error);
+      console.error('❌ [getLeadsByPipeline] Erro interno:', error);
       res.status(500).json({ error: 'Erro interno do servidor' });
     }
   }
@@ -92,8 +168,6 @@ export class LeadController {
           pipeline_id: pipeline_id,
           name: 'Novos Leads',
           order_index: 0,
-          temperature_score: 25,
-          max_days_allowed: 7,
           color: '#3B82F6'
         })
         .select()
@@ -144,11 +218,12 @@ export class LeadController {
     }
   }
 
-  // POST /api/pipelines/:pipeline_id/leads - Criar novo lead
+  // POST /api/pipelines/:pipeline_id/leads - Criar novo lead com distribuição automática
   static async createLead(req: Request, res: Response) {
     try {
       const { pipeline_id } = req.params;
       const { stage_id, custom_data, created_by } = req.body;
+      const user = (req as any).user;
 
       if (!pipeline_id) {
         return res.status(400).json({ 
@@ -156,8 +231,56 @@ export class LeadController {
         });
       }
 
+      // ✅ INTEGRAÇÃO COM SISTEMA DE DISTRIBUIÇÃO
+      // Verificar se temos dados suficientes para usar o LeadDistributionService
+      const leadData = custom_data || {};
+      
+      if (leadData.first_name || leadData.nome_lead || leadData.email) {
+        // Temos dados suficientes, usar o sistema de distribuição completo
+        console.log('🎯 Usando LeadDistributionService para criar lead com distribuição');
+        
+        const payload: CreateLeadPayload = {
+          first_name: leadData.first_name || leadData.nome_lead || 'Lead',
+          last_name: leadData.last_name || leadData.sobrenome || '',
+          email: leadData.email || leadData.email_lead || '',
+          phone: leadData.phone || leadData.telefone || '',
+          company: leadData.company || leadData.empresa || '',
+          pipeline_id,
+          created_via: 'manual', // Criado via API manual
+          created_by,
+          additional_fields: leadData
+        };
+
+        try {
+          const distributedLead = await LeadDistributionService.createLead(payload);
+          
+          // Formatar resposta para manter compatibilidade
+          const leadResponse = {
+            ...distributedLead,
+            custom_data: distributedLead.custom_data || distributedLead.lead_data
+          };
+          
+          // Remover lead_data se existir para evitar duplicação
+          if (leadResponse.lead_data) {
+            delete leadResponse.lead_data;
+          }
+
+          return res.status(201).json({ 
+            message: 'Lead criado com sucesso e distribuído automaticamente',
+            lead: leadResponse,
+            distributed: true,
+            assigned_to: distributedLead.assigned_to
+          });
+        } catch (distributionError) {
+          console.warn('⚠️ Erro na distribuição, usando método tradicional:', distributionError);
+          // Fallback para método tradicional se distribuição falhar
+        }
+      }
+
+      // ✅ FALLBACK: Método tradicional (compatibilidade)
+      console.log('📝 Usando método tradicional para criar lead');
+      
       // SEMPRE usar a primeira etapa da pipeline para novos leads
-      // Ignorar o stage_id fornecido e garantir que vai para "Novos Leads"
       const firstStageId = await LeadController.getFirstStage(pipeline_id);
       
       if (!firstStageId) {
@@ -166,14 +289,15 @@ export class LeadController {
         });
       }
 
-      // Usar lead_data que é a coluna que existe na tabela
+      // AIDEV-NOTE: Usar custom_data que é a coluna correta na tabela pipeline_leads
       const { data: lead, error } = await supabase
         .from('pipeline_leads')
         .insert({
           pipeline_id,
           stage_id: firstStageId, // SEMPRE usar a primeira etapa
-          lead_data: custom_data || {},
-          created_by: created_by || null
+          custom_data: custom_data || {},
+          created_by: created_by || null,
+          tenant_id: user?.tenant_id || null
         })
         .select()
         .single();
@@ -183,16 +307,20 @@ export class LeadController {
         return res.status(500).json({ error: 'Erro ao criar lead', details: error.message });
       }
 
-      // Renomear lead_data para custom_data no retorno para manter compatibilidade
+      // AIDEV-NOTE: Compatibilidade com ambas as colunas
       const leadResponse = {
         ...lead,
-        custom_data: lead.lead_data
+        custom_data: lead.custom_data || lead.lead_data || {}
       };
-      delete leadResponse.lead_data;
+      // Limpar dados desnecessários
+      if (leadResponse.lead_data) {
+        delete leadResponse.lead_data;
+      }
 
       res.status(201).json({ 
         message: 'Lead criado com sucesso na primeira etapa "Novos Leads"',
-        lead: leadResponse
+        lead: leadResponse,
+        distributed: false
       });
     } catch (error) {
       console.error('Erro ao criar lead:', error);
@@ -207,8 +335,55 @@ export class LeadController {
   static async updateLead(req: Request, res: Response) {
     try {
       const { pipeline_id, lead_id } = req.params;
-      const { stage_id, custom_data } = req.body;
+      const { stage_id, custom_data, position } = req.body;
 
+      // 🎯 SISTEMA DE POSIÇÕES: Se está movendo para nova stage com posição específica
+      if (stage_id && position !== undefined) {
+        console.log('🎯 [POSITION] Atualizando lead com posição específica:', {
+          leadId: lead_id.substring(0, 8),
+          newStageId: stage_id.substring(0, 8),
+          position
+        });
+
+        // Usar função SQL para mover com posição precisa
+        const { error: moveError } = await supabase.rpc('move_lead_to_position', {
+          p_lead_id: lead_id,
+          p_new_stage_id: stage_id,
+          p_new_position: position
+        });
+
+        if (moveError) {
+          console.error('❌ [POSITION] Erro ao mover lead com posição:', moveError);
+          return res.status(500).json({ 
+            error: 'Erro ao mover lead para posição específica', 
+            details: moveError.message 
+          });
+        }
+
+        // Buscar lead atualizado para retornar
+        const { data: updatedLead, error: fetchError } = await supabase
+          .from('pipeline_leads')
+          .select()
+          .eq('id', lead_id)
+          .eq('pipeline_id', pipeline_id)
+          .single();
+
+        if (fetchError || !updatedLead) {
+          console.error('❌ [POSITION] Erro ao buscar lead atualizado:', fetchError);
+          return res.status(500).json({ 
+            error: 'Erro ao buscar lead atualizado', 
+            details: fetchError?.message 
+          });
+        }
+
+        res.json({ 
+          message: 'Lead movido com posição específica com sucesso',
+          lead: updatedLead 
+        });
+        return;
+      }
+
+      // 🚀 LÓGICA ANTIGA: Para outras atualizações (sem posição específica)
       const updateData: any = {};
       if (stage_id) updateData.stage_id = stage_id;
       if (custom_data) updateData.custom_data = custom_data;

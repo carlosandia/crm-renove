@@ -86,7 +86,6 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
   // ESTADOS
   // ============================================
   
-  const [currentStep, setCurrentStep] = useState(1);
   const [leadMode, setLeadMode] = useState<'new' | 'existing'>('new');
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -112,13 +111,21 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
   const [selectedLead, setSelectedLead] = useState<ExistingLead | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [loadingLeads, setLoadingLeads] = useState(false);
+  
+  // Estados para stages da pipeline
+  const [pipelineStages, setPipelineStages] = useState<any[]>([]);
+  const [firstStageId, setFirstStageId] = useState<string | null>(null);
 
   // ============================================
   // CAMPOS CUSTOMIZADOS DA PIPELINE
   // ============================================
   
   const customFields = useMemo(() => {
+    // ✅ CORREÇÃO: Filtrar campos básicos para evitar duplicação
+    const basicFields = ['email', 'telefone', 'phone', 'nome', 'name', 'first_name', 'last_name'];
+    
     return (pipeline?.pipeline_custom_fields || [])
+      .filter(field => !basicFields.includes(field.field_name.toLowerCase()))
       .sort((a, b) => a.field_order - b.field_order);
   }, [pipeline?.pipeline_custom_fields]);
 
@@ -195,19 +202,17 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
     
     setLoadingLeads(true);
     try {
-      console.log('🔍 [StepLeadModal] Carregando leads existentes da fonte única (leads_master)');
       
-      // ✅ FONTE ÚNICA: Buscar leads_master que já estão na pipeline
-      const { data: pipelineLeadsData, error: pipelineError } = await supabase
+      // ✅ CORREÇÃO: Buscar pipeline_leads existentes com dados do leads_master
+      const { data: allLeadsData, error: leadsError } = await supabase
         .from('pipeline_leads')
         .select(`
           id,
+          lead_master_id,
           pipeline_id,
           stage_id,
           created_at,
-          lead_master_id,
-          leads_master(
-            id,
+          leads_master!lead_master_id(
             first_name,
             last_name,
             email,
@@ -216,77 +221,30 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
             job_title,
             lead_temperature,
             status,
-            estimated_value,
-            created_at,
-            updated_at
+            estimated_value
           )
         `)
-        .eq('pipeline_id', pipeline.id)
-        .not('lead_master_id', 'is', null)
+        .eq('tenant_id', user.tenant_id)
+        .neq('pipeline_id', pipeline.id) // Evitar leads da mesma pipeline
         .order('created_at', { ascending: false })
         .limit(100);
 
-      if (pipelineError) {
-        console.warn('⚠️ [StepLeadModal] Erro na query principal:', pipelineError.message);
-        console.warn('⚠️ [StepLeadModal] Detalhes do erro:', pipelineError);
-        
-        // Fallback: Buscar todos os leads_master do tenant (sem filtro de pipeline)
-        const { data: allLeadsData, error: fallbackError } = await supabase
-          .from('leads_master')
-          .select('id, first_name, last_name, email, phone, company, job_title, status, created_at, updated_at')
-          .eq('tenant_id', user.tenant_id)
-          .order('created_at', { ascending: false })
-          .limit(50);
-
-        if (fallbackError) {
-          throw fallbackError;
-        }
-        
-        // Transformar dados do fallback para formato esperado
-        const transformedFallbackLeads = (allLeadsData || []).map(lead => ({
-          id: `fallback-${lead.id}`, // ID único para o componente
-          pipeline_id: pipeline.id,
-          stage_id: undefined,
-          created_at: lead.created_at,
-          lead_master_id: lead.id,
-          custom_data: {
-            nome: `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Lead sem nome',
-            nome_lead: `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Lead sem nome',
-            email: lead.email || '',
-            telefone: lead.phone || '',
-            empresa: lead.company || '',
-            cargo: lead.job_title || '',
-            status: lead.status || 'active',
-            lead_master_id: lead.id
-          }
-        }));
-
-        setExistingLeads(transformedFallbackLeads);
-        setFilteredLeads(transformedFallbackLeads);
-        console.log('✅ [StepLeadModal] Leads carregados via fallback (leads_master):', transformedFallbackLeads.length);
-        return;
+      if (leadsError) {
+        throw leadsError;
       }
 
-      // ✅ Transformar dados da query principal (fonte única)
-      const transformedLeads = (pipelineLeadsData || []).map(pipelineLead => {
-        const leadMaster = Array.isArray(pipelineLead.leads_master) 
-          ? pipelineLead.leads_master[0] 
-          : pipelineLead.leads_master;
-        
+      // ✅ Transformar dados para formato esperado pelo componente
+      const transformedLeads = (allLeadsData || []).map(pipelineLead => {
+        const leadMaster = pipelineLead.leads_master || {};
         return {
-          id: pipelineLead.id,
+          id: pipelineLead.id, // ✅ CORREÇÃO: Usar pipeline_leads.id real
           pipeline_id: pipelineLead.pipeline_id,
           stage_id: pipelineLead.stage_id,
           created_at: pipelineLead.created_at,
           lead_master_id: pipelineLead.lead_master_id,
-          // ✅ DADOS REAIS de leads_master (fonte única)
           custom_data: {
-            nome: leadMaster?.first_name && leadMaster?.last_name 
-              ? `${leadMaster.first_name} ${leadMaster.last_name}`.trim()
-              : leadMaster?.first_name || 'Lead sem nome',
-            nome_lead: leadMaster?.first_name && leadMaster?.last_name 
-              ? `${leadMaster.first_name} ${leadMaster.last_name}`.trim()
-              : leadMaster?.first_name || 'Lead sem nome',
+            nome: `${leadMaster?.first_name || ''} ${leadMaster?.last_name || ''}`.trim() || 'Lead sem nome',
+            nome_lead: `${leadMaster?.first_name || ''} ${leadMaster?.last_name || ''}`.trim() || 'Lead sem nome',
             email: leadMaster?.email || '',
             telefone: leadMaster?.phone || '',
             empresa: leadMaster?.company || '',
@@ -294,33 +252,16 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
             temperatura: leadMaster?.lead_temperature || 'warm',
             status: leadMaster?.status || 'active',
             valor: leadMaster?.estimated_value || 0,
-            lead_master_id: leadMaster?.id
+            lead_master_id: pipelineLead.lead_master_id
           }
         };
       });
 
-      // Filtrar duplicados por lead_master_id
-      const uniqueLeads = transformedLeads.reduce((acc, lead) => {
-        const key = lead.lead_master_id || lead.id;
-        if (!acc[key] || new Date(lead.created_at) > new Date(acc[key].created_at)) {
-          acc[key] = lead;
-        }
-        return acc;
-      }, {} as Record<string, any>);
-
-      const processedLeads = Object.values(uniqueLeads);
-
-      setExistingLeads(processedLeads);
-      setFilteredLeads(processedLeads);
-      console.log('✅ [StepLeadModal] Leads carregados da fonte única:', {
-        total: (pipelineLeadsData || []).length,
-        unicos: processedLeads.length,
-        duplicados: (pipelineLeadsData || []).length - processedLeads.length
-      });
+      setExistingLeads(transformedLeads);
+      setFilteredLeads(transformedLeads);
       
     } catch (error) {
-      console.error('❌ [StepLeadModal] Erro ao carregar leads:', error);
-      console.log('🔄 [StepLeadModal] Sistema funcionando em modo de recuperação');
+      console.error('Erro ao carregar leads:', error);
       setExistingLeads([]);
       setFilteredLeads([]);
     } finally {
@@ -329,16 +270,53 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
   }, [user?.tenant_id, pipeline?.id]);
 
   // ============================================
+  // CARREGAR STAGES DA PIPELINE
+  // ============================================
+  
+  const loadPipelineStages = useCallback(async () => {
+    if (!user?.tenant_id || !pipeline?.id) return;
+    
+    try {
+      
+      const { data: stagesData, error: stagesError } = await supabase
+        .from('pipeline_stages')
+        .select(`
+          id,
+          name,
+          order_index,
+          stage_type
+        `)
+        .eq('pipeline_id', pipeline.id)
+        .order('order_index', { ascending: true });
+
+      if (stagesError) {
+        return;
+      }
+
+      if (stagesData && stagesData.length > 0) {
+        setPipelineStages(stagesData);
+        // Selecionar a primeira stage (menor order_index) como padrão
+        const firstStage = stagesData[0];
+        setFirstStageId(firstStage.id);
+      }
+      
+    } catch (error) {
+      console.error('Erro ao carregar stages:', error);
+    }
+  }, [user?.tenant_id, pipeline?.id]);
+
+  // ============================================
   // EFFECTS
   // ============================================
   
-  // Carregar leads quando modal abrir
+  // Carregar leads e stages quando modal abrir
   useEffect(() => {
     if (isOpen && pipeline?.id) {
-      console.log('🚀 Modal StepLead aberto - carregando leads existentes');
+      console.log('🚀 Modal StepLead aberto - carregando leads existentes e stages da pipeline');
       loadExistingLeads();
+      loadPipelineStages();
     }
-  }, [isOpen, pipeline?.id, loadExistingLeads]);
+  }, [isOpen, pipeline?.id, loadExistingLeads, loadPipelineStages]);
 
   // Filtrar leads baseado na busca
   useEffect(() => {
@@ -381,7 +359,6 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
   // Reset quando modal fecha
   useEffect(() => {
     if (!isOpen) {
-      setCurrentStep(1);
       setLeadMode('new');
       setSelectedLead(null);
       setSearchTerm('');
@@ -401,6 +378,9 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
       // Limpar leads carregados
       setExistingLeads([]);
       setFilteredLeads([]);
+      // Limpar stages da pipeline
+      setPipelineStages([]);
+      setFirstStageId(null);
     }
   }, [isOpen, currentUser, user]);
 
@@ -494,54 +474,114 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
   // VALIDAÇÃO
   // ============================================
   
-  const validateStep = (step: number): boolean => {
+  const validateForm = (): boolean => {
+    console.log('🔍 DEBUG - INICIANDO VALIDAÇÃO');
+    console.log('📋 Dados da oportunidade:', opportunityData);
+    console.log('👤 Dados do lead:', leadData);
+    console.log('🎛️ Dados campos customizados:', customFieldsData);
+    console.log('🔄 Modo do lead:', leadMode);
+    console.log('📝 Lead selecionado:', selectedLead);
+    
     const errors: Record<string, string> = {};
     
-    if (step === 1) {
-      // Validar dados da oportunidade
-      if (!opportunityData.nome_oportunidade.trim()) {
-        errors.nome_oportunidade = 'Nome da oportunidade é obrigatório';
-      }
-      // Responsável não precisa de validação - sempre será o usuário logado
+    // Validar dados da oportunidade
+    console.log('🏢 Validando nome da oportunidade:', opportunityData.nome_oportunidade);
+    if (!opportunityData.nome_oportunidade.trim()) {
+      console.log('❌ Erro: Nome da oportunidade vazio');
+      errors.nome_oportunidade = 'Nome da oportunidade é obrigatório';
+    } else {
+      console.log('✅ Nome da oportunidade válido');
     }
     
-    if (step === 2) {
-      // Validar dados do lead
+    // Validar dados do lead se for modo novo
+    if (leadMode === 'new') {
+      console.log('👤 Validando dados do lead (modo novo)');
+      
+      console.log('📝 Validando nome:', leadData.nome);
       if (!leadData.nome.trim()) {
+        console.log('❌ Erro: Nome vazio');
         errors.nome = 'Nome é obrigatório';
+      } else {
+        console.log('✅ Nome válido');
       }
+      
+      console.log('📧 Validando email:', leadData.email);
       if (!leadData.email.trim()) {
+        console.log('❌ Erro: Email vazio');
         errors.email = 'Email é obrigatório';
       } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(leadData.email)) {
+        console.log('❌ Erro: Email inválido');
         errors.email = 'Email inválido';
+      } else {
+        console.log('✅ Email válido');
       }
     }
     
-    if (step === 3) {
-      // Validar campos customizados obrigatórios
-      customFields.forEach(field => {
-        if (field.is_required && !customFieldsData[field.field_name]) {
-          errors[field.field_name] = `${field.field_label} é obrigatório`;
-        }
-      });
+    // Validar lead existente selecionado
+    if (leadMode === 'existing' && !selectedLead) {
+      console.log('❌ Erro: Nenhum lead existente selecionado');
+      errors.selectedLead = 'Selecione um lead existente';
     }
+    
+    // ✅ CORREÇÃO: Validar campos customizados obrigatórios incluindo os filtrados
+    // Para campos básicos filtrados, mapear para os dados preenchidos
+    console.log('🎛️ Validando campos customizados...');
+    console.log('📋 Pipeline custom fields:', pipeline?.pipeline_custom_fields);
+    
+    (pipeline?.pipeline_custom_fields || []).forEach(field => {
+      console.log(`🔍 Verificando campo: ${field.field_name} (${field.field_label}) - Obrigatório: ${field.is_required}`);
+      
+      if (field.is_required) {
+        let hasValue = false;
+        
+        // ✅ CORREÇÃO: Mapear campos básicos para os dados corretos (novo lead OU lead existente)
+        if (field.field_name.toLowerCase() === 'email') {
+          // Para lead existente, dados estão em leadData (já preenchidos)
+          // Para novo lead, dados também estão em leadData
+          hasValue = !!leadData.email.trim();
+          console.log(`📧 Campo email mapeado (${leadMode}) - Valor: "${leadData.email}" - Tem valor: ${hasValue}`);
+          if (!hasValue) {
+            console.log('❌ Erro: Email obrigatório (campo customizado)');
+            errors.email = 'Email é obrigatório';
+          }
+        } else if (field.field_name.toLowerCase() === 'telefone') {
+          // Para lead existente, dados estão em leadData (já preenchidos)
+          // Para novo lead, dados também estão em leadData
+          hasValue = !!leadData.telefone?.trim();
+          console.log(`📞 Campo telefone mapeado (${leadMode}) - Valor: "${leadData.telefone}" - Tem valor: ${hasValue}`);
+          if (!hasValue) {
+            console.log('❌ Erro: Telefone obrigatório (campo customizado)');
+            errors.telefone = 'Telefone é obrigatório';
+          }
+        } else if (field.field_name.toLowerCase() === 'nome') {
+          // Para lead existente, dados estão em leadData (já preenchidos)
+          // Para novo lead, dados também estão em leadData
+          hasValue = !!leadData.nome.trim();
+          console.log(`👤 Campo nome mapeado (${leadMode}) - Valor: "${leadData.nome}" - Tem valor: ${hasValue}`);
+          if (!hasValue) {
+            console.log('❌ Erro: Nome obrigatório (campo customizado)');
+            errors.nome = 'Nome é obrigatório';
+          }
+        } else {
+          // Para outros campos customizados
+          hasValue = !!customFieldsData[field.field_name];
+          console.log(`🎛️ Campo customizado "${field.field_name}" - Valor: "${customFieldsData[field.field_name]}" - Tem valor: ${hasValue}`);
+          if (!hasValue) {
+            console.log(`❌ Erro: ${field.field_label} obrigatório`);
+            errors[field.field_name] = `${field.field_label} é obrigatório`;
+          }
+        }
+      }
+    });
+    
+    console.log('🚨 Erros encontrados:', errors);
+    console.log('📊 Total de erros:', Object.keys(errors).length);
     
     setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleNextStep = () => {
-    if (validateStep(currentStep)) {
-      if (currentStep === 2 && leadMode === 'existing') {
-        // Carregar leads existentes ao entrar na etapa 2 modo existente
-        loadExistingLeads();
-      }
-      setCurrentStep(prev => Math.min(prev + 1, 3));
-    }
-  };
-
-  const handlePrevStep = () => {
-    setCurrentStep(prev => Math.max(prev - 1, 1));
+    const isValid = Object.keys(errors).length === 0;
+    console.log('✅ Validação final:', isValid ? 'SUCESSO' : 'FALHOU');
+    
+    return isValid;
   };
 
   // ============================================
@@ -549,12 +589,27 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
   // ============================================
   
   const handleSubmit = async () => {
-    if (!validateStep(3)) return;
+    console.log('🚀 [DEBUG] handleSubmit iniciado');
+    console.log('📊 [DEBUG] firstStageId:', firstStageId);
+    console.log('🏢 [DEBUG] pipeline:', pipeline?.name, 'ID:', pipeline?.id);
+    console.log('🎯 [DEBUG] pipelineStages:', pipelineStages?.length, 'stages');
+    
+    if (!validateForm()) return;
+    
+    // ✅ CORREÇÃO: Validar se temos stage_id antes de enviar
+    if (!firstStageId) {
+      console.error('Erro: stage_id não encontrado');
+      return;
+    }
     
     setIsSubmitting(true);
     try {
       // Combinar todos os dados
       const finalData = {
+        // ✅ CORREÇÃO: Adicionar pipeline_id e stage_id obrigatórios
+        pipeline_id: pipeline?.id,
+        stage_id: firstStageId,
+        
         // Dados da oportunidade
         nome_oportunidade: opportunityData.nome_oportunidade,
         valor: opportunityData.valor.replace(/[^\d,]/g, '').replace(',', '.'),
@@ -576,11 +631,16 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
         existing_lead_id: selectedLead?.id || null
       };
 
+      console.log('🚀 [DEBUG] finalData being sent:', finalData);
+      console.log('📋 [DEBUG] pipeline_id:', pipeline?.id);
+      console.log('🎯 [DEBUG] stage_id:', firstStageId);
+      console.log('👤 [DEBUG] leadMode:', leadMode);
+      console.log('🔍 [DEBUG] existing_lead_id:', selectedLead?.id);
+
       await onSubmit(finalData);
       onClose();
       
       // Reset form
-      setCurrentStep(1);
       setLeadMode('new');
       setOpportunityData({ nome_oportunidade: '', valor: '', responsavel: user?.id || currentUser?.id || '' });
       setLeadData({ nome: '', email: '', telefone: '' });
@@ -660,332 +720,315 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
 
   if (!isOpen) return null;
 
-  const stepTitles = [
-    { number: 1, title: 'Sobre a oportunidade' },
-    { number: 2, title: 'Sobre o lead' },
-    { number: 3, title: 'Campos Adicionais' }
-  ];
-
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Building className="w-5 h-5" />
-            Novo Lead
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader className="text-center">
+          <DialogTitle className="text-center text-xl">
+            Nova Oportunidade
           </DialogTitle>
-          <DialogDescription>
-            Crie uma nova oportunidade no pipeline selecionado
+          <DialogDescription className="text-center text-gray-600">
+            Crie uma nova oportunidade selecionando um lead existente ou criando um novo lead
           </DialogDescription>
         </DialogHeader>
 
-        {/* Indicador de Etapas */}
-        <div className="flex items-center justify-between px-4 py-2 bg-gray-50 rounded-lg">
-          {stepTitles.map((step, index) => (
-            <div key={step.number} className="flex items-center">
-              <div className={`
-                flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium
-                ${currentStep >= step.number 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-200 text-gray-600'
-                }
-              `}>
-                {step.number}
-              </div>
-              <span className={`ml-2 text-sm font-medium ${
-                currentStep >= step.number ? 'text-blue-600' : 'text-gray-500'
-              }`}>
-                {step.title}
-              </span>
-              {index < stepTitles.length - 1 && (
-                <ChevronRight className="w-4 h-4 mx-4 text-gray-400" />
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Conteúdo das Etapas */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {/* ETAPA 1: SOBRE A OPORTUNIDADE */}
-          {currentStep === 1 && (
-            <div className="space-y-6">
-              <div>
-                <Label htmlFor="nome_oportunidade" className="flex items-center gap-2">
-                  <Target className="w-4 h-4" />
-                  Nome da Oportunidade <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="nome_oportunidade"
-                  value={opportunityData.nome_oportunidade}
-                  onChange={(e) => handleOpportunityChange('nome_oportunidade', e.target.value)}
-                  placeholder="Ex: Proposta de Marketing Digital"
-                  className={validationErrors.nome_oportunidade ? 'border-red-500' : ''}
-                />
-                {validationErrors.nome_oportunidade && (
-                  <p className="text-red-500 text-sm mt-1">{validationErrors.nome_oportunidade}</p>
-                )}
-              </div>
-
-              <div>
-                <Label htmlFor="valor" className="flex items-center gap-2">
-                  <DollarSign className="w-4 h-4" />
-                  Valor
-                </Label>
-                <Input
-                  id="valor"
-                  value={opportunityData.valor}
-                  onChange={(e) => handleOpportunityChange('valor', e.target.value)}
-                  placeholder="R$ 0,00"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="responsavel" className="flex items-center gap-2">
-                  <User className="w-4 h-4" />
-                  Responsável <span className="text-red-500">*</span>
-                  <Badge variant="secondary" className="ml-2">Usuário Logado</Badge>
-                </Label>
-                <div className="relative">
+        {/* Formulário em uma única tela com seções */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="space-y-4">
+            
+            {/* SEÇÃO 1: SOBRE A OPORTUNIDADE */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xl">
+                  1. Sobre a Oportunidade
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-6">
+                <div>
+                  <Label htmlFor="nome_oportunidade" className="flex items-center gap-2 mb-2">
+                    <Target className="w-4 h-4" />
+                    Nome da Oportunidade <span className="text-red-500">*</span>
+                  </Label>
                   <Input
-                    id="responsavel"
-                    value={user?.first_name && user?.last_name 
-                      ? `${user.first_name} ${user.last_name} (${user.email})` 
-                      : user?.email || 'Usuário não identificado'
-                    }
-                    disabled
-                    className="bg-gray-50 text-gray-700 cursor-not-allowed"
+                    id="nome_oportunidade"
+                    value={opportunityData.nome_oportunidade}
+                    onChange={(e) => handleOpportunityChange('nome_oportunidade', e.target.value)}
+                    placeholder="Ex: Proposta de Marketing Digital"
+                    className={validationErrors.nome_oportunidade ? 'border-red-500' : ''}
                   />
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    <User className="w-4 h-4 text-gray-500" />
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  O responsável será automaticamente definido como o usuário logado
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* ETAPA 2: SOBRE O LEAD */}
-          {currentStep === 2 && (
-            <div className="space-y-6">
-              {/* Tabs: Novo Lead / Lead Existente */}
-              <Tabs value={leadMode} onValueChange={(value) => setLeadMode(value as 'new' | 'existing')}>
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="new" className="flex items-center gap-2">
-                    <UserPlus className="w-4 h-4" />
-                    Novo Lead
-                  </TabsTrigger>
-                  <TabsTrigger value="existing" className="flex items-center gap-2">
-                    <Users className="w-4 h-4" />
-                    Lead Existente
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="new" className="space-y-4 mt-4">
-                  <div>
-                    <Label htmlFor="nome" className="flex items-center gap-2">
-                      <User className="w-4 h-4" />
-                      Nome <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="nome"
-                      value={leadData.nome}
-                      onChange={(e) => handleLeadChange('nome', e.target.value)}
-                      placeholder="Nome completo do lead"
-                      className={validationErrors.nome ? 'border-red-500' : ''}
-                    />
-                    {validationErrors.nome && (
-                      <p className="text-red-500 text-sm mt-1">{validationErrors.nome}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <Label htmlFor="email" className="flex items-center gap-2">
-                      <Mail className="w-4 h-4" />
-                      Email <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={leadData.email}
-                      onChange={(e) => handleLeadChange('email', e.target.value)}
-                      placeholder="email@exemplo.com"
-                      className={validationErrors.email ? 'border-red-500' : ''}
-                    />
-                    {validationErrors.email && (
-                      <p className="text-red-500 text-sm mt-1">{validationErrors.email}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <Label htmlFor="telefone" className="flex items-center gap-2">
-                      <Phone className="w-4 h-4" />
-                      Telefone
-                    </Label>
-                    <Input
-                      id="telefone"
-                      value={leadData.telefone}
-                      onChange={(e) => handleLeadChange('telefone', e.target.value)}
-                      placeholder="(11) 99999-9999"
-                    />
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="existing" className="space-y-4 mt-4">
-                  <div>
-                    <Label htmlFor="search" className="flex items-center gap-2">
-                      <Search className="w-4 h-4" />
-                      Buscar Lead Existente
-                    </Label>
-                    <Input
-                      id="search"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      placeholder="Busque por nome, email ou empresa..."
-                    />
-                  </div>
-
-                  <div className="max-h-60 overflow-y-auto space-y-2">
-                    {loadingLeads ? (
-                      <div className="flex items-center justify-center py-8">
-                        <Loader2 className="w-6 h-6 animate-spin" />
-                      </div>
-                    ) : filteredLeads.length === 0 ? (
-                      <div className="text-center py-8 text-gray-500">
-                        <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                        <p>Nenhum lead encontrado</p>
-                      </div>
-                    ) : (
-                      filteredLeads.map(lead => {
-                        const customData = lead.custom_data || {};
-                        const isSelected = selectedLead?.id === lead.id;
-                        
-                        return (
-                          <Card 
-                            key={lead.id} 
-                            className={`cursor-pointer transition-colors ${
-                              isSelected ? 'border-blue-500 bg-blue-50' : 'hover:border-gray-300'
-                            }`}
-                            onClick={() => handleSelectExistingLead(lead)}
-                          >
-                            <CardContent className="p-3">
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <h4 className="font-medium text-gray-900">
-                                    {customData.nome || customData.nome_lead || customData.nome_contato || 'Lead sem nome'}
-                                  </h4>
-                                  <div className="mt-1 space-y-1">
-                                    {(customData.email || customData.email_contato) && (
-                                      <p className="text-sm text-gray-600 flex items-center gap-1">
-                                        <Mail className="w-3 h-3" />
-                                        {customData.email || customData.email_contato}
-                                      </p>
-                                    )}
-                                    {(customData.telefone || customData.telefone_contato) && (
-                                      <p className="text-sm text-gray-600 flex items-center gap-1">
-                                        <Phone className="w-3 h-3" />
-                                        {customData.telefone || customData.telefone_contato}
-                                      </p>
-                                    )}
-                                    {customData.empresa && (
-                                      <p className="text-sm text-gray-600 flex items-center gap-1">
-                                        <Building className="w-3 h-3" />
-                                        {customData.empresa}
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
-                                {isSelected && (
-                                  <Check className="w-5 h-5 text-blue-600" />
-                                )}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        );
-                      })
-                    )}
-                  </div>
-
-                  {selectedLead && (
-                    <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-                      <p className="text-sm text-green-800">
-                        ✓ Lead selecionado: {selectedLead.custom_data?.nome || selectedLead.custom_data?.nome_lead || 'Lead sem nome'}
-                      </p>
-                    </div>
+                  {validationErrors.nome_oportunidade && (
+                    <p className="text-red-500 text-sm mt-1">{validationErrors.nome_oportunidade}</p>
                   )}
-                </TabsContent>
-              </Tabs>
-            </div>
-          )}
-
-          {/* ETAPA 3: CAMPOS ADICIONAIS */}
-          {currentStep === 3 && (
-            <div className="space-y-6">
-              {customFields.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Target className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p>Nenhum campo adicional configurado para esta pipeline</p>
                 </div>
-              ) : (
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {customFields.map(field => (
-                    <div key={field.id} className={field.field_type === 'textarea' ? 'md:col-span-2' : ''}>
-                      <Label htmlFor={field.field_name} className="flex items-center gap-2">
-                        {field.field_label}
-                        {field.is_required && <span className="text-red-500">*</span>}
+                  <div>
+                    <Label htmlFor="valor" className="flex items-center gap-2 mb-2">
+                      <DollarSign className="w-4 h-4" />
+                      Valor
+                    </Label>
+                    <Input
+                      id="valor"
+                      value={opportunityData.valor}
+                      onChange={(e) => handleOpportunityChange('valor', e.target.value)}
+                      placeholder="R$ 0,00"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="responsavel" className="flex items-center gap-2 mb-2">
+                      <User className="w-4 h-4" />
+                      Responsável <span className="text-red-500">*</span>
+                      <Badge variant="secondary" className="ml-2">Usuário Logado</Badge>
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="responsavel"
+                        value={user?.first_name && user?.last_name 
+                          ? `${user.first_name} ${user.last_name} (${user.email})` 
+                          : user?.email || 'Usuário não identificado'
+                        }
+                        disabled
+                        className="bg-gray-50 text-gray-700 cursor-not-allowed"
+                      />
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                        <User className="w-4 h-4 text-gray-500" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* SEÇÃO 2: SOBRE O LEAD */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xl">
+                  2. Sobre o Lead
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                {/* Tabs: Novo Lead / Lead Existente */}
+                <Tabs value={leadMode} onValueChange={(value) => setLeadMode(value as 'new' | 'existing')}>
+                  <TabsList className="grid w-full grid-cols-2 mb-6">
+                    <TabsTrigger value="new" className="flex items-center gap-2">
+                      <UserPlus className="w-4 h-4" />
+                      Novo Lead
+                    </TabsTrigger>
+                    <TabsTrigger value="existing" className="flex items-center gap-2">
+                      <Users className="w-4 h-4" />
+                      Lead Existente
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="new" className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="nome" className="flex items-center gap-2 mb-2">
+                          <User className="w-4 h-4" />
+                          Nome <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="nome"
+                          value={leadData.nome}
+                          onChange={(e) => handleLeadChange('nome', e.target.value)}
+                          placeholder="Nome completo do lead"
+                          className={validationErrors.nome ? 'border-red-500' : ''}
+                        />
+                        {validationErrors.nome && (
+                          <p className="text-red-500 text-sm mt-1">{validationErrors.nome}</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <Label htmlFor="telefone" className="flex items-center gap-2 mb-2">
+                          <Phone className="w-4 h-4" />
+                          Telefone {validationErrors.telefone && <span className="text-red-500">*</span>}
+                        </Label>
+                        <Input
+                          id="telefone"
+                          value={leadData.telefone}
+                          onChange={(e) => handleLeadChange('telefone', e.target.value)}
+                          placeholder="(11) 99999-9999"
+                          className={validationErrors.telefone ? 'border-red-500' : ''}
+                        />
+                        {validationErrors.telefone && (
+                          <p className="text-red-500 text-sm mt-1">{validationErrors.telefone}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="email" className="flex items-center gap-2 mb-2">
+                        <Mail className="w-4 h-4" />
+                        Email <span className="text-red-500">*</span>
                       </Label>
-                      {renderCustomField(field)}
-                      {validationErrors[field.field_name] && (
-                        <p className="text-red-500 text-sm mt-1">{validationErrors[field.field_name]}</p>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={leadData.email}
+                        onChange={(e) => handleLeadChange('email', e.target.value)}
+                        placeholder="email@exemplo.com"
+                        className={validationErrors.email ? 'border-red-500' : ''}
+                      />
+                      {validationErrors.email && (
+                        <p className="text-red-500 text-sm mt-1">{validationErrors.email}</p>
                       )}
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                  </TabsContent>
+
+                  <TabsContent value="existing" className="space-y-4">
+                    <div>
+                      <Label htmlFor="search" className="flex items-center gap-2 mb-2">
+                        <Search className="w-4 h-4" />
+                        Buscar Lead Existente
+                      </Label>
+                      <Input
+                        id="search"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Busque por nome, email ou empresa..."
+                      />
+                    </div>
+
+                    <div className="max-h-60 overflow-y-auto space-y-2">
+                      {loadingLeads ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="w-6 h-6 animate-spin" />
+                        </div>
+                      ) : filteredLeads.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                          <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                          <p>Nenhum lead encontrado</p>
+                        </div>
+                      ) : (
+                        filteredLeads.map(lead => {
+                          const customData = lead.custom_data || {};
+                          const isSelected = selectedLead?.id === lead.id;
+                          
+                          return (
+                            <Card 
+                              key={lead.id} 
+                              className={`cursor-pointer transition-colors ${
+                                isSelected ? 'border-green-500 bg-green-50' : 'hover:border-gray-300'
+                              }`}
+                              onClick={() => handleSelectExistingLead(lead)}
+                            >
+                              <CardContent className="p-3">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <h4 className="font-medium text-gray-900">
+                                      {customData.nome || customData.nome_lead || customData.nome_contato || 'Lead sem nome'}
+                                    </h4>
+                                    <div className="mt-1 space-y-1">
+                                      {(customData.email || customData.email_contato) && (
+                                        <p className="text-sm text-gray-600 flex items-center gap-1">
+                                          <Mail className="w-3 h-3" />
+                                          {customData.email || customData.email_contato}
+                                        </p>
+                                      )}
+                                      {(customData.telefone || customData.telefone_contato) && (
+                                        <p className="text-sm text-gray-600 flex items-center gap-1">
+                                          <Phone className="w-3 h-3" />
+                                          {customData.telefone || customData.telefone_contato}
+                                        </p>
+                                      )}
+                                      {customData.empresa && (
+                                        <p className="text-sm text-gray-600 flex items-center gap-1">
+                                          <Building className="w-3 h-3" />
+                                          {customData.empresa}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {isSelected && (
+                                    <Check className="w-5 h-5 text-green-600" />
+                                  )}
+                                </div>
+                              </CardContent>
+                            </Card>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {selectedLead && (
+                      <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <p className="text-sm text-green-800">
+                          ✓ Lead selecionado: {selectedLead.custom_data?.nome || selectedLead.custom_data?.nome_lead || 'Lead sem nome'}
+                        </p>
+                      </div>
+                    )}
+                    
+                    {validationErrors.selectedLead && (
+                      <p className="text-red-500 text-sm">{validationErrors.selectedLead}</p>
+                    )}
+                  </TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
+
+            {/* SEÇÃO 3: CAMPOS ADICIONAIS */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xl">
+                  3. Campos Adicionais
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                {customFields.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <Target className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p>Nenhum campo adicional configurado para esta pipeline</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {customFields.map(field => (
+                      <div key={field.id} className={field.field_type === 'textarea' ? 'md:col-span-2' : ''}>
+                        <Label htmlFor={field.field_name} className="flex items-center gap-2">
+                          {field.field_label}
+                          {field.is_required && <span className="text-red-500">*</span>}
+                        </Label>
+                        {renderCustomField(field)}
+                        {validationErrors[field.field_name] && (
+                          <p className="text-red-500 text-sm mt-1">{validationErrors[field.field_name]}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
-        {/* Botões de Navegação */}
-        <div className="flex items-center justify-between pt-4 border-t">
+        {/* Botões de Ação */}
+        <div className="flex items-center justify-between pt-4 border-t px-6 pb-6">
           <Button
             variant="outline"
-            onClick={currentStep === 1 ? onClose : handlePrevStep}
+            onClick={onClose}
             disabled={isSubmitting}
           >
-            {currentStep === 1 ? 'Cancelar' : (
+            Cancelar
+          </Button>
+          
+          <Button 
+            onClick={handleSubmit} 
+            disabled={isSubmitting || (leadMode === 'existing' && !selectedLead)}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            {isSubmitting ? (
               <>
-                <ChevronLeft className="w-4 h-4 mr-2" />
-                Anterior
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Criando...
+              </>
+            ) : (
+              <>
+                <Check className="w-4 h-4 mr-2" />
+                Criar Oportunidade
               </>
             )}
           </Button>
-          
-          {currentStep < 3 ? (
-            <Button onClick={handleNextStep} disabled={isSubmitting}>
-              Próximo
-              <ChevronRight className="w-4 h-4 ml-2" />
-            </Button>
-          ) : (
-            <Button 
-              onClick={handleSubmit} 
-              disabled={isSubmitting || (leadMode === 'existing' && !selectedLead)}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Criando...
-                </>
-              ) : (
-                <>
-                  <Check className="w-4 h-4 mr-2" />
-                  Criar Oportunidade
-                </>
-              )}
-            </Button>
-          )}
         </div>
       </DialogContent>
     </Dialog>

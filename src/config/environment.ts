@@ -95,9 +95,9 @@ const environmentConfigs: Record<Environment, Partial<EnvironmentConfig>> = {
       environment: 'development',
     },
     urls: {
-      api: 'http://localhost:3001/api',
-      frontend: 'http://localhost:8080',
-      backend: 'http://localhost:3001',
+      api: 'http://127.0.0.1:3001/api',
+      frontend: 'http://127.0.0.1:8080',
+      backend: 'http://127.0.0.1:3001',
     },
     debug: {
       enabled: true,
@@ -111,13 +111,13 @@ const environmentConfigs: Record<Environment, Partial<EnvironmentConfig>> = {
     },
     integrations: {
       google: {
-        redirectUri: 'http://localhost:8080/auth/google/callback',
+        redirectUri: 'http://127.0.0.1:8080/auth/google/callback',
       },
     },
     security: {
       cspEnabled: false,
       rateLimitEnabled: false,
-      corsOrigins: ['http://localhost:8080', 'http://localhost:8081', 'http://localhost:3000'],
+      corsOrigins: ['http://127.0.0.1:8080', 'http://127.0.0.1:8081', 'http://127.0.0.1:3000'],
     },
   },
   
@@ -194,9 +194,9 @@ const environmentConfigs: Record<Environment, Partial<EnvironmentConfig>> = {
       environment: 'test',
     },
     urls: {
-      api: 'http://localhost:3001/api',
-      frontend: 'http://localhost:8080',
-      backend: 'http://localhost:3001',
+      api: 'http://127.0.0.1:3001/api',
+      frontend: 'http://127.0.0.1:8080',
+      backend: 'http://127.0.0.1:3001',
     },
     debug: {
       enabled: false,
@@ -210,13 +210,13 @@ const environmentConfigs: Record<Environment, Partial<EnvironmentConfig>> = {
     },
     integrations: {
       google: {
-        redirectUri: 'http://localhost:8080/auth/google/callback',
+        redirectUri: 'http://127.0.0.1:8080/auth/google/callback',
       },
     },
     security: {
       cspEnabled: false,
       rateLimitEnabled: false,
-      corsOrigins: ['http://localhost:8080'],
+      corsOrigins: ['http://127.0.0.1:8080'],
     },
   },
 };
@@ -233,9 +233,9 @@ function mergeWithEnvVars(config: Partial<EnvironmentConfig>): EnvironmentConfig
     },
     
     urls: {
-      api: import.meta.env.VITE_API_URL || config.urls?.api || 'http://localhost:3001/api',
-      frontend: import.meta.env.VITE_FRONTEND_URL || config.urls?.frontend || 'http://localhost:8080',
-      backend: import.meta.env.VITE_BACKEND_URL || config.urls?.backend || 'http://localhost:3001',
+      api: import.meta.env.VITE_API_URL || config.urls?.api || 'http://127.0.0.1:3001/api',
+      frontend: import.meta.env.VITE_FRONTEND_URL || config.urls?.frontend || 'http://127.0.0.1:8080',
+      backend: import.meta.env.VITE_BACKEND_URL || config.urls?.backend || 'http://127.0.0.1:3001',
     },
     
     supabase: {
@@ -259,14 +259,14 @@ function mergeWithEnvVars(config: Partial<EnvironmentConfig>): EnvironmentConfig
       google: {
         clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID,
         clientSecret: import.meta.env.VITE_GOOGLE_CLIENT_SECRET,
-        redirectUri: import.meta.env.VITE_GOOGLE_REDIRECT_URI || config.integrations?.google?.redirectUri || 'http://localhost:8080/auth/google/callback',
+        redirectUri: import.meta.env.VITE_GOOGLE_REDIRECT_URI || config.integrations?.google?.redirectUri || 'http://127.0.0.1:8080/auth/google/callback',
       },
     },
     
     security: {
       cspEnabled: import.meta.env.VITE_CSP_ENABLED === 'true' || config.security?.cspEnabled || false,
       rateLimitEnabled: import.meta.env.VITE_RATE_LIMIT_ENABLED === 'true' || config.security?.rateLimitEnabled || false,
-      corsOrigins: import.meta.env.VITE_CORS_ORIGINS?.split(',') || config.security?.corsOrigins || ['http://localhost:8080'],
+      corsOrigins: import.meta.env.VITE_CORS_ORIGINS?.split(',') || config.security?.corsOrigins || ['http://127.0.0.1:8080'],
     },
   };
 }

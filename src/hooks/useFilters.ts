@@ -320,7 +320,7 @@ export function useFilters<T extends BaseFilters>(
   // ============================================
 
   // Salvar automaticamente no localStorage quando filtros mudam
-  useState(() => {
+  useEffect(() => {
     if (enableLocalStorage) {
       const timeoutId = setTimeout(() => {
         saveToStorage();
@@ -328,7 +328,8 @@ export function useFilters<T extends BaseFilters>(
       
       return () => clearTimeout(timeoutId);
     }
-  });
+    return undefined; // ✅ CORREÇÃO TS7030: Retorno explícito para todos os caminhos
+  }, [filters, enableLocalStorage, saveToStorage]);
 
   // ============================================
   // RETURN INTERFACE

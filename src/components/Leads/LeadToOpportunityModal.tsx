@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { showErrorToast } from '../../hooks/useToast';
 import {
   Dialog,
   DialogContent,
@@ -470,7 +471,7 @@ const LeadToOpportunityModal: React.FC<LeadToOpportunityModalProps> = ({
         errorMessage += 'Erro desconhecido.';
       }
       
-      alert(errorMessage);
+      showErrorToast('Erro ao criar oportunidade', errorMessage);
     } finally {
       setIsSubmitting(false);
     }

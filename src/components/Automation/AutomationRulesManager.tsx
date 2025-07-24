@@ -10,6 +10,16 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { BlurFade } from '../ui/blur-fade';
 import { useToast } from '../../hooks/useToast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../ui/alert-dialog';
 
 interface BusinessRule {
   id: string;
@@ -72,6 +82,7 @@ const AutomationRulesManager: React.FC = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterActive, setFilterActive] = useState<boolean | null>(null);
+  const [ruleToDelete, setRuleToDelete] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -85,7 +96,7 @@ const AutomationRulesManager: React.FC = () => {
 
   const loadRules = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/automation/rules', {
+      const response = await fetch('http://127.0.0.1:3001/api/automation/rules', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -105,7 +116,7 @@ const AutomationRulesManager: React.FC = () => {
 
   const loadMetrics = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/automation/metrics', {
+      const response = await fetch('http://127.0.0.1:3001/api/automation/metrics', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'
@@ -155,10 +166,6 @@ const AutomationRulesManager: React.FC = () => {
   };
 
   const deleteRule = async (ruleId: string) => {
-    if (!confirm('Tem certeza que deseja excluir esta regra?')) {
-      return;
-    }
-
     try {
       const response = await fetch(`/api/automation/rules/${ruleId}`, {
         method: 'DELETE',
@@ -184,6 +191,17 @@ const AutomationRulesManager: React.FC = () => {
         description: 'Falha ao excluir regra',
         variant: 'destructive'
       });
+    }
+  };
+
+  const handleDeleteClick = (ruleId: string) => {
+    setRuleToDelete(ruleId);
+  };
+
+  const confirmDelete = async () => {
+    if (ruleToDelete) {
+      await deleteRule(ruleToDelete);
+      setRuleToDelete(null);
     }
   };
 
@@ -468,7 +486,7 @@ const AutomationRulesManager: React.FC = () => {
                         <Button
                           variant="destructive"
                           size="sm"
-                          onClick={() => deleteRule(rule.id)}
+                          onClick={() => handleDeleteClick(rule.id)}
                         >
                           Excluir
                         </Button>
@@ -509,6 +527,28 @@ const AutomationRulesManager: React.FC = () => {
           )}
         </div>
       </BlurFade>
+
+      {/* Confirmation Dialog */}
+      <AlertDialog open={!!ruleToDelete} onOpenChange={() => setRuleToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir Regra de Automação</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir esta regra? Esta ação não pode ser desfeita e 
+              a regra será removida permanentemente do sistema.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

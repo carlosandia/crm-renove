@@ -7,7 +7,7 @@ interface RateLimitData {
   blocked: boolean;
 }
 
-// Armazenamento em memória (em produção, usar Redis)
+// Armazenamento em memória (simples e eficiente)
 const rateLimitStore = new Map<string, RateLimitData>();
 
 // Configurações de rate limiting

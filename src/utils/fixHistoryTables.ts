@@ -37,25 +37,27 @@ export const testHistoryInsert = async (leadId: string): Promise<boolean> => {
   try {
     console.log('🧪 Testando inserção direta no histórico...');
 
-    const { data, error } = await supabase
+    // 🔧 CORREÇÃO RLS: Gerar UUID manualmente para contornar problema de SELECT após INSERT
+    const testId = crypto.randomUUID();
+    
+    const { error } = await supabase
       .from('lead_history')
       .insert([{
+        id: testId,
         lead_id: leadId,
         action: 'test_action',
         description: 'Teste de inserção no histórico',
         user_name: 'Sistema de Teste',
         old_values: {},
         new_values: { test: true }
-      }])
-      .select()
-      .single();
+      }]);
 
     if (error) {
       console.error('❌ Erro ao inserir teste:', error);
       return false;
     }
 
-    console.log('✅ Teste de inserção bem-sucedido:', data.id);
+    console.log('✅ Teste de inserção bem-sucedido:', testId);
     return true;
 
   } catch (error) {

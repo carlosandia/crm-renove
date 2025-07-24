@@ -540,6 +540,140 @@ router.post('/utils/backup/:table', async (req, res) => {
   }
 });
 
+// ==========================================
+// 6. DASHBOARD ADMIN - ENDPOINTS ESPECÍFICOS
+// ==========================================
 
+/**
+ * GET /admin-dashboard
+ * Dashboard admin principal com métricas gerais
+ */
+router.get('/admin-dashboard', async (req, res) => {
+  try {
+    const { timeRange = '30d' } = req.query;
+    
+    // Mock data para development - substituir por queries reais
+    const dashboardData = {
+      metrics: {
+        totalMeetings: 0,
+        scheduledMeetings: 0,
+        completedMeetings: 0,
+        noShowRate: 0.0,
+        showRate: 0.0,
+        benchmark: "15-25%"
+      },
+      conversionRates: {
+        byStage: {},
+        overall: 0.0
+      },
+      timeRange,
+      lastUpdated: new Date().toISOString()
+    };
+    
+    res.json({
+      success: true,
+      data: dashboardData,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro no dashboard admin:', error);
+    res.status(500).json({
+      success: false,
+      error: (error instanceof Error ? error.message : String(error))
+    });
+  }
+});
+
+/**
+ * GET /admin-dashboard/sales-targets
+ * Metas de vendas
+ */
+router.get('/admin-dashboard/sales-targets', async (req, res) => {
+  try {
+    const salesTargets = {
+      current: [],
+      achieved: 0,
+      pending: 0,
+      percentage: 0,
+      lastUpdated: new Date().toISOString()
+    };
+    
+    res.json({
+      success: true,
+      data: salesTargets,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro nas metas de vendas:', error);
+    res.status(500).json({
+      success: false,
+      error: (error instanceof Error ? error.message : String(error))
+    });
+  }
+});
+
+/**
+ * GET /admin-dashboard/alerts
+ * Alertas do sistema
+ */
+router.get('/admin-dashboard/alerts', async (req, res) => {
+  try {
+    const alerts = {
+      critical: [],
+      warning: [],
+      info: [],
+      total: 0,
+      lastUpdated: new Date().toISOString()
+    };
+    
+    res.json({
+      success: true,
+      data: alerts,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro nos alertas:', error);
+    res.status(500).json({
+      success: false,
+      error: (error instanceof Error ? error.message : String(error))
+    });
+  }
+});
+
+/**
+ * GET /admin-dashboard/team-performance
+ * Performance da equipe
+ */
+router.get('/admin-dashboard/team-performance', async (req, res) => {
+  try {
+    const { period = '30d' } = req.query;
+    
+    const teamPerformance = {
+      totalMembers: 0,
+      activeMembers: 0,
+      topPerformer: null,
+      averageScore: 0.0,
+      performance: [],
+      period,
+      lastUpdated: new Date().toISOString()
+    };
+    
+    res.json({
+      success: true,
+      data: teamPerformance,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro na performance da equipe:', error);
+    res.status(500).json({
+      success: false,
+      error: (error instanceof Error ? error.message : String(error))
+    });
+  }
+});
 
 export default router; 

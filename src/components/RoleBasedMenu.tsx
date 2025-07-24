@@ -2,22 +2,24 @@ import React, { lazy, Suspense } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import SafeErrorBoundary from './SafeErrorBoundary';
 
-// Lazy loading dos módulos principais
-const ModernAdminPipelineManager = lazy(() => import('./ModernAdminPipelineManager'));
-const ModernMemberPipelineView = lazy(() => import('./Pipeline/ModernMemberPipelineView'));
-const PlatformIntegrationsManager = lazy(() => import('./PlatformIntegrationsManager'));
-
-// Módulos consolidados
+// Lazy loading otimizado por prioridade
+// Módulos críticos (carregamento prioritário)
 const AdminDashboard = lazy(() => import('./AdminDashboard'));
 const MemberDashboard = lazy(() => import('./MemberDashboard'));
+const UnifiedPipelineManager = lazy(() => import('./Pipeline/UnifiedPipelineManager'));
+
+// Módulos de negócio (carregamento sob demanda)
+const LeadsModule = lazy(() => import('./LeadsModule'));
 const EmpresasModule = lazy(() => import('./EmpresasModule'));
 const VendedoresModule = lazy(() => import('./VendedoresModule'));
-const LeadsModule = lazy(() => import('./LeadsModule'));
+
+// Módulos avançados (carregamento diferido)
 const FormBuilderModule = lazy(() => import('./FormBuilder/FormBuilderModule'));
-const AcompanhamentoModule = lazy(() => import('./AcompanhamentoModule'));
 const IntegrationsModule = lazy(() => import('./IntegrationsModule'));
+const AcompanhamentoModule = lazy(() => import('./AcompanhamentoModule'));
 const FeedbackModule = lazy(() => import('./FeedbackModule'));
 const ReportsModule = lazy(() => import('./ReportsModule'));
+const PlatformIntegrationsManager = lazy(() => import('./PlatformIntegrationsManager'));
 
 
 // Componentes de loading e erro consolidados
@@ -61,9 +63,24 @@ const ModuleErrorFallback: React.FC<{
 interface RoleBasedMenuProps {
   selectedItem: string;
   userRole: string;
+  searchTerm?: string;
+  selectedFilter?: 'all' | 'active' | 'archived';
+  // ✅ CORREÇÃO: Props de cache para UnifiedPipelineManager
+  selectedPipeline?: any;
+  onPipelineChange?: (pipeline: any) => void;
+  cacheLoading?: boolean;
 }
 
-const RoleBasedMenu: React.FC<RoleBasedMenuProps> = ({ selectedItem, userRole }) => {
+const RoleBasedMenu: React.FC<RoleBasedMenuProps> = ({ 
+  selectedItem, 
+  userRole, 
+  searchTerm, 
+  selectedFilter,
+  // ✅ CORREÇÃO: Props de cache (opcionais)
+  selectedPipeline,
+  onPipelineChange,
+  cacheLoading = false
+}) => {
   const { user } = useAuth();
 
   // Sistema de fallback consolidado
@@ -75,6 +92,7 @@ const RoleBasedMenu: React.FC<RoleBasedMenuProps> = ({ selectedItem, userRole })
   const renderContent = () => {
     switch (selectedItem) {
       case 'Dashboard Admin':
+      case 'Dashboard Administrativo': // Compatibilidade
         // 🔒 VALIDAÇÃO DE ROLE: Só carregar AdminDashboard se for admin ou super_admin
         if (userRole !== 'admin' && userRole !== 'super_admin') {
           return (
@@ -141,56 +159,49 @@ const RoleBasedMenu: React.FC<RoleBasedMenuProps> = ({ selectedItem, userRole })
         );
 
       case 'Gestão de pipeline':
-        // ✅ ARQUITETURA ENTERPRISE: Separação correta por role
-        if (userRole === 'admin' || userRole === 'super_admin') {
-          // 🔧 ADMIN: Interface administrativa completa (CRUD de pipelines)
-          return (
-            <SafeErrorBoundary 
-              fallback={
-                <ModuleErrorFallback 
-                  moduleName="Admin Pipeline Manager" 
-                  onFallback={() => enableFallback('admin-pipeline-manager')}
-                />
-              }
-            >
-              <Suspense fallback={<ModuleLoader moduleName="Gestão de Pipeline (Admin)" />}>
-                <ModernAdminPipelineManager />
-              </Suspense>
-            </SafeErrorBoundary>
-          );
-        } else {
-          // 👤 MEMBER: Interface operacional (visualização e trabalho com leads)
-          return (
-            <SafeErrorBoundary 
-              fallback={
-                <ModuleErrorFallback 
-                  moduleName="Member Pipeline" 
-                  onFallback={() => enableFallback('member-pipeline')}
-                  isV2={true}
-                />
-              }
-            >
-              <Suspense fallback={<ModuleLoader moduleName="Pipeline (Vendedor)" isV2={true} />}>
-                <ModernMemberPipelineView />
-              </Suspense>
-            </SafeErrorBoundary>
-          );
-        }
-
-      case 'Pipeline':
-        // 👤 MEMBER: Interface operacional (mesmo que acima, para compatibilidade)
+        // ✅ ARQUITETURA ENTERPRISE: Interface unificada com detecção automática de role
         return (
           <SafeErrorBoundary 
             fallback={
               <ModuleErrorFallback 
-                moduleName="Member Pipeline" 
-                onFallback={() => enableFallback('member-pipeline')}
-                isV2={true}
+                moduleName="Pipeline Manager" 
+                onFallback={() => enableFallback('pipeline-manager')}
               />
             }
           >
-            <Suspense fallback={<ModuleLoader moduleName="Pipeline (Vendedor)" isV2={true} />}>
-              <ModernMemberPipelineView />
+            <Suspense fallback={<ModuleLoader moduleName="Gestão de Pipeline" />}>
+              <UnifiedPipelineManager 
+                searchTerm={searchTerm}
+                selectedFilter={selectedFilter}
+                // ✅ CORREÇÃO: Props de cache vindas do AppDashboard
+                selectedPipeline={selectedPipeline}
+                onPipelineChange={onPipelineChange}
+                cacheLoading={cacheLoading}
+              />
+            </Suspense>
+          </SafeErrorBoundary>
+        );
+
+      case 'Pipeline':
+        // 👤 Interface unificada (compatibilidade para Members)
+        return (
+          <SafeErrorBoundary 
+            fallback={
+              <ModuleErrorFallback 
+                moduleName="Pipeline" 
+                onFallback={() => enableFallback('pipeline')}
+              />
+            }
+          >
+            <Suspense fallback={<ModuleLoader moduleName="Pipeline" />}>
+              <UnifiedPipelineManager 
+                searchTerm={searchTerm}
+                selectedFilter={selectedFilter}
+                // ✅ CORREÇÃO: Props de cache vindas do AppDashboard
+                selectedPipeline={selectedPipeline}
+                onPipelineChange={onPipelineChange}
+                cacheLoading={cacheLoading}
+              />
             </Suspense>
           </SafeErrorBoundary>
         );

@@ -133,7 +133,7 @@ const ConversionConfigPanel: React.FC = () => {
           {
             id: '1',
             stage_id: 'stage-1',
-            stage_name: 'Closed Won',
+            stage_name: 'Ganho',
             event_name: 'Purchase',
             event_type: 'both',
             conversion_value: 100.00,
@@ -172,8 +172,8 @@ const ConversionConfigPanel: React.FC = () => {
           { id: 'stage-1', name: 'Lead', pipeline_id: 'pipeline-1', temperature_score: 20 },
           { id: 'stage-2', name: 'Qualified', pipeline_id: 'pipeline-1', temperature_score: 40 },
           { id: 'stage-3', name: 'Proposal', pipeline_id: 'pipeline-1', temperature_score: 70 },
-          { id: 'stage-4', name: 'Closed Won', pipeline_id: 'pipeline-1', temperature_score: 100 },
-          { id: 'stage-5', name: 'Closed Lost', pipeline_id: 'pipeline-1', temperature_score: 0 }
+          { id: 'stage-4', name: 'Ganho', pipeline_id: 'pipeline-1', temperature_score: 100 },
+          { id: 'stage-5', name: 'Perdido', pipeline_id: 'pipeline-1', temperature_score: 0 }
         ];
         
         setStages(mockStages);

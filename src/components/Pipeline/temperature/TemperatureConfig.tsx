@@ -6,6 +6,8 @@ import { Label } from '../../ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../ui/dialog';
 import { AnimatedCard } from '../../ui/animated-card';
 import { BlurFade } from '../../ui/blur-fade';
+import { showSuccessToast, showErrorToast, showWarningToast, showInfoToast } from '../../../hooks/useToast';
+import { useTemperatureAPI, TemperatureConfig as TemperatureAPIConfig } from '../../../hooks/useTemperatureAPI';
 import { 
   Thermometer,
   Settings,
@@ -20,34 +22,40 @@ import {
 // ================================================================================
 // INTERFACES E TIPOS
 // ================================================================================
-interface TemperatureConfig {
+export interface TemperatureConfiguration {
   hot_days: number;
   warm_days: number;
   cold_days: number;
 }
 
-interface UseTemperatureConfigProps {
-  initialConfig?: TemperatureConfig;
-  onConfigChange?: (config: TemperatureConfig) => void;
+export interface TemperatureConfigProps {
+  pipelineId?: string;
+  tenantId?: string;
+  initialConfig?: TemperatureConfiguration;
+  onConfigChange?: (config: TemperatureConfiguration) => void;
 }
 
-interface UseTemperatureConfigReturn {
-  temperatureConfig: TemperatureConfig;
-  setTemperatureConfig: React.Dispatch<React.SetStateAction<TemperatureConfig>>;
-  editingConfig: TemperatureConfig | null;
-  setEditingConfig: React.Dispatch<React.SetStateAction<TemperatureConfig | null>>;
+export interface TemperatureConfigReturn {
+  temperatureConfig: TemperatureConfiguration;
+  setTemperatureConfig: React.Dispatch<React.SetStateAction<TemperatureConfiguration>>;
+  editingConfig: TemperatureConfiguration | null;
+  setEditingConfig: React.Dispatch<React.SetStateAction<TemperatureConfiguration | null>>;
   showEditModal: boolean;
   setShowEditModal: React.Dispatch<React.SetStateAction<boolean>>;
   handleEditTemperature: () => void;
-  handleSaveTemperature: () => void;
+  handleSaveTemperature: () => Promise<void>;
   handleResetToDefault: () => void;
   getTemperatureLevel: (days: number) => { level: string; color: string; icon: JSX.Element };
+  loading: boolean;
+  saving: boolean;
+  error: string | null;
+  pipelineId?: string;
 }
 
 // ================================================================================
 // CONSTANTES
 // ================================================================================
-const DEFAULT_CONFIG: TemperatureConfig = {
+const DEFAULT_CONFIG: TemperatureConfiguration = {
   hot_days: 3,
   warm_days: 7,
   cold_days: 14
@@ -56,21 +64,58 @@ const DEFAULT_CONFIG: TemperatureConfig = {
 // ================================================================================
 // HOOKS CUSTOMIZADOS
 // ================================================================================
-export function useTemperatureConfig({ 
+function useTemperatureConfigImpl({ 
+  pipelineId,
+  tenantId,
   initialConfig, 
   onConfigChange 
-}: UseTemperatureConfigProps = {}): UseTemperatureConfigReturn {
-  const [temperatureConfig, setTemperatureConfig] = useState<TemperatureConfig>(
+}: TemperatureConfigProps = {}): TemperatureConfigReturn {
+  const [temperatureConfig, setTemperatureConfig] = useState<TemperatureConfiguration>(
     initialConfig || DEFAULT_CONFIG
   );
-  const [editingConfig, setEditingConfig] = useState<TemperatureConfig | null>(null);
+  const [editingConfig, setEditingConfig] = useState<TemperatureConfiguration | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  
+  // Hook da API para temperatura
+  const { 
+    config: apiConfig, 
+    loading, 
+    saving, 
+    error, 
+    saveConfig 
+  } = useTemperatureAPI({ 
+    pipelineId: pipelineId || '', 
+    autoLoad: !!pipelineId 
+  });
 
+  // Sincronizar com configuração da API quando carregada
   useEffect(() => {
-    if (onConfigChange) {
-      onConfigChange(temperatureConfig);
+    if (apiConfig) {
+      // Converter da API (horas) para interface local (dias)
+      const localConfig: TemperatureConfiguration = {
+        hot_days: Math.ceil(apiConfig.hot_threshold / 24),
+        warm_days: Math.ceil(apiConfig.warm_threshold / 24),
+        cold_days: Math.ceil(apiConfig.cold_threshold / 24)
+      };
+      setTemperatureConfig(localConfig);
     }
-  }, [temperatureConfig, onConfigChange]);
+  }, [apiConfig]);
+
+  // ✅ CORREÇÃO: Flag para controlar quando é uma mudança intencional vs inicialização
+  const [isIntentionalChange, setIsIntentionalChange] = useState(false);
+
+  // ✅ CORREÇÃO CRÍTICA: Evitar auto-save indevido durante criação de pipeline
+  // Só chamar onConfigChange quando há uma mudança intencional (via handleSaveTemperature)
+  useEffect(() => {
+    if (onConfigChange && isIntentionalChange) {
+      console.log('🌡️ [TemperatureConfig] Mudança intencional detectada, disparando onConfigChange:', {
+        temperatureConfig,
+        isIntentionalChange
+      });
+      onConfigChange(temperatureConfig);
+      setIsIntentionalChange(false); // Reset flag
+    }
+  }, [temperatureConfig, isIntentionalChange]); // Removido onConfigChange das dependências para evitar loop
 
   const getTemperatureLevel = (days: number) => {
     if (days <= temperatureConfig.hot_days) {
@@ -99,23 +144,61 @@ export function useTemperatureConfig({
     setShowEditModal(true);
   };
 
-  const handleSaveTemperature = () => {
+  const handleSaveTemperature = async () => {
     if (!editingConfig) return;
 
     // Validar sequência lógica
     if (editingConfig.hot_days >= editingConfig.warm_days || 
         editingConfig.warm_days >= editingConfig.cold_days) {
-      alert('Os períodos devem seguir ordem crescente: Quente < Morno < Frio');
+      showWarningToast('Configuração inválida', 'Os períodos devem seguir ordem crescente: Quente < Morno < Frio');
       return;
     }
 
-    setTemperatureConfig(editingConfig);
-    setShowEditModal(false);
-    setEditingConfig(null);
+    // Se temos pipelineId, salvar via API
+    if (pipelineId && saveConfig) {
+      try {
+        // Converter de dias para horas (API trabalha com horas)
+        const apiConfigData: Partial<TemperatureAPIConfig> = {
+          hot_threshold: editingConfig.hot_days * 24,
+          warm_threshold: editingConfig.warm_days * 24,
+          cold_threshold: editingConfig.cold_days * 24,
+          // Usar cores padrão do novo sistema
+          hot_color: '#ef4444',
+          warm_color: '#f97316', 
+          cold_color: '#3b82f6',
+          frozen_color: '#6b7280',
+          hot_icon: '🔥',
+          warm_icon: '🌡️',
+          cold_icon: '❄️',
+          frozen_icon: '🧊'
+        };
+
+        const success = await saveConfig(apiConfigData);
+        if (success) {
+          setTemperatureConfig(editingConfig);
+          setShowEditModal(false);
+          setEditingConfig(null);
+          showSuccessToast('Configuração salva', 'Os períodos de temperatura foram salvos com sucesso!');
+        } else {
+          showErrorToast('Erro ao salvar', 'Não foi possível salvar a configuração de temperatura.');
+        }
+      } catch (error) {
+        console.error('Erro ao salvar configuração de temperatura:', error);
+        showErrorToast('Erro ao salvar', 'Ocorreu um erro ao salvar a configuração.');
+      }
+    } else {
+      // Fallback para modo local (sem API)
+      setIsIntentionalChange(true);
+      setTemperatureConfig(editingConfig);
+      setShowEditModal(false);
+      setEditingConfig(null);
+      showSuccessToast('Configuração salva', 'Os períodos de temperatura foram atualizados localmente.');
+    }
   };
 
   const handleResetToDefault = () => {
     setEditingConfig(DEFAULT_CONFIG);
+    showInfoToast('Configuração restaurada', 'Os valores padrão foram aplicados.');
   };
 
   return {
@@ -128,9 +211,16 @@ export function useTemperatureConfig({
     handleEditTemperature,
     handleSaveTemperature,
     handleResetToDefault,
-    getTemperatureLevel
+    getTemperatureLevel,
+    loading: loading || false,
+    saving: saving || false,
+    error: error || null,
+    pipelineId
   };
 }
+
+// Exportação estável para evitar problemas de HMR
+export const useTemperatureConfig = useTemperatureConfigImpl;
 
 // ================================================================================
 // COMPONENTE DE RENDERIZAÇÃO DE CONFIGURAÇÃO DE TEMPERATURA
@@ -149,7 +239,11 @@ export function TemperatureConfigRender({ temperatureManager }: TemperatureConfi
     handleEditTemperature,
     handleSaveTemperature,
     handleResetToDefault,
-    getTemperatureLevel
+    getTemperatureLevel,
+    loading,
+    saving,
+    error,
+    pipelineId
   } = temperatureManager;
 
   return (
@@ -234,6 +328,14 @@ export function TemperatureConfigRender({ temperatureManager }: TemperatureConfi
         </AnimatedCard>
       </BlurFade>
 
+      {/* Feedback de status */}
+      {pipelineId && (
+        <div className="flex justify-center items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">
+          <Save className="h-4 w-4" />
+          <span>Suas alterações são salvas automaticamente</span>
+        </div>
+      )}
+
       {/* Modal de Edição */}
       <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
         <DialogContent className="sm:max-w-[400px]">
@@ -299,6 +401,7 @@ export function TemperatureConfigRender({ temperatureManager }: TemperatureConfi
 
               <div className="flex justify-center">
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
                   onClick={handleResetToDefault}
@@ -313,14 +416,19 @@ export function TemperatureConfigRender({ temperatureManager }: TemperatureConfi
 
           <DialogFooter>
             <Button
+              type="button"
               variant="outline"
               onClick={() => setShowEditModal(false)}
             >
               Cancelar
             </Button>
-            <Button onClick={handleSaveTemperature}>
+            <Button 
+              type="button" 
+              onClick={handleSaveTemperature}
+              disabled={saving}
+            >
               <Save className="h-4 w-4 mr-2" />
-              Salvar
+              {saving ? 'Salvando...' : 'Salvar'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -193,7 +193,10 @@ const SystemStatus: React.FC<SystemStatusProps> = () => {
                       Ver detalhes
                     </summary>
                     <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto">
-                      {JSON.stringify(check.details, null, 2)}
+                      {/* AIDEV-NOTE: Type-safe conversion of unknown to string */}
+                      {typeof check.details === 'string' 
+                        ? check.details 
+                        : JSON.stringify(check.details, null, 2)}
                     </pre>
                   </details>
                 )}

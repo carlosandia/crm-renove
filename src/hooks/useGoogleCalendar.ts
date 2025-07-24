@@ -1,7 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { GoogleCalendarAuth, GoogleCalendar } from '../services/googleCalendarAuth';
 import { showSuccessToast, showErrorToast, showWarningToast } from '../lib/toast';
+import { logOnlyInDevelopment } from './useOptimizedLogging';
+import { LogContext, debouncedLog } from '../utils/loggerOptimized';
+import { isDevelopment } from '../utils/constants';
+
+// ✅ DEBOUNCE: Função para debounce de chamadas
+function useDebounce<T extends (...args: any[]) => any>(
+  func: T,
+  delay: number
+): T {
+  const [debouncedFunc] = useState(() => {
+    let timeoutId: NodeJS.Timeout;
+    return ((...args: Parameters<T>) => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => func(...args), delay);
+    }) as T;
+  });
+
+  return debouncedFunc;
+}
 
 export interface CalendarIntegration {
   id: string;
@@ -31,6 +50,8 @@ export interface UseGoogleCalendarResult {
 export function useGoogleCalendar(): UseGoogleCalendarResult {
   const { user } = useAuth();
   
+  // ✅ PERFORMANCE LOGGING: Tracking automático de performance
+  
   // Estados
   const [hasIntegration, setHasIntegration] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -39,16 +60,16 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
   const [availableCalendars, setAvailableCalendars] = useState<GoogleCalendar[]>([]);
 
   /**
-   * Verifica status da integração
+   * Verifica status da integração (com debounce)
    */
-  const checkIntegrationStatus = useCallback(async (): Promise<boolean> => {
+  const checkIntegrationStatusRaw = useCallback(async (): Promise<boolean> => {
     if (!user?.id || !user.tenant_id) {
-      console.log('📅 CALENDAR: Usuário não logado, pulando verificação');
+      logOnlyInDevelopment('Usuário não logado, pulando verificação', LogContext.API);
       return false;
     }
 
     try {
-      console.log('🔍 CALENDAR: Verificando status da integração...');
+      logOnlyInDevelopment('Verificando status da integração Google Calendar', LogContext.API);
       
       const hasActive = await GoogleCalendarAuth.hasActiveIntegration(
         user.id, 
@@ -70,18 +91,21 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
             sync_enabled: integration.sync_enabled,
             created_at: integration.created_at
           });
-          console.log('✅ CALENDAR: Integração ativa encontrada');
+          logOnlyInDevelopment('Integração ativa Google Calendar encontrada', LogContext.API);
         }
       }
 
       setHasIntegration(hasActive);
       return hasActive;
     } catch (error) {
-      console.error('❌ CALENDAR: Erro ao verificar integração:', error);
+      logOnlyInDevelopment('Erro ao verificar integração Google Calendar', LogContext.API, error);
       setHasIntegration(false);
       return false;
     }
   }, [user?.id, user?.tenant_id]);
+
+  // ✅ DEBOUNCE: Aplicar debounce para evitar múltiplas chamadas
+  const checkIntegrationStatus = useDebounce(checkIntegrationStatusRaw, 500);
 
   /**
    * 🆕 ETAPA 5: Conecta com Google Calendar usando sistema centralizado
@@ -95,7 +119,7 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
     setIsConnecting(true);
     
     try {
-      console.log('🔗 CALENDAR: Iniciando conexão via sistema centralizado...');
+      logOnlyInDevelopment('Iniciando conexão Google Calendar via sistema centralizado', LogContext.API);
       
       // 🆕 Verificar se a empresa tem Google Calendar habilitado
       const googleAuth = new GoogleCalendarAuth();
@@ -111,7 +135,7 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
       
       if (authUrl === 'demo_mode') {
         // Modo demo - credenciais da plataforma não configuradas
-        console.log('🔄 CALENDAR: Modo demo ativado (credenciais da plataforma não configuradas)');
+        logOnlyInDevelopment('Modo demo Google Calendar ativado', LogContext.API);
         
         setTimeout(async () => {
           try {
@@ -123,21 +147,21 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
               credentials
             );
 
-            console.log('✅ CALENDAR: Integração demo salva via sistema centralizado:', integrationId);
+            logOnlyInDevelopment('Integração demo Google Calendar salva', LogContext.API, { integrationId });
             
             await checkIntegrationStatus();
             
             showSuccessToast('Google Calendar conectado (modo demo)!');
             setIsConnecting(false);
           } catch (error) {
-            console.error('❌ CALENDAR: Erro na conexão demo:', error);
+            logOnlyInDevelopment('Erro na conexão demo Google Calendar', LogContext.API, error);
             showErrorToast('Falha ao conectar Google Calendar');
             setIsConnecting(false);
           }
         }, 2000);
       } else {
         // OAuth2 real usando credenciais da plataforma
-        console.log('🌐 CALENDAR: Redirecionando para autenticação Google (credenciais da plataforma)...');
+        logOnlyInDevelopment('Redirecionando para autenticação Google', LogContext.API);
         
         // Salvar estado para callback
         localStorage.setItem('google_calendar_connecting', 'true');
@@ -149,7 +173,7 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
       }
       
     } catch (error) {
-      console.error('❌ CALENDAR: Erro ao iniciar conexão:', error);
+      logOnlyInDevelopment('Erro ao iniciar conexão Google Calendar', LogContext.API, error);
       showErrorToast('Erro ao conectar com Google Calendar: ' + (error as Error).message);
       setIsConnecting(false);
     }
@@ -165,7 +189,7 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
     }
 
     try {
-      console.log('🔌 CALENDAR: Desconectando integração:', activeIntegration.id);
+      logOnlyInDevelopment('Desconectando integração Google Calendar', LogContext.API, { integrationId: activeIntegration.id });
       
       const success = await GoogleCalendarAuth.removeIntegration(activeIntegration.id);
       
@@ -180,56 +204,60 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
         return false;
       }
     } catch (error) {
-      console.error('❌ CALENDAR: Erro ao desconectar:', error);
+      logOnlyInDevelopment('Erro ao desconectar Google Calendar', LogContext.API, error);
       showErrorToast('Erro ao desconectar Google Calendar');
       return false;
     }
   }, [activeIntegration]);
 
   /**
-   * Atualiza status da integração
+   * Atualiza status da integração (com debounce)
    */
-  const refreshIntegration = useCallback(async (): Promise<void> => {
-    console.log('🔄 CALENDAR: Atualizando integração...');
-    setIsLoading(true);
-    
-    try {
-      await checkIntegrationStatus();
-      if (hasIntegration) {
-        await loadCalendars();
-      }
-    } catch (error) {
-      console.error('❌ CALENDAR: Erro ao atualizar:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [checkIntegrationStatus, hasIntegration]);
-
   /**
    * Carrega calendários disponíveis
    */
   const loadCalendars = useCallback(async (): Promise<void> => {
     if (!activeIntegration?.id) {
-      console.log('📅 CALENDAR: Sem integração ativa para carregar calendários');
+      logOnlyInDevelopment('Sem integração ativa para carregar calendários', LogContext.API);
       return;
     }
 
     try {
-      console.log('📅 CALENDAR: Carregando calendários...');
+      logOnlyInDevelopment('Carregando calendários Google Calendar', LogContext.API);
       
       // Para desenvolvimento/demo, usar calendários mockados
       const calendars = await GoogleCalendarAuth.getCalendars('demo_access_token');
       setAvailableCalendars(calendars);
       
-      console.log('✅ CALENDAR: Calendários carregados:', calendars.length);
+      logOnlyInDevelopment('Calendários Google Calendar carregados', LogContext.API, { count: calendars.length });
     } catch (error) {
-      console.error('❌ CALENDAR: Erro ao carregar calendários:', error);
+      logOnlyInDevelopment('Erro ao carregar calendários Google Calendar', LogContext.API, error);
       setAvailableCalendars([]);
     }
   }, [activeIntegration?.id]);
 
+  const refreshIntegrationRaw = useCallback(async (): Promise<void> => {
+    logOnlyInDevelopment('Atualizando integração Google Calendar', LogContext.API);
+    setIsLoading(true);
+    
+    try {
+      await checkIntegrationStatusRaw();
+      if (hasIntegration) {
+        await loadCalendars();
+      }
+    } catch (error) {
+      logOnlyInDevelopment('Erro ao atualizar integração Google Calendar', LogContext.API, error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [checkIntegrationStatusRaw, hasIntegration, loadCalendars]);
+
+  // ✅ DEBOUNCE: Aplicar debounce para evitar múltiplas chamadas
+  const refreshIntegration = useDebounce(refreshIntegrationRaw, 1000);
+
   /**
    * Efeito para carregar integração na inicialização
+   * ✅ CORREÇÃO: Remover dependências que causam loop infinito
    */
   useEffect(() => {
     const initializeCalendar = async () => {
@@ -238,38 +266,49 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
         return;
       }
 
-      console.log('🚀 CALENDAR: Inicializando hook...');
+      logOnlyInDevelopment('Inicializando hook Google Calendar', LogContext.HOOKS);
       
       try {
-        const hasActive = await checkIntegrationStatus();
+        // ✅ CORREÇÃO: Usar função raw sem debounce para inicialização
+        const hasActive = await checkIntegrationStatusRaw();
         if (hasActive) {
           await loadCalendars();
         }
       } catch (error) {
-        console.error('❌ CALENDAR: Erro na inicialização:', error);
+        logOnlyInDevelopment('Erro na inicialização Google Calendar', LogContext.HOOKS, error);
       } finally {
         setIsLoading(false);
       }
     };
 
     initializeCalendar();
-  }, [user?.id, user?.tenant_id, checkIntegrationStatus, loadCalendars]);
+    // ✅ CORREÇÃO: Apenas user.id e tenant_id como dependências para evitar loops
+  }, [user?.id, user?.tenant_id]);
 
-  /**
-   * Log do estado atual para debug
-   */
+  // ✅ CORREÇÃO: Remover error logging automático que pode causar loops
+
+  // ✅ CORREÇÃO: Otimizar API call tracking para evitar logs excessivos
+  // useApiCallLogging('/google-calendar/status', 'GET', !!user?.id);
+
+  // ✅ DEVELOPMENT STATE LOGGING: Log otimizado do estado
   useEffect(() => {
-    console.log('📊 CALENDAR STATE:', {
-      hasIntegration,
-      isConnecting,
-      isLoading,
-      activeIntegration: activeIntegration?.id,
-      calendarsCount: availableCalendars.length,
-      userId: user?.id?.substring(0, 8) + '...'
-    });
-  }, [hasIntegration, isConnecting, isLoading, activeIntegration, availableCalendars.length, user?.id]);
+    if (isDevelopment) {
+      logOnlyInDevelopment(
+        'Google Calendar state updated',
+        LogContext.HOOKS,
+        {
+          hasIntegration,
+          isConnecting,
+          isLoading,
+          activeIntegrationId: activeIntegration?.id ? activeIntegration.id.substring(0, 8) + '...' : 'unknown',
+          calendarsCount: availableCalendars.length
+        }
+      );
+    }
+  }, [hasIntegration, isConnecting, isLoading, activeIntegration?.id, availableCalendars.length]);
 
-  return {
+  // ✅ MEMOIZAÇÃO: Memoizar return para evitar re-renders desnecessários
+  return useMemo(() => ({
     // Estados
     hasIntegration,
     isConnecting,
@@ -283,5 +322,16 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
     refreshIntegration,
     checkIntegrationStatus,
     loadCalendars
-  };
+  }), [
+    hasIntegration,
+    isConnecting,
+    isLoading,
+    activeIntegration,
+    availableCalendars,
+    connectCalendar,
+    disconnectCalendar,
+    refreshIntegration,
+    checkIntegrationStatus,
+    loadCalendars
+  ]);
 } 

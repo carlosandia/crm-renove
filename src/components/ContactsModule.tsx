@@ -32,12 +32,29 @@ import ContactFormModal from './Contacts/ContactFormModal';
 import ContactStatsCards from './Contacts/ContactStatsCards';
 import ContactFilters from './Contacts/ContactFilters';
 
-// Types
-import { Contact, ContactFilters as ContactFiltersType, ContactStats } from '../integrations/supabase/types';
+// Types - AIDEV-NOTE: Use Zod inference — schema is the source of truth
+import { Contact, ContactStats } from '../shared/types/Domain';
+import { ContactFilters as ContactFiltersType } from '../integrations/supabase/types';
+
+// AIDEV-NOTE: Força o uso do tipo derivado do Zod para evitar conflitos
+type ContactZod = Contact;
 
 // Hooks
 import { useContacts } from '../hooks/useContacts';
 import { useStatePersistence, MODULE_PERSISTENCE_CONFIGS } from '../lib/statePersistence';
+import { useToast } from '../hooks/useToast';
+
+// UI Components for confirmation
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './ui/alert-dialog';
 
 interface ContactsModuleProps {
   className?: string;
@@ -45,16 +62,18 @@ interface ContactsModuleProps {
 
 export function ContactsModule({ className }: ContactsModuleProps) {
   const { user } = useAuth();
+  const { toast } = useToast();
   
   // 🔄 PERSISTÊNCIA: Estados com persistência automática
   const { state: persistedState, updateState: updatePersistedState } = useStatePersistence(
     MODULE_PERSISTENCE_CONFIGS.CONTACTS_MODULE
   );
   
-  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [selectedContact, setSelectedContact] = useState<ContactZod | null>(null);
   const [showContactForm, setShowContactForm] = useState(false);
   const [showContactDetails, setShowContactDetails] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'cards'>(persistedState.viewMode || 'table');
+  const [contactToDelete, setContactToDelete] = useState<string | null>(null);
   
   // Filters state
   const [filters, setFilters] = useState<ContactFiltersType>({
@@ -82,19 +101,41 @@ export function ContactsModule({ className }: ContactsModuleProps) {
     setShowContactForm(true);
   };
 
-  const handleEditContact = (contact: Contact) => {
+  const handleEditContact = (contact: ContactZod) => {
     setSelectedContact(contact);
     setShowContactForm(true);
   };
 
-  const handleViewContact = (contact: Contact) => {
+  const handleViewContact = (contact: ContactZod) => {
     setSelectedContact(contact);
     setShowContactDetails(true);
   };
 
   const handleDeleteContact = async (contactId: string) => {
-    if (window.confirm('Tem certeza que deseja excluir este contato?')) {
+    try {
       await deleteContact(contactId);
+      toast({
+        title: 'Sucesso',
+        description: 'Contato excluído com sucesso',
+        variant: 'default'
+      });
+    } catch (error) {
+      toast({
+        title: 'Erro',
+        description: 'Falha ao excluir contato',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleDeleteClick = (contactId: string) => {
+    setContactToDelete(contactId);
+  };
+
+  const confirmDelete = async () => {
+    if (contactToDelete) {
+      await handleDeleteContact(contactToDelete);
+      setContactToDelete(null);
     }
   };
 
@@ -262,7 +303,7 @@ export function ContactsModule({ className }: ContactsModuleProps) {
           viewMode={viewMode}
           onEditContact={handleEditContact}
           onViewContact={handleViewContact}
-          onDeleteContact={handleDeleteContact}
+          onDeleteContact={handleDeleteClick}
           onPageChange={handlePageChange}
           totalCount={totalCount || 0}
           currentPage={Math.floor((filters.offset || 0) / (filters.limit || 50))}
@@ -298,11 +339,33 @@ export function ContactsModule({ className }: ContactsModuleProps) {
             setShowContactForm(true);
           }}
           onDelete={() => {
-            handleDeleteContact(selectedContact.id);
+            handleDeleteClick(selectedContact.id);
             setShowContactDetails(false);
           }}
         />
       )}
+
+      {/* Confirmation Dialog */}
+      <AlertDialog open={!!contactToDelete} onOpenChange={() => setContactToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir Contato</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir este contato? Esta ação não pode ser desfeita e 
+              todos os dados do contato serão removidos permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

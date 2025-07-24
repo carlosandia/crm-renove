@@ -4,10 +4,10 @@ import React, { useState, useCallback, useMemo, Suspense, lazy } from 'react';
 // COMPONENTES REFATORADOS - TAREFA 1
 // ================================================================================
 import { FieldManager, useFieldManager } from './managers/FieldManager';
-// FormValidator removido - não relacionado ao CRM
+import { FormValidator, useFormValidator } from './validation/FormValidator';
 import { NotificationSettings, useNotificationManager } from './notifications/NotificationSettings';
 import { ScoringManager, useScoringManager } from './scoring/ScoringManager';
-import { PipelineIntegration, usePipelineIntegration } from './pipeline/PipelineIntegration';
+// Pipeline integration removed - now using unified PipelineKanbanBoard
 
 // ================================================================================
 // TIPOS E HOOKS EXISTENTES
@@ -124,11 +124,11 @@ const ModernFormBuilderRefactored: React.FC<ModernFormBuilderProps> = ({
   // ================================================================================
   const fieldManager = useFieldManager(fieldsState.items, fieldsState.replaceAll);
   
-  // FormValidator removido temporariamente - validação simplificada
-  const formValidator = {
-    isFormValid: fieldsState.items.length > 0,
-    validateForm: () => ({ isValid: true, errors: [] })
-  };
+  const formValidator = useFormValidator(
+    fieldsState.items,
+    {}, // Form values - would be populated from actual form
+    (validation) => console.log('Validation changed:', validation)
+  );
 
   const notificationManager = useNotificationManager(
     notificationSettings,
@@ -145,14 +145,7 @@ const ModernFormBuilderRefactored: React.FC<ModernFormBuilderProps> = ({
     setScoringThreshold
   );
 
-  const pipelineIntegration = usePipelineIntegration(
-    pipelinesState.items,
-    selectedPipeline,
-    fieldMappingsState.items,
-    fieldsState.items,
-    setSelectedPipeline,
-    fieldMappingsState.replaceAll
-  );
+  // Pipeline integration removed - using unified PipelineKanbanBoard
 
   // ================================================================================
   // HANDLERS PRINCIPAIS
@@ -162,17 +155,14 @@ const ModernFormBuilderRefactored: React.FC<ModernFormBuilderProps> = ({
       // Validar formulário
       const validation = formValidator.validateForm();
       if (!validation.isValid) {
-        console.error(`Formulário inválido: ${validation.errors.join(', ')}`);
+        notificationManager.showNotification('error', `Formulário inválido: ${validation.errors.join(', ')}`);
         return;
       }
 
       // Validar mapeamentos de pipeline se habilitado
-      if (selectedPipeline) {
-        const pipelineValidation = pipelineIntegration.validateMappings();
-        if (!pipelineValidation.isValid) {
-          console.error(`Mapeamento inválido: ${pipelineValidation.errors.join(', ')}`);
-          return;
-        }
+      if (selectedPipeline && fieldMappingsState.items.length === 0) {
+        notificationManager.showNotification('error', 'Pipeline selecionado mas nenhum mapeamento configurado');
+        return;
       }
 
       // Preparar dados para salvar
@@ -195,12 +185,12 @@ const ModernFormBuilderRefactored: React.FC<ModernFormBuilderProps> = ({
       // Chamar callback de save
       await onSave(formToSave);
       
-      console.log('Formulário salvo com sucesso!');
+      notificationManager.showNotification('success', 'Formulário salvo com sucesso!');
     });
   }, [
     formData, fieldsState.items, scoringRulesState.items, scoringThreshold,
     notificationSettings, emailSettings, selectedPipeline, fieldMappingsState.items,
-    tenantId, onSave, formValidator, pipelineIntegration, notificationManager, saveState
+    tenantId, onSave, formValidator, notificationManager, saveState
   ]);
 
   const handleAddField = useCallback((fieldType: string) => {
@@ -209,21 +199,6 @@ const ModernFormBuilderRefactored: React.FC<ModernFormBuilderProps> = ({
     setSelectedField(newField);
   }, [fieldManager]);
 
-  const handleDragEnd = useCallback((result: any) => {
-    if (!result.destination) return;
-
-    const items = Array.from(fieldsState.items);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
-
-    // Atualizar order_index
-    const updatedItems = items.map((item, index) => ({
-      ...item,
-      order_index: index
-    }));
-
-    fieldsState.replaceAll(updatedItems);
-  }, [fieldsState]);
 
   const getPreviewWidth = useCallback(() => {
     switch (previewMode) {
@@ -271,14 +246,9 @@ const ModernFormBuilderRefactored: React.FC<ModernFormBuilderProps> = ({
 
       case 'pipeline':
         return (
-          <PipelineIntegration
-            availablePipelines={pipelinesState.items}
-            selectedPipeline={selectedPipeline}
-            fieldMappings={fieldMappingsState.items}
-            formFields={fieldsState.items}
-            onPipelineSelect={setSelectedPipeline}
-            onFieldMappingsChange={fieldMappingsState.replaceAll}
-          />
+          <div className="p-6 text-center text-gray-500">
+            Pipeline integration moved to unified PipelineKanbanBoard
+          </div>
         );
 
       default:
@@ -299,7 +269,7 @@ const ModernFormBuilderRefactored: React.FC<ModernFormBuilderProps> = ({
       <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
         <div className="p-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">Tipos de Campo</h2>
-          <p className="text-sm text-gray-500">Arraste para adicionar ao formulário</p>
+          <p className="text-sm text-gray-500">Clique para adicionar ao formulário</p>
         </div>
         
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
@@ -441,11 +411,12 @@ const ModernFormBuilderRefactored: React.FC<ModernFormBuilderProps> = ({
           {renderActivePanel()}
         </div>
 
-        {/* Validação Footer - Removido temporariamente */}
+        {/* Validação Footer */}
         <div className="border-t border-gray-200 p-4">
-          <div className="text-sm text-gray-600">
-            {fieldsState.items.length} campo(s) configurado(s)
-          </div>
+          <FormValidator
+            fields={fieldsState.items}
+            values={{}} // Would be populated from actual form
+          />
         </div>
       </div>
     </div>

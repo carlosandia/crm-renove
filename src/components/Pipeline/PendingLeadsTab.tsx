@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { Clock, User, Mail, Phone, Building, Calendar, UserPlus, Eye, AlertCircle, FileText } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface PendingLead {
   id: string;
@@ -219,11 +220,11 @@ const PendingLeadsTab: React.FC<PendingLeadsTabProps> = ({ selectedPipelineId })
       setShowDistributeModal(false);
       setSelectedLead(null);
 
-      alert('Lead distribuído com sucesso!');
+      toast.success('Lead distribuído com sucesso!');
 
     } catch (error: any) {
       console.error('Erro ao distribuir lead:', error);
-      alert('Erro ao distribuir lead: ' + error.message);
+      toast.error('Erro ao distribuir lead: ' + error.message);
     } finally {
       setDistributing(false);
     }

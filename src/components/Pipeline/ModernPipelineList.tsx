@@ -3,6 +3,7 @@ import { Pipeline } from '../../types/Pipeline';
 import { User } from '../../types/User';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import '../../styles/pipeline-scroll.css';
 
 // shadcn/ui components
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -19,11 +20,8 @@ import { ShimmerButton } from '../ui/shimmer-button';
 
 // Icons
 import { 
-  Plus,
   Edit,
-  Trash2,
   Users,
-  Target,
   Calendar,
   TrendingUp,
   Search,
@@ -31,6 +29,7 @@ import {
   MoreVertical,
   Copy,
   Archive,
+  ArchiveRestore,
   Star,
   StarOff,
   Eye,
@@ -41,10 +40,8 @@ import {
   Activity,
   BarChart3,
   PieChart,
-  Clock,
   CheckCircle,
   AlertCircle,
-  XCircle,
   Sparkles,
   ArrowRight,
   FileText,
@@ -55,15 +52,17 @@ import {
 interface ModernPipelineListProps {
   pipelines: Pipeline[];
   members: User[];
-  onCreatePipeline: () => void;
   onEditPipeline: (pipeline: Pipeline) => void;
-  onDeletePipeline: (pipelineId: string) => void;
+  onArchivePipeline: (pipelineId: string, shouldArchive: boolean) => void;
   onViewPipeline: (pipeline: Pipeline) => void;
   loading?: boolean;
+  searchTerm?: string;
+  selectedFilter?: 'all' | 'active' | 'archived';
 }
 
 interface PipelineStats {
   totalLeads: number;
+  uniqueLeads: number;
   activeLeads: number;
   wonLeads: number;
   lostLeads: number;
@@ -75,28 +74,20 @@ interface PipelineStats {
 const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
   pipelines,
   members,
-  onCreatePipeline,
   onEditPipeline,
-  onDeletePipeline,
+  onArchivePipeline,
   onViewPipeline,
   loading = false,
+  searchTerm = '',
+  selectedFilter = 'active',
 }) => {
   const { user } = useAuth();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState<'all' | 'active' | 'archived'>('all');
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [pipelineToDelete, setPipelineToDelete] = useState<Pipeline | null>(null);
+  const [archiveModalOpen, setArchiveModalOpen] = useState(false);
+  const [pipelineToArchive, setPipelineToArchive] = useState<Pipeline | null>(null);
   const [pipelineStats, setPipelineStats] = useState<Record<string, PipelineStats>>({});
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
 
-  // ✅ LOGS ESPECÍFICOS PARA DEBUG HENRIQUE
-  console.log('🔍 [ModernPipelineList] Props recebidas:', {
-    pipelinesCount: pipelines?.length || 0,
-    membersCount: members?.length || 0,
-    loading,
-    userEmail: user?.email,
-    pipelinesData: pipelines?.map(p => ({ id: p.id.substring(0, 8) + '...', name: p.name, created_by: p.created_by })) || []
-  });
+  // Pipelines recebidas: ${pipelines?.length || 0}
 
   // Dados recebidos processados silenciosamente
 
@@ -128,7 +119,8 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
               status,
               custom_data,
               created_at,
-              updated_at
+              updated_at,
+              lead_master_id
             `)
             .eq('pipeline_id', pipeline.id);
             
@@ -149,6 +141,15 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
         if (error) throw error;
 
         const totalLeads = leads?.length || 0;
+        
+        // Calcular leads únicos via lead_master_id
+        const uniqueLeadsSet = new Set();
+        leads?.forEach(lead => {
+          if (lead.lead_master_id) {
+            uniqueLeadsSet.add(lead.lead_master_id);
+          }
+        });
+        const uniqueLeads = uniqueLeadsSet.size;
 
         // Simular distribuição realista dos leads se há dados reais
         let wonLeads = 0;
@@ -231,6 +232,7 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
 
         stats[pipeline.id] = {
           totalLeads,
+          uniqueLeads,
           activeLeads, // Oportunidades ativas (excluindo ganho/perdido)
           wonLeads,
           lostLeads,
@@ -244,6 +246,7 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
       } catch (error) {
         stats[pipeline.id] = {
           totalLeads: 0,
+          uniqueLeads: 0,
           activeLeads: 0,
           wonLeads: 0,
           lostLeads: 0,
@@ -273,16 +276,20 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
     localStorage.setItem('favoritePipelines', JSON.stringify(newFavorites));
   };
 
-  const handleDeleteClick = (pipeline: Pipeline) => {
-    setPipelineToDelete(pipeline);
-    setDeleteModalOpen(true);
+  const handleArchiveClick = (pipeline: Pipeline) => {
+    setPipelineToArchive(pipeline);
+    setArchiveModalOpen(true);
   };
 
-  const confirmDelete = () => {
-    if (pipelineToDelete) {
-      onDeletePipeline(pipelineToDelete.id);
-      setDeleteModalOpen(false);
-      setPipelineToDelete(null);
+  const confirmArchive = () => {
+    if (pipelineToArchive) {
+      const isCurrentlyArchived = pipelineToArchive.is_archived === true || 
+                                  (!pipelineToArchive.is_active && pipelineToArchive.description?.includes('[ARCHIVED:')) ||
+                                  false;
+      const shouldArchive = !isCurrentlyArchived; // Toggle archive status
+      onArchivePipeline(pipelineToArchive.id, shouldArchive);
+      setArchiveModalOpen(false);
+      setPipelineToArchive(null);
     }
   };
 
@@ -294,21 +301,22 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
   };
 
   const getStatusIcon = (stats: PipelineStats) => {
-    if (stats.activeLeads === 0) return XCircle;
     if (stats.conversionRate >= 70) return CheckCircle;
     if (stats.conversionRate >= 40) return AlertCircle;
-    return XCircle;
+    return null;
   };
 
   const filteredPipelines = pipelines.filter(pipeline => {
     const matchesSearch = pipeline.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          pipeline.description?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    // ✅ CORREÇÃO: Filtro mais permissivo quando stats não estão carregados
-    const stats = pipelineStats[pipeline.id];
+    // 📦 SISTEMA DE ARQUIVAMENTO: Usar is_active como campo principal (false = arquivada)
+    const isArchived = pipeline.is_active === false || 
+                      pipeline.description?.includes('[ARCHIVED:') ||
+                      false;
     const matchesFilter = selectedFilter === 'all' || 
-                         (selectedFilter === 'active' && (stats?.activeLeads > 0 || !stats)) ||
-                         (selectedFilter === 'archived' && stats?.activeLeads === 0);
+                         (selectedFilter === 'active' && !isArchived) ||
+                         (selectedFilter === 'archived' && isArchived);
 
     const shouldInclude = matchesSearch && matchesFilter;
     
@@ -316,7 +324,15 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
 
     return shouldInclude;
   }).sort((a, b) => {
-    // Favoritos primeiro
+    // CORREÇÃO: Priorizar data de criação para filtros gerais
+    if (selectedFilter === 'all' || selectedFilter === 'active') {
+      // Pipelines mais recentes primeiro (created_at DESC)
+      const dateA = new Date(a.created_at).getTime();
+      const dateB = new Date(b.created_at).getTime();
+      return dateB - dateA;
+    }
+    
+    // Para filtro de arquivadas, manter lógica original (favoritos + atividade)
     const aFav = favoriteIds.includes(a.id);
     const bFav = favoriteIds.includes(b.id);
     if (aFav && !bFav) return -1;
@@ -332,22 +348,7 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
     return a.name.localeCompare(b.name);
   });
 
-  // ✅ LOGS ESPECÍFICOS PARA DEBUG DE FILTROS
-  console.log('🔍 [ModernPipelineList] Pipelines após filtro:', {
-    originalCount: pipelines.length,
-    filteredCount: filteredPipelines.length,
-    searchTerm,
-    selectedFilter,
-    filteredPipelines: filteredPipelines.map(p => ({ id: p.id.substring(0, 8) + '...', name: p.name }))
-  });
-
-  // ✅ LOG ESPECÍFICO PARA RENDERIZAÇÃO DOS CARDS
-  if (filteredPipelines.length > 0) {
-    console.log('🎯 [ModernPipelineList] Renderizando cards:', {
-      count: filteredPipelines.length,
-      pipelines: filteredPipelines.map(p => p.name)
-    });
-  }
+  // Pipelines filtradas: ${filteredPipelines.length}/${pipelines.length}
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -362,7 +363,7 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
+      <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[...Array(6)].map((_, i) => (
             <div key={i} className="h-64 bg-muted animate-pulse rounded-lg" />
@@ -373,67 +374,14 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-6">
-      {/* Header */}
-      <BlurFade delay={0.05}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Pipelines de Vendas</h1>
-            <p className="text-muted-foreground">
-              Gerencie suas pipelines e acompanhe o desempenho das vendas
-            </p>
-          </div>
-          <ShimmerButton onClick={onCreatePipeline} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Nova Pipeline
-          </ShimmerButton>
-        </div>
-      </BlurFade>
-
-      {/* Filtros e Busca */}
-      <BlurFade delay={0.1}>
-        <Card className="p-4">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar pipelines..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant={selectedFilter === 'all' ? 'default' : 'outline'}
-                onClick={() => setSelectedFilter('all')}
-                size="sm"
-              >
-                Todas
-              </Button>
-              <Button
-                variant={selectedFilter === 'active' ? 'default' : 'outline'}
-                onClick={() => setSelectedFilter('active')}
-                size="sm"
-              >
-                Ativas
-              </Button>
-              <Button
-                variant={selectedFilter === 'archived' ? 'default' : 'outline'}
-                onClick={() => setSelectedFilter('archived')}
-                size="sm"
-                className="gap-2"
-              >
-                <Archive className="h-4 w-4" />
-                Arquivadas
-              </Button>
-            </div>
-          </div>
-        </Card>
-      </BlurFade>
-
-      {/* Lista de Pipelines */}
-      {filteredPipelines.length === 0 ? (
+    <div className="h-full flex flex-col">
+      {/* Filtros removidos - agora são gerenciados pelo SubHeader */}
+      
+      {/* Lista de Pipelines com scroll */}
+      <div className="flex-1 overflow-y-auto pipeline-scroll-container" style={{ 
+        scrollbarGutter: 'stable'
+      }}>
+        {filteredPipelines.length === 0 ? (
         <BlurFade delay={0.2}>
           <Card className="p-12">
             <div className="text-center">
@@ -450,15 +398,9 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
               
               {/* ✅ ETAPA 4.1: Melhorar fallback com debug info e retry */}
               <div className="space-y-4">
-                {!searchTerm && (
-                  <ShimmerButton onClick={onCreatePipeline} className="gap-2">
-                    <Plus className="h-4 w-4" />
-                    Criar Pipeline
-                  </ShimmerButton>
-                )}
                 
                 {/* Debug info para teste3@teste3.com */}
-                {window.location.hostname === 'localhost' && (
+                {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
                   <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
                     <p className="font-medium text-blue-800 mb-2">🔍 Debug Info:</p>
                     <div className="space-y-1 text-blue-700">
@@ -489,11 +431,12 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
           </Card>
         </BlurFade>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pipeline-grid-container">
           {/* Cards das Pipelines */}
           {filteredPipelines.map((pipeline, index) => {
             const stats = pipelineStats[pipeline.id] || {
               totalLeads: 0,
+              uniqueLeads: 0,
               activeLeads: 0,
               wonLeads: 0,
               lostLeads: 0,
@@ -503,32 +446,19 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
             };
             const isFavorite = favoriteIds.includes(pipeline.id);
             const StatusIcon = getStatusIcon(stats);
-            // Filtrar members vinculados à pipeline
-            const assignedMembers = members.filter(member => {
-              // Verificar se há pipeline_members
-              if (!pipeline.pipeline_members || pipeline.pipeline_members.length === 0) {
-                return false;
-              }
-              
-              // Comparar com conversão de tipos para garantir compatibilidade
-              return pipeline.pipeline_members.some(m => {
-                const memberIdStr = m.member_id?.toString();
-                const memberIdUuid = member.id?.toString();
-                const memberEmail = member.email;
-                
-                // Comparar por ID (UUID convertido para string) ou email
-                const matchById = memberIdStr === memberIdUuid;
-                const matchByEmail = memberIdStr === memberEmail;
-                
-                return matchById || matchByEmail;
-              });
-            });
             
             return (
               <BlurFade key={pipeline.id} delay={0.1 + index * 0.05}>
                 <div 
                   className="group cursor-pointer transition-all duration-200 hover:shadow-lg"
-                  onClick={() => onViewPipeline(pipeline)}
+                  onClick={() => {
+                    console.log('🖱️ [ModernPipelineList] Pipeline clicada:', {
+                      name: pipeline.name,
+                      id: pipeline.id,
+                      fullPipeline: pipeline
+                    });
+                    onViewPipeline(pipeline);
+                  }}
                 >
                   <AnimatedCard 
                     delay={0.1 + index * 0.05}
@@ -546,7 +476,7 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
                         </CardDescription>
                       </div>
                       <div className="flex items-center gap-1">
-                        <StatusIcon className={`h-4 w-4 ${getStatusColor(stats)}`} />
+                        {StatusIcon && <StatusIcon className={`h-4 w-4 ${getStatusColor(stats)}`} />}
                       </div>
                     </div>
 
@@ -558,14 +488,6 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
                           Favorita
                         </Badge>
                       )}
-                      <Badge variant="outline" className="gap-1">
-                        <Target className="h-3 w-3" />
-                        {pipeline.pipeline_stages?.length || 0} etapas
-                      </Badge>
-                      <Badge variant="outline" className="gap-1">
-                        <Users className="h-3 w-3" />
-                        {assignedMembers.length} membros
-                      </Badge>
                     </div>
                   </CardHeader>
 
@@ -573,12 +495,12 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
                     {/* Estatísticas Principais */}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="text-center">
-                        <div className="text-2xl font-bold text-primary">{stats.totalLeads}</div>
-                        <div className="text-xs text-muted-foreground">Total de Leads</div>
+                        <div className="text-2xl font-bold text-primary">{stats.uniqueLeads}</div>
+                        <div className="text-xs text-muted-foreground">Leads</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-2xl font-bold text-green-600">{stats.activeLeads}</div>
-                        <div className="text-xs text-muted-foreground">Oportunidades Ativas</div>
+                        <div className="text-2xl font-bold text-green-600">{stats.totalLeads}</div>
+                        <div className="text-xs text-muted-foreground">Oportunidades</div>
                       </div>
                     </div>
 
@@ -618,29 +540,6 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
 
                     <Separator />
 
-                    {/* Membros Atribuídos */}
-                    <div>
-                      <div className="text-sm text-muted-foreground mb-2">Equipe</div>
-                      <div className="flex -space-x-2">
-                        {assignedMembers.slice(0, 3).map((member) => (
-                          <div
-                            key={member.id}
-                            className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center border-2 border-background"
-                            title={`${member.first_name} ${member.last_name}`}
-                          >
-                            {(member.first_name?.charAt(0) || member.email?.charAt(0) || 'U').toUpperCase()}
-                          </div>
-                        ))}
-                        {assignedMembers.length > 3 && (
-                          <div className="w-6 h-6 rounded-full bg-muted text-muted-foreground text-xs flex items-center justify-center border-2 border-background">
-                            +{assignedMembers.length - 3}
-                          </div>
-                        )}
-                        {assignedMembers.length === 0 && (
-                          <div className="text-xs text-muted-foreground">Nenhum membro</div>
-                        )}
-                      </div>
-                    </div>
 
                     {/* Ações */}
                     <div className="flex gap-2 pt-2">
@@ -673,11 +572,25 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleDeleteClick(pipeline);
+                          handleArchiveClick(pipeline);
                         }}
-                        className="text-destructive hover:text-destructive gap-2"
+                        className={`gap-2 ${(() => {
+                          const isArchived = pipeline.is_active === false || pipeline.description?.includes('[ARCHIVED:') || false;
+                          return isArchived ? 'text-blue-600 hover:text-blue-700' : 'text-orange-600 hover:text-orange-700';
+                        })()}`}
+                        title={(() => {
+                          const isArchived = pipeline.is_active === false || pipeline.description?.includes('[ARCHIVED:') || false;
+                          return isArchived ? 'Desarquivar Pipeline' : 'Arquivar Pipeline';
+                        })()}
                       >
-                        <Trash2 className="h-3 w-3" />
+                        {(() => {
+                          const isArchived = pipeline.is_active === false || pipeline.description?.includes('[ARCHIVED:') || false;
+                          return isArchived ? (
+                            <ArchiveRestore className="h-3 w-3" />
+                          ) : (
+                            <Archive className="h-3 w-3" />
+                          );
+                        })()}
                       </Button>
                     </div>
                   </CardContent>
@@ -688,23 +601,42 @@ const ModernPipelineList: React.FC<ModernPipelineListProps> = ({
           })}
         </div>
       )}
+      </div>
 
-      {/* Modal de Confirmação de Exclusão */}
-      <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+      {/* Modal de Confirmação de Arquivamento */}
+      <Dialog open={archiveModalOpen} onOpenChange={setArchiveModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirmar Exclusão</DialogTitle>
+            <DialogTitle>
+              {(() => {
+                const isArchived = pipelineToArchive && (pipelineToArchive.is_archived === true || (!pipelineToArchive.is_active && pipelineToArchive.description?.includes('[ARCHIVED:')) || false);
+                return isArchived ? 'Desarquivar Pipeline' : 'Arquivar Pipeline';
+              })()}
+            </DialogTitle>
             <DialogDescription>
-              Tem certeza que deseja excluir a pipeline "{pipelineToDelete?.name}"?
-              Esta ação não pode ser desfeita e todos os leads associados serão perdidos.
+              {(() => {
+                const isArchived = pipelineToArchive && (pipelineToArchive.is_archived === true || (!pipelineToArchive.is_active && pipelineToArchive.description?.includes('[ARCHIVED:')) || false);
+                return isArchived 
+                  ? `Tem certeza que deseja desarquivar a pipeline "${pipelineToArchive?.name}"? Ela voltará a aparecer na lista de pipelines ativas.`
+                  : `Tem certeza que deseja arquivar a pipeline "${pipelineToArchive?.name}"? Ela será movida para a seção de arquivadas mas todos os dados serão preservados.`;
+              })()}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteModalOpen(false)}>
+            <Button variant="outline" onClick={() => setArchiveModalOpen(false)}>
               Cancelar
             </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
-              Excluir Pipeline
+            <Button 
+              variant={(() => {
+                const isArchived = pipelineToArchive && (pipelineToArchive.is_archived === true || (!pipelineToArchive.is_active && pipelineToArchive.description?.includes('[ARCHIVED:')) || false);
+                return isArchived ? "default" : "secondary";
+              })()} 
+              onClick={confirmArchive}
+            >
+              {(() => {
+                const isArchived = pipelineToArchive && (pipelineToArchive.is_archived === true || (!pipelineToArchive.is_active && pipelineToArchive.description?.includes('[ARCHIVED:')) || false);
+                return isArchived ? 'Desarquivar' : 'Arquivar';
+              })()}
             </Button>
           </DialogFooter>
         </DialogContent>

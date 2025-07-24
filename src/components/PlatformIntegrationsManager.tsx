@@ -47,7 +47,7 @@ const PlatformIntegrationsManager: React.FC = () => {
   const [formData, setFormData] = useState<FormData>({
     client_id: '',
     client_secret: '',
-    redirect_uri: 'http://localhost:3000/auth/google/callback',
+    redirect_uri: 'http://127.0.0.1:3000/auth/google/callback',
     scopes: [
       'https://www.googleapis.com/auth/calendar',
       'https://www.googleapis.com/auth/calendar.events'
@@ -83,7 +83,7 @@ const PlatformIntegrationsManager: React.FC = () => {
         setFormData({
           client_id: data.client_id || '',
           client_secret: data.client_secret || '',
-          redirect_uri: data.redirect_uri || 'http://localhost:3000/auth/google/callback',
+          redirect_uri: data.redirect_uri || 'http://127.0.0.1:3000/auth/google/callback',
           scopes: data.scopes || [
             'https://www.googleapis.com/auth/calendar',
             'https://www.googleapis.com/auth/calendar.events'
@@ -327,7 +327,7 @@ const PlatformIntegrationsManager: React.FC = () => {
                 type="url"
                 value={formData.redirect_uri}
                 onChange={(e) => handleInputChange('redirect_uri', e.target.value)}
-                placeholder="http://localhost:3000/auth/google/callback"
+                placeholder="http://127.0.0.1:3000/auth/google/callback"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               />
               <p className="text-xs text-gray-500 mt-1">

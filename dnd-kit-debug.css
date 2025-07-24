@@ -1,0 +1,58 @@
+/* CSS debug para @dnd-kit */
+
+/* Classes para DragOverlay */
+.drag-overlay-custom {
+  z-index: 999999 !important;
+  pointer-events: none;
+  transform-origin: center;
+  transition: transform 0.2s ease-out;
+}
+
+.drag-overlay-card {
+  transform: rotate(5deg) scale(1.05);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
+  transition: all 0.2s ease-out;
+}
+
+.drag-overlay-enter {
+  animation: dragOverlayEnter 0.2s ease-out forwards;
+}
+
+@keyframes dragOverlayEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.9) rotate(0deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.05) rotate(5deg);
+  }
+}
+
+/* Cursor durante drag */
+.dnd-dragging * {
+  cursor: grabbing !important;
+}
+
+/* Feedback visual para sortable items */
+.sortable-item-dragging {
+  opacity: 0.5;
+  transform: rotate(2deg) scale(1.02);
+  z-index: 1000;
+}
+
+.sortable-item-ghost {
+  opacity: 0.4;
+  transform: scale(0.95);
+}
+
+/* Debug: Mostrar áreas de drop */
+[data-dnd-kit-debug] .sortable-context {
+  background: rgba(0, 255, 0, 0.1);
+  border: 2px dashed #00ff00;
+}
+
+[data-dnd-kit-debug] .sortable-item {
+  background: rgba(255, 0, 0, 0.1);
+  border: 1px solid #ff0000;
+}

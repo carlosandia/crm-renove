@@ -1,32 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSupabaseCrud } from './useSupabaseCrud';
+import { ContactSchema } from '../shared/schemas/ContactSchemas';
+import type { Contact } from '../shared/types/Domain';
 
-export interface Contact {
-  id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  phone?: string;
-  company?: string;
-  company_id: string; // ✅ COMPATIBILIDADE - Obrigatório
-  job_title?: string;
-  address?: string;
-  city?: string;
-  state?: string;
-  zip_code?: string;
-  country?: string;
-  notes?: string;
-  tags?: string[];
-  social_linkedin?: string;
-  social_facebook?: string;
-  social_twitter?: string;
-  lead_source?: string;
-  tenant_id?: string;
-  created_at?: string;
-  updated_at?: string;
-  created_by?: string;
-}
+// AIDEV-NOTE: Interface legada removida - usando tipos inferidos do Zod
 
 interface ContactFilters {
   tenant_id?: string;
@@ -40,8 +18,8 @@ interface ContactFilters {
 export const useContacts = (filters?: ContactFilters) => {
   const { user } = useAuth();
   
-  // ✅ USANDO NOVO HOOK BASE UNIFICADO
-  const contactsCrud = useSupabaseCrud<Contact>({
+  // ✅ USANDO NOVO HOOK BASE UNIFICADO COM VALIDAÇÃO ZOD
+  const contactsCrud = useSupabaseCrud({
     tableName: 'contacts',
     selectFields: `
       id, first_name, last_name, email, phone, company, job_title,
@@ -52,7 +30,9 @@ export const useContacts = (filters?: ContactFilters) => {
     defaultOrderBy: { column: 'first_name', ascending: true },
     enableCache: true,
     cacheKeyPrefix: 'contacts',
-    cacheDuration: 300000 // 5 minutos
+    cacheDuration: 300000, // 5 minutos
+    // AIDEV-NOTE: Schema Zod para validação runtime
+    schema: ContactSchema
   });
 
   // ============================================
@@ -239,8 +219,28 @@ export const useContacts = (filters?: ContactFilters) => {
     }),
     refreshContacts: contactsCrud.refresh, // ✅ COMPATIBILIDADE
     getContactById: contactsCrud.fetchById,
-    createContact: (contactData: Partial<Contact>) => contactsCrud.create(contactData),
-    updateContact: (id: string, contactData: Partial<Contact>) => contactsCrud.update(id, contactData),
+    createContact: (contactData: Partial<Contact>) => {
+      // AIDEV-NOTE: Validar campos obrigatórios antes da criação
+      if (!contactData.email?.trim()) {
+        throw new Error('Email é obrigatório para criar um contato');
+      }
+      if (!contactData.first_name?.trim()) {
+        throw new Error('Nome é obrigatório para criar um contato');
+      }
+      if (!contactData.last_name?.trim()) {
+        throw new Error('Sobrenome é obrigatório para criar um contato');
+      }
+      // Converter Partial para tipo compatível removendo undefined dos campos obrigatórios
+      const validatedData = contactData as Omit<Contact, "id" | "created_at" | "updated_at">;
+      return contactsCrud.create(validatedData);
+    },
+    updateContact: (id: string, contactData: Partial<Contact>) => {
+      // AIDEV-NOTE: Para updates, permitir campos opcionais mas filtrar undefined
+      const filteredData = Object.fromEntries(
+        Object.entries(contactData).filter(([, value]) => value !== undefined)
+      ) as Partial<Contact>;
+      return contactsCrud.update(id, filteredData);
+    },
     deleteContact: contactsCrud.remove,
     
     // ✅ COMPATIBILIDADE - Funções legadas (implementação vazia ou redirecionamento)

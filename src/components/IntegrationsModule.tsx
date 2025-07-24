@@ -43,6 +43,16 @@ import { ShimmerButton } from './ui/shimmer-button';
 import { IconBadge } from './ui/icon-badge';
 import { useStatePersistence, MODULE_PERSISTENCE_CONFIGS } from '../lib/statePersistence';
 import { useGoogleCalendar } from '../hooks/useGoogleCalendar';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './ui/alert-dialog';
 
 interface Integration {
   id: string;
@@ -143,6 +153,7 @@ const IntegrationsModule: React.FC = React.memo(() => {
     public_key: false,
     secret_key: false
   });
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
 
   // 🚀 OTIMIZAÇÃO: Memoização de validadores de token
   const validateMetaToken = useCallback((token: string) => {
@@ -319,12 +330,13 @@ const IntegrationsModule: React.FC = React.memo(() => {
     }
   }, []);
 
+  // 🚀 OTIMIZAÇÃO: Handler para abrir confirmação de regenerar chaves
+  const handleRegenerateKeysClick = useCallback(() => {
+    setShowRegenerateConfirm(true);
+  }, []);
+
   // 🚀 OTIMIZAÇÃO: Handler de regenerar chaves memoizado
   const handleRegenerateKeys = useCallback(async () => {
-    if (!confirm('Tem certeza que deseja regenerar as chaves de API? As chaves atuais deixarão de funcionar.')) {
-      return;
-    }
-
     try {
       setSaving(true);
       
@@ -1245,7 +1257,7 @@ const IntegrationsModule: React.FC = React.memo(() => {
                     <h2 className="text-lg font-semibold text-gray-900">Chaves de API</h2>
                   </div>
                   <button
-                    onClick={handleRegenerateKeys}
+                    onClick={handleRegenerateKeysClick}
                     disabled={saving}
                     className="px-3 py-1.5 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center space-x-2 text-sm"
                   >
@@ -1554,7 +1566,7 @@ const IntegrationsModule: React.FC = React.memo(() => {
                     </div>
 
                     <button
-                      onClick={handleRegenerateKeys}
+                      onClick={handleRegenerateKeysClick}
                       disabled={saving}
                       className="w-full px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors flex items-center justify-center space-x-2"
                     >
@@ -2174,6 +2186,31 @@ const IntegrationsModule: React.FC = React.memo(() => {
               ) : null}
         </div>
       </div>
+
+      {/* Confirmation Dialog */}
+      <AlertDialog open={showRegenerateConfirm} onOpenChange={setShowRegenerateConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Regenerar Chaves de API</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja regenerar as chaves de API? As chaves atuais deixarão de funcionar 
+              imediatamente e você precisará atualizar todas as integrações que utilizam essas chaves.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                setShowRegenerateConfirm(false);
+                await handleRegenerateKeys();
+              }}
+              className="bg-yellow-600 hover:bg-yellow-700"
+            >
+              Regenerar Chaves
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 });

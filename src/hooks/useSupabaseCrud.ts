@@ -1,19 +1,26 @@
 import { useState, useCallback, useMemo } from 'react';
+import { z } from 'zod';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useAsyncState } from './useAsyncState';
+import { parseSafe, validateArray, formatValidationError } from '../shared/utils/validation';
+import type { SafeParseResult } from '../shared/types/Api';
 
 // ============================================
 // TIPOS E INTERFACES BASE
 // ============================================
 
-export interface CrudConfig {
+export interface CrudConfig<T extends z.ZodTypeAny> {
   tableName: string;
   selectFields?: string;
   defaultOrderBy?: { column: string; ascending: boolean };
   enableCache?: boolean;
   cacheKeyPrefix?: string;
   cacheDuration?: number; // em ms
+  // AIDEV-NOTE: Schema Zod para validação runtime
+  schema: T;
+  createSchema?: z.ZodTypeAny;
+  updateSchema?: z.ZodTypeAny;
 }
 
 export interface FilterOptions {
@@ -40,7 +47,11 @@ export interface CrudPermissions {
 // HOOK BASE PARA OPERAÇÕES CRUD
 // ============================================
 
-export function useSupabaseCrud<T extends Record<string, unknown>>(config: CrudConfig) {
+export function useSupabaseCrud<TSchema extends z.ZodTypeAny>(
+  config: CrudConfig<TSchema>
+) {
+  // AIDEV-NOTE: Inferir tipo do schema Zod
+  type T = z.infer<TSchema>;
   const { user } = useAuth();
   const [data, setData] = useState<T[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -163,10 +174,19 @@ export function useSupabaseCrud<T extends Record<string, unknown>>(config: CrudC
         throw error;
       }
 
-      console.log(`✅ [useSupabaseCrud] ${config.tableName}: ${queryData?.length || 0} registros encontrados`);
+      // AIDEV-NOTE: Validação Zod dos dados retornados
+      const validationResult = validateArray(config.schema, queryData || []);
+      
+      if (!validationResult.success) {
+        const errorMessage = formatValidationError(validationResult);
+        console.error(`❌ [useSupabaseCrud] Erro de validação ${config.tableName}:`, errorMessage);
+        throw new Error(`Validation error: ${errorMessage}`);
+      }
+
+      console.log(`✅ [useSupabaseCrud] ${config.tableName}: ${validationResult.data.length} registros encontrados e validados`);
       
       const result = {
-        items: (queryData as unknown as T[]) || [],
+        items: validationResult.data,
         count: count || 0
       };
 
@@ -176,7 +196,7 @@ export function useSupabaseCrud<T extends Record<string, unknown>>(config: CrudC
       
       return result.items;
     });
-  }, [user, fetchState.execute, buildQuery, getCacheKey, getCache, setCache, config.tableName]);
+  }, [user, fetchState.execute, buildQuery, getCacheKey, getCache, setCache, config.tableName, config.schema]);
 
   const fetchById = useCallback(async (id: string) => {
     if (!user) throw new Error('Usuário não autenticado');
@@ -200,12 +220,20 @@ export function useSupabaseCrud<T extends Record<string, unknown>>(config: CrudC
       throw error;
     }
 
-    const result = queryData as unknown as T;
-    console.log(`✅ [useSupabaseCrud] ${config.tableName} encontrado:`, result?.id);
+    // AIDEV-NOTE: Validação Zod do item retornado
+    const validationResult = parseSafe(config.schema, queryData);
     
-    setCache(cacheKey, result);
-    return result;
-  }, [user, fetchState.execute, getCacheKey, getCache, setCache, config.tableName, config.selectFields]);
+    if (!validationResult.success) {
+      const errorMessage = formatValidationError(validationResult);
+      console.error(`❌ [useSupabaseCrud] Erro de validação ${config.tableName} por ID:`, errorMessage);
+      throw new Error(`Validation error: ${errorMessage}`);
+    }
+
+    console.log(`✅ [useSupabaseCrud] ${config.tableName} encontrado e validado:`, validationResult.data.id);
+    
+    setCache(cacheKey, validationResult.data);
+    return validationResult.data;
+  }, [user, getCacheKey, getCache, setCache, config.tableName, config.selectFields, config.schema]);
 
   const create = useCallback(async (item: Omit<T, 'id' | 'created_at' | 'updated_at'>) => {
     if (!user) throw new Error('Usuário não autenticado');
@@ -213,8 +241,21 @@ export function useSupabaseCrud<T extends Record<string, unknown>>(config: CrudC
     return createState.execute(async () => {
       console.log(`🆕 [useSupabaseCrud] Criando novo ${config.tableName}...`);
       
-      // Adicionar tenant_id automaticamente se user tiver
+      // AIDEV-NOTE: Validação Zod dos dados de entrada se createSchema disponível
+      if (config.createSchema) {
+        const inputValidation = parseSafe(config.createSchema, item);
+        if (!inputValidation.success) {
+          const errorMessage = formatValidationError(inputValidation);
+          console.error(`❌ [useSupabaseCrud] Erro de validação entrada ${config.tableName}:`, errorMessage);
+          throw new Error(`Input validation error: ${errorMessage}`);
+        }
+      }
+      
+      // 🔧 CORREÇÃO RLS: Gerar UUID manualmente para contornar problema de SELECT após INSERT
+      const itemId = crypto.randomUUID();
+      
       const itemData = {
+        id: itemId,
         ...item,
         ...(user.tenant_id && { tenant_id: user.tenant_id }),
         created_by: user.id,
@@ -222,21 +263,28 @@ export function useSupabaseCrud<T extends Record<string, unknown>>(config: CrudC
         updated_at: new Date().toISOString()
       };
 
-      const { data: queryData, error } = await supabase
+      const { error } = await supabase
         .from(config.tableName)
-        .insert(itemData)
-        .select()
-        .single();
+        .insert(itemData);
 
       if (error) {
         console.error(`❌ [useSupabaseCrud] Erro ao criar ${config.tableName}:`, error);
         throw error;
       }
 
-      console.log(`✅ [useSupabaseCrud] ${config.tableName} criado:`, queryData.id);
+      // AIDEV-NOTE: Validação Zod do item criado
+      const validationResult = parseSafe(config.schema, itemData);
+      
+      if (!validationResult.success) {
+        const errorMessage = formatValidationError(validationResult);
+        console.error(`❌ [useSupabaseCrud] Erro de validação item criado ${config.tableName}:`, errorMessage);
+        throw new Error(`Created item validation error: ${errorMessage}`);
+      }
+
+      console.log(`✅ [useSupabaseCrud] ${config.tableName} criado e validado:`, itemId);
       
       // Atualizar lista local
-      setData(prev => [queryData, ...prev]);
+      setData(prev => [validationResult.data, ...prev]);
       setTotalCount(prev => prev + 1);
       
       // Invalidar cache
@@ -247,9 +295,9 @@ export function useSupabaseCrud<T extends Record<string, unknown>>(config: CrudC
         }
       });
       
-      return queryData;
+      return validationResult.data;
     });
-  }, [user, createState.execute, getCacheKey, config.tableName]);
+  }, [user, createState.execute, getCacheKey, config.tableName, config.schema, config.createSchema]);
 
   const update = useCallback(async (id: string, updates: Partial<T>) => {
     if (!user) throw new Error('Usuário não autenticado');
@@ -447,7 +495,7 @@ export function useApiCrud<T extends Record<string, unknown>>(config: ApiConfig)
   const updateState = useAsyncState<T>();
   const deleteState = useAsyncState<void>();
 
-  const baseUrl = config.baseUrl || process.env.REACT_APP_API_URL || 'http://localhost:3001';
+  const baseUrl = config.baseUrl || process.env.REACT_APP_API_URL || 'http://127.0.0.1:3001';
 
   // Headers padrão com autenticação
   const getHeaders = useCallback(() => {

@@ -1,7 +1,16 @@
-import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
-import { X, User, Mail, MessageCircle, ThumbsUp, ThumbsDown, Clock, Phone, Building, DollarSign, MapPin, Calendar, Target, Thermometer, Globe, FileText, Activity, ChevronDown, CheckCircle, AlertCircle, PlayCircle, ArrowRight, Zap, Edit, Check, X as XIcon } from 'lucide-react';
+import React, { useState, useEffect, useContext, useRef, useCallback, useMemo } from 'react';
+import { X, User, Mail, MessageCircle, ThumbsUp, ThumbsDown, Clock, Phone, Building, DollarSign, MapPin, Calendar, Target, Thermometer, Globe, FileText, Activity, ChevronDown, CheckCircle, AlertCircle, PlayCircle, ArrowRight, Zap, Edit, Check, X as XIcon, Flame, Snowflake, ThermometerSnowflake, Star, Trophy, MoreVertical, Trash2 } from 'lucide-react';
+import { cn } from '../../lib/utils';
+import { useTemperatureAPI } from '../../hooks/useTemperatureAPI';
+import { generateTemperatureBadge } from '../../utils/temperatureUtils';
+import { useDeleteOpportunityMutation } from '../../hooks/useDeleteOpportunityMutation';
+// ✅ IMPORTAR NOVOS COMPONENTES DOS BLOCOS
+import LeadDataBlock from './blocks/LeadDataBlock';
+import InteractiveMenuBlock from './blocks/InteractiveMenuBlock';
+import HistoryBlock from './blocks/HistoryBlock';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { showErrorToast } from '../../hooks/useToast';
 import { Lead, CustomField } from '../../types/Pipeline';
 import { registerComment, registerFeedback, registerStageMove } from '../../utils/historyUtils';
 import { checkHistoryTable } from '../../utils/fixHistoryTables';
@@ -10,7 +19,18 @@ import { useLeadComments } from '../../hooks/useLeadComments';
 import { useLeadFeedbacks } from '../../hooks/useLeadFeedbacks';
 import { useLeadHistory } from '../../hooks/useLeadHistory';
 import { StageSelector } from './StageSelector';
-import { GoogleCalendarEventModal } from '../GoogleCalendarEventModal';
+import { MinimalHorizontalStageSelector } from './MinimalHorizontalStageSelector';
+import { EnhancedGoogleCalendarTab } from '../meetings/EnhancedGoogleCalendarTab';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
+} from '../ui/dropdown-menu';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, 
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle
+} from '../ui/alert-dialog';
+import { Button } from '../ui/button';
+import { api } from '../../lib/api';
 import { 
   translateAction, 
   getActionIcon, 
@@ -23,6 +43,7 @@ import {
   formatTaskDate,
   getFieldIcon
 } from '../../utils/leadDetailsUtils';
+// ✅ OUTCOME REASONS: Importado nos componentes dos blocos
 
 // ✅ ETAPA 2: Sistema de logs condicionais para evitar spam
 const DEBUG_LOGS = process.env.NODE_ENV === 'development' && false; // Altere para true se precisar debugar
@@ -32,6 +53,7 @@ interface LeadDetailsModalProps {
   onClose: () => void;
   lead: Lead;
   customFields: CustomField[];
+  pipelineId?: string; // Pipeline ID para carregar configuração de temperatura
   onUpdate?: (leadId: string, updatedData: any) => void;
   activeTab?: string;
   isUpdatingStage?: boolean;
@@ -80,13 +102,22 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   onClose,
   lead,
   customFields,
+  pipelineId,
   onUpdate,
   activeTab: externalActiveTab,
   isUpdatingStage = false,
   onForceClose
 }) => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState(externalActiveTab || 'dados');
+  
+  // 🌡️ Hook para configuração de temperatura personalizada
+  const { config: temperatureConfig } = useTemperatureAPI({ 
+    pipelineId: pipelineId || lead.pipeline_id || '', 
+    autoLoad: true 
+  });
+  
+  // ✅ NOVO: Estado para controle do menu interativo (Bloco 2)
+  const [activeInteractiveTab, setActiveInteractiveTab] = useState('cadencia');
 
   // ✅ PASSO 2: ESTADO LOCAL REATIVO PARA SINCRONAÇÃO (LEADDETAILSMODAL)
   const [localLeadData, setLocalLeadData] = useState(lead);
@@ -100,6 +131,13 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   const [editing, setEditing] = useState<{[key: string]: boolean}>({});
   const [editValues, setEditValues] = useState<{[key: string]: string}>({});
   const [saving, setSaving] = useState<{[key: string]: boolean}>({});
+  
+  // Estados para o menu 3 pontos e exclusão de oportunidade
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // ✅ NOVA IMPLEMENTAÇÃO: Hook de mutation para exclusão de oportunidade
+  const deleteOpportunityMutation = useDeleteOpportunityMutation(localLeadData?.pipeline_id || '');
 
   // ✅ CORREÇÃO DEFINITIVA: Remover completamente o useEffect problemático
   React.useEffect(() => {
@@ -174,17 +212,35 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
 
   // ✅ ETAPA 1: Função de fechamento simplificada (sistema de bloqueio removido)
   const protectedOnClose = React.useCallback(() => {
-    console.log('🔍 MODAL-DETAILS: Tentativa de fechar modal');
-    
     // Verificar apenas se está atualizando etapa
     if (isUpdatingStage) {
-      console.log('🚫 MODAL-DETAILS: Fechamento bloqueado - etapa sendo atualizada');
       return;
     }
     
-    console.log('🚪 MODAL-DETAILS: Fechamento permitido');
     onClose();
   }, [onClose, isUpdatingStage]);
+
+  // ✅ NOVA IMPLEMENTAÇÃO: Função para excluir oportunidade usando TanStack Query Mutation
+  const handleDeleteOpportunity = async () => {
+    try {
+      setDeleting(true);
+      setShowDeleteDialog(false);
+      
+      // Usar mutation que automaticamente invalida cache
+      await deleteOpportunityMutation.mutateAsync({
+        leadId: localLeadData.id
+      });
+      
+      // Fechar modal após sucesso da mutation
+      protectedOnClose();
+      
+    } catch (error) {
+      console.error('❌ Erro ao excluir oportunidade:', error);
+      alert('Erro ao excluir oportunidade. Tente novamente.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   // ✅ ETAPA 1: Sistema de controle isolado removido - usando apenas props
   React.useEffect(() => {
@@ -222,12 +278,86 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   const [leadTasks, setLeadTasks] = useState<LeadTask[]>([]);
   const [cadenceLoading, setCadenceLoading] = useState(false);
 
-  // Atualizar activeTab quando a propriedade externa mudar
-  useEffect(() => {
-    if (externalActiveTab) {
-      setActiveTab(externalActiveTab);
+  // ✅ BADGES MEMOIZADAS PARA PERFORMANCE OTIMIZADA
+  
+  // Badge de qualificação inteligente - sempre mostra status
+  const qualificationBadge = useMemo(() => {
+    const leadCustomData = localLeadData.custom_data || {};
+    const lifecycleStage = localLeadData.lifecycle_stage || 
+                          leadCustomData.lifecycle_stage || 
+                          'lead';
+    
+    if (lifecycleStage === 'mql') {
+      return {
+        label: 'MQL',
+        color: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+        icon: <Star className="w-3 h-3" />,
+        tooltip: 'Marketing Qualified Lead'
+      };
     }
-  }, [externalActiveTab]);
+    if (lifecycleStage === 'sql') {
+      return {
+        label: 'SQL',
+        color: 'bg-green-100 text-green-800 border-green-300',
+        icon: <Trophy className="w-3 h-3" />,
+        tooltip: 'Sales Qualified Lead'
+      };
+    }
+    // ✅ NOVO: Sempre mostrar badge "Lead" quando lifecycle_stage = 'lead'
+    if (lifecycleStage === 'lead') {
+      return {
+        label: 'Lead',
+        color: 'bg-blue-100 text-blue-800 border-blue-300',
+        icon: <User className="w-3 h-3" />,
+        tooltip: 'Lead'
+      };
+    }
+    // Fallback: sempre mostrar Lead se não for MQL/SQL
+    return {
+      label: 'Lead',
+      color: 'bg-blue-100 text-blue-800 border-blue-300',
+      icon: <User className="w-3 h-3" />,
+      tooltip: 'Lead'
+    };
+  }, [localLeadData.lifecycle_stage, localLeadData.custom_data]);
+
+  // Badge de temperatura com configuração personalizada (SINCRONIZADO COM LEADCARD)
+  const temperatureBadge = useMemo(() => {
+    // ✅ MESMA ORDEM DE PRIORIDADE DO LEADCARD
+    const leadCustomData = localLeadData.custom_data || {};
+    const temperatura = localLeadData.temperature_level || 
+                       leadCustomData.temperatura || 
+                       leadCustomData.lead_temperature || 
+                       'hot';
+    
+    const badge = generateTemperatureBadge(temperatura, temperatureConfig ?? null);
+    
+    // Converter ícones emoji para componentes React
+    let iconComponent;
+    switch (badge.icon) {
+      case '🔥':
+        iconComponent = <Flame className="w-3 h-3" />;
+        break;
+      case '🌡️':
+        iconComponent = <Thermometer className="w-3 h-3" />;
+        break;
+      case '❄️':
+        iconComponent = <Snowflake className="w-3 h-3" />;
+        break;
+      case '🧊':
+        iconComponent = <ThermometerSnowflake className="w-3 h-3" />;
+        break;
+      default:
+        iconComponent = <Thermometer className="w-3 h-3" />;
+    }
+    
+    return {
+      ...badge,
+      icon: iconComponent
+    };
+  }, [localLeadData.temperature_level, localLeadData.custom_data, temperatureConfig]);
+
+  // ✅ SISTEMA DE ACTIVETAB REMOVIDO - Nova interface de 3 blocos não usa tabs
 
   // ✅ ETAPA 1: Função otimizada para obter dados do lead
   const getLeadData = (key: string): any => {
@@ -454,21 +584,15 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     }
   }, [isOpen, localLeadData.id, loadComments, loadFeedbacks, loadHistory, loadLeadTasks]); // ✅ Incluir funções estáveis
 
-  // Carregar histórico quando aba dados fica ativa
+  // Carregar histórico quando modal abrir (novo layout de 3 blocos sempre mostra histórico)
   useEffect(() => {
-    if (isOpen && activeTab === 'dados') {
+    if (isOpen) {
       if (DEBUG_LOGS) {
-        }
+        console.log('🔄 [LeadDetailsModal] Modal aberto, carregando histórico...');
+      }
       loadHistory();
     }
-  }, [isOpen, activeTab, loadHistory]); // ✅ Incluir loadHistory nas dependências
-
-  // Atualizar activeTab quando a propriedade externa mudar
-  useEffect(() => {
-    if (externalActiveTab) {
-      setActiveTab(externalActiveTab);
-    }
-  }, [externalActiveTab]);
+  }, [isOpen, loadHistory]); // ✅ Simplicado - nova interface sempre carrega histórico
 
   // ✅ ETAPA 2: Função para carregar stages da pipeline
   const loadPipelineStages = useCallback(async () => {
@@ -617,7 +741,8 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
       
       // ✅ Para campos customizados, criar estratégia dinamicamente
       if (!strategy) {
-        const customField = customFields.find(cf => cf.field_name === fieldName);
+        const fieldsArray = Array.isArray(customFields) ? customFields : ((customFields as any)?.fields || []);
+        const customField = fieldsArray.find((cf: any) => cf.field_name === fieldName);
         if (customField) {
           strategy = { 
             table: 'pipeline_leads', 
@@ -816,10 +941,10 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
       
       if (isNetworkError) {
         console.warn('⚠️ [LeadDetailsModal] Erro de conectividade no salvamento - tente novamente:', fieldName);
-        alert('Erro de conectividade. Verifique sua conexão e tente novamente.');
+        showErrorToast('Erro de conectividade', 'Verifique sua conexão e tente novamente.');
       } else {
         console.error('❌ [LeadDetailsModal] Erro no salvamento:', error);
-        alert('Erro ao salvar campo. Tente novamente.');
+        showErrorToast('Erro ao salvar', 'Erro ao salvar campo. Tente novamente.');
       }
     } finally {
       setSaving(prev => ({ ...prev, [fieldName]: false }));
@@ -911,14 +1036,10 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
       onClick={(e) => {
         // Só fechar se clicou no overlay (não no modal)
         if (e.target === e.currentTarget) {
-          console.log('🔍 MODAL-DETAILS: Clique no overlay detectado');
-          
           if (isUpdatingStage) {
-            console.log('🚫 MODAL-DETAILS: Fechamento por overlay BLOQUEADO durante atualização');
             return;
           }
           
-          console.log('🚪 MODAL-DETAILS: Fechando modal via overlay');
           if (onForceClose) {
             onForceClose();
           } else {
@@ -928,78 +1049,74 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
       }}
     >
       <div 
-        className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden"
+        className="bg-white rounded-lg shadow-xl w-full max-w-[95vw] max-h-[90vh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div className="flex items-center space-x-4">
-            <h2 className="text-xl font-semibold text-gray-900">
-              {getLeadData('nome_oportunidade') || getLeadData('titulo_oportunidade') || getLeadData('titulo') || 'Oportunidade sem título'}
-            </h2>
-            
-            {/* ✅ ETAPA 2: Seletor de Stages ao lado do título */}
-            <div className="relative">
-              <button
-                onClick={() => setShowStageSelector(!showStageSelector)}
-                disabled={loadingStages}
-                className="flex items-center space-x-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg border border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loadingStages ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-                    <span>Carregando...</span>
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-4 h-4 text-blue-600" />
-                    <span>{pipelineStages.find(s => s.id === localLeadData.stage_id)?.name || 'Selecionar Etapa'}</span>
-                    <ChevronDown className={`w-4 h-4 transition-transform ${showStageSelector ? 'rotate-180' : ''}`} />
-                  </>
-                )}
-              </button>
+        {/* Header Minimalista */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          <div className="flex items-center space-x-6">
+            <div className="flex items-center space-x-3">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="p-1 h-8 w-8 hover:bg-gray-100" disabled={deleting}>
+                    <MoreVertical className="w-4 h-4 text-gray-500" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48">
+                  <DropdownMenuItem 
+                    className="text-red-600 focus:text-red-600 cursor-pointer" 
+                    onClick={() => setShowDeleteDialog(true)}
+                    disabled={deleting}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Excluir negócio
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               
-              {/* Dropdown com os stages */}
-              {showStageSelector && !loadingStages && (
-                <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-[60] max-h-60 overflow-y-auto">
-                  <div className="p-2">
-                    <div className="text-xs font-medium text-gray-500 mb-2 px-2">Mover para etapa:</div>
-                    {pipelineStages.map((stage) => {
-                      const isCurrentStage = stage.id === localLeadData.stage_id;
-                      return (
-                        <button
-                          key={stage.id}
-                          onClick={() => handleStageMove(stage.id)}
-                          disabled={isCurrentStage}
-                          className={`w-full flex items-center space-x-3 px-3 py-2 text-sm rounded-md transition-colors text-left ${
-                            isCurrentStage
-                              ? 'bg-blue-50 text-blue-700 cursor-not-allowed'
-                              : 'hover:bg-gray-50 text-gray-700 hover:text-gray-900'
-                          }`}
-                        >
-                          <div 
-                            className="w-3 h-3 rounded-full flex-shrink-0" 
-                            style={{ backgroundColor: stage.color || '#3B82F6' }}
-                          ></div>
-                          <span className="flex-1">{stage.name}</span>
-                          {isCurrentStage && (
-                            <span className="text-xs font-medium text-blue-600">Atual</span>
-                          )}
-                          {!isCurrentStage && (
-                            <ArrowRight className="w-3 h-3 text-gray-400" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+              <h2 className="text-lg font-semibold text-gray-900">
+                {getLeadData('nome_oportunidade') || getLeadData('titulo_oportunidade') || getLeadData('titulo') || 'Oportunidade sem título'}
+              </h2>
             </div>
+            
+            {/* ✅ NOVO: Badges MQL e Temperatura (SEMPRE VISÍVEIS) */}
+            <div className="flex items-center space-x-2">
+              {/* Badge de Qualificação (Lead/MQL/SQL) - SEMPRE APARECE */}
+              <div 
+                className={cn(
+                  "inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border",
+                  qualificationBadge.color
+                )}
+                title={qualificationBadge.tooltip}
+              >
+                <span className="mr-1">{qualificationBadge.icon}</span>
+                {qualificationBadge.label}
+              </div>
+              
+              {/* Badge de Temperatura */}
+              <div 
+                className={cn(
+                  "inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border",
+                  temperatureBadge.color
+                )}
+                title={temperatureBadge.tooltip}
+              >
+                <span className="mr-1">{temperatureBadge.icon}</span>
+                {temperatureBadge.label}
+              </div>
+            </div>
+            
+            {/* ✅ NOVO: Pipeline Horizontal Minimalista */}
+            <MinimalHorizontalStageSelector
+              leadId={localLeadData.id}
+              currentStageId={localLeadData.stage_id}
+              onStageChange={onUpdate}
+            />
             
             {isUpdatingStage && (
               <div className="flex items-center space-x-2">
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-yellow-100 text-yellow-800 border-2 border-yellow-300 animate-bounce">
-                  ⚡ Atualizando etapa...
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-300 animate-pulse">
+                  ⚡ Atualizando...
                 </span>
               </div>
             )}
@@ -1007,7 +1124,6 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              console.log('❌ MODAL-DETAILS: Botão X clicado');
               protectedOnClose();
             }}
             className="p-2 hover:bg-gray-100 rounded-full transition-colors"
@@ -1016,652 +1132,87 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-gray-200">
-          {[
-            { id: 'dados', label: 'Dados', icon: User },
-            { id: 'cadencia', label: 'Cadência', icon: PlayCircle },
-            { id: 'email', label: 'E-mail', icon: Mail },
-            { id: 'comentarios', label: 'Comentários', icon: MessageCircle },
-            { id: 'feedback', label: 'Feedback', icon: ThumbsUp },
-            { id: 'google-calendar', label: 'Google Calendar', icon: Calendar }
-          ].map(tab => {
-            const IconComponent = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center space-x-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <IconComponent className="w-4 h-4" />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Content */}
-        <div className="p-6 overflow-y-auto max-h-[60vh]">
-          {/* ABA DADOS - Duas grids: Informações + Histórico */}
-          {activeTab === 'dados' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
-              {/* GRID 1 - Informações do Lead (Esquerda) */}
-              <div className="space-y-4">
-                {/* SEÇÃO 1: DADOS DA OPORTUNIDADE - Apenas Nome e Valor */}
-                <div>
-                  <h3 className="text-md font-semibold text-gray-900 mb-2 pb-2 border-b border-gray-200">Oportunidade</h3>
-                  <div className="space-y-1">
-                    {/* Nome da Oportunidade - ✅ IMPLEMENTAÇÃO: Edição inline */}
-                    <div className="group">
-                      {renderEditableField(
-                        'nome_oportunidade',
-                        'Nome',
-                        <Target className="w-4 h-4 text-gray-500 flex-shrink-0" />,
-                        'Digite o nome da oportunidade...'
-                      )}
-                          </div>
-                    
-                    {/* Valor da Oportunidade - ✅ IMPLEMENTAÇÃO: Edição inline */}
-                    <div className="group">
-                      {renderEditableField(
-                        'valor',
-                        'Valor',
-                        <DollarSign className="w-4 h-4 text-gray-500 flex-shrink-0" />,
-                        'Ex: 1500,00'
-                      )}
-                            </div>
-
-                    {/* Documentos da Oportunidade - ✅ IMPLEMENTAÇÃO: Edição inline */}
-                    <div className="group">
-                      {renderEditableField(
-                        'documentos_anexos',
-                        'Documentos',
-                        <FileText className="w-4 h-4 text-gray-500 flex-shrink-0" />,
-                        'Cole links de documentos separados por vírgula...'
-                            )}
-                          </div>
-
-                    {/* Links da Oportunidade - ✅ IMPLEMENTAÇÃO: Edição inline */}
-                    <div className="group">
-                      {renderEditableField(
-                        'links_oportunidade',
-                        'Links',
-                        <Globe className="w-4 h-4 text-gray-500 flex-shrink-0" />,
-                        'Cole URLs separadas por vírgula...'
-                                    )}
-                                  </div>
-
-                    {/* Notas sobre a Oportunidade - ✅ IMPLEMENTAÇÃO: Edição inline */}
-                    <div className="group">
-                      {renderEditableField(
-                        'notas_oportunidade',
-                        'Notas',
-                        <MessageCircle className="w-4 h-4 text-gray-500 flex-shrink-0" />,
-                        'Digite observações sobre a oportunidade...'
-                            )}
-                          </div>
-                  </div>
-                </div>
-
-                {/* SEÇÃO 2: DADOS DO LEAD - Apenas Nome, Email e Telefone */}
-                <div>
-                  <h3 className="text-md font-semibold text-gray-900 mb-2 pb-2 border-b border-gray-200">Lead</h3>
-                  <div className="space-y-1">
-                    {/* Nome do Lead - ✅ IMPLEMENTAÇÃO: Edição inline */}
-                    <div className="group">
-                      {renderEditableField(
-                        'nome_lead',
-                        'Nome',
-                        <User className="w-4 h-4 text-gray-500 flex-shrink-0" />,
-                        'Digite o nome completo...'
-                      )}
-                          </div>
-                    
-                    {/* Email do Lead - ✅ IMPLEMENTAÇÃO: Edição inline */}
-                    <div className="group">
-                      {renderEditableField(
-                        'email',
-                        'E-mail',
-                        <Mail className="w-4 h-4 text-gray-500 flex-shrink-0" />,
-                        'Digite o e-mail...'
-                      )}
-                          </div>
-                    
-                    {/* Telefone do Lead - ✅ IMPLEMENTAÇÃO: Edição inline */}
-                    <div className="group">
-                      {renderEditableField(
-                        'telefone',
-                        'Telefone',
-                        <Phone className="w-4 h-4 text-gray-500 flex-shrink-0" />,
-                        'Digite o telefone...'
-                      )}
-                          </div>
-                  </div>
-                </div>
-
-                {/* SEÇÃO 3: CAMPOS CUSTOMIZADOS - Apenas campos reais do pipeline */}
-                {(() => {
-                  // Lista de campos básicos do sistema que NÃO devem aparecer nos campos customizados
-                  const camposBasicosDoSistema = [
-                    'nome_oportunidade', 'titulo_oportunidade', 'titulo', 'name',
-                    'nome_lead', 'nome_contato', 'contato', 'nome', 'lead_name',
-                    'email', 'email_contato',
-                    'telefone', 'telefone_contato', 'celular', 'phone',
-                    'valor', 'valor_oportunidade', 'valor_proposta', 'value'
-                  ];
-                  
-                  // ✅ CORREÇÃO 1: Mostrar TODOS os campos customizados da pipeline (com ou sem valor)
-                  const camposCustomizadosReais = customFields.filter(field => {
-                    const naoECampoBasico = !camposBasicosDoSistema.includes(field.field_name);
-                    return naoECampoBasico; // Mostrar todos os campos customizados, independente de ter valor
-                  });
-                  
-                  return camposCustomizadosReais.length > 0 ? (
-                    <div>
-                      <h3 className="text-md font-semibold text-gray-900 mb-2 pb-2 border-b border-gray-200">
-                        Campos Customizados ({camposCustomizadosReais.length})
-                      </h3>
-                      <div className="space-y-1">
-                        {camposCustomizadosReais.map(field => {
-                          const IconComponent = getFieldIcon(field.field_type);
-                          
-                          return (
-                            <div key={field.id} className="group">
-                              {renderEditableField(
-                                field.field_name,
-                                field.field_label + (field.is_required ? ' *' : ''),
-                                <IconComponent className="w-4 h-4 text-gray-500 flex-shrink-0" />,
-                                `Digite ${field.field_label.toLowerCase()}...`
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <h3 className="text-md font-semibold text-gray-900 mb-2 pb-2 border-b border-gray-200">
-                        Campos Customizados
-                      </h3>
-                      <div className="text-center py-4 text-gray-500">
-                        <p className="text-sm">Nenhum campo customizado preenchido</p>
-                        <p className="text-xs mt-1">
-                          {customFields.filter(field => !camposBasicosDoSistema.includes(field.field_name)).length > 0 
-                            ? `${customFields.filter(field => !camposBasicosDoSistema.includes(field.field_name)).length} campos customizados disponíveis neste pipeline`
-                            : 'Nenhum campo customizado configurado para este pipeline'
-                          }
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {/* GRID 2 - Histórico Timeline (Direita) */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-md font-semibold text-gray-900">Histórico</h3>
-                  <button
-                    onClick={loadHistory}
-                    disabled={historyLoading}
-                    className="p-2 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-full transition-colors disabled:opacity-50"
-                    title="Recarregar histórico"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                  </button>
-                </div>
-
-                {/* ✅ ETAPA 3: Timeline do histórico aprimorada */}
-                <div className="h-96 overflow-y-auto pr-2">
-                  {historyLoading ? (
-                    <div className="text-center py-12 text-gray-500">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3"></div>
-                      <p className="text-sm">Carregando histórico completo...</p>
-                    </div>
-                  ) : history.length === 0 ? (
-                    <div className="text-center py-12 text-gray-500">
-                      <Clock className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                      <p className="text-sm">Nenhuma ação registrada</p>
-                      <p className="text-xs text-gray-400 mt-1">As ações futuras serão exibidas aqui</p>
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      {/* Linha da timeline */}
-                      <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200"></div>
-                      
-                      {(history || []).map((entry, index) => {
-                        const ActionIcon = getActionIcon(entry.action);
-                        const actionColors = getActionColor(entry.action);
-                        
-                        return (
-                          <div key={entry.id} className="relative flex items-start space-x-4 pb-4">
-                            {/* ✅ ETAPA 3: Ponto da timeline com ícone específico e cor */}
-                            <div className={`relative z-10 w-8 h-8 ${actionColors.bg} rounded-full flex items-center justify-center flex-shrink-0 shadow-sm`}>
-                              <ActionIcon className="w-4 h-4 text-white" />
-                            </div>
-                            
-                            {/* ✅ ETAPA 3: Conteúdo enriquecido */}
-                            <div className={`flex-1 bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow ${actionColors.bgLight} border-l-4 ${actionColors.bg.replace('bg-', 'border-')}`}>
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center space-x-2">
-                                  <h4 className={`text-sm font-semibold ${actionColors.text}`}>
-                                    {translateAction(entry.action)}
-                                  </h4>
-                                  {/* ✅ ETAPA 3: Badge do tipo de usuário */}
-                                  {entry.user_role && entry.user_role !== 'system' && (
-                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                      entry.user_role === 'admin' 
-                                        ? 'bg-purple-100 text-purple-700'
-                                        : entry.user_role === 'member'
-                                        ? 'bg-blue-100 text-blue-700'
-                                        : 'bg-gray-100 text-gray-700'
-                                    }`}>
-                                      {entry.user_role === 'admin' ? 'Admin' : entry.user_role === 'member' ? 'Member' : entry.user_role}
-                                    </span>
-                                  )}
-                                </div>
-                                <span className="text-xs text-gray-500 font-medium">
-                                  {new Date(entry.created_at).toLocaleString('pt-BR', {
-                                    day: '2-digit',
-                                    month: '2-digit',
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  })}
-                                </span>
-                              </div>
-                              
-                              {/* ✅ ETAPA 3: Descrição com formatação melhorada */}
-                              <p className="text-sm text-gray-800 mb-2 leading-relaxed">{entry.description}</p>
-                              
-                              {/* ✅ ETAPA 3: Informações do usuário */}
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-2">
-                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
-                                    entry.user_role === 'admin' ? 'bg-purple-500' :
-                                    entry.user_role === 'member' ? 'bg-blue-500' : 'bg-gray-500'
-                                  }`}>
-                                    {entry.user_name ? entry.user_name.charAt(0).toUpperCase() : 
-                                      <User className="w-3 h-3" />
-                                    }
-                                  </div>
-                                  <span className="text-xs font-medium text-gray-700">{entry.user_name}</span>
-                                  {entry.user_email && (
-                                    <span className="text-xs text-gray-500">({entry.user_email})</span>
-                                  )}
-                                </div>
-                                
-                                {/* ✅ ETAPA 3: Indicador de tempo relativo */}
-                                <span className="text-xs text-gray-400">
-                                  {(() => {
-                                    const diffMs = Date.now() - new Date(entry.created_at).getTime();
-                                    const diffMins = Math.floor(diffMs / 60000);
-                                    const diffHours = Math.floor(diffMins / 60);
-                                    const diffDays = Math.floor(diffHours / 24);
-                                    
-                                    if (diffMins < 1) return 'agora';
-                                    if (diffMins < 60) return `${diffMins}m atrás`;
-                                    if (diffHours < 24) return `${diffHours}h atrás`;
-                                    if (diffDays < 7) return `${diffDays}d atrás`;
-                                    return 'há mais de 1 semana';
-                                  })()}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ABA CADÊNCIA */}
-          {activeTab === 'cadencia' && (
-            <div className="space-y-6">
-              {/* Header da Cadência */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <PlayCircle className="w-6 h-6 text-blue-600" />
-                  <div>
-                    <h3 className="text-lg font-medium text-gray-900">Tarefas de Cadência</h3>
-                    <p className="text-sm text-gray-500">
-                      Tarefas automáticas geradas para este lead
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={loadLeadTasks}
-                  disabled={cadenceLoading}
-                  className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-full transition-colors disabled:opacity-50"
-                  title="Recarregar tarefas"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Estatísticas rápidas */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-blue-50 rounded-lg p-4">
-                  <div className="text-sm font-medium text-blue-600">Total</div>
-                  <div className="text-2xl font-bold text-blue-900">{(leadTasks || []).length}</div>
-                </div>
-                <div className="bg-yellow-50 rounded-lg p-4">
-                  <div className="text-sm font-medium text-yellow-600">Pendentes</div>
-                  <div className="text-2xl font-bold text-yellow-900">
-                    {(leadTasks || []).filter(task => task.status === 'pendente').length}
-                  </div>
-                </div>
-                <div className="bg-green-50 rounded-lg p-4">
-                  <div className="text-sm font-medium text-green-600">Concluídas</div>
-                  <div className="text-2xl font-bold text-green-900">
-                    {(leadTasks || []).filter(task => task.status === 'concluida').length}
-                  </div>
-                </div>
-                <div className="bg-red-50 rounded-lg p-4">
-                  <div className="text-sm font-medium text-red-600">Vencidas</div>
-                  <div className="text-2xl font-bold text-red-900">
-                    {(leadTasks || []).filter(task => task.status === 'pendente' && new Date(task.data_programada) < new Date()).length}
-                  </div>
-                </div>
-              </div>
-
-              {/* Lista de tarefas */}
-              <div className="space-y-4">
-                {cadenceLoading ? (
-                  <div className="text-center py-12">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3"></div>
-                    <p className="text-gray-500">Carregando tarefas...</p>
-                  </div>
-                ) : (leadTasks || []).length === 0 ? (
-                  <div className="text-center py-12">
-                    <PlayCircle className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhuma tarefa de cadência</h3>
-                    <p className="text-gray-600">
-                      Este lead ainda não possui tarefas automáticas geradas.
-                    </p>
-                    <p className="text-sm text-gray-500 mt-2">
-                      Tarefas são criadas automaticamente quando o lead entra em etapas com cadência configurada.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {(leadTasks || []).map(task => (
-                      <div key={task.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
-                        {/* Header da tarefa */}
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center space-x-3">
-                            {/* Ícone do canal */}
-                            <div className={`p-2 rounded-lg ${getChannelColor(task.canal)}`}>
-                              {renderChannelIcon(task.canal)}
-                            </div>
-                            <div>
-                              <h4 className="text-sm font-medium text-gray-900">{task.descricao}</h4>
-                              <p className="text-xs text-gray-500">
-                                {task.stage_name} • {task.tipo}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            {getStatusBadge(task)}
-                          </div>
-                        </div>
-
-                        {/* Informações da tarefa */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                          <div className="flex items-center space-x-2 text-sm text-gray-600">
-                            <Clock className="w-4 h-4" />
-                            <span>{formatTaskDate(task.data_programada)}</span>
-                          </div>
-                          {task.day_offset !== undefined && (
-                            <div className="flex items-center space-x-2 text-sm text-gray-600">
-                              <Calendar className="w-4 h-4" />
-                              <span>D+{task.day_offset}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Template de conteúdo */}
-                        {task.template_content && (
-                          <div className="bg-gray-50 rounded-lg p-3 mb-3">
-                            <p className="text-xs font-medium text-gray-700 mb-1">Conteúdo do template:</p>
-                            <p className="text-sm text-gray-600 whitespace-pre-wrap">{task.template_content}</p>
-                          </div>
-                        )}
-
-                        {/* Notas de execução */}
-                        {task.execution_notes && (
-                          <div className="bg-green-50 rounded-lg p-3 mb-3">
-                            <p className="text-xs font-medium text-green-700 mb-1">Notas de execução:</p>
-                            <p className="text-sm text-green-600">{task.execution_notes}</p>
-                            {task.executed_at && (
-                              <p className="text-xs text-green-500 mt-1">
-                                Concluída em {formatTaskDate(task.executed_at)}
-                              </p>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Ações */}
-                        {task.status === 'pendente' && (
-                          <div className="flex justify-end">
-                            <button
-                              onClick={() => {
-                                const notes = prompt('Adicione notas sobre a execução desta tarefa (opcional):');
-                                if (notes !== null) { // null = cancelou, string vazia = OK sem notas
-                                  handleCompleteTask(task.id, notes || undefined);
-                                }
-                              }}
-                              className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                              <span>Marcar como Feito</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ABA E-MAIL */}
-          {activeTab === 'email' && (
-            <div className="text-center py-12">
-              <Mail className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Integração de E-mail</h3>
-              <p className="text-gray-600">
-                Em breve integração com SMTP será implementada para envio e recebimento de e-mails diretamente do CRM.
-              </p>
-            </div>
-          )}
-
-          {/* ABA COMENTÁRIOS */}
-          {activeTab === 'comentarios' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium text-gray-900">Comentários</h3>
-                <span className="text-sm text-gray-500">{comments.length} comentário(s)</span>
-              </div>
-
-              {/* Adicionar comentário */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <textarea
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Adicione um comentário..."
-                  className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  rows={3}
-                />
-                <div className="flex justify-end mt-2">
-                  <button
-                    onClick={handleAddCommentWrapper}
-                    disabled={!newComment.trim() || commentsLoading}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {commentsLoading ? 'Enviando...' : 'Comentar'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Lista de comentários */}
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {(comments || []).length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <MessageCircle className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                    <p>Nenhum comentário ainda</p>
-                  </div>
-                ) : (
-                  (comments || []).map(comment => (
-                    <div key={comment.id} className="bg-white border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-                            <span className="text-white text-xs font-bold">
-                              {comment.user_name ? comment.user_name.charAt(0).toUpperCase() : '?'}
-                            </span>
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{comment.user_name}</p>
-                            <p className="text-xs text-gray-500 capitalize">{comment.user_role}</p>
-                          </div>
-                        </div>
-                        <span className="text-xs text-gray-500">{formatDate(comment.created_at)}</span>
-                      </div>
-                      <p className="text-sm text-gray-700">{comment.message}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ABA FEEDBACK */}
-          {activeTab === 'feedback' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium text-gray-900">Feedback</h3>
-                <div className="flex items-center space-x-2">
-                  <ThumbsUp className="w-4 h-4 text-green-600" />
-                  <span className="text-sm text-gray-500">{(feedbacks || []).length} feedback(s)</span>
-                </div>
-              </div>
-
-              {/* ✅ ETAPA 2: Adicionar feedback (Member e Admin) */}
-              {(user?.role === 'member' || user?.role === 'admin') && (
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h4 className="text-md font-medium text-gray-900 mb-3">Deixar Feedback</h4>
-                  
-                  {/* Seleção de tipo de feedback */}
-                  <div className="flex space-x-4 mb-4">
-                    <button
-                      onClick={() => setFeedbackType('positive')}
-                      className={`flex items-center space-x-2 px-4 py-2 rounded-lg border-2 transition-all ${
-                        feedbackType === 'positive'
-                          ? 'border-green-500 bg-green-50 text-green-700'
-                          : 'border-gray-200 bg-white text-gray-600 hover:border-green-300'
-                      }`}
-                    >
-                      <ThumbsUp className="w-4 h-4" />
-                      <span>Positivo</span>
-                    </button>
-                    <button
-                      onClick={() => setFeedbackType('negative')}
-                      className={`flex items-center space-x-2 px-4 py-2 rounded-lg border-2 transition-all ${
-                        feedbackType === 'negative'
-                          ? 'border-red-500 bg-red-50 text-red-700'
-                          : 'border-gray-200 bg-white text-gray-600 hover:border-red-300'
-                      }`}
-                    >
-                      <ThumbsDown className="w-4 h-4" />
-                      <span>Negativo</span>
-                    </button>
-                  </div>
-
-                  <textarea
-                    value={newFeedback}
-                    onChange={(e) => setNewFeedback(e.target.value)}
-                    placeholder="Descreva seu feedback sobre este lead..."
-                    className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    rows={3}
-                  />
-                  <div className="flex justify-end mt-2">
-                    <button
-                      onClick={handleAddFeedbackWrapper}
-                      disabled={!newFeedback.trim() || feedbacksLoading}
-                      className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {feedbacksLoading ? 'Enviando...' : 'Enviar Feedback'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Lista de feedbacks */}
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {(feedbacks || []).length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <ThumbsUp className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                    <p>Nenhum feedback ainda</p>
-                  </div>
-                ) : (
-                  (feedbacks || []).map(feedback => (
-                    <div key={feedback.id} className="bg-white border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center space-x-2">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                            (feedback as any).feedback_type === 'negative' 
-                              ? 'bg-red-500' 
-                              : 'bg-green-500'
-                          }`}>
-                            {(feedback as any).feedback_type === 'negative' ? (
-                              <ThumbsDown className="w-4 h-4 text-white" />
-                            ) : (
-                              <ThumbsUp className="w-4 h-4 text-white" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{feedback.user_name}</p>
-                            <p className="text-xs text-gray-500">
-                              {(feedback as any).feedback_type === 'negative' ? 'Negativo' : 'Positivo'}
-                            </p>
-                          </div>
-                        </div>
-                        <span className="text-xs text-gray-500">{formatDate(feedback.created_at)}</span>
-                      </div>
-                      <p className="text-sm text-gray-700">{feedback.message || (feedback as any).comment}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ABA GOOGLE CALENDAR */}
-          {activeTab === 'google-calendar' && (
-            <GoogleCalendarEventModal
-              lead={lead}
-              onClose={() => setActiveTab('dados')}
-              onEventCreated={(eventId: string) => {
-                console.log('Evento criado:', eventId);
-                // Recarregar histórico
-                loadHistory();
-              }}
+        {/* ✅ NOVO LAYOUT: 3 Blocos Fixos - Proporção Ideal: 25% | 50% | 25% */}
+        <div className="grid grid-cols-12 gap-6 h-[85vh] p-6">
+          {/* BLOCO 1: Dados Lead & Oportunidade (Esquerda - 25%) */}
+          <div className="col-span-3 bg-gray-50 rounded-lg p-4 overflow-y-auto border border-gray-200">
+            <LeadDataBlock
+              lead={localLeadData}
+              customFields={customFields}
+              editing={editing}
+              saving={saving}
+              editValues={editValues}
+              getLeadData={getLeadData}
+              renderEditableField={renderEditableField}
             />
-          )}
+          </div>
+
+          {/* BLOCO 2: Menu Interativo (Centro - 50%) - Sem scroll, usa altura completa */}
+          <div className="col-span-6 bg-white rounded-lg p-4 border border-gray-200 flex flex-col">
+            <InteractiveMenuBlock
+              lead={localLeadData}
+              activeInteractiveTab={activeInteractiveTab}
+              setActiveInteractiveTab={setActiveInteractiveTab}
+              
+              // Cadência
+              leadTasks={leadTasks}
+              cadenceLoading={cadenceLoading}
+              loadLeadTasks={loadLeadTasks}
+              handleCompleteTask={handleCompleteTask}
+              
+              // Comentários
+              comments={comments}
+              commentsLoading={commentsLoading}
+              newComment={newComment}
+              setNewComment={setNewComment}
+              handleAddCommentWrapper={handleAddCommentWrapper}
+              
+              // Feedback
+              feedbacks={feedbacks}
+              feedbacksLoading={feedbacksLoading}
+              newFeedback={newFeedback}
+              setNewFeedback={setNewFeedback}
+              feedbackType={feedbackType}
+              setFeedbackType={setFeedbackType}
+              handleAddFeedbackWrapper={handleAddFeedbackWrapper}
+            />
+          </div>
+
+          {/* BLOCO 3: Histórico Completo (Direita - 25%) */}
+          <div className="col-span-3 bg-gray-50 rounded-lg p-4 overflow-y-auto border border-gray-200">
+            <HistoryBlock
+              lead={localLeadData}
+              history={history}
+              historyLoading={historyLoading}
+              loadHistory={loadHistory}
+            />
+          </div>
         </div>
       </div>
+
+      {/* Modal de Confirmação de Exclusão */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusão da Oportunidade</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação irá excluir apenas esta oportunidade da pipeline. 
+              O lead será mantido e ficará disponível no menu Leads para criar novas oportunidades.
+              Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteOpportunity}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleting ? 'Excluindo...' : 'Excluir Oportunidade'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

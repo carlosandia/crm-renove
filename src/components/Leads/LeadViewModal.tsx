@@ -202,7 +202,8 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
   }, []);
 
   const formatCurrency = useCallback((value?: number) => {
-    if (!value) return 'Não informado';
+    if (value === undefined || value === null) return 'Não informado';
+    if (value === 0) return 'R$ 0,00';
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL'
@@ -377,6 +378,18 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
     'observacoes': { fields: ['notes'], handler: 'direct' }
   };
 
+  // ✅ Função de validação de email
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  // ✅ Função de validação de telefone (formato brasileiro)
+  const validatePhone = (phone: string): boolean => {
+    const phoneRegex = /^(\(\d{2}\)\s?|\d{2}\s?)?\d{4,5}-?\d{4}$/;
+    return phoneRegex.test(phone) || phone === '';
+  };
+
   const saveField = useCallback(async (frontendField: string) => {
     console.log('💾 [LeadViewModal] Iniciando salvamento MELHORADO do campo:', frontendField, 'Valor:', editValues[frontendField]);
     
@@ -393,6 +406,40 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
       console.error('❌ [LeadViewModal] Valor do campo não definido:', frontendField);
       toast({
         title: 'Valor do campo inválido',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // ✅ VALIDAÇÕES ESPECÍFICAS POR CAMPO
+    const value = editValues[frontendField].trim();
+    
+    if (frontendField === 'email' && value) {
+      if (!validateEmail(value)) {
+        toast({
+          title: 'Email inválido',
+          description: 'Por favor, insira um email válido (exemplo: usuario@dominio.com)',
+          variant: 'destructive'
+        });
+        return;
+      }
+    }
+    
+    if (frontendField === 'telefone' && value) {
+      if (!validatePhone(value)) {
+        toast({
+          title: 'Telefone inválido', 
+          description: 'Use formato: (11) 99999-9999 ou 11999999999',
+          variant: 'destructive'
+        });
+        return;
+      }
+    }
+    
+    if (frontendField === 'nome' && (!value || value.length < 2)) {
+      toast({
+        title: 'Nome muito curto',
+        description: 'Nome deve ter pelo menos 2 caracteres',
         variant: 'destructive'
       });
       return;
@@ -454,27 +501,9 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
       let saveMethod = 'unknown';
       
       try {
-        // TENTATIVA 1: Usar função RPC segura
-        console.log('🔄 [LeadViewModal] Tentativa 1: Função RPC safe_update_lead');
-        const { data: rpcResult, error: rpcError } = await supabase.rpc('safe_update_lead', {
-          lead_id: leadData.id,
-          lead_data: updateData
-        });
-
-        if (rpcError) {
-          console.warn('⚠️ [LeadViewModal] RPC falhou, tentando fallback:', rpcError.message);
-          throw rpcError;
-        }
-        
-        // Verificar se a função RPC retornou erro
-        if (rpcResult && !rpcResult.success) {
-          console.warn('⚠️ [LeadViewModal] RPC retornou erro, tentando fallback:', rpcResult.error);
-          throw new Error(rpcResult.error || 'Erro na validação dos dados');
-        }
-
-        updateResult = rpcResult;
-        saveMethod = 'rpc';
-        console.log('✅ [LeadViewModal] Salvamento via RPC bem-sucedido!');
+        // DESABILITADO: RPC tem problema de coluna ambígua, usar direct sempre
+        console.log('🔄 [LeadViewModal] Usando update direto (RPC desabilitado temporariamente)');
+        throw new Error('RPC desabilitado - usando fallback direto');
         
       } catch (rpcError) {
         console.log('🔄 [LeadViewModal] Tentativa 2: Update direto na tabela leads_master');
@@ -606,9 +635,16 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
       
       // ✅ LOGS DETALHADOS DA SINCRONIZAÇÃO
       if (updateResult) {
-        console.log(`🔄 [LeadViewModal] Sincronização: ${updateResult.nome_antes} → ${updateResult.nome_depois}`);
-        console.log(`📈 [LeadViewModal] Pipeline leads atualizados: ${updateResult.pipeline_leads_count}`);
-        console.log(`🎯 [LeadViewModal] Status da sincronização:`, updateResult.sync_info);
+        // Type guard para propriedades específicas
+        if ('nome_antes' in updateResult && 'nome_depois' in updateResult) {
+          console.log(`🔄 [LeadViewModal] Sincronização: ${updateResult.nome_antes} → ${updateResult.nome_depois}`);
+        }
+        if ('pipeline_leads_count' in updateResult) {
+          console.log(`📈 [LeadViewModal] Pipeline leads atualizados: ${updateResult.pipeline_leads_count}`);
+        }
+        if ('sync_info' in updateResult) {
+          console.log(`🎯 [LeadViewModal] Status da sincronização:`, updateResult.sync_info);
+        }
       }
 
       // ✅ Atualizar dados locais com valores corretos
@@ -663,48 +699,64 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
         timing: 'ANTES da construção do cardData'
       });
       
-      // ✅ ETAPA 1: MAPEAMENTO CORRIGIDO PARA SINCRONIZAÇÃO PERFEITA
+      // ✅ ETAPA 1: MAPEAMENTO CORRIGIDO - COMBINAR DADOS ATUAIS + ATUALIZAÇÕES
+      // Criar dados completos combinando dados atuais + atualizações
+      const currentData = localLeadData || leadData;
+      const completeData = { ...currentData, ...updateData };
+      
+      console.log('🔍 [CORREÇÃO] Dados completos criados:', {
+        currentData_keys: currentData ? Object.keys(currentData) : [],
+        updateData_keys: Object.keys(updateData),
+        completeData_preview: {
+          first_name: completeData.first_name,
+          last_name: completeData.last_name,
+          email: completeData.email,
+          phone: completeData.phone,
+          company: completeData.company
+        }
+      });
+      
       const cardData = {
-        // ✅ FONTE ÚNICA GARANTIDA: Usar APENAS updateData (dados de leads_master)
-        nome_lead: updateData.first_name && updateData.last_name 
-          ? `${updateData.first_name} ${updateData.last_name}`.trim()
-          : updateData.first_name || 'Lead sem nome',
+        // ✅ FONTE ÚNICA GARANTIDA: Usar dados completos (atuais + atualizações)
+        nome_lead: completeData.first_name && completeData.last_name 
+          ? `${completeData.first_name} ${completeData.last_name}`.trim()
+          : completeData.first_name || 'Lead sem nome',
         
-        // ✅ CAMPOS DE CONTATO - SEMPRE ATUALIZADOS DE LEADS_MASTER
-        email: updateData.email || '',
-        telefone: updateData.phone || '',
+        // ✅ CAMPOS DE CONTATO - DADOS COMPLETOS
+        email: completeData.email || '',
+        telefone: completeData.phone || '',
         
-        // ✅ CAMPOS PROFISSIONAIS - SEMPRE ATUALIZADOS DE LEADS_MASTER
-        empresa: updateData.company || '',
-        cargo: updateData.job_title || '',
+        // ✅ CAMPOS PROFISSIONAIS - DADOS COMPLETOS
+        empresa: completeData.company || '',
+        cargo: completeData.job_title || '',
         
-        // ✅ CAMPOS DE ORIGEM E STATUS - SEMPRE ATUALIZADOS DE LEADS_MASTER
-        origem: updateData.lead_source || '',
-        temperatura: updateData.lead_temperature || 'warm',
-        status: updateData.status || 'active',
+        // ✅ CAMPOS DE ORIGEM E STATUS - DADOS COMPLETOS
+        origem: completeData.lead_source || '',
+        temperatura: completeData.lead_temperature || 'warm',
+        status: completeData.status || 'active',
         
-        // ✅ CAMPOS DE LOCALIZAÇÃO - SEMPRE ATUALIZADOS DE LEADS_MASTER
-        cidade: updateData.city || '',
-        estado: updateData.state || '',
-        pais: updateData.country || '',
+        // ✅ CAMPOS DE LOCALIZAÇÃO - DADOS COMPLETOS
+        cidade: completeData.city || '',
+        estado: completeData.state || '',
+        pais: completeData.country || '',
         
-        // ✅ CAMPOS DE OBSERVAÇÕES - SEMPRE ATUALIZADOS DE LEADS_MASTER
-        observacoes: updateData.notes || '',
+        // ✅ CAMPOS DE OBSERVAÇÕES - DADOS COMPLETOS
+        observacoes: completeData.notes || '',
         
-        // ✅ CAMPOS DE VALOR E CAMPANHA - SEMPRE ATUALIZADOS DE LEADS_MASTER
-        valor: updateData.estimated_value || 0,
-        campanha: updateData.campaign_name || '',
+        // ✅ CAMPOS DE VALOR E CAMPANHA - DADOS COMPLETOS
+        valor: completeData.estimated_value || 0,
+        campanha: completeData.campaign_name || '',
         
-        // ✅ CAMPOS UTM - SEMPRE ATUALIZADOS DE LEADS_MASTER
-        utm_source: updateData.utm_source || '',
-        utm_medium: updateData.utm_medium || '',
-        utm_campaign: updateData.utm_campaign || '',
-        utm_term: updateData.utm_term || '',
-        utm_content: updateData.utm_content || '',
+        // ✅ CAMPOS UTM - DADOS COMPLETOS
+        utm_source: completeData.utm_source || '',
+        utm_medium: completeData.utm_medium || '',
+        utm_campaign: completeData.utm_campaign || '',
+        utm_term: completeData.utm_term || '',
+        utm_content: completeData.utm_content || '',
         
         // Campos adicionais para compatibilidade
-        nome_oportunidade: updateData.first_name && updateData.last_name
-          ? `Proposta - ${updateData.first_name} ${updateData.last_name}`.trim()
+        nome_oportunidade: completeData.first_name && completeData.last_name
+          ? `Proposta - ${completeData.first_name} ${completeData.last_name}`.trim()
           : 'Proposta - Lead sem nome',
         
         // ✅ VINCULAÇÃO COM FONTE ÚNICA
@@ -959,9 +1011,31 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
     }
   }, [editValues, leadData?.id, toast, localLeadData, syncWithPipelineLeads, onLeadUpdated]);
 
+  // ✅ Função para aplicar máscara de telefone
+  const applyPhoneMask = (value: string): string => {
+    // Remove tudo que não é dígito
+    const digits = value.replace(/\D/g, '');
+    
+    // Aplica máscara baseado no número de dígitos
+    if (digits.length <= 10) {
+      // Formato: (11) 9999-9999
+      return digits.replace(/(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3').replace(/-$/, '');
+    } else {
+      // Formato: (11) 99999-9999  
+      return digits.replace(/(\d{2})(\d{5})(\d{0,4})/, '($1) $2-$3').replace(/-$/, '');
+    }
+  };
+
   const handleInputChange = useCallback((field: string, value: string) => {
     console.log('🔄 [LeadViewModal] handleInputChange - field:', field, 'value:', value);
-    setEditValues(prev => ({ ...prev, [field]: value }));
+    
+    // ✅ Aplicar máscara de telefone automaticamente
+    if (field === 'telefone') {
+      const maskedValue = applyPhoneMask(value);
+      setEditValues(prev => ({ ...prev, [field]: maskedValue }));
+    } else {
+      setEditValues(prev => ({ ...prev, [field]: value }));
+    }
   }, []); // ✅ CORRETO: Não precisa de dependências
 
   const startEditing = useCallback((field: string, currentValue: string) => {
@@ -988,11 +1062,11 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
     const isSaving = saving[field];
     
     return (
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+      <div className="bg-slate-50 rounded-lg p-2 border border-slate-200">
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-1">
             {icon}
-            <label className="text-sm font-medium text-gray-700">{label}</label>
+            <label className="text-xs font-medium text-slate-700">{label}</label>
           </div>
           {!disabled && (
             <div className="flex items-center gap-1">
@@ -1001,16 +1075,16 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
                   <button 
                     onClick={() => saveField(field)}
                     disabled={isSaving}
-                    className="p-1 hover:bg-green-100 rounded transition-colors disabled:opacity-50"
-                    title="Salvar alterações"
+                    className="p-1 bg-green-100 rounded disabled:opacity-50"
+                    title="Salvar"
                   >
                     <Check className="h-3 w-3 text-green-600" />
                   </button>
                   <button 
                     onClick={() => cancelEditing(field)}
                     disabled={isSaving}
-                    className="p-1 hover:bg-red-100 rounded transition-colors disabled:opacity-50"
-                    title="Cancelar edição"
+                    className="p-1 bg-red-100 rounded disabled:opacity-50"
+                    title="Cancelar"
                   >
                     <XIcon className="h-3 w-3 text-red-600" />
                   </button>
@@ -1018,10 +1092,10 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
               ) : (
                 <button 
                   onClick={() => startEditing(field, currentValue)}
-                  className="p-1 hover:bg-gray-100 rounded transition-colors"
-                  title="Editar campo"
+                  className="p-1 bg-slate-100 rounded"
+                  title="Editar"
                 >
-                  <Edit className="h-3 w-3 text-gray-400 hover:text-gray-600" />
+                  <Edit className="h-3 w-3 text-slate-500" />
                 </button>
               )}
             </div>
@@ -1032,7 +1106,7 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
             value={editValues[field] || ''}
             onChange={(e) => handleInputChange(field, e.target.value)}
             placeholder={placeholder}
-            className="text-sm"
+            className="text-xs h-7"
             disabled={isSaving}
             autoFocus
             onKeyDown={(e) => {
@@ -1044,14 +1118,16 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
             }}
           />
         ) : (
-          <p className="text-sm text-gray-900 bg-gray-50 p-2 rounded border min-h-[2.5rem] flex items-center">
-            {currentValue || 'Não informado'}
-          </p>
+          <div className="bg-white rounded px-2 py-1 border border-slate-200 min-h-[1.75rem] flex items-center">
+            <p className="text-xs text-slate-900">
+              {currentValue || <span className="text-slate-500 italic">Não informado</span>}
+            </p>
+          </div>
         )}
         {isSaving && (
-          <div className="flex items-center gap-2 text-xs text-blue-600">
-            <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-600"></div>
-            Salvando...
+          <div className="flex items-center gap-1 text-xs text-blue-600 mt-1">
+            <div className="animate-spin rounded-full h-2 w-2 border border-blue-600 border-t-transparent"></div>
+            <span>Salvando...</span>
           </div>
         )}
       </div>
@@ -1226,16 +1302,23 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
         }, {} as Record<string, string>);
       }
 
+      // ✅ Buscar estágios com informações de tipo para determinar status
+      let stageDetails: Record<string, {name: string, type: string}> = {};
       if (stageIds.length > 0) {
         const { data: stages } = await supabase
           .from('pipeline_stages')
-          .select('id, name')
+          .select('id, name, stage_type')
           .in('id', stageIds);
         
         stageNames = (stages || []).reduce((acc, s) => {
           acc[s.id] = s.name;
           return acc;
         }, {} as Record<string, string>);
+        
+        stageDetails = (stages || []).reduce((acc, s) => {
+          acc[s.id] = { name: s.name, type: s.stage_type || 'active' };
+          return acc;
+        }, {} as Record<string, {name: string, type: string}>);
       }
 
       // ✅ CORREÇÃO 3: Buscar nomes dos criadores separadamente
@@ -1254,25 +1337,83 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
         }, {} as Record<string, string>);
       }
 
+      // ✅ Função para determinar status baseado no tipo do estágio
+      const getOpportunityStatus = (stageId: string): 'active' | 'won' | 'lost' => {
+        const stageDetail = stageDetails[stageId];
+        if (!stageDetail) return 'active';
+        
+        const stageType = stageDetail.type.toLowerCase();
+        
+        // Mapear tipos de estágio para status
+        if (stageType.includes('ganho') || stageType.includes('venda') || stageType.includes('fechado') || stageType.includes('won')) {
+          return 'won';
+        } else if (stageType.includes('perdido') || stageType.includes('lost') || stageType.includes('descartado')) {
+          return 'lost';
+        } else {
+          return 'active';
+        }
+      };
+
       const formattedOpportunities: Opportunity[] = leadOpportunities.map((item: any) => {
         // ✅ CORREÇÃO 4: Usar apenas custom_data
         const dataField = item.custom_data || {};
         const createdByName = userNames[item.created_by] || 'Usuário não identificado';
+        const opportunityStatus = getOpportunityStatus(item.stage_id);
         
+        // ✅ CORREÇÃO MELHORADA: Extração robusta do valor
+        const extractValue = (data: any): number | undefined => {
+          // Tentar múltiplos campos onde o valor pode estar armazenado
+          const possibleValueFields = [
+            'valor', 'valor_oportunidade', 'value', 'amount', 
+            'estimated_value', 'deal_value', 'opportunity_value'
+          ];
+          
+          for (const field of possibleValueFields) {
+            const rawValue = data[field];
+            if (rawValue !== undefined && rawValue !== null && rawValue !== '') {
+              // Se já é um número
+              if (typeof rawValue === 'number') {
+                return rawValue;
+              }
+              // Se é string, tentar parsear
+              if (typeof rawValue === 'string') {
+                // Remover formatação monetária comum (R$, ., ,)
+                const cleanValue = rawValue.replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.');
+                const parsedValue = parseFloat(cleanValue);
+                if (!isNaN(parsedValue)) {
+                  return parsedValue;
+                }
+              }
+            }
+          }
+          return undefined;
+        };
+
         return {
           id: item.id,
           nome_oportunidade: dataField.nome_oportunidade || dataField.titulo_oportunidade || dataField.titulo || dataField.nome_lead || 'Oportunidade sem nome',
-          valor: dataField.valor ? parseFloat(dataField.valor) : (dataField.valor_oportunidade ? parseFloat(dataField.valor_oportunidade) : undefined),
+          valor: extractValue(dataField),
           created_at: item.created_at,
           pipeline_name: pipelineNames[item.pipeline_id] || 'Pipeline não identificada',
           stage_name: stageNames[item.stage_id] || 'Estágio não identificado',
-          status: 'active',
+          status: opportunityStatus,
           created_by_name: createdByName
         };
       });
 
       console.log('✅ [LeadViewModal] Histórico carregado com sucesso:', formattedOpportunities.length, 'oportunidades');
       console.log('📊 [LeadViewModal] Oportunidades formatadas:', formattedOpportunities);
+      
+      // ✅ DEBUG: Log detalhado dos valores extraídos
+      formattedOpportunities.forEach((opp, index) => {
+        console.log(`💰 [LeadViewModal] Oportunidade ${index + 1}:`, {
+          id: opp.id,
+          nome: opp.nome_oportunidade,
+          valor_extraido: opp.valor,
+          valor_formatado: formatCurrency(opp.valor),
+          raw_custom_data: leadOpportunities[index]?.custom_data
+        });
+      });
       setOpportunities(formattedOpportunities);
     } catch (error) {
       console.error('❌ [LeadViewModal] Erro ao carregar histórico de oportunidades:', error);
@@ -1316,22 +1457,22 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
 
   // Campos unificados para evitar duplicação (CORRIGIDO: useMemo para recálculo automático)
   const displayName = useMemo(() => {
-    const name = `${currentLeadData.first_name || ''} ${currentLeadData.last_name || ''}`.trim();
-    console.log('🔄 [LeadViewModal] displayName recalculado:', name, 'first_name:', currentLeadData.first_name, 'last_name:', currentLeadData.last_name);
+    const name = `${localLeadData?.first_name || leadData?.first_name || ''} ${localLeadData?.last_name || leadData?.last_name || ''}`.trim();
+    console.log('🔄 [LeadViewModal] displayName recalculado:', name, 'first_name:', localLeadData?.first_name || leadData?.first_name, 'last_name:', localLeadData?.last_name || leadData?.last_name);
     return name;
-  }, [currentLeadData.first_name, currentLeadData.last_name]);
+  }, [localLeadData?.first_name, localLeadData?.last_name, leadData?.first_name, leadData?.last_name]);
   
   const displayJobTitle = useMemo(() => {
-    const jobTitle = currentLeadData.job_title || currentLeadData.position || 'Não informado';
-    console.log('🔄 [LeadViewModal] displayJobTitle recalculado:', jobTitle, 'job_title:', currentLeadData.job_title, 'position:', currentLeadData.position);
+    const jobTitle = localLeadData?.job_title || leadData?.job_title || localLeadData?.position || 'Não informado';
+    console.log('🔄 [LeadViewModal] displayJobTitle recalculado:', jobTitle, 'job_title:', localLeadData?.job_title || leadData?.job_title, 'position:', localLeadData?.position);
     return jobTitle;
-  }, [currentLeadData.job_title, currentLeadData.position]);
+  }, [localLeadData?.job_title, leadData?.job_title, localLeadData?.position]);
   
   const displaySource = useMemo(() => {
-    const source = currentLeadData.lead_source || currentLeadData.source || 'Não informado';
-    console.log('🔄 [LeadViewModal] displaySource recalculado:', source, 'lead_source:', currentLeadData.lead_source, 'source:', currentLeadData.source);
+    const source = localLeadData?.lead_source || leadData?.lead_source || localLeadData?.source || 'Não informado';
+    console.log('🔄 [LeadViewModal] displaySource recalculado:', source, 'lead_source:', localLeadData?.lead_source || leadData?.lead_source, 'source:', localLeadData?.source);
     return source;
-  }, [currentLeadData.lead_source, currentLeadData.source]);
+  }, [localLeadData?.lead_source, leadData?.lead_source, localLeadData?.source]);
 
   // ✅ FUNÇÃO SIMPLIFICADA - FONTE ÚNICA DE DADOS
   const handleSaveChanges = async () => {
@@ -1428,261 +1569,218 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Eye className="w-5 h-5" />
-            Detalhes do Lead
-          </DialogTitle>
-          <DialogDescription>
-            Informações completas do lead "{displayName}"
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col bg-white border-slate-200 shadow-lg">
+          <DialogHeader className="border-b border-slate-200 pb-3 mb-2 bg-white p-3">
+            <DialogTitle className="text-lg font-semibold text-slate-800 text-center">
+              Detalhes do Lead
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Modal para visualizar e editar informações detalhadas do lead
+            </DialogDescription>
+          </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="info" className="flex items-center gap-2">
-              <Info className="w-4 h-4" />
-              Informações Básicas
-            </TabsTrigger>
-            <TabsTrigger value="tracking" className="flex items-center gap-2">
-              <Activity className="w-4 h-4" />
-              Dados de Rastreamento
-            </TabsTrigger>
-            <TabsTrigger value="history" className="flex items-center gap-2">
-              <History className="w-4 h-4" />
-              Histórico de Oportunidades
-            </TabsTrigger>
-          </TabsList>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+            <TabsList className="grid w-full grid-cols-3 bg-slate-100 border border-slate-200 rounded-lg p-1 mb-3">
+              <TabsTrigger 
+                value="info" 
+                className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:text-blue-600"
+              >
+                <Info className="w-4 h-4" />
+                <span className="hidden sm:inline">Informações</span>
+                <span className="sm:hidden">Info</span>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="tracking" 
+                className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:text-purple-600"
+              >
+                <Activity className="w-4 h-4" />
+                <span className="hidden sm:inline">Rastreamento</span>
+                <span className="sm:hidden">UTM</span>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="history" 
+                className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:text-emerald-600"
+              >
+                <History className="w-4 h-4" />
+                <span className="hidden sm:inline">Histórico</span>
+                <span className="sm:hidden">Hist</span>
+              </TabsTrigger>
+            </TabsList>
 
-          <div className="flex-1 overflow-y-auto p-4">
-            <TabsContent value="info" className="space-y-6 m-0">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <User className="w-4 h-4" />
-                    Informações Básicas
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Nome */}
-                  {renderEditableField('nome', 'Nome', <User className="h-4 w-4 text-gray-500" />, displayName)}
+            <div className="flex-1 overflow-y-auto pb-3">
+              <TabsContent value="info" className="space-y-3 m-0 px-3">
+                  {/* Seção de Dados de Contato - Destacada */}
+                  <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
+                    <CardHeader className="bg-gradient-to-r from-blue-100 to-purple-100 border-b border-blue-200 py-2">
+                      <CardTitle className="flex items-center gap-2 text-slate-800 text-base">
+                        <User className="w-4 h-4 text-blue-600" />
+                        Dados de Contato
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-3">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {renderEditableField('nome', 'Nome', <User className="h-4 w-4 text-blue-500" />, displayName)}
+                        {renderEditableField('email', 'Email', <Mail className="h-4 w-4 text-purple-500" />, currentLeadData.email || 'Não informado')}
+                        {renderEditableField('telefone', 'Telefone', <Phone className="h-4 w-4 text-green-500" />, currentLeadData.phone || 'Não informado')}
+                      </div>
+                    </CardContent>
+                  </Card>
 
-                  {/* Email */}
-                  {renderEditableField('email', 'Email', <Mail className="h-4 w-4 text-gray-500" />, currentLeadData.email || 'Não informado')}
+                  {/* Seção de Informações Profissionais */}
+                  <Card className="bg-white border-slate-200">
+                    <CardHeader className="bg-slate-50 border-b border-slate-200 py-2">
+                      <CardTitle className="flex items-center gap-2 text-slate-800 text-base">
+                        <Building className="w-4 h-4 text-orange-600" />
+                        Informações Profissionais
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-3">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {renderEditableField('empresa', 'Empresa', <Building className="h-4 w-4 text-orange-500" />, currentLeadData.company || 'Não informado')}
+                        {renderEditableField('cargo', 'Cargo', <Target className="h-4 w-4 text-indigo-500" />, displayJobTitle)}
+                        {renderEditableField('origem', 'Origem', <ExternalLink className="h-4 w-4 text-teal-500" />, displaySource)}
+                      </div>
+                    </CardContent>
+                  </Card>
 
-                  {/* Telefone */}
-                  {renderEditableField('telefone', 'Telefone', <Phone className="h-4 w-4 text-gray-500" />, currentLeadData.phone || 'Não informado')}
-
-                  {/* Empresa */}
-                  {renderEditableField('empresa', 'Empresa', <Building className="h-4 w-4 text-gray-500" />, currentLeadData.company || 'Não informado')}
-
-                  {/* Cargo */}
-                  {renderEditableField('cargo', 'Cargo', <Target className="h-4 w-4 text-gray-500" />, displayJobTitle)}
-
-                  {/* Origem */}
-                  {renderEditableField('origem', 'Origem', <ExternalLink className="h-4 w-4 text-gray-500" />, displaySource)}
-
-                  {/* Data de Criação */}
-                  {renderEditableField('data_criacao', 'Data de Criação', <Calendar className="h-4 w-4 text-gray-500" />, formatDate(currentLeadData.created_at), '', true)}
-
-                  {/* Última Atualização */}
-                  {renderEditableField('ultima_atualizacao', 'Última Atualização', <Clock className="h-4 w-4 text-gray-500" />, formatDate(currentLeadData.updated_at), '', true)}
-
-                  {/* Cidade */}
-                  {currentLeadData.city && renderEditableField('cidade', 'Cidade', <MapPin className="h-4 w-4 text-gray-500" />, currentLeadData.city)}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="tracking" className="space-y-6 m-0">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Activity className="w-4 h-4" />
-                    Dados de Rastreamento UTM
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium text-gray-600 flex items-center gap-1">
-                      <Tag className="w-3 h-3" />
-                      UTM Source
-                    </label>
-                    <p className="text-gray-900">
-                      {currentLeadData.utm_source || 'Não informado'}
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium text-gray-600 flex items-center gap-1">
-                      <Tag className="w-3 h-3" />
-                      UTM Medium
-                    </label>
-                    <p className="text-gray-900">
-                      {currentLeadData.utm_medium || 'Não informado'}
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium text-gray-600 flex items-center gap-1">
-                      <Target className="w-3 h-3" />
-                      UTM Campaign
-                    </label>
-                    <p className="text-gray-900">
-                      {currentLeadData.utm_campaign || 'Não informado'}
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium text-gray-600 flex items-center gap-1">
-                      <Search className="w-3 h-3" />
-                      UTM Term
-                    </label>
-                    <p className="text-gray-900">
-                      {currentLeadData.utm_term || 'Não informado'}
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium text-gray-600">UTM Content</label>
-                    <p className="text-gray-900">
-                      {currentLeadData.utm_content || 'Não informado'}
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium text-gray-600 flex items-center gap-1">
-                      <ExternalLink className="w-3 h-3" />
-                      Referrer
-                    </label>
-                    <p className="text-gray-900 break-all">
-                      {currentLeadData.referrer || 'Não informado'}
-                    </p>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="text-sm font-medium text-gray-600 flex items-center gap-1">
-                      <Globe className="w-3 h-3" />
-                      Landing Page
-                    </label>
-                    <p className="text-gray-900 break-all">
-                      {currentLeadData.landing_page || 'Não informado'}
-                    </p>
-                  </div>
-
-                  {currentLeadData.campaign_name && (
-                    <div>
-                      <label className="text-sm font-medium text-gray-600">Nome da Campanha</label>
-                      <p className="text-gray-900">
-                        {currentLeadData.campaign_name}
-                      </p>
-                    </div>
-                  )}
-
-                  {currentLeadData.city && (
-                    <div>
-                      <label className="text-sm font-medium text-gray-600 flex items-center gap-1">
-                        <MapPin className="w-3 h-3" />
-                        Localização
-                      </label>
-                      <p className="text-gray-900">
-                        {[currentLeadData.city, currentLeadData.state, currentLeadData.country].filter(Boolean).join(', ')}
-                      </p>
-                    </div>
-                  )}
-
-                  {currentLeadData.ip_address && (
-                    <div>
-                      <label className="text-sm font-medium text-gray-600">IP Address</label>
-                      <p className="text-gray-900 font-mono text-sm">
-                        {currentLeadData.ip_address}
-                      </p>
-                    </div>
-                  )}
-
-                  {currentLeadData.user_agent && (
-                    <div className="md:col-span-2">
-                      <label className="text-sm font-medium text-gray-600">User Agent</label>
-                      <p className="text-gray-900 text-sm break-all">
-                        {currentLeadData.user_agent}
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="history" className="space-y-6 m-0">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <History className="w-4 h-4" />
-                    Histórico de Oportunidades
-                  </CardTitle>
-                  <p className="text-sm text-gray-600">
-                    Todas as oportunidades criadas a partir deste lead
-                  </p>
-                </CardHeader>
-                <CardContent>
-                  {loadingOpportunities ? (
-                    <div className="flex items-center justify-center py-8">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                      <span className="ml-2 text-gray-600">Carregando histórico...</span>
-                    </div>
-                  ) : opportunities.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <Target className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                      <p>Nenhuma oportunidade criada a partir deste lead</p>
-                      <p className="text-sm mt-1">
-                        Use o botão "Criar Oportunidade" na lista de leads para criar a primeira oportunidade
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {opportunities.map((opportunity) => (
-                        <div
-                          key={opportunity.id}
-                          className="border rounded-lg p-4 hover:shadow-md transition-shadow"
-                        >
-                          <div className="flex-1">
-                            <div className="mb-3">
-                              <span className="font-medium text-gray-600">Nome da oportunidade:</span>{' '}
-                              <span className="font-medium text-gray-900">{opportunity.nome_oportunidade}</span>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <span className="font-medium text-gray-600">Vendedor:</span>{' '}
-                                <span className="text-gray-900">{opportunity.created_by_name}</span>
-                              </div>
-                              <div>
-                                <span className="font-medium text-gray-600">Data de criação:</span>{' '}
-                                <span className="text-gray-900">{formatDate(opportunity.created_at)}</span>
-                              </div>
-                              <div className="md:col-span-2">
-                                <span className="font-medium text-gray-600">Valor:</span>{' '}
-                                <span className="text-lg font-semibold text-green-600">
-                                  {opportunity.valor ? formatCurrency(opportunity.valor) : 'Não informado'}
-                                </span>
-                              </div>
-                            </div>
+                  {/* Seção de Localização e Datas - Inline */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <Card className="bg-white border-slate-200">
+                      <CardHeader className="bg-slate-50 border-b border-slate-200 py-2">
+                        <CardTitle className="flex items-center gap-2 text-slate-800 text-base">
+                          <MapPin className="w-4 h-4 text-red-600" />
+                          Localização
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-3">
+                        <div className="space-y-3">
+                          {renderEditableField('cidade', 'Cidade', <MapPin className="h-4 w-4 text-red-500" />, currentLeadData.city || 'Não informado')}
+                          <div className="grid grid-cols-2 gap-3">
+                            {renderEditableField('estado', 'Estado', <MapPin className="h-4 w-4 text-red-500" />, currentLeadData.state || 'Não informado')}
+                            {renderEditableField('pais', 'País', <Globe className="h-4 w-4 text-red-500" />, currentLeadData.country || 'Não informado')}
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </div>
-        </Tabs>
+                      </CardContent>
+                    </Card>
 
-        <div className="flex justify-end p-4 border-t">
-          <Button onClick={onClose}>
-            <X className="w-4 h-4 mr-2" />
-            Fechar
-          </Button>
-        </div>
+                    <Card className="bg-white border-slate-200">
+                      <CardHeader className="bg-slate-50 border-b border-slate-200 py-2">
+                        <CardTitle className="flex items-center gap-2 text-slate-800 text-base">
+                          <Clock className="w-4 h-4 text-slate-600" />
+                          Histórico
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-3">
+                        <div className="space-y-3">
+                          {renderEditableField('data_criacao', 'Criado em', <Calendar className="h-4 w-4 text-slate-500" />, formatDate(currentLeadData.created_at), '', true)}
+                          {renderEditableField('ultima_atualizacao', 'Atualizado em', <Clock className="h-4 w-4 text-slate-500" />, formatDate(currentLeadData.updated_at), '', true)}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+              </TabsContent>
+
+              <TabsContent value="tracking" className="space-y-3 m-0 px-3">
+                  <Card className="bg-white border-slate-200">
+                    <CardHeader className="bg-slate-50 border-b border-slate-200 py-2">
+                      <CardTitle className="flex items-center gap-2 text-slate-800 text-base">
+                        <Activity className="w-4 h-4 text-purple-600" />
+                        Dados de Rastreamento UTM
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-3">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {/* Linha 1: UTM Principal */}
+                        {renderEditableField('utm_source', 'UTM Source', <Tag className="h-4 w-4 text-purple-500" />, currentLeadData.utm_source || 'Não informado', '', true)}
+                        {renderEditableField('utm_medium', 'UTM Medium', <Tag className="h-4 w-4 text-blue-500" />, currentLeadData.utm_medium || 'Não informado', '', true)}
+                        {renderEditableField('utm_campaign', 'UTM Campaign', <Target className="h-4 w-4 text-green-500" />, currentLeadData.utm_campaign || 'Não informado', '', true)}
+                        
+                        {/* Linha 2: UTM Detalhado */}
+                        {renderEditableField('utm_term', 'UTM Term', <Search className="h-4 w-4 text-orange-500" />, currentLeadData.utm_term || 'Não informado', '', true)}
+                        {renderEditableField('utm_content', 'UTM Content', <Tag className="h-4 w-4 text-teal-500" />, currentLeadData.utm_content || 'Não informado', '', true)}
+                        {renderEditableField('campanha', 'Campanha', <TrendingUp className="h-4 w-4 text-pink-500" />, currentLeadData.campaign_name || 'Não informado', '', true)}
+                        
+                        {/* Linha 3: URLs (span 2 colunas) */}
+                        <div className="md:col-span-2">
+                          {renderEditableField('referrer', 'Referrer', <ExternalLink className="h-4 w-4 text-indigo-500" />, currentLeadData.referrer || 'Não informado', '', true)}
+                        </div>
+                        <div className="md:col-span-1">
+                          {renderEditableField('landing_page', 'Landing Page', <Globe className="h-4 w-4 text-emerald-500" />, currentLeadData.landing_page || 'Não informado', '', true)}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+              </TabsContent>
+
+              <TabsContent value="history" className="space-y-3 m-0 px-3">
+                  <Card className="bg-white border-slate-200">
+                    <CardHeader className="bg-slate-50 border-b border-slate-200 py-2">
+                      <CardTitle className="flex items-center gap-2 text-slate-800 text-base">
+                        <History className="w-4 h-4 text-emerald-600" />
+                        Histórico de Oportunidades
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      {loadingOpportunities ? (
+                          <div className="flex items-center justify-center py-8">
+                            <div className="animate-spin rounded-full h-6 w-6 border-2 border-emerald-500 border-t-transparent"></div>
+                            <span className="ml-2 text-emerald-600 text-sm">Carregando...</span>
+                          </div>
+                      ) : opportunities.length === 0 ? (
+                          <div className="text-center py-8">
+                            <Target className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                            <p className="text-slate-600 text-sm">Nenhuma oportunidade criada</p>
+                          </div>
+                      ) : (
+                        <div className="max-h-[300px] overflow-y-auto">
+                          {opportunities.map((opportunity, index) => (
+                              <div key={opportunity.id} className="border-b border-slate-200 p-3 last:border-b-0 hover:bg-slate-50 transition-colors">
+                                {/* Header com nome e status + valor */}
+                                <div className="flex items-center justify-between mb-3">
+                                  <h4 className="font-medium text-slate-900 text-sm truncate flex-1 mr-3">{opportunity.nome_oportunidade}</h4>
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    <span className={`font-bold text-sm ${
+                                      opportunity.status === 'won' ? 'text-green-600' : 
+                                      opportunity.status === 'lost' ? 'text-red-600' : 
+                                      'text-blue-600'
+                                    }`}>
+                                      {formatCurrency(opportunity.valor)}
+                                    </span>
+                                    <Badge className={`${getOpportunityStatusColor(opportunity.status)} text-xs`}>
+                                      {getOpportunityStatusText(opportunity.status)}
+                                    </Badge>
+                                  </div>
+                                </div>
+                                
+                                {/* Informações em grid compacto */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                                  <div className="space-y-1">
+                                    <span className="text-slate-500 font-medium">Pipeline:</span>
+                                    <div className="text-slate-900 font-medium truncate">{opportunity.pipeline_name}</div>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <span className="text-slate-500 font-medium">Estágio:</span>
+                                    <div className="text-slate-900 font-medium truncate">{opportunity.stage_name}</div>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <span className="text-slate-500 font-medium">Vendedor:</span>
+                                    <div className="text-slate-900 font-medium truncate">{opportunity.created_by_name}</div>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <span className="text-slate-500 font-medium">Criado:</span>
+                                    <div className="text-slate-900 font-medium">{formatDate(opportunity.created_at)}</div>
+                                  </div>
+                                </div>
+                              </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+              </TabsContent>
+            </div>
+          </Tabs>
+
       </DialogContent>
     </Dialog>
   );

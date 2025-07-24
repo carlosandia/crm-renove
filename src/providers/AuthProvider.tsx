@@ -27,58 +27,90 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Log silencioso - só em debug mode
-  if (process.env.NODE_ENV === 'development' && import.meta.env.VITE_LOG_LEVEL === 'debug') {
-    console.log('🔥 AuthProvider - Estado atual:', { user: user?.email, loading });
+  // Log apenas em modo debug explícito
+  const isDebugMode = import.meta.env.VITE_LOG_LEVEL === 'debug';
+  if (isDebugMode) {
+    console.log('🔥 AuthProvider - Estado:', { user: user?.email, loading });
   }
 
-  // 🆕 Sistema de monitoramento automático de tokens
+  // 🔧 CORREÇÃO: Sistema de monitoramento automático de tokens (menos agressivo)
   React.useEffect(() => {
     let tokenMonitorInterval: NodeJS.Timeout;
+    let failureCount = 0;
+    const MAX_FAILURES = 3;
+    const BASE_INTERVAL = 5 * 60 * 1000; // 5 minutos base
     
     const startTokenMonitoring = () => {
-      console.log('🔄 [TOKEN-MONITOR] Iniciando monitoramento automático de tokens...');
+      if (isDebugMode) {
+        console.log('🔄 [TOKEN-MONITOR] Iniciando monitoramento otimizado...');
+      }
       
-      tokenMonitorInterval = setInterval(async () => {
-        const tokens = getStoredTokens();
-        if (!tokens) {
-          console.log('🔍 [TOKEN-MONITOR] Nenhum token encontrado, interrompendo monitoramento');
-          return;
-        }
+      const scheduleNextCheck = (intervalMultiplier = 1) => {
+        const interval = BASE_INTERVAL * intervalMultiplier;
         
-        const expiresAt = sessionStorage.getItem('crm_token_expires');
-        if (!expiresAt) {
-          console.log('⚠️ [TOKEN-MONITOR] Token sem timestamp de expiração');
-          return;
-        }
-        
-        const now = Date.now();
-        const expires = parseInt(expiresAt);
-        const threeMinutesFromNow = now + (3 * 60 * 1000); // 3 minutos (mais agressivo)
-        const timeToExpire = Math.floor((expires - now) / 1000 / 60); // minutos
-        
-        console.log(`🕐 [TOKEN-MONITOR] Status do token: expira em ${timeToExpire} minutos (${new Date(expires).toLocaleTimeString()})`);
-        
-        // Se token expira nos próximos 3 minutos, renovar automaticamente
-        if (threeMinutesFromNow >= expires) {
-          console.log(`⚠️ [TOKEN-MONITOR] Token expira em ${timeToExpire} minutos, renovando automaticamente...`);
-          console.log(`🔄 [TOKEN-MONITOR] Tipo de token: ${tokens.accessToken.startsWith('demo_') ? 'DEMO' : 'JWT'}`);
-          
-          try {
-            const newTokens = await refreshTokens();
-            if (newTokens) {
-              console.log('✅ [TOKEN-MONITOR] Tokens renovados automaticamente com sucesso!');
-              console.log(`🔑 [TOKEN-MONITOR] Novo token expira em: ${new Date(Date.now() + newTokens.expiresIn * 1000).toLocaleTimeString()}`);
-            } else {
-              console.log('❌ [TOKEN-MONITOR] Falha na renovação automática - tokens inválidos');
-            }
-          } catch (error) {
-            console.error('❌ [TOKEN-MONITOR] Erro na renovação automática:', error);
+        tokenMonitorInterval = setTimeout(async () => {
+          const tokens = getStoredTokens();
+          if (!tokens) {
+            scheduleNextCheck(); // Reagendar se não há tokens
+            return;
           }
-        } else {
-          console.log(`✅ [TOKEN-MONITOR] Token válido por mais ${timeToExpire} minutos`);
-        }
-      }, 30000); // Verificar a cada 30 segundos (mais agressivo)
+          
+          const expiresAt = sessionStorage.getItem('crm_token_expires');
+          if (!expiresAt) {
+            scheduleNextCheck(); // Reagendar se não há expiração
+            return;
+          }
+          
+          const now = Date.now();
+          const expires = parseInt(expiresAt);
+          const fiveMinutesFromNow = now + (5 * 60 * 1000); // Margem de 5 minutos
+          const timeToExpire = Math.floor((expires - now) / 1000 / 60);
+          
+          // Só tentar renovar se token estiver realmente próximo do vencimento
+          if (fiveMinutesFromNow >= expires && timeToExpire > -10) { // Até 10 min após expirar
+            if (isDebugMode) {
+              console.log(`⚠️ [TOKEN-MONITOR] Token próximo do vencimento (${timeToExpire} min)`);
+            }
+            
+            try {
+              const newTokens = await refreshTokens();
+              if (newTokens) {
+                failureCount = 0; // Reset contador em caso de sucesso
+                scheduleNextCheck(); // Reagendar com intervalo normal
+              } else {
+                failureCount++;
+                if (isDebugMode) {
+                  console.log(`❌ [TOKEN-MONITOR] Falha na renovação (${failureCount}/${MAX_FAILURES})`);
+                }
+                
+                // Backoff exponencial em caso de falha
+                const backoffMultiplier = Math.min(Math.pow(2, failureCount), 8); // Max 8x
+                scheduleNextCheck(backoffMultiplier);
+                
+                // Só forçar logout após múltiplas falhas
+                if (failureCount >= MAX_FAILURES) {
+                  console.error('❌ [TOKEN-MONITOR] Múltiplas falhas de renovação - considera logout');
+                  // Não forçar logout automaticamente - deixar para API interceptor
+                }
+              }
+            } catch (error) {
+              failureCount++;
+              if (isDebugMode) {
+                console.error(`❌ [TOKEN-MONITOR] Erro (${failureCount}/${MAX_FAILURES}):`, error);
+              }
+              
+              const backoffMultiplier = Math.min(Math.pow(2, failureCount), 8);
+              scheduleNextCheck(backoffMultiplier);
+            }
+          } else {
+            // Token ainda válido, reagendar verificação normal
+            scheduleNextCheck();
+          }
+        }, interval);
+      };
+      
+      // Iniciar ciclo de monitoramento
+      scheduleNextCheck();
     };
     
     // Iniciar monitoramento se há usuário logado
@@ -88,8 +120,10 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     
     return () => {
       if (tokenMonitorInterval) {
-        clearInterval(tokenMonitorInterval);
-        console.log('🛑 [TOKEN-MONITOR] Monitoramento de tokens interrompido');
+        clearTimeout(tokenMonitorInterval);
+        if (isDebugMode) {
+          console.log('🛑 [TOKEN-MONITOR] Monitoramento otimizado interrompido');
+        }
       }
     };
   }, [user, loading]);
@@ -154,18 +188,16 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
     // 🔧 CORREÇÃO CRÍTICA 2: Adicionar headers para tokens demo
     if (tokens.accessToken.startsWith('demo_token_') && user) {
-      headers['X-User-ID'] = user.id;
-      headers['X-User-Role'] = user.role;
-      headers['X-Tenant-ID'] = user.tenant_id || '';
-      console.log('🔑 [AUTH-FETCH] Headers demo adicionados para token:', tokens.accessToken.substring(0, 20));
+      // 🔧 CORREÇÃO: Usar apenas minúsculas para evitar duplicação
+      headers['x-user-id'] = user.id;
+      headers['x-user-role'] = user.role;
+      headers['x-tenant-id'] = user.tenant_id || '';
+      console.log('🔧 [AUTH-FETCH] Headers demo configurados:', {
+        'x-user-id': headers['x-user-id'],
+        'x-user-role': headers['x-user-role'],
+        'x-tenant-id': headers['x-tenant-id']
+      });
     }
-
-    console.log('📤 [AUTH-FETCH] Headers da requisição:', {
-      url: `${API_BASE_URL}/api${url}`,
-      method: options.method || 'GET',
-      authorization: `Bearer ${tokens.accessToken.substring(0, 20)}...`,
-      hasUserHeaders: tokens.accessToken.startsWith('demo_token_')
-    });
 
     let response;
     try {
@@ -187,11 +219,7 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       });
     }
 
-    console.log('📥 [AUTH-FETCH] Resposta recebida:', {
-      status: response.status,
-      statusText: response.statusText,
-      url: url
-    });
+    // Resposta recebida: ${response.status}
 
     // Se token expirou, tentar renovar
     if (response.status === 401) {
@@ -211,6 +239,10 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
           newHeaders['X-User-ID'] = user.id;
           newHeaders['X-User-Role'] = user.role;
           newHeaders['X-Tenant-ID'] = user.tenant_id || '';
+          // 🔧 CORREÇÃO: Adicionar versões minúsculas para compatibilidade
+          newHeaders['x-user-id'] = user.id;
+          newHeaders['x-user-role'] = user.role;
+          newHeaders['x-tenant-id'] = user.tenant_id || '';
         }
 
         // Tentar novamente com token renovado
@@ -280,6 +312,8 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
           tokenType: 'Bearer' as const
         };
         storeTokens(autoTokens);
+        // 🔧 CORREÇÃO: Salvar no localStorage também
+        localStorage.setItem('access_token', autoTokens.accessToken);
         console.log('✅ [GET-TOKENS] Tokens demo criados automaticamente');
         return autoTokens;
       }
@@ -358,7 +392,8 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     sessionStorage.removeItem('crm_access_token');
     sessionStorage.removeItem('crm_refresh_token');
     sessionStorage.removeItem('crm_token_expires');
-    // Manter localStorage para compatibilidade
+    // 🔧 CORREÇÃO: Limpar access_token do localStorage também
+    localStorage.removeItem('access_token');
     localStorage.removeItem('crm_user');
   };
 
@@ -370,7 +405,6 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     
     try {
       const refreshToken = sessionStorage.getItem('crm_refresh_token');
-      const currentTokens = getStoredTokens();
       
       if (!refreshToken) {
         logger.debug('REFRESH-TOKENS Refresh token não encontrado no sessionStorage');
@@ -528,8 +562,6 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
   // 🔧 CORREÇÃO CRÍTICA #1: Listener user-login sempre ativo e robusto
   React.useEffect(() => {
-    console.log('🎧 [CRITICAL-FIX-1] Registrando listener user-login com máxima prioridade...');
-    
     // Garantir que não há listeners duplicados
     window.removeEventListener('user-login', handleUserLogin as EventListener);
     
@@ -539,15 +571,10 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       capture: false    // Bubbling phase para máxima compatibilidade
     });
     
-    // Verificar se listener está realmente ativo
-    console.log('✅ [CRITICAL-FIX-1] Listener user-login registrado e ativo');
-    console.log('🔍 [CRITICAL-FIX-1] Total de listeners user-login:', 
-      (window as any).getEventListeners?.('user-login')?.length || 'Indeterminado');
-    
     // Cleanup robusto
     return () => {
       window.removeEventListener('user-login', handleUserLogin as EventListener);
-      console.log('🧹 [CRITICAL-FIX-1] Listener user-login removido com segurança');
+      // Listener user-login removido
     };
   }, [handleUserLogin]);
 
@@ -617,58 +644,104 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   }, []);
 
   /**
+   * 🔧 CORREÇÃO: Testar conectividade com backend antes do login
+   */
+  const testBackendConnection = async (): Promise<boolean> => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 segundos timeout
+      
+      const response = await fetch(`${API_BASE_URL}/api/health`, {
+        method: 'GET',
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        console.log('✅ [BACKEND-TEST] Backend disponível');
+        return true;
+      } else {
+        console.log('⚠️ [BACKEND-TEST] Backend respondeu com erro:', response.status);
+        return false;
+      }
+    } catch (error) {
+      console.log('❌ [BACKEND-TEST] Backend não disponível:', error);
+      return false;
+    }
+  };
+
+  /**
    * 🔧 CORREÇÃO ETAPA 1: Login integrado com Backend API para gerar tokens JWT
    */
   const login = async (email: string, password: string): Promise<boolean> => {
-    console.log('🔐 [ETAPA-1] Tentando login integrado Backend API + JWT:', email);
+    console.log('🔐 [LOGIN] Iniciando autenticação:', email);
     setLoading(true);
     
     try {
-      // 🔧 CORREÇÃO: Sempre tentar Backend API primeiro para obter tokens JWT
-      console.log('🚀 [ETAPA-1] Tentando login via Backend API (/api/auth/login)...');
+      // 🔧 CORREÇÃO: Testar conexão com backend primeiro
+      const backendAvailable = await testBackendConnection();
       
-      const loginResponse = await fetch(`${API_BASE_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: email.toLowerCase().trim(),
-          password: password
-        })
-      });
-
-      const loginData = await loginResponse.json();
-
-      if (loginResponse.ok && loginData.success) {
-        // ✅ LOGIN VIA BACKEND API SUCESSO - Tokens JWT obtidos
-        console.log('✅ [ETAPA-1] Login via Backend API bem-sucedido:', loginData.data.user.email);
+      if (backendAvailable) {
+        console.log('🚀 [LOGIN] Backend disponível - usando API...');
         
-        const { user, tokens } = loginData.data;
-
-        // Armazenar tokens JWT
-        storeTokens(tokens);
-        console.log('✅ [ETAPA-1] Tokens JWT armazenados:', { 
-          accessToken: tokens.accessToken.substring(0, 50) + '...', 
-          expiresIn: tokens.expiresIn 
+        // Implementar timeout para evitar travamento
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 segundos timeout
+        
+        const loginResponse = await fetch(`${API_BASE_URL}/api/auth/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: email.toLowerCase().trim(),
+            password: password
+          }),
+          signal: controller.signal
         });
 
-        // Configurar usuário
-        setUser(user);
+        clearTimeout(timeoutId);
 
-        // Manter compatibilidade com localStorage para demonstração
-        localStorage.setItem('crm_user', JSON.stringify({
-          ...user,
-          loginTime: new Date().toISOString()
-        }));
+        if (loginResponse.ok) {
+          const loginData = await loginResponse.json();
+          
+          if (loginData.success) {
+            // ✅ LOGIN VIA BACKEND API SUCESSO - Tokens JWT obtidos
+            console.log('✅ [LOGIN] Autenticação bem-sucedida via API:', loginData.data?.user?.email || loginData.user?.email);
+            
+            const user = loginData.data?.user || loginData.user;
+            const tokens = {
+              accessToken: loginData.token || loginData.data?.tokens?.accessToken,
+              refreshToken: loginData.token || loginData.data?.tokens?.refreshToken || loginData.token,
+              expiresIn: 3600, // 1 hora como padrão
+              tokenType: 'Bearer' as const
+            };
 
-        console.log('🎉 [ETAPA-1] Login completo via Backend API + JWT tokens!');
-        setLoading(false);
-        return true;
+            // Armazenar tokens JWT
+            storeTokens(tokens);
+            localStorage.setItem('access_token', tokens.accessToken);
+            
+            console.log('✅ [LOGIN] Tokens JWT configurados com sucesso');
+
+            // Configurar usuário
+            setUser(user);
+            localStorage.setItem('crm_user', JSON.stringify({
+              ...user,
+              loginTime: new Date().toISOString()
+            }));
+
+            console.log('🎉 [LOGIN] Login completo via Backend API!');
+            setLoading(false);
+            return true;
+          }
+        }
+        
+        // ⚠️ Backend API falhou - tentar fallback de demonstração
+        console.log('⚠️ [LOGIN] Backend API falhou, usando fallback demo');
+      } else {
+        console.log('⚠️ [LOGIN] Backend não disponível, usando fallback demo');
       }
-
-      // ⚠️ Backend API falhou - tentar fallback de demonstração
-      console.log('⚠️ [ETAPA-1] Backend API falhou, tentando fallback demo:', loginData.error || 'Erro desconhecido');
 
       // FALLBACK: Credenciais de demonstração (para desenvolvimento)
       const demoUsers = [
@@ -682,6 +755,20 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
             last_name: 'Admin',
             role: 'super_admin' as const,
             tenant_id: '550e8400-e29b-41d4-a716-446655440000',
+            is_active: true,
+            created_at: new Date().toISOString()
+          }
+        },
+        {
+          email: 'seraquevai@seraquevai.com',
+          password: 'abc12345!',
+          user: {
+            id: 'bbaf8441-23c9-44dc-9a4c-a4da787f829c',
+            email: 'seraquevai@seraquevai.com',
+            first_name: 'Admin',
+            last_name: 'User',
+            role: 'admin' as const,
+            tenant_id: 'd7caffc1-c923-47c8-9301-ca9eeff1a243',
             is_active: true,
             created_at: new Date().toISOString()
           }
@@ -717,6 +804,10 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
         // Armazenar tokens demo
         storeTokens(demoTokens);
+        
+        // 🔧 CORREÇÃO CRÍTICA: Salvar access_token no localStorage para api.ts
+        localStorage.setItem('access_token', demoTokens.accessToken);
+        
         console.log('✅ [ETAPA-1] Tokens demo criados para desenvolvimento');
 
         // Configurar usuário
@@ -735,11 +826,80 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
       // ❌ Todas as tentativas falharam
       console.log('❌ [ETAPA-1] Todas as tentativas de login falharam');
-          setLoading(false);
-          return false;
+      setLoading(false);
+      return false;
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ [ETAPA-1] Erro no login:', error);
+      
+      // Se foi erro de timeout ou rede, tentar fallback mesmo assim
+      if (error.name === 'AbortError' || error.message?.includes('fetch')) {
+        console.log('⚠️ [ETAPA-1] Erro de rede/timeout, tentando fallback demo...');
+        
+        // FALLBACK: Credenciais de demonstração (para desenvolvimento)
+        const demoUsers = [
+          {
+            email: 'superadmin@crm.com',
+            password: 'SuperAdmin123!',
+            user: {
+              id: '3873c08e-f735-4d2e-9b43-fef337ca9876',
+              email: 'superadmin@crm.com',
+              first_name: 'Super',
+              last_name: 'Admin',
+              role: 'super_admin' as const,
+              tenant_id: '550e8400-e29b-41d4-a716-446655440000',
+              is_active: true,
+              created_at: new Date().toISOString()
+            }
+          },
+          {
+            email: 'seraquevai@seraquevai.com',
+            password: 'abc12345!',
+            user: {
+              id: 'bbaf8441-23c9-44dc-9a4c-a4da787f829c',
+              email: 'seraquevai@seraquevai.com',
+              first_name: 'Admin',
+              last_name: 'User',
+              role: 'admin' as const,
+              tenant_id: 'd7caffc1-c923-47c8-9301-ca9eeff1a243',
+              is_active: true,
+              created_at: new Date().toISOString()
+            }
+          }
+        ];
+
+        const demoUser = demoUsers.find(u => u.email === email && u.password === password);
+        
+        if (demoUser) {
+          console.log('✅ [ETAPA-1] Login demo bem-sucedido (fallback de erro):', demoUser.user.email);
+          
+          // Gerar tokens demo
+          const demoTokens: AuthTokens = {
+            accessToken: `demo_token_${Date.now()}_${demoUser.user.id}`,
+            refreshToken: `demo_refresh_${Date.now()}_${demoUser.user.id}`,
+            expiresIn: 24 * 60 * 60,
+            tokenType: 'Bearer' as const
+          };
+
+          // Armazenar tokens demo
+          storeTokens(demoTokens);
+          localStorage.setItem('access_token', demoTokens.accessToken);
+          
+          console.log('✅ [ETAPA-1] Tokens demo criados (fallback de erro)');
+
+          // Configurar usuário
+          setUser(demoUser.user);
+          localStorage.setItem('crm_user', JSON.stringify({
+            ...demoUser.user,
+            loginTime: new Date().toISOString()
+          }));
+
+          console.log('✅ [ETAPA-1] Login demo completo (fallback de erro)!');
+          setLoading(false);
+          return true;
+        }
+      }
+      
       setLoading(false);
       return false;
     }

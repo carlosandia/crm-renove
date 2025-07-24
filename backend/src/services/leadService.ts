@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase';
+import { supabaseAdmin } from './supabase-admin';
 import { LeadTasksService } from './leadTasksService';
 
 export interface Lead {
@@ -117,12 +118,46 @@ export class LeadService {
     }
   }
 
-  static async moveLeadToStage(leadId: string, newStageId: string): Promise<Lead> {
-    // 🚀 OTIMIZADO - Apenas atualizar o lead, sem gerar tarefas síncronas
-    const updatedLead = await this.updateLead(leadId, { 
-      stage_id: newStageId,
-      moved_at: new Date().toISOString()
-    });
+  static async moveLeadToStage(leadId: string, newStageId: string, position?: number): Promise<Lead> {
+    // 🎯 SISTEMA DE POSIÇÕES: Usar função SQL para mover com posição precisa
+    if (position !== undefined) {
+      console.log('🎯 [POSITION] Movendo lead com posição específica:', {
+        leadId: leadId.substring(0, 8),
+        newStageId: newStageId.substring(0, 8),
+        position
+      });
+
+      // Usar função SQL para mover com posição precisa
+      const { error: moveError } = await supabaseAdmin.rpc('move_lead_to_position', {
+        p_lead_id: leadId,
+        p_new_stage_id: newStageId,
+        p_new_position: position
+      });
+
+      if (moveError) {
+        console.error('❌ [POSITION] Erro ao mover lead com posição:', moveError);
+        throw new Error(`Erro ao mover lead para posição específica: ${moveError.message}`);
+      }
+    } else {
+      // 🚀 OTIMIZADO - Manter lógica antiga como fallback (sem posição específica)
+      console.log('📍 [FALLBACK] Movendo lead sem posição específica (será adicionado ao final)');
+      
+      await this.updateLead(leadId, { 
+        stage_id: newStageId,
+        moved_at: new Date().toISOString()
+      });
+    }
+
+    // Buscar lead atualizado para retornar
+    const { data: updatedLead, error: fetchError } = await supabase
+      .from('pipeline_leads')
+      .select('*')
+      .eq('id', leadId)
+      .single();
+
+    if (fetchError || !updatedLead) {
+      throw new Error(`Erro ao buscar lead atualizado: ${fetchError?.message}`);
+    }
 
     // 🔥 TAREFAS ASSÍNCRONAS - Não aguardar, executar em background
     setImmediate(() => {

@@ -1,55 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSupabaseCrud } from './useSupabaseCrud';
+import { DealSchema } from '../shared/schemas/DomainSchemas';
+import type { Deal } from '../shared/types/Domain';
 
-export interface Deal {
-  id: string;
-  title: string;
-  description?: string;
-  value: number;
-  currency?: string;
-  status: 'open' | 'won' | 'lost' | 'pending';
-  stage: string;
-  probability?: number;
-  expected_close_date?: string;
-  actual_close_date?: string;
-  contact_id?: string;
-  company_id?: string;
-  pipeline_id?: string;
-  assigned_to?: string;
-  lead_source?: string;
-  tags?: string[];
-  notes?: string;
-  tenant_id?: string;
-  created_at?: string;
-  updated_at?: string;
-  created_by?: string;
-  
-  // Relacionamentos
-  contact?: {
-    id: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-    company?: string;
-  };
-  company?: {
-    id: string;
-    name: string;
-  };
-  assigned_user?: {
-    id: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-  };
-}
+// AIDEV-NOTE: Interface legada removida - usando tipos inferidos do Zod
 
 export const useDeals = () => {
   const { user } = useAuth();
   
-  // ✅ USANDO NOVO HOOK BASE UNIFICADO
-  const dealsCrud = useSupabaseCrud<Deal>({
+  // ✅ USANDO NOVO HOOK BASE UNIFICADO COM VALIDAÇÃO ZOD
+  const dealsCrud = useSupabaseCrud({
     tableName: 'deals',
     selectFields: `
       id, title, description, value, currency, status, stage, probability,
@@ -63,7 +24,9 @@ export const useDeals = () => {
     defaultOrderBy: { column: 'created_at', ascending: false },
     enableCache: true,
     cacheKeyPrefix: 'deals',
-    cacheDuration: 300000 // 5 minutos
+    cacheDuration: 300000, // 5 minutos
+    // AIDEV-NOTE: Schema Zod para validação runtime
+    schema: DealSchema
   });
 
   // ============================================

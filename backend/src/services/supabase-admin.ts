@@ -56,9 +56,8 @@ class SupabaseAdminService {
       }
       
       // Para DDL/DML, executar via RPC ou função personalizada
-      const { data, error } = await this.supabase.rpc('execute_sql_admin', {
-        sql_query: query,
-        sql_params: params
+      const { data, error } = await this.supabase.rpc('execute_sql', {
+        sql_query: query
       });
 
       if (error) {
@@ -549,6 +548,27 @@ class SupabaseAdminService {
         error: error.message
       };
     }
+  }
+
+  /**
+   * Acessar cliente Supabase diretamente
+   */
+  getClient() {
+    return this.supabase;
+  }
+
+  /**
+   * Proxy para método .from() do cliente Supabase
+   */
+  from(table: string) {
+    return this.supabase.from(table);
+  }
+
+  /**
+   * Proxy para método .rpc() do cliente Supabase
+   */
+  rpc(fn: string, args?: any) {
+    return this.supabase.rpc(fn, args);
   }
 }
 

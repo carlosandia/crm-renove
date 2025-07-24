@@ -12,9 +12,9 @@ interface AnimatedCardProps {
 }
 
 const AnimatedCard = React.forwardRef<HTMLDivElement, AnimatedCardProps>(
-  ({ className, children, delay = 0, duration = 0.5, direction = "up", hover = true }, ref) => {
-    const initialY = direction === "up" ? 20 : direction === "down" ? -20 : 0
-    const initialX = direction === "left" ? 20 : direction === "right" ? -20 : 0
+  ({ className, children, delay = 0, duration = 0.25, direction = "up", hover = false }, ref) => {
+    const initialY = direction === "up" ? 8 : direction === "down" ? -8 : 0
+    const initialX = direction === "left" ? 8 : direction === "right" ? -8 : 0
 
     return (
       <motion.div

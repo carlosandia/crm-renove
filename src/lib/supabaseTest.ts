@@ -33,16 +33,18 @@ export const testSupabaseConnection = async () => {
     logger.success(`✅ Tabela companies acessível. Empresas encontradas: ${companies?.length || 0}`);
 
     // Teste 3: Tentar inserir e deletar um registro de teste
+    const testId = crypto.randomUUID();
     const testData = {
+      id: testId,
       name: 'TESTE_CONEXAO_' + Date.now(),
       segment: 'teste'
     };
 
-    const { data: testCompany, error: insertError } = await supabase
+    const { error: insertError } = await supabase
       .from('companies')
-      .insert([testData])
-      .select()
-      .single();
+      .insert([testData]);
+      
+    const testCompany = { id: testId, ...testData };
 
     if (insertError) {
       logger.error('❌ Erro ao inserir dados de teste', insertError);
@@ -120,14 +122,17 @@ export const testPipelineMembers = async (tenantId: string) => {
     }
 
     // 4. Criar associação
-    const { data: newAssociation, error } = await supabase
+    const associationId = crypto.randomUUID();
+    const { error } = await supabase
       .from('pipeline_members')
       .insert([{
+        id: associationId,
         pipeline_id: pipeline.id,
         member_id: member.id,
         assigned_at: new Date().toISOString()
-      }])
-      .select();
+      }]);
+      
+    const newAssociation = error ? null : [{ id: associationId, pipeline_id: pipeline.id, member_id: member.id }];
 
     if (error) {
       logger.error('❌ Erro ao criar associação:', error);

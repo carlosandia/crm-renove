@@ -124,7 +124,10 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
       // Mostrar feedback de sucesso
       showSuccessToast('Alterações salvas', 'Alterações salvas com sucesso!');
     } catch (error) {
-      console.error('Erro ao salvar:', error);
+      // ✅ CORREÇÃO: Uso consolidado de logs para evitar spam no console
+      if (process.env.NODE_ENV === 'development') {
+        console.error('❌ [LeadEditModal] Erro ao salvar:', error);
+      }
       showErrorToast('Erro ao salvar', 'Erro ao salvar alterações');
     } finally {
       setSaving(false);

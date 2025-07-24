@@ -44,18 +44,22 @@ export const registerLeadHistory = async (entry: HistoryEntry): Promise<string |
 
     console.log('⏰ Salvando com timestamp Brasil:', brasilTime);
 
-    const { data, error } = await supabase
+    // 🔧 CORREÇÃO RLS: Gerar UUID manualmente para contornar problema de SELECT após INSERT
+    const historyId = crypto.randomUUID();
+    const historyEntryWithId = {
+      ...historyEntry,
+      id: historyId
+    };
+
+    const { error } = await supabase
       .from('lead_history')
-      .insert([historyEntry])
-      .select()
-      .single();
+      .insert([historyEntryWithId]);
 
     if (error) {
       console.error('❌ Erro ao inserir no histórico:', error);
       throw error;
     }
 
-    const historyId = data?.id;
     console.log('✅ Histórico registrado com sucesso! ID:', historyId);
     
     return historyId;

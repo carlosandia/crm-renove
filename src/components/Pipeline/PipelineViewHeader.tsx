@@ -3,6 +3,7 @@ import PipelineStats from './PipelineStats';
 import PipelineFilters from './PipelineFilters';
 import PipelineActions from './PipelineActions';
 import PipelineSelector from './PipelineSelector';
+import EnterpriseMetricsHeader from './metrics/EnterpriseMetricsHeader';
 
 interface Pipeline {
   id: string;
@@ -37,6 +38,9 @@ interface PipelineViewHeaderProps {
   onStatusFilterChange?: (status: string) => void;
   onClearFilters?: () => void;
   userRole?: string;
+  // Novos props para métricas enterprise
+  useEnterpriseMetrics?: boolean;
+  onMetricsRefresh?: () => void;
 }
 
 const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
@@ -61,7 +65,10 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
   onSearchFilterChange,
   onStatusFilterChange,
   onClearFilters,
-  userRole
+  userRole,
+  // Novos props para métricas enterprise
+  useEnterpriseMetrics = true,
+  onMetricsRefresh
 }) => {
   // Calcular métricas adicionais
   const averageDealSize = closedDeals > 0 ? totalRevenue / closedDeals : 0;
@@ -112,60 +119,31 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
     <div className="pipeline-internal-header flex-shrink-0">
       {/* Container centralizado com largura máxima */}
       <div className="max-w-full mx-auto">
-        {/* Cabeçalho compacto em uma linha */}
+        {/* Cabeçalho simplificado - apenas métricas */}
         <div className="px-6 py-4">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-4">
-              <h1 className="text-2xl font-bold text-gray-900">Pipeline de Vendas</h1>
-            </div>
-
-            <PipelineActions
-              onAddLead={onAddLead}
-              onExport={handleExport}
-              onImport={handleImport}
-              onSettings={handleSettings}
-              onManageMembers={handleManageMembers}
-              canManage={true}
-            />
-          </div>
-
-          {/* Estatísticas em linha horizontal compacta */}
+          {/* 🎯 APENAS MÉTRICAS: Controles movidos para o subheader específico */}
           <div className="w-full">
-            <PipelineStats
-              totalLeads={totalLeads}
-              totalRevenue={totalRevenue}
-              closedDeals={closedDeals}
-              conversionRate={conversionRate}
-              averageDealSize={averageDealSize}
-              averageCycleTime={averageCycleTime}
-              loading={loading}
-            />
+            {useEnterpriseMetrics ? (
+              <EnterpriseMetricsHeader
+                selectedPipelineId={selectedPipeline?.id}
+                compact={false}
+                showComparison={true}
+                showBenchmarks={true}
+                onRefresh={onMetricsRefresh}
+                className="mb-0"
+              />
+            ) : (
+              <PipelineStats
+                totalLeads={totalLeads}
+                totalRevenue={totalRevenue}
+                closedDeals={closedDeals}
+                conversionRate={conversionRate}
+                averageDealSize={averageDealSize}
+                averageCycleTime={averageCycleTime}
+                loading={loading}
+              />
+            )}
           </div>
-        </div>
-
-        {/* Filtros */}
-        <div className="border-t border-gray-200">
-          <PipelineFilters
-            pipelines={pipelines}
-            selectedPipeline={selectedPipeline}
-            onPipelineChange={onPipelineChange}
-            onSearchChange={handleSearchChange}
-            onStatusFilter={handleStatusFilter}
-            onDateFilter={handleDateFilter}
-            onAssigneeFilter={handleAssigneeFilter}
-            onSortChange={handleSortChange}
-            // Novos props
-            availableVendors={availableVendors}
-            selectedVendorFilter={selectedVendorFilter}
-            searchFilter={searchFilter}
-            statusFilter={statusFilter}
-            showOnlyMyPipelines={showOnlyMyPipelines}
-            onToggleMyPipelines={onToggleMyPipelines}
-            onClearFilters={onClearFilters}
-            onVendorFilter={onVendorFilterChange}
-            userRole={userRole}
-            userId={undefined}
-          />
         </div>
       </div>
     </div>

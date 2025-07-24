@@ -26,7 +26,7 @@ export class EmailService {
   private readonly companyName: string;
 
   constructor() {
-    this.appUrl = process.env.APP_URL || 'http://localhost:8080';
+    this.appUrl = process.env.APP_URL || 'http://127.0.0.1:8080';
     this.companyName = process.env.COMPANY_NAME || 'CRM Marketing';
     this.transporter = this.createTransporter();
   }

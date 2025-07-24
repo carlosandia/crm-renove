@@ -343,7 +343,7 @@ export interface WhatsAppConfig {
  */
 export interface ModernFormBuilderProps {
   form: any; // TODO: Tipificar como CustomForm após migração
-  onSave: () => void;
+  onSave: (formData: any) => void | Promise<void>;
   onCancel: () => void;
   tenantId: string;
 }

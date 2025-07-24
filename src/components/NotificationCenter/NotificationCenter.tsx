@@ -66,13 +66,17 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 2000);
         
-        const healthResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/health`, {
+        const healthResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'}/api/health`, {
           signal: controller.signal,
-          method: 'GET'
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          }
         });
         
         clearTimeout(timeoutId);
-        backendAvailable = healthResponse.status < 500; // Qualquer resposta < 500 é considerada "disponível"
+        // Considerar disponível se não for erro 5xx ou 401/403 (problemas do backend)
+        backendAvailable = healthResponse.status < 500 && ![401, 403].includes(healthResponse.status);
         
         if (isDebugMode) {
           logger.debug('NotificationCenter Health check', `Backend ${backendAvailable ? 'disponível' : 'indisponível'}`);
@@ -91,12 +95,14 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
           
           if (response.ok) {
             const data = await response.json();
-            const notificationsList = data.notifications || data || [];
+            const notificationsList = Array.isArray(data.notifications) ? data.notifications : 
+                                     Array.isArray(data) ? data : [];
             
             setNotifications(notificationsList);
             
-            // Calcular não lidas
-            const unreadCount = notificationsList.filter((n: Notification) => !n.read).length;
+            // Calcular não lidas - com validação de array
+            const unreadCount = Array.isArray(notificationsList) ? 
+                               notificationsList.filter((n: Notification) => !n.read).length : 0;
             setUnreadCount(unreadCount);
             
             if (isDebugMode) {
@@ -354,7 +360,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -10, scale: 0.95 }}
               transition={{ duration: 0.2 }}
-              className="absolute right-0 top-12 z-50 w-96 bg-white rounded-lg shadow-xl border border-gray-200 max-h-96 overflow-hidden"
+              className="absolute right-0 top-12 z-[60] w-96 bg-white rounded-lg shadow-xl border border-gray-200 max-h-96 overflow-hidden"
             >
               {/* Header */}
               <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">

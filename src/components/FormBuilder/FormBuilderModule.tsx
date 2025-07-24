@@ -9,6 +9,7 @@ import { CustomForm } from '../../types/Forms';
 // FormTypeSelector removido - não relacionado ao CRM
 // FormTypeConfigurator removido - não relacionado ao CRM
 import { FormType, FormTypeConfig } from './types/FormTypeDefinitions';
+import { showSuccessToast, showErrorToast, showWarningToast, showInfoToast } from '../../hooks/useToast';
 
 interface FormStats {
   total_forms: number;
@@ -160,15 +161,15 @@ const FormBuilderModule: React.FC = () => {
 
       if (error) {
         console.error('Erro ao excluir formulário:', error);
-        alert('Erro ao excluir formulário');
+        showErrorToast('Erro ao excluir formulário', 'Não foi possível excluir o formulário. Tente novamente.');
         return;
       }
 
       await loadForms();
-      alert('Formulário excluído com sucesso');
+      showSuccessToast('Formulário excluído', 'O formulário foi excluído com sucesso.');
     } catch (error) {
       console.error('Erro ao excluir formulário:', error);
-      alert('Erro ao excluir formulário');
+      showErrorToast('Erro ao excluir formulário', 'Ocorreu um erro inesperado. Tente novamente.');
     }
   };
 
@@ -188,7 +189,7 @@ const FormBuilderModule: React.FC = () => {
     const baseUrl = window.location.origin;
     const url = `${baseUrl}/form/${form.slug}`;
     navigator.clipboard.writeText(url);
-    // Aqui você pode adicionar uma notificação de sucesso
+    showInfoToast('Link copiado', 'O link do formulário foi copiado para a área de transferência.');
   };
 
   const openFormInNewTab = (form: CustomForm) => {
@@ -217,9 +218,10 @@ const FormBuilderModule: React.FC = () => {
       if (error) throw error;
       
       await loadForms();
+      showSuccessToast('Formulário duplicado', 'O formulário foi duplicado com sucesso.');
     } catch (error) {
       console.error('Erro ao duplicar formulário:', error);
-      alert('Erro ao duplicar formulário');
+      showErrorToast('Erro ao duplicar formulário', 'Não foi possível criar uma cópia do formulário. Tente novamente.');
     }
   };
 

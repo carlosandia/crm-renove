@@ -1,35 +1,20 @@
 import React from 'react';
 import { Settings, Plus, GitBranch } from 'lucide-react';
 import { Pipeline } from '../../types/Pipeline';
-import { User } from '../../hooks/useMembers';
 import PipelineCard from './PipelineCard';
 
-interface Member {
-  id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  is_active: boolean;
-  role?: string;
-}
 
 interface PipelineListProps {
   pipelines: Pipeline[];
-  members: Member[];
   onEdit: (pipelineId: string) => void;
   onDelete: (pipelineId: string) => void;
-  onAddMember: (pipelineId: string, memberId: string) => void;
-  onRemoveMember: (pipelineId: string, memberId: string) => void;
   onCreateNew: () => void;
 }
 
 const PipelineList: React.FC<PipelineListProps> = ({
   pipelines,
-  members,
   onEdit,
   onDelete,
-  onAddMember,
-  onRemoveMember,
   onCreateNew,
 }) => {
   if (pipelines.length === 0) {
@@ -112,11 +97,8 @@ const PipelineList: React.FC<PipelineListProps> = ({
           <PipelineCard
             key={pipeline.id}
             pipeline={pipeline}
-            members={members}
             onEdit={onEdit}
             onDelete={onDelete}
-            onAddMember={onAddMember}
-            onRemoveMember={onRemoveMember}
           />
         ))}
       </div>

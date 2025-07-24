@@ -1,10 +1,9 @@
-import { getCache } from './cacheService';
+// Cache service removed - using simplified performance monitoring
 
 interface PerformanceMetrics {
   timestamp: number;
   responseTime: number;
   memoryUsage: NodeJS.MemoryUsage;
-  cacheMetrics: any;
   activeConnections: number;
   requestsPerMinute: number;
 }
@@ -39,14 +38,10 @@ class PerformanceService {
    */
   recordMetric(responseTime: number): void {
     try {
-      const cache = getCache();
-      const cacheMetrics = cache.getMetrics();
-
       const metric: PerformanceMetrics = {
         timestamp: Date.now(),
         responseTime,
         memoryUsage: process.memoryUsage(),
-        cacheMetrics,
         activeConnections: this.getActiveConnections(),
         requestsPerMinute: this.requestCount
       };
@@ -86,7 +81,6 @@ class PerformanceService {
 
     const averageResponseTime = last10Minutes.reduce((sum, m) => sum + m.responseTime, 0) / last10Minutes.length;
     const averageMemory = last10Minutes.reduce((sum, m) => sum + m.memoryUsage.heapUsed, 0) / last10Minutes.length;
-    const averageCacheHitRate = last10Minutes.reduce((sum, m) => sum + (m.cacheMetrics?.hitRate || 0), 0) / last10Minutes.length;
 
     const alerts: string[] = [];
     
@@ -99,9 +93,6 @@ class PerformanceService {
       alerts.push(`High memory usage: ${(latest.memoryUsage.heapUsed / 1024 / 1024).toFixed(2)}MB`);
     }
     
-    if (averageCacheHitRate < 80) {
-      alerts.push(`Low cache hit rate: ${averageCacheHitRate.toFixed(2)}%`);
-    }
 
     return {
       current: {
@@ -111,14 +102,12 @@ class PerformanceService {
           heapTotal: (latest.memoryUsage.heapTotal / 1024 / 1024).toFixed(2) + 'MB',
           external: (latest.memoryUsage.external / 1024 / 1024).toFixed(2) + 'MB'
         },
-        cacheHitRate: latest.cacheMetrics?.hitRate?.toFixed(2) + '%',
         requestsPerMinute: latest.requestsPerMinute,
         activeConnections: latest.activeConnections
       },
       averages: {
         responseTime: averageResponseTime.toFixed(2) + 'ms',
         memoryUsage: (averageMemory / 1024 / 1024).toFixed(2) + 'MB',
-        cacheHitRate: averageCacheHitRate.toFixed(2) + '%'
       },
       alerts
     };
@@ -130,7 +119,6 @@ class PerformanceService {
   getPerformanceTrends(): {
     responseTime: number[];
     memoryUsage: number[];
-    cacheHitRate: number[];
     timestamps: number[];
   } {
     const last30Minutes = this.metrics.filter(
@@ -140,7 +128,6 @@ class PerformanceService {
     return {
       responseTime: last30Minutes.map(m => m.responseTime),
       memoryUsage: last30Minutes.map(m => m.memoryUsage.heapUsed / 1024 / 1024),
-      cacheHitRate: last30Minutes.map(m => m.cacheMetrics?.hitRate || 0),
       timestamps: last30Minutes.map(m => m.timestamp)
     };
   }
@@ -198,13 +185,6 @@ class PerformanceService {
         score -= 10;
       }
 
-      // Cache hit rate check
-      const hitRate = latest.cacheMetrics?.hitRate || 0;
-      if (hitRate < 50) {
-        score -= 20;
-      } else if (hitRate < 80) {
-        score -= 10;
-      }
     }
 
     // Determine status
@@ -250,13 +230,6 @@ class PerformanceService {
       recommendations.push('Consider increasing server memory allocation');
     }
 
-    // Cache recommendations
-    const cacheHitRate = parseFloat(summary.current.cacheHitRate);
-    if (cacheHitRate < 80) {
-      recommendations.push('Review cache key strategies and TTL settings');
-      recommendations.push('Implement cache warming for critical data');
-      recommendations.push('Consider increasing cache memory allocation');
-    }
 
     if (recommendations.length === 0) {
       recommendations.push('System performance is optimal - no immediate optimizations needed');

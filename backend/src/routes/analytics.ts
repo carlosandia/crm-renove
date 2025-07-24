@@ -152,7 +152,7 @@ router.get('/pipeline', async (req, res) => {
         { name: 'Qualified', count: 89, value: 445000, avg_time_days: 5 },
         { name: 'Proposal', count: 45, value: 225000, avg_time_days: 8 },
         { name: 'Negotiation', count: 23, value: 115000, avg_time_days: 12 },
-        { name: 'Closed Won', count: 12, value: 60000, avg_time_days: 0 }
+        { name: 'Ganho', count: 12, value: 60000, avg_time_days: 0 }
       ],
       metrics: {
         total_pipeline_value: 1595000,

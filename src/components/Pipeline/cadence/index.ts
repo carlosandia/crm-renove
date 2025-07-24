@@ -7,6 +7,7 @@ export {
 export type { 
   CadenceTask,
   CadenceConfig,
-  UseCadenceManagerProps as CadenceManagerProps,
-  UseCadenceManagerReturn as CadenceManagerReturn
+  UseCadenceManagerProps,
+  UseCadenceManagerReturn,
+  CadenceManagerRenderProps
 } from './CadenceManager'; 

@@ -63,7 +63,7 @@ function getConfig(): AppConfig {
     },
     
     api: {
-      baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:3001',
+      baseUrl: import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001',
       timeout: parseInt(import.meta.env.VITE_API_TIMEOUT || '30000', 10)
     },
     
@@ -132,15 +132,8 @@ function validateConfig() {
 validateConfig();
 
 // Log de inicialização (apenas em desenvolvimento)
-if (appConfig.debug.enabled) {
-  console.log('🚀 Configuração da aplicação:', {
-    name: appConfig.app.name,
-    version: appConfig.app.version,
-    environment: appConfig.app.environment,
-    apiUrl: appConfig.api.baseUrl,
-    supabaseUrl: appConfig.supabase.url,
-    features: appConfig.features
-  });
+if (appConfig.debug.enabled && appConfig.app.environment === 'development') {
+  console.log('🚀 CRM iniciado:', appConfig.app.name, appConfig.app.version);
 }
 
 export default appConfig; 

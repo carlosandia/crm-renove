@@ -26,19 +26,22 @@ interface BlurFadeProps extends MotionProps {
   inView?: boolean;
   inViewMargin?: MarginType;
   blur?: string;
+  // Adicionar suporte para elementos de tabela
+  as?: "div" | "tr" | "td" | "th" | "tbody" | "thead";
 }
 
 export function BlurFade({
   children,
   className,
   variant,
-  duration = 0.4,
+  duration = 0.25,
   delay = 0,
-  offset = 6,
+  offset = 4,
   direction = "down",
   inView = false,
   inViewMargin = "-50px",
-  blur = "6px",
+  blur = "4px",
+  as = "div",
   ...props
 }: BlurFadeProps) {
   const ref = useRef(null);
@@ -58,9 +61,13 @@ export function BlurFade({
     },
   };
   const combinedVariants = variant || defaultVariants;
+  
+  // Criar o componente motion dinâmico baseado no elemento
+  const MotionComponent = motion[as] as any;
+  
   return (
     <AnimatePresence>
-      <motion.div
+      <MotionComponent
         ref={ref}
         initial="hidden"
         animate={isInView ? "visible" : "hidden"}
@@ -75,7 +82,7 @@ export function BlurFade({
         {...props}
       >
         {children}
-      </motion.div>
+      </MotionComponent>
     </AnimatePresence>
   );
 } 

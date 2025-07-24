@@ -177,11 +177,13 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
         feedbackData.pipeline_id = pipelineId;
       }
 
-      const { data, error } = await supabase
+      // 🔧 CORREÇÃO RLS: Gerar UUID manualmente para contornar problema de SELECT após INSERT
+      const feedbackId = crypto.randomUUID();
+      const feedbackDataWithId = { ...feedbackData, id: feedbackId };
+      
+      const { error } = await supabase
         .from('lead_feedback')
-        .insert(feedbackData)
-        .select()
-        .single();
+        .insert(feedbackDataWithId);
 
       if (error) {
         console.log('⚠️ Erro ao inserir no banco:', error.message);

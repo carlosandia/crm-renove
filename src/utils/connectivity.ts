@@ -19,7 +19,7 @@ export const checkBackendHealth = async (timeoutMs: number = 3000): Promise<bool
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    const response = await fetch('http://localhost:3001/health', {
+    const response = await fetch('http://127.0.0.1:3001/health', {
       method: 'GET',
       signal: controller.signal,
       headers: {

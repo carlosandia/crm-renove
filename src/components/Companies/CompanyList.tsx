@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Company, CompanyAdmin } from '../../types/Company';
+import { showSuccessToast, showErrorToast } from '../../hooks/useToast';
 import { 
   Eye, User, Calendar, Mail, 
   ToggleRight, ToggleLeft, CheckCircle, Clock, AlertTriangle, XCircle 
@@ -151,13 +152,13 @@ const CompanyList: React.FC<CompanyListProps> = ({
             try {
               const result = await onResendEmail(company);
               if (result.success) {
-                alert(`✅ ${result.message}`);
+                showSuccessToast('Email reenviado', result.message.replace('✅ ', ''));
                 onRefetch(); // Atualizar lista após reenvio
               } else {
-                alert(`❌ ${result.message}`);
+                showErrorToast('Erro ao reenviar', result.message.replace('❌ ', ''));
               }
             } catch (error) {
-              alert('❌ Erro ao reenviar email de ativação');
+              showErrorToast('Erro ao reenviar', 'Erro ao reenviar email de ativação');
               console.error('Erro ao reenviar email:', error);
             }
           }}
