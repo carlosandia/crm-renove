@@ -1,0 +1,33 @@
+<\!DOCTYPE html>
+<html>
+<head>
+    <title>Forçar Reload - Teste de Fallbacks</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>🔄 Força Reload para Testar Fallbacks</h1>
+    <p>Esta página força o reload do app principal para testar se os fallbacks funcionam.</p>
+    
+    <script>
+        console.log("🔄 Forçando reload para testar fallbacks...");
+        
+        // Limpar todos os caches
+        if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                for(let registration of registrations) {
+                    registration.unregister();
+                }
+            });
+        }
+        
+        // Limpar localStorage e sessionStorage
+        localStorage.clear();
+        sessionStorage.clear();
+        
+        // Aguardar um pouco e redirecionar
+        setTimeout(() => {
+            window.location.href = "http://127.0.0.1:8080/";
+        }, 1000);
+    </script>
+</body>
+</html>

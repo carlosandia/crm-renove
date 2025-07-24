@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, memo, useMemo, useCallback, Suspense, lazy } from 'react';
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 
 // ================================================================================
 // FASE 3.7: INTEGRAÇÃO DE UTILIDADES CENTRALIZADAS E HOOKS CUSTOMIZADOS
@@ -374,7 +373,7 @@ Enviado automaticamente pelo sistema CRM Marketing`,
   };
 
   // 🚀 OTIMIZAÇÃO: useCallback para onDragEnd
-  const onDragEnd = useCallback((result: DropResult) => {
+  const onDragEnd = useCallback((result: any) => {
     if (!result.destination) return;
 
     const newFields = Array.from(fields);
@@ -1051,19 +1050,16 @@ Enviado automaticamente pelo sistema CRM Marketing`,
               </div>
             </div>
           }>
-            <DragDropContext onDragEnd={onDragEnd}>
-              <FormPreview
-                fields={fields}
-                formData={formData}
-                formStyle={formStyle}
-                previewMode={previewMode}
-                selectedField={selectedField}
-                onFieldSelect={setSelectedField}
-                onDragEnd={onDragEnd}
-                removeField={removeField}
-                duplicateField={duplicateField}
-              />
-            </DragDropContext>
+            <FormPreview
+              fields={fields}
+              formData={formData}
+              formStyle={formStyle}
+              previewMode={previewMode}
+              selectedField={selectedField}
+              onFieldSelect={setSelectedField}
+              removeField={removeField}
+              duplicateField={duplicateField}
+            />
           </Suspense>
         </div>
 

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste React - CRM</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f0f0f0;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 6px;
+            font-weight: bold;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .warning { background: #fff3cd; color: #856404; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        .test-frame {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        .test-frame iframe {
+            width: 100%;
+            height: 500px;
+            border: none;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Teste React - Diagnóstico de Tela Branca</h1>
+        
+        <div class="status info">
+            <strong>Objetivo:</strong> Verificar se o React está renderizando corretamente no CRM
+        </div>
+        
+        <div class="status warning" id="status">
+            🔄 Iniciando testes...
+        </div>
+        
+        <div class="test-frame">
+            <iframe id="app-frame" src="/"></iframe>
+        </div>
+        
+        <div>
+            <button class="btn" onclick="reloadTest()">🔄 Recarregar Teste</button>
+            <button class="btn" onclick="clearCacheAndTest()">🧹 Limpar Cache e Testar</button>
+            <button class="btn" onclick="checkConsole()">📋 Verificar Console</button>
+            <button class="btn" onclick="goToValidation()">🔍 Ir para Validação</button>
+        </div>
+        
+        <div class="log" id="log">Iniciando teste do React...\n</div>
+    </div>
+
+    <script>
+        const log = document.getElementById('log');
+        const status = document.getElementById('status');
+        const appFrame = document.getElementById('app-frame');
+        
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const emoji = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'warning' ? '⚠️' : '📝';
+            log.textContent += `[${timestamp}] ${emoji} ${message}\n`;
+            log.scrollTop = log.scrollHeight;
+        }
+        
+        function updateStatus(message, type = 'info') {
+            const emoji = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'warning' ? '⚠️' : '📝';
+            status.innerHTML = `<strong>${emoji} ${message}</strong>`;
+            status.className = `status ${type}`;
+        }
+        
+        function checkFrame() {
+            try {
+                addLog('Verificando iframe da aplicação...');
+                
+                // Verificar se o iframe carregou
+                if (!appFrame.contentWindow) {
+                    addLog('Iframe não carregou', 'error');
+                    updateStatus('Iframe não carregou', 'error');
+                    return;
+                }
+                
+                // Tentar acessar o documento do iframe
+                const iframeDoc = appFrame.contentDocument || appFrame.contentWindow.document;
+                
+                if (!iframeDoc) {
+                    addLog('Documento do iframe não acessível', 'error');
+                    updateStatus('Documento do iframe não acessível', 'error');
+                    return;
+                }
+                
+                // Verificar se o elemento root existe
+                const rootElement = iframeDoc.getElementById('root');
+                if (!rootElement) {
+                    addLog('Elemento root não encontrado', 'error');
+                    updateStatus('Elemento root não encontrado', 'error');
+                    return;
+                }
+                
+                addLog('Elemento root encontrado', 'success');
+                
+                // Verificar se há conteúdo no root
+                const rootContent = rootElement.innerHTML.trim();
+                if (!rootContent) {
+                    addLog('Elemento root está vazio (tela branca)', 'warning');
+                    updateStatus('PROBLEMA: Elemento root vazio - tela branca', 'error');
+                    
+                    // Verificar se há erros no console
+                    checkForErrors(iframeDoc);
+                } else {
+                    addLog(`Conteúdo encontrado no root: ${rootContent.substring(0, 100)}...`, 'success');
+                    updateStatus('SUCCESS: React está renderizando', 'success');
+                }
+                
+                // Verificar se há scripts carregados
+                const scripts = iframeDoc.querySelectorAll('script');
+                addLog(`Scripts encontrados: ${scripts.length}`, 'info');
+                
+            } catch (error) {
+                addLog(`Erro ao verificar iframe: ${error.message}`, 'error');
+                updateStatus('Erro ao verificar aplicação', 'error');
+            }
+        }
+        
+        function checkForErrors(doc) {
+            // Verificar se há mensagens de erro visíveis
+            const errorElements = doc.querySelectorAll('[class*="error"], [class*="Error"]');
+            if (errorElements.length > 0) {
+                addLog(`Elementos de erro encontrados: ${errorElements.length}`, 'error');
+            }
+            
+            // Verificar se há scripts que falharam
+            const scripts = doc.querySelectorAll('script');
+            addLog(`Verificando ${scripts.length} scripts...`, 'info');
+            
+            scripts.forEach((script, index) => {
+                if (script.src) {
+                    addLog(`Script ${index + 1}: ${script.src}`, 'info');
+                }
+            });
+        }
+        
+        function reloadTest() {
+            addLog('Recarregando teste...', 'info');
+            updateStatus('Recarregando...', 'warning');
+            appFrame.src = appFrame.src;
+        }
+        
+        function clearCacheAndTest() {
+            addLog('Limpando cache e testando...', 'info');
+            
+            // Limpar cache
+            if (typeof localStorage !== 'undefined') {
+                localStorage.clear();
+                addLog('localStorage limpo', 'success');
+            }
+            
+            if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.clear();
+                addLog('sessionStorage limpo', 'success');
+            }
+            
+            // Service Worker
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(registrations => {
+                    registrations.forEach(registration => {
+                        registration.unregister();
+                        addLog('Service Worker removido', 'success');
+                    });
+                });
+            }
+            
+            // Recarregar com cache limpo
+            setTimeout(() => {
+                reloadTest();
+            }, 1000);
+        }
+        
+        function checkConsole() {
+            addLog('Verificando console...', 'info');
+            
+            // Interceptar console.log do iframe
+            try {
+                const iframeWindow = appFrame.contentWindow;
+                if (iframeWindow) {
+                    const originalLog = iframeWindow.console.log;
+                    const originalError = iframeWindow.console.error;
+                    const originalWarn = iframeWindow.console.warn;
+                    
+                    iframeWindow.console.log = function(...args) {
+                        addLog(`Console.log: ${args.join(' ')}`, 'info');
+                        originalLog.apply(this, args);
+                    };
+                    
+                    iframeWindow.console.error = function(...args) {
+                        addLog(`Console.error: ${args.join(' ')}`, 'error');
+                        originalError.apply(this, args);
+                    };
+                    
+                    iframeWindow.console.warn = function(...args) {
+                        addLog(`Console.warn: ${args.join(' ')}`, 'warning');
+                        originalWarn.apply(this, args);
+                    };
+                    
+                    addLog('Console interceptado com sucesso', 'success');
+                }
+            } catch (error) {
+                addLog(`Erro ao interceptar console: ${error.message}`, 'error');
+            }
+        }
+        
+        function goToValidation() {
+            window.location.href = '/browser-validation.html';
+        }
+        
+        // Configurar eventos
+        appFrame.onload = function() {
+            addLog('Iframe carregado, verificando conteúdo...', 'info');
+            setTimeout(checkFrame, 1000);
+        };
+        
+        appFrame.onerror = function() {
+            addLog('Erro ao carregar iframe', 'error');
+            updateStatus('Erro ao carregar aplicação', 'error');
+        };
+        
+        // Verificar periodicamente
+        setInterval(checkFrame, 5000);
+        
+        // Iniciar teste
+        addLog('Teste iniciado. Aguardando carregamento do iframe...', 'info');
+    </script>
+</body>
+</html>

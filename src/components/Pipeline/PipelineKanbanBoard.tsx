@@ -1,5 +1,5 @@
 import React, { memo, useRef, useCallback, useMemo } from 'react';
-import { DragDropContext, DropResult } from '@hello-pangea/dnd';
+import { DndContext, DragEndEvent } from '@dnd-kit/core';
 import KanbanColumn from './KanbanColumn';
 
 interface CustomField {
@@ -63,7 +63,7 @@ interface PipelineKanbanBoardProps {
   leads: Lead[];
   customFields: CustomField[];
   onAddLead: (stageId?: string) => void;
-  onDragEnd: (result: DropResult) => void;
+  onDragEnd: (result: DragEndEvent) => void;
   
   // Optional props for backward compatibility
   onUpdateLead?: (leadId: string, updatedData: any) => void;
@@ -123,24 +123,31 @@ const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = memo(({
     return leadsByStage[stageId] || [];
   }, [leadsByStage]);
 
-  // 🚀 CALLBACK OTIMIZADO - Handler mais direto
-  const handleDragEnd = useCallback((result: DropResult) => {
-    if (!result.destination) return;
+  // 🚀 CALLBACK OTIMIZADO - Handler mais direto usando @dnd-kit
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
     
-    if (result.source.droppableId === result.destination.droppableId && 
-        result.source.index === result.destination.index) {
+    if (!over) return;
+    
+    if (active.id === over.id) {
       return;
     }
 
     // Call onLeadMove if available (V2 components)
-    if (onLeadMove && result.destination) {
-      const leadId = result.draggableId;
-      const newStageId = result.destination.droppableId;
+    if (onLeadMove && over) {
+      const leadId = String(active.id);
+      const newStageId = String(over.id);
       onLeadMove(leadId, newStageId);
     }
 
-    // Call legacy onDragEnd
-    onDragEnd(result);
+    // Call legacy onDragEnd - convert to DropResult format for compatibility
+    const legacyResult = {
+      draggableId: String(active.id),
+      source: { droppableId: String(active.id), index: 0 },
+      destination: { droppableId: String(over.id), index: 0 },
+      type: 'DEFAULT'
+    };
+    onDragEnd(legacyResult as any);
   }, [onDragEnd, onLeadMove]);
 
   // ✅ HANDLER ATUALIZAR LEAD UNIFICADO
@@ -164,7 +171,7 @@ const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = memo(({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <DragDropContext onDragEnd={handleDragEnd}>
+      <DndContext onDragEnd={handleDragEnd}>
         {/* Container Kanban com altura flexível e scroll horizontal */}
         <div 
           ref={dragContextRef}
@@ -182,7 +189,7 @@ const PipelineKanbanBoard: React.FC<PipelineKanbanBoardProps> = memo(({
             />
           ))}
         </div>
-      </DragDropContext>
+      </DndContext>
     </div>
   );
 });

@@ -1,0 +1,42 @@
+/* Estilização customizada para scroll das pipelines */
+.pipeline-scroll-container {
+  /* Webkit browsers (Chrome, Safari, newer Edge) */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+}
+
+.pipeline-scroll-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.pipeline-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 4px;
+}
+
+.pipeline-scroll-container::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.5);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.pipeline-scroll-container::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(156, 163, 175, 0.7);
+}
+
+.pipeline-scroll-container::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox */
+.pipeline-scroll-container {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+}
+
+/* Padding interno apenas no grid, permitindo scroll na borda direita */
+.pipeline-grid-container {
+  padding-right: 6px;
+  margin-right: 6px;
+}

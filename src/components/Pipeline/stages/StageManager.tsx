@@ -1,5 +1,4 @@
 import React, { useState, useCallback } from 'react';
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { PipelineStage } from '@/types/Pipeline';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -237,35 +236,16 @@ export function StageManagerRender({ stageManager }: StageManagerRenderProps) {
       </div>
 
       {/* Lista de Etapas */}
-      <DragDropContext onDragEnd={handleStagesDragEnd}>
-        <Droppable droppableId="stages">
-          {(provided) => (
-            <div
-              {...provided.droppableProps}
-              ref={provided.innerRef}
-              className="space-y-3"
-            >
-              {stages.map((stage, index) => (
-                <Draggable
-                  key={`${stage.name}-${index}`}
-                  draggableId={`stage-${index}`}
-                  index={index}
-                  isDragDisabled={stage.is_system_stage}
-                >
-                  {(provided, snapshot) => (
-                    <BlurFade delay={index * 0.1}>
-                      <AnimatedCard
-                        ref={provided.innerRef}
-                        {...provided.draggableProps}
-                        className={`transition-all duration-200 ${
-                          snapshot.isDragging ? 'rotate-2 scale-105' : ''
-                        }`}
+      <div className="space-y-3">
+        {stages.map((stage, index) => (
+          <BlurFade key={`${stage.name}-${index}`} delay={index * 0.1}>
+            <AnimatedCard className="transition-all duration-200"
                       >
                         <CardContent className="p-4">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                               {!stage.is_system_stage && (
-                                <div {...provided.dragHandleProps} className="cursor-grab">
+                                <div className="cursor-grab">
                                   <GripVertical className="h-4 w-4" />
                                 </div>
                               )}
@@ -316,14 +296,8 @@ export function StageManagerRender({ stageManager }: StageManagerRenderProps) {
                         </CardContent>
                       </AnimatedCard>
                     </BlurFade>
-                  )}
-                </Draggable>
-              ))}
-              {provided.placeholder}
-            </div>
-          )}
-        </Droppable>
-      </DragDropContext>
+        ))}
+      </div>
 
       {/* Modal de Edição - Apenas Nome, Descrição e Cor */}
       <Dialog open={showStageModal} onOpenChange={setShowStageModal}>

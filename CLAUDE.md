@@ -85,7 +85,7 @@ Este documento é um guia vivo. A IA pode:
 
 ### Frontend
 - **React** 18.3.1, **TypeScript**
-- **Vite** 7.0.3
+- **Vite** 6.0.5 (stable - avoid 7.x for now)
 - **TailwindCSS**, **Styled Components**
 - **Radix UI**, **Framer Motion**, **Headless UI**
 - **TanStack Query (React Query)**

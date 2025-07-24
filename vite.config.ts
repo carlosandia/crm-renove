@@ -47,8 +47,8 @@ export default defineConfig(({ mode }) => ({
               return 'vendor-icons';
             }
             
-            // Drag and Drop - funcionalidade específica
-            if (id.includes('@hello-pangea/dnd') || id.includes('@dnd-kit')) {
+            // Drag and Drop - funcionalidade específica (@dnd-kit apenas)
+            if (id.includes('@dnd-kit')) {
               return 'vendor-dnd';
             }
             
@@ -194,8 +194,10 @@ export default defineConfig(({ mode }) => ({
       'react-dom', 
       'react-router-dom', 
       '@tanstack/react-query',
-      '@hello-pangea/dnd',
       '@supabase/supabase-js',
+      '@dnd-kit/core',
+      '@dnd-kit/sortable',
+      '@dnd-kit/utilities',
       // Incluir hooks customizados frequentemente usados
       'react/jsx-runtime',
     ],

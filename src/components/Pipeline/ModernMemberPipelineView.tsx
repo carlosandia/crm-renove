@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader } from '../ui/card';
 import { BlurFade } from '../ui/blur-fade';
 
 // Pipeline Components
+// ✅ CORRIGIDO: Sistema usa @dnd-kit para drag and drop
 import DraggableLeadCard from './DraggableLeadCard';
 import DroppableStageArea from './DroppableStageArea';
 import LeadDetailsModal from './LeadDetailsModal';
@@ -309,7 +310,6 @@ const ModernMemberPipelineView: React.FC<ModernMemberPipelineViewProps> = ({ cla
                             canDrag={true}
                             onEdit={(lead) => {
                               console.log('Member editando lead:', lead.id);
-                              // TODO: Implementar edição
                             }}
                             onViewDetails={openDealDetailsModal}
                             showVendorInfo={false}

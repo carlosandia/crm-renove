@@ -1,0 +1,6 @@
+﻿Nome,Sobrenome,Email,Telefone,Empresa,Cargo,Origem,Status,Notas,Data de Criação
+Teste,Frontend,frontend@teste.com,11999999999,,,Pipeline,Em Pipeline,,08/07/2025
+Teste,,teste@teste.com,11999999999,,,Pipeline,Em Pipeline,,08/07/2025
+token2h,,token2h@teste.com,,,,Pipeline,Em Pipeline,,07/07/2025
+teste.frontend,,teste.frontend@exemplo.com,,,,Pipeline,Em Pipeline,,07/07/2025
+teste,,teste@exemplo.com,,,,Pipeline,Em Pipeline,,07/07/2025

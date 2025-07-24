@@ -1,8 +1,58 @@
 import React, { memo, useMemo } from 'react';
-import { Droppable } from '@hello-pangea/dnd';
+import { useDroppable } from '@dnd-kit/core';
 import { Plus } from 'lucide-react';
-import LeadCard from './LeadCard';
+import DraggableLeadCard from './DraggableLeadCard';
 import { CustomField, PipelineStage, Lead } from '../../types/Pipeline';
+
+// Componente auxiliar para área droppable
+interface DroppableAreaProps {
+  droppableId: string;
+  leads: Lead[];
+  customFields: CustomField[];
+  onUpdateLead?: (leadId: string, updatedData: any) => void;
+  onEditLead?: (lead: Lead) => void;
+}
+
+const DroppableArea: React.FC<DroppableAreaProps> = ({ 
+  droppableId, 
+  leads, 
+  customFields, 
+  onUpdateLead, 
+  onEditLead 
+}) => {
+  const { isOver, setNodeRef } = useDroppable({
+    id: droppableId
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-3 min-h-0 ${
+        isOver ? 'bg-blue-50 border-2 border-dashed border-blue-300 rounded-lg' : ''
+      }`}
+    >
+      {leads.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">
+          <p className="text-sm">Nenhum lead nesta etapa</p>
+        </div>
+      ) : (
+        leads.map((lead, index) => (
+          <DraggableLeadCard
+            key={lead.id}
+            lead={lead}
+            userRole="admin"
+            canEdit={true}
+            canDrag={true}
+            onEdit={onEditLead}
+            showVendorInfo={true}
+            showTemperature={true}
+            showActions={true}
+          />
+        ))
+      )}
+    </div>
+  );
+};
 
 interface KanbanColumnProps {
   stage: PipelineStage;
@@ -59,35 +109,13 @@ const KanbanColumn: React.FC<KanbanColumnProps> = memo(({
       </div>
       
       {/* Área de conteúdo com scroll */}
-      <Droppable droppableId={droppableId}>
-        {(provided, snapshot) => (
-          <div
-            ref={provided.innerRef}
-            {...provided.droppableProps}
-            className={`flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-3 min-h-0 ${
-              snapshot.isDraggingOver ? 'bg-blue-50 border-2 border-dashed border-blue-300 rounded-lg' : ''
-            }`}
-          >
-            {leads.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <p className="text-sm">Nenhum lead nesta etapa</p>
-              </div>
-            ) : (
-              leads.map((lead, index) => (
-                <LeadCard
-                  key={lead.id}
-                  lead={lead}
-                  customFields={customFields}
-                  index={index}
-                  onUpdate={onUpdateLead}
-                  onEdit={onEditLead}
-                />
-              ))
-            )}
-            {provided.placeholder}
-          </div>
-        )}
-      </Droppable>
+      <DroppableArea
+        droppableId={droppableId}
+        leads={leads}
+        customFields={customFields}
+        onUpdateLead={onUpdateLead}
+        onEditLead={onEditLead}
+      />
     </div>
   );
 });

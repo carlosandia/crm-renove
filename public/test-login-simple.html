@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Login - CRM System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-result {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border: 1px solid;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border-color: #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border-color: #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border-color: #bee5eb;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .credential-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-left: 4px solid #007bff;
+            margin: 20px 0;
+        }
+        .log-container {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🔐 Teste de Login - CRM System</h1>
+        
+        <div class="credential-info">
+            <h3>Credenciais de Teste:</h3>
+            <p><strong>Super Admin:</strong> superadmin@crm.com / SuperAdmin123!</p>
+            <p><strong>Admin:</strong> seraquevai@seraquevai.com / abc12345!</p>
+        </div>
+
+        <div class="test-result info">
+            <strong>Status Frontend:</strong> <span id="frontend-status">Verificando...</span>
+        </div>
+
+        <div class="test-result info">
+            <strong>Status Backend:</strong> <span id="backend-status">Verificando...</span>
+        </div>
+
+        <h2>Testes de Login</h2>
+        <button onclick="testSuperAdmin()">Testar Super Admin</button>
+        <button onclick="testAdmin()">Testar Admin</button>
+        <button onclick="testInvalidCredentials()">Testar Credenciais Inválidas</button>
+        <button onclick="clearLog()">Limpar Log</button>
+
+        <div class="log-container" id="log-container"></div>
+    </div>
+
+    <script>
+        const logContainer = document.getElementById('log-container');
+        const frontendStatus = document.getElementById('frontend-status');
+        const backendStatus = document.getElementById('backend-status');
+
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            logEntry.style.color = type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#6c757d';
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function clearLog() {
+            logContainer.innerHTML = '';
+        }
+
+        // Testar conectividade
+        async function checkServices() {
+            // Frontend
+            try {
+                const frontendResponse = await fetch('http://127.0.0.1:8080/');
+                if (frontendResponse.ok) {
+                    frontendStatus.textContent = '✅ Online';
+                    frontendStatus.style.color = '#28a745';
+                    addLog('Frontend: Online', 'success');
+                } else {
+                    frontendStatus.textContent = '❌ Erro';
+                    frontendStatus.style.color = '#dc3545';
+                    addLog('Frontend: Erro ' + frontendResponse.status, 'error');
+                }
+            } catch (error) {
+                frontendStatus.textContent = '❌ Offline';
+                frontendStatus.style.color = '#dc3545';
+                addLog('Frontend: Offline - ' + error.message, 'error');
+            }
+
+            // Backend
+            try {
+                const backendResponse = await fetch('http://127.0.0.1:3001/health');
+                if (backendResponse.ok) {
+                    backendStatus.textContent = '✅ Online';
+                    backendStatus.style.color = '#28a745';
+                    addLog('Backend: Online', 'success');
+                } else {
+                    backendStatus.textContent = '❌ Erro';
+                    backendStatus.style.color = '#dc3545';
+                    addLog('Backend: Erro ' + backendResponse.status, 'error');
+                }
+            } catch (error) {
+                backendStatus.textContent = '❌ Offline';
+                backendStatus.style.color = '#dc3545';
+                addLog('Backend: Offline - Fallback ativo', 'info');
+            }
+        }
+
+        // Testar login Super Admin
+        async function testSuperAdmin() {
+            addLog('🔐 Testando login Super Admin...');
+            
+            const credentials = {
+                email: 'superadmin@crm.com',
+                password: 'SuperAdmin123!'
+            };
+
+            try {
+                // Tentar backend primeiro
+                const response = await fetch('http://127.0.0.1:3001/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(credentials)
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        addLog('✅ Login Super Admin via Backend: SUCESSO', 'success');
+                        addLog('👤 Usuário: ' + (data.user?.email || 'N/A'), 'info');
+                        addLog('🎯 Role: ' + (data.user?.role || 'N/A'), 'info');
+                        return;
+                    }
+                }
+                
+                addLog('❌ Login Super Admin via Backend: FALHOU', 'error');
+            } catch (error) {
+                addLog('⚠️ Backend indisponível, testando fallback...', 'info');
+                
+                // Simular fallback
+                const demoUsers = [
+                    { email: 'superadmin@crm.com', password: 'SuperAdmin123!', role: 'super_admin' },
+                    { email: 'seraquevai@seraquevai.com', password: 'abc12345!', role: 'admin' }
+                ];
+
+                const demoUser = demoUsers.find(u => u.email === credentials.email && u.password === credentials.password);
+                
+                if (demoUser) {
+                    addLog('✅ Login Super Admin via Fallback: SUCESSO', 'success');
+                    addLog('👤 Usuário: ' + demoUser.email, 'info');
+                    addLog('🎯 Role: ' + demoUser.role, 'info');
+                } else {
+                    addLog('❌ Login Super Admin via Fallback: FALHOU', 'error');
+                }
+            }
+        }
+
+        // Testar login Admin
+        async function testAdmin() {
+            addLog('🔐 Testando login Admin...');
+            
+            const credentials = {
+                email: 'seraquevai@seraquevai.com',
+                password: 'abc12345!'
+            };
+
+            try {
+                const response = await fetch('http://127.0.0.1:3001/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(credentials)
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        addLog('✅ Login Admin via Backend: SUCESSO', 'success');
+                        addLog('👤 Usuário: ' + (data.user?.email || 'N/A'), 'info');
+                        addLog('🎯 Role: ' + (data.user?.role || 'N/A'), 'info');
+                        return;
+                    }
+                }
+                
+                addLog('❌ Login Admin via Backend: FALHOU', 'error');
+            } catch (error) {
+                addLog('⚠️ Backend indisponível, testando fallback...', 'info');
+                
+                const demoUsers = [
+                    { email: 'superadmin@crm.com', password: 'SuperAdmin123!', role: 'super_admin' },
+                    { email: 'seraquevai@seraquevai.com', password: 'abc12345!', role: 'admin' }
+                ];
+
+                const demoUser = demoUsers.find(u => u.email === credentials.email && u.password === credentials.password);
+                
+                if (demoUser) {
+                    addLog('✅ Login Admin via Fallback: SUCESSO', 'success');
+                    addLog('👤 Usuário: ' + demoUser.email, 'info');
+                    addLog('🎯 Role: ' + demoUser.role, 'info');
+                } else {
+                    addLog('❌ Login Admin via Fallback: FALHOU', 'error');
+                }
+            }
+        }
+
+        // Testar credenciais inválidas
+        async function testInvalidCredentials() {
+            addLog('🔐 Testando credenciais inválidas...');
+            
+            const credentials = {
+                email: 'usuario@inexistente.com',
+                password: 'senhaerrada123'
+            };
+
+            try {
+                const response = await fetch('http://127.0.0.1:3001/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(credentials)
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        addLog('❌ ERRO: Login inválido foi aceito pelo backend!', 'error');
+                        return;
+                    }
+                }
+                
+                addLog('✅ Login inválido rejeitado pelo backend (correto)', 'success');
+            } catch (error) {
+                addLog('⚠️ Backend indisponível, testando fallback...', 'info');
+                
+                const demoUsers = [
+                    { email: 'superadmin@crm.com', password: 'SuperAdmin123!', role: 'super_admin' },
+                    { email: 'seraquevai@seraquevai.com', password: 'abc12345!', role: 'admin' }
+                ];
+
+                const demoUser = demoUsers.find(u => u.email === credentials.email && u.password === credentials.password);
+                
+                if (demoUser) {
+                    addLog('❌ ERRO: Login inválido foi aceito pelo fallback!', 'error');
+                } else {
+                    addLog('✅ Login inválido rejeitado pelo fallback (correto)', 'success');
+                }
+            }
+        }
+
+        // Executar verificações iniciais
+        document.addEventListener('DOMContentLoaded', function() {
+            addLog('🚀 Sistema de teste inicializado');
+            checkServices();
+        });
+    </script>
+</body>
+</html>

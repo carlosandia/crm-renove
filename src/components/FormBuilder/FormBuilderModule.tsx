@@ -6,8 +6,8 @@ import { Plus, FileText, Eye, Settings, TrendingUp, ArrowLeft, Zap, Edit3, Trash
 import ModernFormBuilder from './ModernFormBuilder';
 import PublicFormRenderer from './PublicFormRenderer';
 import { CustomForm } from '../../types/Forms';
-import { FormTypeSelector } from './types/FormTypeSelector';
-import { FormTypeConfigurator } from './types/FormTypeConfigurator';
+// FormTypeSelector removido - não relacionado ao CRM
+// FormTypeConfigurator removido - não relacionado ao CRM
 import { FormType, FormTypeConfig } from './types/FormTypeDefinitions';
 
 interface FormStats {
@@ -431,32 +431,7 @@ const FormBuilderModule: React.FC = () => {
         />
       </div>
 
-      {/* MODAIS PARA FORM TYPE EVOLUTION */}
-      
-      {/* Modal de Seleção de Tipos */}
-      <FormTypeSelector
-        isOpen={isTypeSelectorOpen}
-        onClose={handleCancelTypeSelection}
-        onSelect={handleFormTypeSelect}
-      />
-
-      {/* Modal de Configuração do Tipo */}
-      {selectedFormType && isTypeConfiguratorOpen && (
-        <FormTypeConfigurator
-          formType={selectedFormType}
-          initialConfig={formTypeConfig || undefined}
-          onConfigChange={setFormTypeConfig}
-          onPreview={() => {
-                                // Preview será implementado em versão futura
-            console.log('Preview solicitado para:', selectedFormType.name);
-          }}
-          onSave={() => {
-            if (formTypeConfig) {
-              handleFormTypeConfigComplete(formTypeConfig);
-            }
-          }}
-        />
-      )}
+      {/* MODAIS PARA FORM TYPE EVOLUTION - Removidos temporariamente */}
 
     </div>
   );

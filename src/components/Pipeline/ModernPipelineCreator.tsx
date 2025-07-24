@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { Pipeline, PipelineStage, CustomField as PipelineCustomField } from '../../types/Pipeline';
 import { User } from '../../types/User';
 import { supabase } from '../../lib/supabase';
@@ -1022,30 +1021,13 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
           </Button>
         </div>
 
-        <DragDropContext onDragEnd={handleStagesDragEnd}>
-          <Droppable droppableId="stages-list">
-            {(provided) => (
-              <div 
-                {...provided.droppableProps}
-                ref={provided.innerRef}
-                className="space-y-4"
-              >
-                {formData.stages.map((stage, index) => {
-                  const isSystemStage = stage.is_system;
-                  const isNovosLeads = stage.name === 'Novos leads';
-                  const canDrag = !isSystemStage;
+        <div className="space-y-4">
+          {formData.stages.map((stage, index) => {
+            const isSystemStage = stage.is_system;
+            const isNovosLeads = stage.name === 'Novos leads';
 
-                  return (
-                    <Draggable 
-                      key={`stage-${index}`} 
-                      draggableId={`stage-${index}`} 
-                      index={index}
-                      isDragDisabled={!canDrag}
-                    >
-                      {(provided, snapshot) => (
-                        <div
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
+            return (
+              <div key={`stage-${index}`}
                         >
                           <AnimatedCard 
                             delay={0.1 + index * 0.05} 
@@ -1105,15 +1087,9 @@ const ModernPipelineCreator: React.FC<ModernPipelineCreatorProps> = ({
                             </div>
                           </AnimatedCard>
                         </div>
-                      )}
-                    </Draggable>
-                  );
-                })}
-                {provided.placeholder}
-              </div>
-            )}
-          </Droppable>
-        </DragDropContext>
+                      );
+            })}
+        </div>
       </AnimatedCard>
     </BlurFade>
   );
