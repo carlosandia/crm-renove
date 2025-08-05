@@ -172,7 +172,7 @@ app.use(helmet({
         "'self'", 
         "https://*.supabase.co",
         "http://localhost:3001",        // ✅ API local para desenvolvimento
-        "http://127.0.0.1:3001"        // ✅ API local para desenvolvimento
+        process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : process.env.API_URL || 'http://127.0.0.1:3001'        // ✅ API local para desenvolvimento
       ]
     }
   },
@@ -187,10 +187,10 @@ const corsOptions = {
     
     // Lista de origins permitidos por ambiente
     const allowedOrigins = isDevelopment ? [
-      'http://127.0.0.1:8080',  // Frontend principal
-      'http://localhost:8080',  // Frontend principal (localhost)
-      'http://127.0.0.1:5173',  // Vite dev server fallback
-      'http://localhost:5173'   // Vite dev server fallback (localhost)
+      process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : process.env.FRONTEND_URL || 'http://127.0.0.1:8080',  // Frontend principal
+      process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : process.env.FRONTEND_URL || 'http://localhost:8080',  // Frontend principal (localhost)
+      process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:5173',  // Vite dev server fallback
+      process.env.VITE_DEV_SERVER_URL_LOCALHOST || 'http://localhost:5173'   // Vite dev server fallback (localhost)
     ] : [
       'https://yourdomain.com',          // Produção - ALTERAR para domínio real
       'https://www.yourdomain.com',      // Produção - ALTERAR para domínio real

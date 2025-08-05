@@ -9,7 +9,7 @@ export const getApiConfig = (): ApiConfig => {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:3001';
+  const backendUrl = process.env.BACKEND_URL || process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:3001';
 
   if (!supabaseUrl) {
     throw new Error('SUPABASE_URL is required');

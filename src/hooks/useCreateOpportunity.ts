@@ -12,7 +12,7 @@ import { createOpportunityViaBackend } from '../services/adminApi';
  */
 const getCurrentBackendURL = () => {  
   // Usar variável de ambiente configurada ou fallback para desenvolvimento
-  return import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
+  return (await import('../config/environment')).environmentConfig.urls.api;
 };
 
 /**
@@ -653,8 +653,8 @@ export const useCreateOpportunity = () => {
           } catch (primaryError) {
             // Fallback: tentar URL alternativa
             const alternativeUrl = primaryApiUrlDetected.includes('localhost') 
-              ? import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001' 
-              : import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
+              ? (await import('../config/environment')).environmentConfig.urls.api 
+              : (await import('../config/environment')).environmentConfig.urls.api;
             
             const fallbackCreateUrl = `${alternativeUrl}/api/opportunities/create`;
             

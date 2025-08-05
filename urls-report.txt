@@ -1,0 +1,370 @@
+[34m[URL-CHECK][0m =========================================
+[34m[URL-CHECK][0m 🔍 VERIFICAÇÃO DE URLs HARDCODED
+[34m[URL-CHECK][0m CRM RENOVE Multi-tenant
+[34m[URL-CHECK][0m =========================================
+[34m[URL-CHECK][0m Verificando diretório: src
+[33m⚠️  [WARNING][0m 83 URLs hardcoded encontradas em src
+[34m[URL-CHECK][0m Verificando diretório: backend/src
+[33m⚠️  [WARNING][0m 66 URLs hardcoded encontradas em backend/src
+[34m[URL-CHECK][0m 
+📋 URLs HARDCODED ENCONTRADAS:
+[34m[URL-CHECK][0m =========================================
+
+[33m📄 src/components/ui/audio-player.tsx[0m
+  [31m61:[0m localhost (localhost)
+      [34maudioUrl.includes('localhost') ||[0m
+
+[33m📄 src/config/environment.ts[0m
+  [31m98:[0m 127.0.0.1 (127.0.0.1)
+      [34mapi: 'http://127.0.0.1:3001/api',[0m
+  [31m99:[0m 127.0.0.1 (127.0.0.1)
+      [34mfrontend: 'http://127.0.0.1:8080',[0m
+  [31m100:[0m 127.0.0.1 (127.0.0.1)
+      [34mbackend: 'http://127.0.0.1:3001',[0m
+  [31m114:[0m 127.0.0.1 (127.0.0.1)
+      [34mredirectUri: 'http://127.0.0.1:8080/auth/google/callback',[0m
+  [31m120:[0m 127.0.0.1 (127.0.0.1)
+      [34mcorsOrigins: ['http://127.0.0.1:8080', 'http://127.0.0.1:8081', 'http://127.0.0.1:3000'],[0m
+  [31m120:[0m 127.0.0.1 (127.0.0.1)
+      [34mcorsOrigins: ['http://127.0.0.1:8080', 'http://127.0.0.1:8081', 'http://127.0.0.1:3000'],[0m
+  [31m120:[0m 127.0.0.1 (127.0.0.1)
+      [34mcorsOrigins: ['http://127.0.0.1:8080', 'http://127.0.0.1:8081', 'http://127.0.0.1:3000'],[0m
+  [31m197:[0m 127.0.0.1 (127.0.0.1)
+      [34mapi: 'http://127.0.0.1:3001/api',[0m
+  [31m198:[0m 127.0.0.1 (127.0.0.1)
+      [34mfrontend: 'http://127.0.0.1:8080',[0m
+  [31m199:[0m 127.0.0.1 (127.0.0.1)
+      [34mbackend: 'http://127.0.0.1:3001',[0m
+  [31m213:[0m 127.0.0.1 (127.0.0.1)
+      [34mredirectUri: 'http://127.0.0.1:8080/auth/google/callback',[0m
+  [31m219:[0m 127.0.0.1 (127.0.0.1)
+      [34mcorsOrigins: ['http://127.0.0.1:8080'],[0m
+  [31m240:[0m 127.0.0.1 (127.0.0.1)
+      [34m: 'http://127.0.0.1:3001/api'),[0m
+  [31m244:[0m 127.0.0.1 (127.0.0.1)
+      [34m: 'http://127.0.0.1:8080'),[0m
+  [31m248:[0m 127.0.0.1 (127.0.0.1)
+      [34m: 'http://127.0.0.1:3001'),[0m
+  [31m272:[0m 127.0.0.1 (127.0.0.1)
+      [34mredirectUri: import.meta.env.VITE_GOOGLE_REDIRECT_URI || config.integrations?.google?.redirectUri || 'http://127.0.0.1:8080/auth/google/callback',[0m
+  [31m279:[0m 127.0.0.1 (127.0.0.1)
+      [34mcorsOrigins: import.meta.env.VITE_CORS_ORIGINS?.split(',') || config.security?.corsOrigins || ['http://127.0.0.1:8080'],[0m
+  [31m99:[0m porta 8080 (:8080)
+      [34mfrontend: 'http://127.0.0.1:8080',[0m
+  [31m114:[0m porta 8080 (:8080)
+      [34mredirectUri: 'http://127.0.0.1:8080/auth/google/callback',[0m
+  [31m120:[0m porta 8080 (:8080)
+      [34mcorsOrigins: ['http://127.0.0.1:8080', 'http://127.0.0.1:8081', 'http://127.0.0.1:3000'],[0m
+  [31m198:[0m porta 8080 (:8080)
+      [34mfrontend: 'http://127.0.0.1:8080',[0m
+  [31m213:[0m porta 8080 (:8080)
+      [34mredirectUri: 'http://127.0.0.1:8080/auth/google/callback',[0m
+  [31m219:[0m porta 8080 (:8080)
+      [34mcorsOrigins: ['http://127.0.0.1:8080'],[0m
+  [31m244:[0m porta 8080 (:8080)
+      [34m: 'http://127.0.0.1:8080'),[0m
+  [31m272:[0m porta 8080 (:8080)
+      [34mredirectUri: import.meta.env.VITE_GOOGLE_REDIRECT_URI || config.integrations?.google?.redirectUri || 'http://127.0.0.1:8080/auth/google/callback',[0m
+  [31m279:[0m porta 8080 (:8080)
+      [34mcorsOrigins: import.meta.env.VITE_CORS_ORIGINS?.split(',') || config.security?.corsOrigins || ['http://127.0.0.1:8080'],[0m
+  [31m98:[0m porta 3001 (:3001)
+      [34mapi: 'http://127.0.0.1:3001/api',[0m
+  [31m100:[0m porta 3001 (:3001)
+      [34mbackend: 'http://127.0.0.1:3001',[0m
+  [31m197:[0m porta 3001 (:3001)
+      [34mapi: 'http://127.0.0.1:3001/api',[0m
+  [31m199:[0m porta 3001 (:3001)
+      [34mbackend: 'http://127.0.0.1:3001',[0m
+  [31m240:[0m porta 3001 (:3001)
+      [34m: 'http://127.0.0.1:3001/api'),[0m
+  [31m248:[0m porta 3001 (:3001)
+      [34m: 'http://127.0.0.1:3001'),[0m
+  [31m120:[0m porta 8081 (:8081)
+      [34mcorsOrigins: ['http://127.0.0.1:8080', 'http://127.0.0.1:8081', 'http://127.0.0.1:3000'],[0m
+  [31m120:[0m porta 3000 (:3000)
+      [34mcorsOrigins: ['http://127.0.0.1:8080', 'http://127.0.0.1:8081', 'http://127.0.0.1:3000'],[0m
+
+[33m📄 src/config/production.ts[0m
+  [31m202:[0m 127.0.0.1 (127.0.0.1)
+      [34mbaseUrl: import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001',[0m
+  [31m202:[0m porta 3001 (:3001)
+      [34mbaseUrl: import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001',[0m
+
+[33m📄 src/hooks/useAdminDashboard.ts[0m
+  [31m122:[0m 127.0.0.1 (127.0.0.1)
+      [34mconst API_BASE = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';[0m
+  [31m122:[0m porta 3001 (:3001)
+      [34mconst API_BASE = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';[0m
+
+[33m📄 src/hooks/useAutomation.ts[0m
+  [31m206:[0m 127.0.0.1 (127.0.0.1)
+      [34mconst response = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/rules', {[0m
+  [31m233:[0m 127.0.0.1 (127.0.0.1)
+      [34mconst response = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/metrics', {[0m
+  [31m258:[0m 127.0.0.1 (127.0.0.1)
+      [34mconst response = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/events/definitions', {[0m
+  [31m292:[0m 127.0.0.1 (127.0.0.1)
+      [34mconst response = await fetch(`import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/events/log?${queryParams}`, {[0m
+  [31m315:[0m 127.0.0.1 (127.0.0.1)
+      [34mconst response = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/rules', {[0m
+  [31m342:[0m 127.0.0.1 (127.0.0.1)
+      [34mconst response = await fetch(`import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/rules/${ruleId}`, {[0m
+  [31m369:[0m 127.0.0.1 (127.0.0.1)
+      [34mconst response = await fetch(`import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/rules/${ruleId}`, {[0m
+  [31m393:[0m 127.0.0.1 (127.0.0.1)
+      [34mconst response = await fetch(`import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/rules/${ruleId}/test`, {[0m
+  [31m434:[0m 127.0.0.1 (127.0.0.1)
+      [34mconst response = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/events', {[0m
+  [31m206:[0m porta 3001 (:3001)
+      [34mconst response = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/rules', {[0m
+  [31m233:[0m porta 3001 (:3001)
+      [34mconst response = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/metrics', {[0m
+  [31m258:[0m porta 3001 (:3001)
+      [34mconst response = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/events/definitions', {[0m
+  [31m292:[0m porta 3001 (:3001)
+      [34mconst response = await fetch(`import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/events/log?${queryParams}`, {[0m
+  [31m315:[0m porta 3001 (:3001)
+      [34mconst response = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/rules', {[0m
+  [31m342:[0m porta 3001 (:3001)
+      [34mconst response = await fetch(`import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/rules/${ruleId}`, {[0m
+  [31m369:[0m porta 3001 (:3001)
+      [34mconst response = await fetch(`import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/rules/${ruleId}`, {[0m
+  [31m393:[0m porta 3001 (:3001)
+      [34mconst response = await fetch(`import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/rules/${ruleId}/test`, {[0m
+  [31m434:[0m porta 3001 (:3001)
+      [34mconst response = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/automation/events', {[0m
+
+[33m📄 src/hooks/useCompanies.ts[0m
+  [31m247:[0m 127.0.0.1 (127.0.0.1)
+      [34mresponse = await fetch(`import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/companies/${company.id}`, {[0m
+  [31m247:[0m porta 3001 (:3001)
+      [34mresponse = await fetch(`import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/companies/${company.id}`, {[0m
+
+[33m📄 src/hooks/useCompanyForm.ts[0m
+  [31m84:[0m 127.0.0.1 (127.0.0.1)
+      [34mresponse = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/admin-invitations/send', {[0m
+  [31m183:[0m 127.0.0.1 (127.0.0.1)
+      [34mresponse = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/companies', {[0m
+  [31m84:[0m porta 3001 (:3001)
+      [34mresponse = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/admin-invitations/send', {[0m
+  [31m183:[0m porta 3001 (:3001)
+      [34mresponse = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/companies', {[0m
+
+[33m📄 src/hooks/useCreateOpportunity.ts[0m
+  [31m655:[0m localhost (localhost)
+      [34mconst alternativeUrl = primaryApiUrlDetected.includes('localhost')[0m
+  [31m15:[0m 127.0.0.1 (127.0.0.1)
+      [34mreturn import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';[0m
+  [31m656:[0m 127.0.0.1 (127.0.0.1)
+      [34m? import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'[0m
+  [31m657:[0m 127.0.0.1 (127.0.0.1)
+      [34m: import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';[0m
+  [31m15:[0m porta 3001 (:3001)
+      [34mreturn import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';[0m
+  [31m656:[0m porta 3001 (:3001)
+      [34m? import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'[0m
+  [31m657:[0m porta 3001 (:3001)
+      [34m: import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';[0m
+
+[33m📄 src/hooks/useSupabaseCrud.ts[0m
+  [31m498:[0m 127.0.0.1 (127.0.0.1)
+      [34mconst baseUrl = config.baseUrl || process.env.REACT_APP_API_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';[0m
+  [31m498:[0m porta 3001 (:3001)
+      [34mconst baseUrl = config.baseUrl || process.env.REACT_APP_API_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';[0m
+
+[33m📄 src/lib/api.ts[0m
+  [31m18:[0m 127.0.0.1 (127.0.0.1)
+      [34m// Em desenvolvimento: usa proxy Vite (/api → 127.0.0.1:3001)[0m
+  [31m18:[0m porta 3001 (:3001)
+      [34m// Em desenvolvimento: usa proxy Vite (/api → 127.0.0.1:3001)[0m
+
+[33m📄 src/services/googleCalendarAuth.ts[0m
+  [31m80:[0m 127.0.0.1 (127.0.0.1)
+      [34mreturn fetch(`import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'${endpoint}`, options);[0m
+  [31m80:[0m porta 3001 (:3001)
+      [34mreturn fetch(`import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'${endpoint}`, options);[0m
+
+[33m📄 src/utils/audioUpload.ts[0m
+  [31m214:[0m localhost (localhost)
+      [34m!audioUrl.includes('localhost');[0m
+
+[33m📄 src/utils/connectivity.ts[0m
+  [31m22:[0m 127.0.0.1 (127.0.0.1)
+      [34mconst response = await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'}/health`, {[0m
+  [31m22:[0m porta 3001 (:3001)
+      [34mconst response = await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'}/health`, {[0m
+
+[33m📄 src/utils/silentFallback.ts[0m
+  [31m122:[0m 127.0.0.1 (127.0.0.1)
+      [34mconst baseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';[0m
+  [31m142:[0m 127.0.0.1 (127.0.0.1)
+      [34mconst backendUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';[0m
+  [31m122:[0m porta 3001 (:3001)
+      [34mconst baseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';[0m
+  [31m142:[0m porta 3001 (:3001)
+      [34mconst backendUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';[0m
+
+[33m📄 backend/src/config/api.ts[0m
+  [31m12:[0m 127.0.0.1 (127.0.0.1)
+      [34mconst backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:3001';[0m
+  [31m12:[0m porta 3001 (:3001)
+      [34mconst backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:3001';[0m
+
+[33m📄 backend/src/config/environment.ts[0m
+  [31m123:[0m localhost (localhost)
+      [34m'http://localhost:8080',[0m
+  [31m125:[0m localhost (localhost)
+      [34m'http://localhost:5173'[0m
+  [31m112:[0m 127.0.0.1 (127.0.0.1)
+      [34mhost: '127.0.0.1',[0m
+  [31m116:[0m 127.0.0.1 (127.0.0.1)
+      [34mfrontend: 'http://127.0.0.1:8080',[0m
+  [31m117:[0m 127.0.0.1 (127.0.0.1)
+      [34mbackend: 'http://127.0.0.1:3001',[0m
+  [31m118:[0m 127.0.0.1 (127.0.0.1)
+      [34mapp: 'http://127.0.0.1:8080',[0m
+  [31m122:[0m 127.0.0.1 (127.0.0.1)
+      [34m'http://127.0.0.1:8080',[0m
+  [31m124:[0m 127.0.0.1 (127.0.0.1)
+      [34m'http://127.0.0.1:5173',[0m
+  [31m154:[0m 127.0.0.1 (127.0.0.1)
+      [34mhost: '127.0.0.1', // Nginx faz proxy reverso[0m
+  [31m191:[0m 127.0.0.1 (127.0.0.1)
+      [34mhost: '127.0.0.1',[0m
+  [31m228:[0m 127.0.0.1 (127.0.0.1)
+      [34mhost: '127.0.0.1',[0m
+  [31m232:[0m 127.0.0.1 (127.0.0.1)
+      [34mfrontend: 'http://127.0.0.1:8080',[0m
+  [31m233:[0m 127.0.0.1 (127.0.0.1)
+      [34mbackend: 'http://127.0.0.1:3001',[0m
+  [31m234:[0m 127.0.0.1 (127.0.0.1)
+      [34mapp: 'http://127.0.0.1:8080',[0m
+  [31m237:[0m 127.0.0.1 (127.0.0.1)
+      [34morigins: ['http://127.0.0.1:8080'],[0m
+  [31m271:[0m 127.0.0.1 (127.0.0.1)
+      [34mhost: process.env.HOST || config.server?.host || '127.0.0.1',[0m
+  [31m276:[0m 127.0.0.1 (127.0.0.1)
+      [34mfrontend: process.env.VITE_FRONTEND_URL || process.env.FRONTEND_URL || config.urls?.frontend || 'http://127.0.0.1:8080',[0m
+  [31m277:[0m 127.0.0.1 (127.0.0.1)
+      [34mbackend: process.env.VITE_BACKEND_URL || process.env.BACKEND_URL || config.urls?.backend || 'http://127.0.0.1:3001',[0m
+  [31m278:[0m 127.0.0.1 (127.0.0.1)
+      [34mapp: process.env.APP_URL || config.urls?.app || process.env.VITE_FRONTEND_URL || 'http://127.0.0.1:8080',[0m
+  [31m285:[0m 127.0.0.1 (127.0.0.1)
+      [34m.filter(Boolean) || config.cors?.origins || ['http://127.0.0.1:8080'],[0m
+  [31m116:[0m porta 8080 (:8080)
+      [34mfrontend: 'http://127.0.0.1:8080',[0m
+  [31m118:[0m porta 8080 (:8080)
+      [34mapp: 'http://127.0.0.1:8080',[0m
+  [31m122:[0m porta 8080 (:8080)
+      [34m'http://127.0.0.1:8080',[0m
+  [31m123:[0m porta 8080 (:8080)
+      [34m'http://localhost:8080',[0m
+  [31m232:[0m porta 8080 (:8080)
+      [34mfrontend: 'http://127.0.0.1:8080',[0m
+  [31m234:[0m porta 8080 (:8080)
+      [34mapp: 'http://127.0.0.1:8080',[0m
+  [31m237:[0m porta 8080 (:8080)
+      [34morigins: ['http://127.0.0.1:8080'],[0m
+  [31m276:[0m porta 8080 (:8080)
+      [34mfrontend: process.env.VITE_FRONTEND_URL || process.env.FRONTEND_URL || config.urls?.frontend || 'http://127.0.0.1:8080',[0m
+  [31m278:[0m porta 8080 (:8080)
+      [34mapp: process.env.APP_URL || config.urls?.app || process.env.VITE_FRONTEND_URL || 'http://127.0.0.1:8080',[0m
+  [31m285:[0m porta 8080 (:8080)
+      [34m.filter(Boolean) || config.cors?.origins || ['http://127.0.0.1:8080'],[0m
+  [31m117:[0m porta 3001 (:3001)
+      [34mbackend: 'http://127.0.0.1:3001',[0m
+  [31m233:[0m porta 3001 (:3001)
+      [34mbackend: 'http://127.0.0.1:3001',[0m
+  [31m277:[0m porta 3001 (:3001)
+      [34mbackend: process.env.VITE_BACKEND_URL || process.env.BACKEND_URL || config.urls?.backend || 'http://127.0.0.1:3001',[0m
+  [31m124:[0m porta 5173 (:5173)
+      [34m'http://127.0.0.1:5173',[0m
+  [31m125:[0m porta 5173 (:5173)
+      [34m'http://localhost:5173'[0m
+
+[33m📄 backend/src/index.ts[0m
+  [31m33:[0m localhost (localhost)
+      [34m// ✅ CORREÇÃO CRÍTICA: Trust proxy para detecção correta de IP localhost[0m
+  [31m155:[0m localhost (localhost)
+      [34m// ✅ CORREÇÃO CSP: Helmet para headers de segurança com Google Fonts e localhost API[0m
+  [31m174:[0m localhost (localhost)
+      [34m"http://localhost:3001",        // ✅ API local para desenvolvimento[0m
+  [31m191:[0m localhost (localhost)
+      [34m'http://localhost:8080',  // Frontend principal (localhost)[0m
+  [31m191:[0m localhost (localhost)
+      [34m'http://localhost:8080',  // Frontend principal (localhost)[0m
+  [31m193:[0m localhost (localhost)
+      [34m'http://localhost:5173'   // Vite dev server fallback (localhost)[0m
+  [31m193:[0m localhost (localhost)
+      [34m'http://localhost:5173'   // Vite dev server fallback (localhost)[0m
+  [31m243:[0m localhost (localhost)
+      [34m// O sistema customizado em rateLimiter.ts já tem bypass para localhost configurado[0m
+  [31m175:[0m 127.0.0.1 (127.0.0.1)
+      [34m"http://127.0.0.1:3001"        // ✅ API local para desenvolvimento[0m
+  [31m190:[0m 127.0.0.1 (127.0.0.1)
+      [34m'http://127.0.0.1:8080',  // Frontend principal[0m
+  [31m192:[0m 127.0.0.1 (127.0.0.1)
+      [34m'http://127.0.0.1:5173',  // Vite dev server fallback[0m
+  [31m2051:[0m 127.0.0.1 (127.0.0.1)
+      [34mconsole.log(`🔗 Health check: http://127.0.0.1:${PORT}/health`);[0m
+  [31m2052:[0m 127.0.0.1 (127.0.0.1)
+      [34mconsole.log(`🔗 API info: http://127.0.0.1:${PORT}/api`);[0m
+  [31m2053:[0m 127.0.0.1 (127.0.0.1)
+      [34mconsole.log(`🔗 Login test: http://127.0.0.1:${PORT}/api/auth/login`);[0m
+  [31m2054:[0m 127.0.0.1 (127.0.0.1)
+      [34mconsole.log(`🔗 Supabase test: http://127.0.0.1:${PORT}/api/supabase/test`);[0m
+  [31m2046:[0m 0.0.0.0 (0.0.0.0)
+      [34mserver.listen(Number(PORT), '0.0.0.0', () => {[0m
+  [31m190:[0m porta 8080 (:8080)
+      [34m'http://127.0.0.1:8080',  // Frontend principal[0m
+  [31m191:[0m porta 8080 (:8080)
+      [34m'http://localhost:8080',  // Frontend principal (localhost)[0m
+  [31m174:[0m porta 3001 (:3001)
+      [34m"http://localhost:3001",        // ✅ API local para desenvolvimento[0m
+  [31m175:[0m porta 3001 (:3001)
+      [34m"http://127.0.0.1:3001"        // ✅ API local para desenvolvimento[0m
+  [31m192:[0m porta 5173 (:5173)
+      [34m'http://127.0.0.1:5173',  // Vite dev server fallback[0m
+  [31m193:[0m porta 5173 (:5173)
+      [34m'http://localhost:5173'   // Vite dev server fallback (localhost)[0m
+
+[33m📄 backend/src/middleware/rateLimiter.ts[0m
+  [31m79:[0m localhost (localhost)
+      [34m// ✅ CORREÇÃO CRÍTICA: Bypass completo para desenvolvimento localhost[0m
+  [31m81:[0m localhost (localhost)
+      [34mconst isLocalhost = ['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1'].includes(ip);[0m
+  [31m84:[0m localhost (localhost)
+      [34mconsole.log(`⚡ [RATE-LIMIT-BYPASS] ${type} - IP localhost em desenvolvimento`);[0m
+  [31m81:[0m 127.0.0.1 (127.0.0.1)
+      [34mconst isLocalhost = ['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1'].includes(ip);[0m
+  [31m81:[0m 127.0.0.1 (127.0.0.1)
+      [34mconst isLocalhost = ['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1'].includes(ip);[0m
+
+[33m📄 backend/src/routes/annotations.ts[0m
+  [31m154:[0m localhost (localhost)
+      [34m!urlData.publicUrl.includes('localhost');[0m
+  [31m213:[0m localhost (localhost)
+      [34m!validatedData.audio_file_url.includes('localhost');[0m
+[34m[URL-CHECK][0m 
+=========================================
+[34m[URL-CHECK][0m 🔧 RECOMENDAÇÕES:
+[34m[URL-CHECK][0m 1. Substitua URLs hardcoded por variáveis de ambiente
+[34m[URL-CHECK][0m 2. Use a configuração centralizada (src/config/environment.ts)
+[34m[URL-CHECK][0m 3. Para backend, use backend/src/config/environment.ts
+[34m[URL-CHECK][0m 4. Para desenvolvimento, use import.meta.env.VITE_API_URL
+[34m[URL-CHECK][0m 5. Para produção, configure .env.production corretamente
+[34m[URL-CHECK][0m 
+📊 RESUMO POR TIPO:
+[34m[URL-CHECK][0m   localhost: 18 ocorrência(s)
+[34m[URL-CHECK][0m   127.0.0.1: 68 ocorrência(s)
+[34m[URL-CHECK][0m   porta 8080: 21 ocorrência(s)
+[34m[URL-CHECK][0m   porta 3001: 35 ocorrência(s)
+[34m[URL-CHECK][0m   porta 8081: 1 ocorrência(s)
+[34m[URL-CHECK][0m   porta 3000: 1 ocorrência(s)
+[34m[URL-CHECK][0m   porta 5173: 4 ocorrência(s)
+[34m[URL-CHECK][0m   0.0.0.0: 1 ocorrência(s)
+[34m[URL-CHECK][0m 
+=========================================
+[34m[URL-CHECK][0m Total de arquivos verificados: 19
+[34m[URL-CHECK][0m Total de URLs hardcoded: 149
+[34m[URL-CHECK][0m =========================================

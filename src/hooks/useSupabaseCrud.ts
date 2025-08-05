@@ -495,7 +495,7 @@ export function useApiCrud<T extends Record<string, unknown>>(config: ApiConfig)
   const updateState = useAsyncState<T>();
   const deleteState = useAsyncState<void>();
 
-  const baseUrl = config.baseUrl || process.env.REACT_APP_API_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
+  const baseUrl = config.baseUrl || process.env.REACT_APP_API_URL || (await import('../config/environment')).environmentConfig.urls.api;
 
   // Headers padrão com autenticação
   const getHeaders = useCallback(() => {

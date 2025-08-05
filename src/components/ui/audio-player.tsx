@@ -58,7 +58,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     
     // Detectar URLs claramente inválidas
     const isInvalidUrl = audioUrl.includes('example.com') || 
-                        audioUrl.includes('localhost') ||
+                        audioUrl.includes(import.meta.env.VITE_ENVIRONMENT === 'production' ? 'crm.renovedigital.com.br' : 'localhost') ||
                         audioUrl.startsWith('http://example') ||
                         audioUrl.includes('soundjay.com'); // URL de teste
     

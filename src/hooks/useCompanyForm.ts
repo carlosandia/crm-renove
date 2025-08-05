@@ -81,7 +81,7 @@ const sendAdminInvitationWithAuth = async (
       });
     } else {
       // Fallback para desenvolvimento sem autenticação
-      response = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/admin-invitations/send', {
+      response = await fetch('(await import('../config/environment')).environmentConfig.urls.api/api/admin-invitations/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -180,7 +180,7 @@ export const useCompanyForm = () => {
         });
       } else {
         // Fallback para desenvolvimento sem autenticação
-        response = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/companies', {
+        response = await fetch('(await import('../config/environment')).environmentConfig.urls.api/api/companies', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(apiData)

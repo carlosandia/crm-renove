@@ -113,16 +113,16 @@ const environmentConfigs: Record<Environment, Partial<BackendConfig>> = {
       trustProxy: false,
     },
     urls: {
-      frontend: 'http://127.0.0.1:8080',
-      backend: 'http://127.0.0.1:3001',
-      app: 'http://127.0.0.1:8080',
+      frontend: process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:8080',
+      backend: process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:3001',
+      app: process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:8080',
     },
     cors: {
       origins: [
-        'http://127.0.0.1:8080',
-        'http://localhost:8080',
-        'http://127.0.0.1:5173',
-        'http://localhost:5173'
+        process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:8080',
+        process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : 'http://localhost:8080',
+        process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:5173',
+        process.env.VITE_DEV_SERVER_URL_LOCALHOST || 'http://localhost:5173'
       ],
       credentials: true,
     },
@@ -229,12 +229,12 @@ const environmentConfigs: Record<Environment, Partial<BackendConfig>> = {
       trustProxy: false,
     },
     urls: {
-      frontend: 'http://127.0.0.1:8080',
-      backend: 'http://127.0.0.1:3001',
-      app: 'http://127.0.0.1:8080',
+      frontend: process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:8080',
+      backend: process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:3001',
+      app: process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:8080',
     },
     cors: {
-      origins: ['http://127.0.0.1:8080'],
+      origins: [process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:8080'],
       credentials: true,
     },
     security: {
@@ -273,16 +273,16 @@ function mergeWithEnvVars(config: Partial<BackendConfig>): BackendConfig {
     },
     
     urls: {
-      frontend: process.env.VITE_FRONTEND_URL || process.env.FRONTEND_URL || config.urls?.frontend || 'http://127.0.0.1:8080',
-      backend: process.env.VITE_BACKEND_URL || process.env.BACKEND_URL || config.urls?.backend || 'http://127.0.0.1:3001',
-      app: process.env.APP_URL || config.urls?.app || process.env.VITE_FRONTEND_URL || 'http://127.0.0.1:8080',
+      frontend: process.env.VITE_FRONTEND_URL || process.env.FRONTEND_URL || config.urls?.frontend || process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:8080',
+      backend: process.env.VITE_BACKEND_URL || process.env.BACKEND_URL || config.urls?.backend || process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:3001',
+      app: process.env.APP_URL || config.urls?.app || process.env.VITE_FRONTEND_URL || process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:8080',
     },
     
     cors: {
       origins: (process.env.ALLOWED_ORIGINS || '')
         .split(',')
         .map(origin => origin.trim())
-        .filter(Boolean) || config.cors?.origins || ['http://127.0.0.1:8080'],
+        .filter(Boolean) || config.cors?.origins || [process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:8080'],
       credentials: process.env.CORS_CREDENTIALS !== 'false',
     },
     

@@ -119,7 +119,7 @@ interface UseAdminDashboardResult {
   clearCache: () => Promise<boolean>;
 }
 
-const API_BASE = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
+const API_BASE = import.meta.env.VITE_API_URL || (await import('../config/environment')).environmentConfig.urls.api;
 
 export function useAdminDashboard(): UseAdminDashboardResult {
   const { user } = useAuth();

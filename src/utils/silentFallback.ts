@@ -119,7 +119,7 @@ export const apiCall = async <T>(
   options: RequestInit = {},
   fallbackValue: T | null = null
 ): Promise<T | null> => {
-  const baseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
+  const baseUrl = (await import('../config/environment')).environmentConfig.urls.api;
   const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${endpoint}`;
   
   return executeWithFallback(
@@ -139,7 +139,7 @@ export const apiCall = async <T>(
 // STATUS SIMPLES SEM LOOPS
 // ============================================
 export const getSystemStatus = async (): Promise<'online' | 'degraded' | 'offline'> => {
-  const backendUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
+  const backendUrl = (await import('../config/environment')).environmentConfig.urls.api;
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   
   const [backendOk, supabaseOk] = await Promise.all([

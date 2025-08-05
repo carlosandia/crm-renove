@@ -244,7 +244,7 @@ export const useCompanies = () => {
         });
       } else {
         // Fallback para desenvolvimento sem autenticação
-        response = await fetch(`import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/companies/${company.id}`, {
+        response = await fetch(`(await import('../config/environment')).environmentConfig.urls.api/api/companies/${company.id}`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' }
         });

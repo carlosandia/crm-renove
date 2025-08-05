@@ -19,7 +19,7 @@ export const checkBackendHealth = async (timeoutMs: number = 3000): Promise<bool
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'}/health`, {
+    const response = await fetch(`${(await import('../config/environment')).environmentConfig.urls.api}/health`, {
       method: 'GET',
       signal: controller.signal,
       headers: {
