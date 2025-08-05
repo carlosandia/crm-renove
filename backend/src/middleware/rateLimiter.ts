@@ -10,30 +10,33 @@ interface RateLimitData {
 // Armazenamento em memória (simples e eficiente)
 const rateLimitStore = new Map<string, RateLimitData>();
 
+// ✅ CORREÇÃO CRÍTICA: Rate limiting otimizado para desenvolvimento
+const isDevelopment = process.env.NODE_ENV === 'development' || process.env.ENVIRONMENT === 'development';
+
 // Configurações de rate limiting
 const RATE_LIMIT_CONFIG = {
   // Limite geral de requests por IP
   general: {
-    windowMs: 15 * 60 * 1000, // 15 minutos
-    maxRequests: 100, // máximo 100 requests por IP em 15 minutos
-    message: 'Muitas requisições. Tente novamente em 15 minutos.',
+    windowMs: isDevelopment ? 1 * 60 * 1000 : 15 * 60 * 1000, // 1 min dev / 15 min prod
+    maxRequests: isDevelopment ? 1000 : 100, // 1000 dev / 100 prod requests
+    message: 'Muitas requisições. Tente novamente em alguns minutos.',
     skipSuccessfulRequests: false,
     skipFailedRequests: false
   },
   
   // Limite específico para login (mais restritivo)
   auth: {
-    windowMs: 15 * 60 * 1000, // 15 minutos  
-    maxRequests: 5, // máximo 5 tentativas de login por IP em 15 minutos
-    message: 'Muitas tentativas de login. Tente novamente em 15 minutos.',
+    windowMs: isDevelopment ? 5 * 60 * 1000 : 15 * 60 * 1000, // 5 min dev / 15 min prod
+    maxRequests: isDevelopment ? 50 : 5, // 50 dev / 5 prod tentativas
+    message: 'Muitas tentativas de login. Tente novamente em alguns minutos.',
     skipSuccessfulRequests: true, // não contar logins bem-sucedidos
     skipFailedRequests: false
   },
 
   // Limite para APIs sensíveis
   sensitive: {
-    windowMs: 5 * 60 * 1000, // 5 minutos
-    maxRequests: 10, // máximo 10 requests em 5 minutos
+    windowMs: isDevelopment ? 1 * 60 * 1000 : 5 * 60 * 1000, // 1 min dev / 5 min prod
+    maxRequests: isDevelopment ? 200 : 10, // 200 dev / 10 prod requests
     message: 'Limite de requisições excedido para este endpoint.',
     skipSuccessfulRequests: false,
     skipFailedRequests: false
@@ -73,6 +76,16 @@ function cleanExpiredData(): void {
 function createRateLimiter(config: typeof RATE_LIMIT_CONFIG.general, type: string = 'general') {
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
+      // ✅ CORREÇÃO CRÍTICA: Bypass completo para desenvolvimento localhost
+      const ip = req.ip || req.connection.remoteAddress || 'unknown';
+      const isLocalhost = ['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1'].includes(ip);
+      
+      if (isDevelopment && isLocalhost) {
+        console.log(`⚡ [RATE-LIMIT-BYPASS] ${type} - IP localhost em desenvolvimento`);
+        next();
+        return;
+      }
+
       // Limpar dados expirados periodicamente
       if (Math.random() < 0.01) { // 1% de chance a cada request
         cleanExpiredData();

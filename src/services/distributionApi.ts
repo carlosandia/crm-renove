@@ -70,22 +70,40 @@ export class DistributionApiService {
    */
   static async getDistributionRule(pipelineId: string): Promise<DistributionRule> {
     try {
-      console.log('🔍 Buscando regra de distribuição para pipeline:', pipelineId);
+      console.log('🔍 [DistributionApiService] Buscando regra para pipeline:', {
+        pipelineId,
+        timestamp: new Date().toISOString()
+      });
       
       const response = await api.get<ApiResponse<DistributionRule>>(
         `/pipelines/${pipelineId}/distribution-rule`
       );
+      
+      console.log('📡 [DistributionApiService] Resposta de carregamento:', {
+        success: response.data.success,
+        hasData: !!response.data.data,
+        statusCode: response.status
+      });
       
       if (!response.data.success) {
         throw new Error(response.data.error || 'Erro ao buscar regra de distribuição');
       }
       
       const rule = response.data.data!;
-      console.log('✅ Regra de distribuição carregada:', rule.mode);
+      console.log('✅ [DistributionApiService] Regra carregada:', {
+        mode: rule.mode,
+        is_active: rule.is_active,
+        pipelineId,
+        timestamp: new Date().toISOString()
+      });
       
       return rule;
     } catch (error: any) {
-      console.error('❌ Erro ao buscar regra de distribuição:', error);
+      console.error('❌ [DistributionApiService] Erro ao buscar regra:', {
+        pipelineId,
+        error: error.message,
+        status: error.response?.status
+      });
       
       // Retornar regra padrão em caso de erro
       const defaultRule: DistributionRule = {
@@ -97,7 +115,7 @@ export class DistributionApiService {
         fallback_to_manual: true
       };
       
-      console.log('📋 Usando regra padrão devido ao erro');
+      console.log('📋 [DistributionApiService] Usando regra padrão devido ao erro:', defaultRule);
       return defaultRule;
     }
   }
@@ -110,23 +128,45 @@ export class DistributionApiService {
     rule: SaveDistributionRuleRequest
   ): Promise<DistributionRule> {
     try {
-      console.log('💾 Salvando regra de distribuição:', { pipelineId, rule });
+      console.log('💾 [DistributionApiService] Iniciando salvamento:', {
+        pipelineId,
+        rule,
+        timestamp: new Date().toISOString()
+      });
       
       const response = await api.post<ApiResponse<DistributionRule>>(
         `/pipelines/${pipelineId}/distribution-rule`,
         rule
       );
       
+      console.log('📡 [DistributionApiService] Resposta da API recebida:', {
+        success: response.data.success,
+        hasData: !!response.data.data,
+        statusCode: response.status
+      });
+      
       if (!response.data.success) {
         throw new Error(response.data.error || 'Erro ao salvar regra de distribuição');
       }
       
       const savedRule = response.data.data!;
-      console.log('✅ Regra de distribuição salva com sucesso:', savedRule.mode);
+      console.log('✅ [DistributionApiService] Regra salva com sucesso:', {
+        savedMode: savedRule.mode,
+        savedIsActive: savedRule.is_active,
+        originalMode: rule.mode,
+        pipelineId,
+        timestamp: new Date().toISOString()
+      });
       
       return savedRule;
     } catch (error: any) {
-      console.error('❌ Erro ao salvar regra de distribuição:', error);
+      console.error('❌ [DistributionApiService] Erro ao salvar regra:', {
+        pipelineId,
+        rule,
+        error: error.message,
+        status: error.response?.status,
+        apiError: error.response?.data?.error
+      });
       throw new Error(
         error.response?.data?.error || 
         error.message || 

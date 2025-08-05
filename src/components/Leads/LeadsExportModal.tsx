@@ -11,7 +11,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Checkbox } from '../ui/checkbox';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { showSuccessToast, showErrorToast } from '../../hooks/useToast';
 
 interface LeadsExportModalProps {

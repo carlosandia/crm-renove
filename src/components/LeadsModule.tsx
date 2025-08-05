@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { supabase } from '../lib/supabase';
 import { showSuccessToast, showErrorToast } from '../hooks/useToast';
 import LeadsListEnhanced from './Leads/LeadsListEnhanced';

@@ -31,7 +31,7 @@ import {
 
 // Hooks e types
 import { useEnterpriseMetrics } from '../../../hooks/useEnterpriseMetrics';
-import { useAuth } from '../../../contexts/AuthContext';
+import { useAuth } from '../../../providers/AuthProvider';
 import type { PredefinedPeriod, MetricKey } from '../../../types/EnterpriseMetrics';
 import { 
   formatCurrency, 
@@ -272,7 +272,7 @@ export const EnterpriseMetricsHeader: React.FC<EnterpriseMetricsHeaderProps> = (
         gradientFrom: 'from-blue-400',
         gradientTo: 'to-blue-600',
         benchmark: showBenchmarks ? {
-          level: metrics.total_unique_leads > 50 ? 'good' : 'average' as const,
+          level: (metrics.total_unique_leads > 50 ? 'good' : 'average') as 'poor' | 'average' | 'good' | 'excellent',
           description: 'Volume'
         } : undefined
       },
@@ -285,7 +285,7 @@ export const EnterpriseMetricsHeader: React.FC<EnterpriseMetricsHeaderProps> = (
         gradientFrom: 'from-purple-400',
         gradientTo: 'to-purple-600',
         benchmark: showBenchmarks ? {
-          level: benchmarkComparison?.opportunities_per_lead.level || 'average',
+          level: (benchmarkComparison?.opportunities_per_lead.level || 'average') as 'poor' | 'average' | 'good' | 'excellent',
           description: `${metrics.opportunities_per_lead.toFixed(1)} por lead`
         } : undefined
       },
@@ -298,7 +298,7 @@ export const EnterpriseMetricsHeader: React.FC<EnterpriseMetricsHeaderProps> = (
         gradientFrom: 'from-green-400',
         gradientTo: 'to-green-600',
         benchmark: showBenchmarks ? {
-          level: benchmarkComparison?.conversion_rate.level || 'average',
+          level: (benchmarkComparison?.conversion_rate.level || 'average') as 'poor' | 'average' | 'good' | 'excellent',
           description: 'vs. mercado'
         } : undefined
       },

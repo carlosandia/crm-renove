@@ -2,7 +2,7 @@ import React from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './dialog';
 import { Button } from './button';
-import { cn } from '@/lib/utils';
+import { cn } from '../../lib/utils';
 import { BaseModalProps } from '../../types/CommonProps';
 
 /**

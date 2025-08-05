@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../providers/AuthProvider';
 import { 
   Send, 
   Users, 
@@ -18,7 +19,6 @@ import {
   Target
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useAuth } from '../../contexts/AuthContext';
 
 // Sistema de logs condicionais
 const LOG_LEVEL = import.meta.env.VITE_LOG_LEVEL || 'warn';
@@ -55,7 +55,7 @@ interface NotificationAdminPanelProps {
 }
 
 export const NotificationAdminPanel: React.FC<NotificationAdminPanelProps> = ({ className = '' }) => {
-  const { user } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   const [activeTab, setActiveTab] = useState<'create' | 'manage' | 'analytics'>('create');
   
   // Estados para criação
@@ -106,11 +106,8 @@ export const NotificationAdminPanel: React.FC<NotificationAdminPanelProps> = ({ 
         return;
       }
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
-      const response = await fetch(`${apiUrl}/api/users`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
+      // ✅ CORREÇÃO: Usar autenticação segura do Supabase
+      const response = await authenticatedFetch('/users', {
         signal: AbortSignal.timeout(5000)
       });
 
@@ -144,11 +141,8 @@ export const NotificationAdminPanel: React.FC<NotificationAdminPanelProps> = ({ 
         return;
       }
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
-      const response = await fetch(`${apiUrl}/api/notifications/admin`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
+      // ✅ CORREÇÃO: Usar autenticação segura do Supabase
+      const response = await authenticatedFetch('/notifications/admin', {
         signal: AbortSignal.timeout(5000)
       });
 
@@ -182,11 +176,10 @@ export const NotificationAdminPanel: React.FC<NotificationAdminPanelProps> = ({ 
         return;
       }
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
-      const response = await fetch(`${apiUrl}/api/notifications/analytics`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
+      const { environmentConfig } = await import('../../config/environment');
+      const apiUrl = environmentConfig.urls.backend;
+      // ✅ CORREÇÃO: Usar autenticação segura do Supabase
+      const response = await authenticatedFetch('/notifications/analytics', {
         signal: AbortSignal.timeout(5000)
       });
 
@@ -227,13 +220,9 @@ export const NotificationAdminPanel: React.FC<NotificationAdminPanelProps> = ({ 
         return;
       }
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
-      const response = await fetch(`${apiUrl}/api/notifications/create`, {
+      // ✅ CORREÇÃO: Usar autenticação segura do Supabase
+      const response = await authenticatedFetch('/notifications/create', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
         body: JSON.stringify(notification),
         signal: AbortSignal.timeout(10000)
       });

@@ -46,23 +46,38 @@ export function useSaveDistributionRule(pipelineId: string | undefined) {
     onSuccess: (savedRule) => {
       if (!pipelineId) return;
       
-      // Atualizar cache da regra
+      console.log('✅ [useSaveDistributionRule] Salvamento bem-sucedido:', {
+        pipelineId,
+        mode: savedRule.mode,
+        is_active: savedRule.is_active
+      });
+      
+      // ✅ CORREÇÃO CRÍTICA: Atualizar cache da regra com dados completos
       queryClient.setQueryData(
         distributionQueryKeys.rule(pipelineId),
         savedRule
       );
       
-      // Invalidar estatísticas para atualizar
+      // ✅ CORREÇÃO CRÍTICA: Invalidar TODAS as queries relacionadas
+      queryClient.invalidateQueries({
+        queryKey: distributionQueryKeys.rule(pipelineId)
+      });
+      
       queryClient.invalidateQueries({
         queryKey: distributionQueryKeys.stat(pipelineId)
       });
       
-      // Mostrar feedback de sucesso
-      toast.success('Regra de distribuição salva com sucesso', {
-        description: `Modo ${savedRule.mode} ativado`
+      // ✅ NOVO: Invalidar queries gerais de distribuição
+      queryClient.invalidateQueries({
+        queryKey: distributionQueryKeys.all
       });
       
-      console.log('✅ Regra de distribuição salva e cache atualizado');
+      // ✅ CORREÇÃO: Forçar refetch imediato para garantir sincronização
+      queryClient.refetchQueries({
+        queryKey: distributionQueryKeys.rule(pipelineId)
+      });
+      
+      console.log('✅ [useSaveDistributionRule] Cache invalidado e refetch disparado');
     },
     onError: (error: Error) => {
       console.error('❌ Erro ao salvar regra:', error);

@@ -50,7 +50,8 @@ export class CustomFieldController {
         field_options,
         is_required,
         placeholder,
-        show_in_card
+        show_in_card,
+        tenant_id: user.tenant_id
       });
 
       res.status(201).json({ 

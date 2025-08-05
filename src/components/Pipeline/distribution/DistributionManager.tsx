@@ -41,12 +41,12 @@ import type {
 
 interface DistributionManagerProps {
   pipelineId: string;
-  onRuleChange?: (rule: DistributionRule) => void;
+  onRuleChange?: (rule: DistributionRule, isNavigationChange?: boolean) => void;
 }
 
 export interface UseLocalDistributionManagerProps {
   pipelineId: string;
-  onRuleChange?: (rule: DistributionRule) => void;
+  onRuleChange?: (rule: DistributionRule, isNavigationChange?: boolean) => void;
 }
 
 export interface UseLocalDistributionManagerReturn {
@@ -58,14 +58,17 @@ export interface UseLocalDistributionManagerReturn {
   // Dados da API
   apiData: ApiDistributionManagerReturn;
   
+  // ✅ NOVO: Estado de inicialização para sincronização com componente pai
+  isInitializing: boolean;
+  
   // Handlers locais
-  handleModeChange: (mode: 'manual' | 'rodizio') => void;
+  handleModeChange: (e: React.MouseEvent, mode: 'manual' | 'rodizio') => void;
   handleToggleActive: () => void;
   handleToggleWorkingHours: () => void;
   handleToggleSkipInactive: () => void;
   handleToggleFallback: () => void;
   
-  // Ações de persistência
+  // ✅ EXPOSTO: Ações de persistência para sistema centralizado
   handleSave: () => Promise<void>;
   handleReset: () => void;
   handleTest: () => Promise<void>;
@@ -82,6 +85,8 @@ export function useLocalDistributionManager({
   
   // 🔧 CORREÇÃO: Verificar se já foi inicializado para evitar logs excessivos
   const [initialized, setInitialized] = useState(false);
+  // ✅ NOVO: Estado para controlar inicialização e evitar callback prematuro
+  const [isInitializing, setIsInitializing] = useState(true);
   const isCreationMode = !pipelineId || pipelineId.length === 0;
   const hasValidPipelineId = !!(pipelineId && pipelineId.length > 0);
   
@@ -118,35 +123,113 @@ export function useLocalDistributionManager({
     return null;
   });
 
+  // ✅ CRÍTICO: Correção para modo criação - marcar como não inicializando após estado estar pronto
+  useEffect(() => {
+    if (isCreationMode && localRule && isInitializing) {
+      console.log('🔄 [useLocalDistributionManager] Modo criação detectado - finalizando inicialização');
+      setIsInitializing(false);
+    }
+  }, [isCreationMode, localRule, isInitializing]);
+
   // 🔧 CORREÇÃO: Inicializar com dados da API quando disponível (modo edição)
   useEffect(() => {
     if (hasValidPipelineId && apiData.rule && !localRule) {
+      console.log('🔄 [useLocalDistributionManager] Carregando dados da API (inicialização)');
       setLocalRule(apiData.rule);
+      // ✅ CRÍTICO: Marcar fim da inicialização após configurar dados da API
+      setIsInitializing(false);
     }
   }, [apiData.rule, localRule, hasValidPipelineId]);
 
-  // 🔧 CORREÇÃO: Memoizar verificação de mudanças para evitar comparações desnecessárias
+  // ✅ NOVO: Sincronizar estado local quando dados da API são atualizados após salvamento
+  useEffect(() => {
+    if (hasValidPipelineId && apiData.rule && localRule && !isInitializing) {
+      // Verificar se os dados da API são diferentes do estado local
+      const apiMode = apiData.rule.mode;
+      const localMode = localRule.mode;
+      
+      if (apiMode !== localMode) {
+        console.log('🔄 [useLocalDistributionManager] Detectada mudança nos dados da API, sincronizando:', {
+          apiMode,
+          localMode,
+          timestamp: new Date().toISOString()
+        });
+        setLocalRule(apiData.rule);
+      }
+    }
+  }, [apiData.rule, localRule, hasValidPipelineId, isInitializing]);
+
+  // ✅ CORREÇÃO: Função para comparação inteligente de regras de distribuição
+  const areRulesEqual = React.useCallback((rule1: DistributionRule | null, rule2: DistributionRule | null): boolean => {
+    if (!rule1 || !rule2) return rule1 === rule2;
+    
+    // Comparar apenas campos relevantes para o usuário (ignorar timestamps e contadores)
+    const normalizeRule = (rule: DistributionRule) => ({
+      mode: rule.mode,
+      is_active: rule.is_active ?? false,
+      working_hours_only: rule.working_hours_only ?? false,
+      skip_inactive_members: rule.skip_inactive_members ?? false,
+      fallback_to_manual: rule.fallback_to_manual ?? false
+    });
+    
+    const normalized1 = normalizeRule(rule1);
+    const normalized2 = normalizeRule(rule2);
+    
+    return JSON.stringify(normalized1) === JSON.stringify(normalized2);
+  }, []);
+
+  // 🔧 CORREÇÃO: Memoizar verificação de mudanças com comparação inteligente
   const hasUnsavedChanges = React.useMemo(() => {
     return localRule && apiData.rule ? 
-      JSON.stringify(localRule) !== JSON.stringify(apiData.rule) : false;
-  }, [localRule, apiData.rule]);
+      !areRulesEqual(localRule, apiData.rule) : false;
+  }, [localRule, apiData.rule, areRulesEqual]);
 
-  // 🔧 CORREÇÃO: Memoizar callback de notificação
-  const notifyRuleChange = React.useCallback((rule: DistributionRule) => {
+  // 🔧 CORREÇÃO: Memoizar callback de notificação com flag de navegação
+  const notifyRuleChange = React.useCallback((rule: DistributionRule, isNavigationChange = false) => {
     if (onRuleChange) {
-      onRuleChange(rule);
+      onRuleChange(rule, isNavigationChange);
     }
   }, [onRuleChange]);
 
-  // Notificar mudanças via callback
+  // ✅ CRÍTICO: Flag para evitar notificações múltiplas da mesma regra
+  const [lastNotifiedRule, setLastNotifiedRule] = useState<string | null>(null);
+  const [lastModeNotified, setLastModeNotified] = useState<string | null>(null);
+
+  // ✅ CRÍTICO: Notificar mudanças via callback APENAS após inicialização e se realmente mudou
   useEffect(() => {
-    if (localRule) {
-      notifyRuleChange(localRule);
+    if (localRule && !isInitializing) {
+      const currentRuleHash = JSON.stringify(localRule);
+      if (lastNotifiedRule !== currentRuleHash) {
+        // Detectar se é apenas mudança de modo (navegação)
+        const isNavigationChange = lastModeNotified !== null && 
+                                   lastModeNotified !== localRule.mode && 
+                                   lastNotifiedRule !== null;
+        
+        console.log('📤 [useLocalDistributionManager] Notificando mudança (pós-inicialização)', {
+          isNavigationChange,
+          lastMode: lastModeNotified,
+          currentMode: localRule.mode
+        });
+        
+        notifyRuleChange(localRule, isNavigationChange);
+        setLastNotifiedRule(currentRuleHash);
+        setLastModeNotified(localRule.mode);
+      }
+    } else if (localRule && isInitializing) {
+      // ✅ REMOVIDO: Se é ignorado, não precisa de log
+      // Inicializar modo para comparação futura
+      if (localRule.mode && !lastModeNotified) {
+        setLastModeNotified(localRule.mode);
+      }
     }
-  }, [localRule, notifyRuleChange]);
+  }, [localRule, notifyRuleChange, isInitializing, lastNotifiedRule, lastModeNotified]);
 
   // Handlers para mudanças locais
-  const handleModeChange = (mode: 'manual' | 'rodizio') => {
+  const handleModeChange = (e: React.MouseEvent, mode: 'manual' | 'rodizio') => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('🔄 [handleModeChange] Mudando modo:', { from: localRule?.mode, to: mode });
+    
     if (localRule) {
       setLocalRule(prev => prev ? { ...prev, mode } : null);
     }
@@ -181,6 +264,11 @@ export function useLocalDistributionManager({
     if (!localRule) return;
     
     try {
+      console.log('🔄 [handleSave] Salvando regra local:', {
+        currentMode: localRule.mode,
+        localRule
+      });
+      
       const saveData: SaveDistributionRuleRequest = {
         mode: localRule.mode,
         is_active: localRule.is_active,
@@ -191,11 +279,24 @@ export function useLocalDistributionManager({
       
       await apiData.saveRule(saveData);
       
-      // Sincronizar estado local com dados salvos
-      if (apiData.rule) {
-        setLocalRule(apiData.rule);
-      }
+      console.log('✅ [handleSave] Regra salva com sucesso, aguardando dados atualizados...');
+      
+      // ✅ CORREÇÃO CRÍTICA: Aguardar dados atualizados da API e sincronizar
+      // Usar setTimeout para aguardar invalidação e refetch completarem
+      setTimeout(() => {
+        if (apiData.rule) {
+          console.log('🔄 [handleSave] Sincronizando estado local com dados da API:', {
+            apiMode: apiData.rule.mode,
+            localMode: localRule.mode
+          });
+          setLocalRule(apiData.rule);
+        } else {
+          console.warn('⚠️ [handleSave] Dados da API ainda não disponíveis após salvamento');
+        }
+      }, 100);
+      
     } catch (error) {
+      console.error('❌ [handleSave] Erro ao salvar:', error);
       // Erro já tratado no hook da API
     }
   };
@@ -228,11 +329,14 @@ export function useLocalDistributionManager({
     rule: localRule, // ✅ CORREÇÃO: Alias para facilitar acesso
     hasUnsavedChanges,
     apiData,
+    // ✅ NOVO: Expor estado de inicialização
+    isInitializing,
     handleModeChange,
     handleToggleActive,
     handleToggleWorkingHours,
     handleToggleSkipInactive,
     handleToggleFallback,
+    // ✅ EXPOSTO: Funções de persistência para sistema centralizado
     handleSave,
     handleReset,
     handleTest,
@@ -288,58 +392,21 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
     );
   }
 
+  // ✅ NOVO: Log de debug para verificar estado no render
+  console.log('🎨 [DistributionManagerRender] Estado atual:', {
+    localRuleMode: localRule.mode,
+    apiRuleMode: apiData.rule?.mode,
+    hasUnsavedChanges,
+    isLoading,
+    isSaving,
+    timestamp: new Date().toISOString()
+  });
+
   return (
     <div className={PIPELINE_UI_CONSTANTS.spacing.section}>
       <SectionHeader
         icon={RotateCcw}
         title="Distribuição de Leads"
-        action={
-          <div className="flex items-center gap-2">
-            {hasUnsavedChanges && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded-full">
-                  Não salvo
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleReset}
-                  disabled={isSaving}
-                >
-                  <RefreshCw className="h-4 w-4 mr-1" />
-                  Descartar
-                </Button>
-              </div>
-            )}
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleTest}
-              disabled={isTesting || localRule.mode === 'manual'}
-            >
-              {isTesting ? (
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-              ) : (
-                <TestTube className="h-4 w-4 mr-1" />
-              )}
-              Testar
-            </Button>
-            
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={!hasUnsavedChanges || isSaving}
-            >
-              {isSaving ? (
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4 mr-1" />
-              )}
-              Salvar
-            </Button>
-          </div>
-        }
       />
 
       <BlurFade delay={0.1} inView>
@@ -353,8 +420,9 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <Button
+                type="button"
                 variant={localRule.mode === 'manual' ? 'default' : 'outline'}
-                onClick={() => handleModeChange('manual')}
+                onClick={(e) => handleModeChange(e, 'manual')}
                 className="h-20 flex-col gap-2"
                 disabled={isSaving}
               >
@@ -366,8 +434,9 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
               </Button>
 
               <Button
+                type="button"
                 variant={localRule.mode === 'rodizio' ? 'default' : 'outline'}
-                onClick={() => handleModeChange('rodizio')}
+                onClick={(e) => handleModeChange(e, 'rodizio')}
                 className="h-20 flex-col gap-2"
                 disabled={isSaving}
               >
@@ -462,8 +531,8 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
         </BlurFade>
       )}
 
-      {/* Seção de estatísticas básicas */}
-      {apiData.stats && (
+      {/* ✅ CORREÇÃO: Estatísticas aparecem APENAS no modo Rodízio */}
+      {apiData.stats && localRule.mode === 'rodizio' && (
         <BlurFade delay={0.08} inView>
           <AnimatedCard>
             <CardHeader>
@@ -504,7 +573,22 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
               </div>
               
               {localRule.mode === 'rodizio' && (
-                <div className="pt-4">
+                <div className="pt-4 space-y-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTest}
+                    disabled={isTesting}
+                    className="w-full"
+                  >
+                    {isTesting ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <TestTube className="h-4 w-4 mr-2" />
+                    )}
+                    Testar Distribuição
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -520,7 +604,7 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
                     Resetar Rodízio
                   </Button>
                   <p className="text-xs text-muted-foreground text-center mt-2">
-                    Limpa o histórico e reinicia a distribuição
+                    Testa a distribuição atual ou limpa o histórico
                   </p>
                 </div>
               )}
@@ -528,6 +612,8 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
           </AnimatedCard>
         </BlurFade>
       )}
+
+      {/* Footer removido - usando sistema centralizado de salvamento */}
     </div>
   );
 }

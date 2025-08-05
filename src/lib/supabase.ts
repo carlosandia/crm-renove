@@ -1,3 +1,4 @@
+import { createBrowserClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { 
   databaseConfig, 
@@ -14,71 +15,97 @@ const LOG_LEVEL = import.meta.env.VITE_LOG_LEVEL || 'warn';
 const isDebugMode = LOG_LEVEL === 'debug';
 const isVerboseMode = LOG_LEVEL === 'verbose';
 
-// Log de inicialização apenas em modo debug
-if (isDebugMode) {
-  console.log('🔗 Inicializando cliente Supabase com configuração centralizada...');
-  console.log('🔧 Configuração:', {
-    url: databaseConfig.connection.url,
-    hasKey: Boolean(databaseConfig.connection.anonKey),
-    keyLength: databaseConfig.connection.anonKey.length,
-    timeouts: databaseConfig.timeouts,
-    features: databaseConfig.features
-  });
+// ✅ FIX: Singleton Pattern Oficial seguindo documentação Supabase
+let supabaseInstance: any = null;
+
+function getSupabaseClient() {
+  if (supabaseInstance) {
+    if (isDebugMode) {
+      console.log('✅ [Supabase] Reutilizando instância singleton existente');
+    }
+    return supabaseInstance;
+  }
+
+  if (isDebugMode) {
+    console.log('🔗 Criando nova instância Supabase com createBrowserClient...');
+    console.log('🔧 Configuração:', {
+      url: databaseConfig.connection.url,
+      hasKey: Boolean(databaseConfig.connection.anonKey),
+      keyLength: databaseConfig.connection.anonKey.length,
+      timeouts: databaseConfig.timeouts,
+      features: databaseConfig.features
+    });
+  }
+
+  // ✅ FIX: Usar createBrowserClient seguindo documentação oficial
+  // Mantém configurações essenciais mas remove conflitos de singleton
+  supabaseInstance = createBrowserClient(
+    databaseConfig.connection.url, 
+    databaseConfig.connection.anonKey,
+    {
+      auth: {
+        storageKey: 'sb-crm-auth-token', // Storage key padrão isolada
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      },
+      global: {
+        headers: createStandardHeaders(),
+        fetch: (url: string, options: RequestInit = {}) => {
+          const { controller, cleanup } = createTimeoutController(databaseConfig.timeouts.connection);
+
+          const modifiedOptions = {
+            ...options,
+            signal: controller.signal,
+            headers: {
+              ...createStandardHeaders(),
+              ...(options.headers || {})
+            }
+          };
+
+          return fetch(url, modifiedOptions)
+            .catch((error) => {
+              if (error.name === 'AbortError') {
+                logger.debug('Supabase Request timeout - conexão lenta');
+                throw new Error('Timeout: Conexão lenta detectada');
+              }
+              
+              if (error.message?.includes('Failed to fetch')) {
+                logger.debug('Supabase Erro de conectividade - modo offline');
+                throw new Error('Network: Sem conexão com servidor');
+              }
+              
+              throw error;
+            })
+            .finally(() => {
+              cleanup();
+            });
+        }
+      },
+      db: {
+        schema: 'public'
+      },
+      realtime: databaseConfig.features.realtime ? {
+        params: {
+          eventsPerSecond: 2
+        }
+      } : undefined
+    }
+  );
+
+  if (isDebugMode) {
+    console.log('✅ Cliente Supabase inicializado com createBrowserClient (singleton oficial)');
+  }
+
+  return supabaseInstance;
 }
 
-// Cliente Supabase configurado para o frontend
-export const supabase = createClient(
-  databaseConfig.connection.url, 
-  databaseConfig.connection.anonKey, 
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true
-    },
-    global: {
-      headers: createStandardHeaders(),
-      fetch: (url, options = {}) => {
-        const { controller, cleanup } = createTimeoutController(databaseConfig.timeouts.connection);
+// ✅ FIX: Exportar instância singleton seguindo padrão oficial
+export const supabase = getSupabaseClient();
 
-        const modifiedOptions = {
-          ...options,
-          signal: controller.signal,
-          headers: {
-            ...createStandardHeaders(),
-            ...options.headers
-          }
-        };
-
-        return fetch(url, modifiedOptions)
-          .catch((error) => {
-            if (error.name === 'AbortError') {
-              logger.debug('Supabase Request timeout - conexão lenta');
-              throw new Error('Timeout: Conexão lenta detectada');
-            }
-            
-            if (error.message?.includes('Failed to fetch')) {
-              logger.debug('Supabase Erro de conectividade - modo offline');
-              throw new Error('Network: Sem conexão com servidor');
-            }
-            
-            throw error;
-          })
-          .finally(() => {
-            cleanup();
-          });
-      }
-    },
-    db: {
-      schema: 'public'
-    },
-    realtime: databaseConfig.features.realtime ? {
-      params: {
-        eventsPerSecond: 2
-      }
-    } : undefined
-  }
-);
+// ✅ REMOVIDO: Service role client movido para backend
+// Seguindo padrões de mercado - service role keys devem ficar apenas no servidor
+// Operações administrativas agora via API calls para /admin/* endpoints
 
 // Log de conexão bem-sucedida apenas uma vez
 if (isDebugMode) {

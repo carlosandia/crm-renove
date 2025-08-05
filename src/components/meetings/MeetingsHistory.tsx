@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import { 
   Calendar, 
   Trash2, 
+  Edit3, // NOVO: Ícone de editar
   Filter,
   AlertCircle,
   User,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useLeadMeetings, useDeleteMeeting, useQuickStatusUpdate } from '../../hooks/useMeetings';
 import { MeetingStatusTags } from './MeetingStatusTags';
+import { EditMeetingModal } from './EditMeetingModal'; // NOVO: Modal de edição
 import { 
   MEETING_OUTCOME_LABELS,
   NO_SHOW_REASON_LABELS,
@@ -37,6 +39,10 @@ export const MeetingsHistory: React.FC<MeetingsHistoryProps> = ({
 }) => {
   const [outcomeFilter, setOutcomeFilter] = useState<MeetingOutcome | ''>('');
   const [showFilters, setShowFilters] = useState(false);
+  
+  // NOVO: Estados para controle de ações
+  const [meetingToDelete, setMeetingToDelete] = useState<string | null>(null);
+  const [meetingToEdit, setMeetingToEdit] = useState<MeetingWithRelations | null>(null);
 
   // AIDEV-NOTE: Buscar reuniões com filtros
   const { 
@@ -53,14 +59,14 @@ export const MeetingsHistory: React.FC<MeetingsHistoryProps> = ({
 
   const meetings = meetingsData?.meetings || [];
 
-  // AIDEV-NOTE: Handle delete meeting
-  const handleDeleteMeeting = async (meetingId: string) => {
-    if (confirm('Tem certeza que deseja excluir esta reunião? Esta ação não pode ser desfeita.')) {
-      try {
-        await deleteMeetingMutation.mutateAsync(meetingId);
-      } catch (error) {
-        // Erro já tratado pelo hook
-      }
+  // AIDEV-NOTE: Handle delete meeting - padrão Sim/Não inline igual às Atividades
+  const handleConfirmDelete = async (meetingId: string) => {
+    try {
+      await deleteMeetingMutation.mutateAsync(meetingId);
+      setMeetingToDelete(null);
+    } catch (error) {
+      // Erro já tratado pelo hook
+      setMeetingToDelete(null);
     }
   };
 
@@ -191,10 +197,17 @@ export const MeetingsHistory: React.FC<MeetingsHistoryProps> = ({
                       className="flex-shrink-0"
                     />
                     
-                    {/* Data/Hora */}
-                    <span className="text-sm font-medium text-gray-900 flex-shrink-0">
-                      {formatMeetingDate(meeting.planned_at)}
-                    </span>
+                    {/* Título + Data/Hora na mesma linha */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-medium text-gray-900 truncate">
+                          {meeting.title || 'Reunião'}
+                        </span>
+                        <span className="text-sm text-gray-500 flex-shrink-0">
+                          {formatMeetingDate(meeting.planned_at)}
+                        </span>
+                      </div>
+                    </div>
                     
                     {/* Usuário */}
                     <div className="flex items-center text-sm text-gray-600 min-w-0">
@@ -212,15 +225,48 @@ export const MeetingsHistory: React.FC<MeetingsHistoryProps> = ({
                     )}
                   </div>
 
-                  {/* Ação de deletar */}
-                  <button
-                    onClick={() => handleDeleteMeeting(meeting.id)}
-                    disabled={deleteMeetingMutation.isPending}
-                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50 flex-shrink-0 ml-2"
-                    title="Excluir reunião"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {/* Ações de editar e excluir */}
+                  <div className="flex items-center space-x-1 flex-shrink-0 ml-2">
+                    {meetingToDelete === meeting.id ? (
+                      // Confirmação de exclusão (padrão igual às Atividades)
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleConfirmDelete(meeting.id)}
+                          disabled={deleteMeetingMutation.isPending}
+                          className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors disabled:opacity-50"
+                          title="Confirmar exclusão"
+                        >
+                          Sim
+                        </button>
+                        <button
+                          onClick={() => setMeetingToDelete(null)}
+                          disabled={deleteMeetingMutation.isPending}
+                          className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors disabled:opacity-50"
+                          title="Cancelar"
+                        >
+                          Não
+                        </button>
+                      </div>
+                    ) : (
+                      // Botões normais de editar e excluir
+                      <>
+                        <button
+                          onClick={() => setMeetingToEdit(meeting)}
+                          className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                          title="Editar reunião"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setMeetingToDelete(meeting.id)}
+                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                          title="Excluir reunião"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {/* AIDEV-NOTE: Segunda linha - Observações (se houver) */}
@@ -246,6 +292,15 @@ export const MeetingsHistory: React.FC<MeetingsHistoryProps> = ({
             );
           })}
         </div>
+      )}
+
+      {/* Modal de edição */}
+      {meetingToEdit && (
+        <EditMeetingModal
+          isOpen={true}
+          onClose={() => setMeetingToEdit(null)}
+          meeting={meetingToEdit}
+        />
       )}
     </div>
   );

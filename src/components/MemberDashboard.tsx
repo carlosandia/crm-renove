@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useMemberTools } from '../hooks/useMemberTools';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { 
   CheckSquare, 
   Clock, 

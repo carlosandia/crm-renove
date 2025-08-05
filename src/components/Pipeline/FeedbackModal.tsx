@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, ThumbsUp, ThumbsDown, Send, User, Clock, MessageSquare } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import {
   Dialog,
   DialogContent,
@@ -181,7 +181,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
       const feedbackId = crypto.randomUUID();
       const feedbackDataWithId = { ...feedbackData, id: feedbackId };
       
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('lead_feedback')
         .insert(feedbackDataWithId);
 

@@ -155,7 +155,23 @@ export class EnterpriseMetricsService {
       
       opportunitiesQuery = applyFilters(opportunitiesQuery, filters, 'pipeline_leads');
       
+      // 🔍 DEBUG: Log da query final para identificar problema
+      console.log('🔍 [DEBUG] Query de oportunidades:', {
+        tenant_id: filters.tenant_id,
+        pipeline_id: filters.pipeline_id,
+        start_date: filters.start_date,
+        end_date: filters.end_date,
+        hasFilters: !!(filters.start_date || filters.end_date)
+      });
+      
       const { data: opportunitiesData, error: opportunitiesError } = await opportunitiesQuery;
+      
+      // 🔍 DEBUG: Log do resultado
+      console.log('🔍 [DEBUG] Resultado oportunidades:', {
+        count: opportunitiesData?.length || 0,
+        error: opportunitiesError?.message,
+        firstRecord: opportunitiesData?.[0]?.id?.substring(0, 8)
+      });
       
       if (opportunitiesError) {
         console.error('❌ Erro ao buscar oportunidades:', opportunitiesError);

@@ -74,8 +74,9 @@ const AccountActivation: React.FC = () => {
     try {
       console.log('🔍 [ACTIVATION] Validando token:', token);
       
-      // Fazer requisição real para o backend - usando rota unificada
-      const response = await fetch('http://127.0.0.1:3001/api/admin-invitations/validate-token', {
+      // Fazer requisição real para o backend - usando configuração centralizada
+      const { environmentConfig } = await import('../config/environment');
+      const response = await fetch(`${environmentConfig.urls.api}/admin-invitations/validate-token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -144,8 +145,9 @@ const AccountActivation: React.FC = () => {
     try {
       console.log('🔑 [ACTIVATION] Ativando conta...');
       
-      // Fazer requisição real para o backend - usando rota unificada
-      const response = await fetch('http://127.0.0.1:3001/api/admin-invitations/activate', {
+      // Fazer requisição real para o backend - usando configuração centralizada
+      const { environmentConfig } = await import('../config/environment');
+      const response = await fetch(`${environmentConfig.urls.api}/admin-invitations/activate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -178,7 +180,8 @@ const AccountActivation: React.FC = () => {
             console.log(`⏱️ [CRITICAL-FIX-2] Aguardando ${delay}ms para sincronização...`);
             await new Promise(resolve => setTimeout(resolve, delay));
             
-          const loginResponse = await fetch('http://127.0.0.1:3001/api/auth/login', {
+          const { environmentConfig: envConfig } = await import('../config/environment');
+          const loginResponse = await fetch(`${envConfig.urls.api}/auth/login`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

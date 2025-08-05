@@ -159,6 +159,11 @@ router.delete('/:id', async (req, res) => {
  */
 router.post('/generate', async (req, res) => {
   try {
+    console.log('🔄 [leadTasks/generate] Iniciando geração de tarefas:', {
+      body: req.body,
+      timestamp: new Date().toISOString()
+    });
+
     const {
       lead_id,
       pipeline_id,
@@ -168,6 +173,23 @@ router.post('/generate', async (req, res) => {
       tenant_id
     } = req.body;
 
+    // Validar dados obrigatórios
+    if (!lead_id || !pipeline_id || !stage_id || !stage_name || !tenant_id) {
+      console.error('❌ [leadTasks/generate] Dados obrigatórios faltando:', {
+        lead_id: !!lead_id,
+        pipeline_id: !!pipeline_id,
+        stage_id: !!stage_id,
+        stage_name: !!stage_name,
+        tenant_id: !!tenant_id
+      });
+      return res.status(400).json({ 
+        success: false,
+        error: 'Dados obrigatórios faltando: lead_id, pipeline_id, stage_id, stage_name, tenant_id' 
+      });
+    }
+
+    console.log('🔍 [leadTasks/generate] Chamando LeadTasksService.generateTasksForLeadStageEntry...');
+    
     const tasksCreated = await LeadTasksService.generateTasksForLeadStageEntry(
       lead_id,
       pipeline_id,
@@ -177,13 +199,28 @@ router.post('/generate', async (req, res) => {
       tenant_id
     );
 
+    console.log('✅ [leadTasks/generate] Tarefas geradas:', {
+      tasksCreated,
+      lead_id: lead_id.substring(0, 8),
+      stage_name
+    });
+
     res.json({ 
+      success: true,
       message: `${tasksCreated} tarefas geradas com sucesso`,
-      tasks_created: tasksCreated 
+      tasks_created: tasksCreated,
+      data: { tasks_created: tasksCreated }
     });
   } catch (error: any) {
-    console.error('Erro ao gerar tarefas automáticas:', error);
-    res.status(500).json({ error: error.message });
+    console.error('❌ [leadTasks/generate] Erro ao gerar tarefas automáticas:', {
+      error: error.message,
+      stack: error.stack,
+      body: req.body
+    });
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
   }
 });
 

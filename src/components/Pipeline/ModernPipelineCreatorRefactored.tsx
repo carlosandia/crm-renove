@@ -1,21 +1,19 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Pipeline, PipelineStage, CustomField } from '../../types/Pipeline';
 import { User } from '../../types/User';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { usePipelineNameValidation } from '../../hooks/usePipelineNameValidation';
-import { showErrorToast, showWarningToast } from '../../hooks/useToast';
+import { showErrorToast, showWarningToast, showSuccessToast } from '../../hooks/useToast';
+import { useQueryClient } from '@tanstack/react-query';
+import { withSilentRetry } from '../../utils/supabaseRetry';
+import { useIntelligentCache } from '../../utils/intelligentCache';
 
-// AIDEV-NOTE: Helper para logging consolidado - evita spam no console
-const logPipelineError = (context: string, error: any, isCritical = false) => {
-  if (process.env.NODE_ENV === 'development') {
-    if (isCritical) {
-      console.error(`❌ [PipelineCreator:${context}] Erro crítico:`, error.message || error);
-    } else {
-      console.warn(`⚠️ [PipelineCreator:${context}] Aviso (não crítico):`, error.message || error);
-    }
-  }
-};
+// AIDEV-NOTE: Helper para logging estruturado usando logger
+import { loggers } from '../../utils/logger';
+
+// ✅ CORREÇÃO: Importar CadenceApiService para uso consistente
+import { CadenceApiService } from '../../services/cadenceApiService';
 
 // shadcn/ui components
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -25,11 +23,20 @@ import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Checkbox } from '../ui/checkbox';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../ui/alert-dialog';
 
 // Magic UI components
 import { AnimatedCard } from '../ui/animated-card';
 import { BlurFade } from '../ui/blur-fade';
-// ShimmerButton removido - usando Button padrão do shadcn/ui
 
 // Subcomponentes especializados
 import { useStageManager, StageManagerRender } from './stages/ImprovedStageManager';
@@ -37,11 +44,10 @@ import { useCustomFieldsManager, CustomFieldsManagerRender } from './fields';
 import { useCadenceManager, CadenceManagerRender } from './cadence';
 import { useLocalDistributionManager, DistributionManagerRender, DistributionRule } from './distribution';
 import { useTemperatureConfig, TemperatureConfigRender } from './temperature';
-// ✅ OUTCOME REASONS: Importar componente e hook
-import OutcomeReasonsConfiguration from './configuration/OutcomeReasonsConfiguration';
-import { useOutcomeReasonsManager } from '../../hooks/useOutcomeReasonsManager';
-// ✅ QUALIFICATION: Importar componente de qualificação
-import QualificationRulesManager from './configuration/QualificationRulesManager';
+
+// ✅ NOVAS ABAS: Importar os 2 novos componentes para as abas expandidas
+import QualificationManager, { QualificationRules } from './QualificationManager';
+import MotivesManager, { OutcomeReasons } from './MotivesManager';
 
 // Icons
 import { 
@@ -59,6 +65,8 @@ import {
   Lightbulb,
   Award,
   TrendingUp,
+  Users,
+  Trophy,
 } from 'lucide-react';
 
 // Shared components
@@ -67,8 +75,52 @@ import { SectionHeader } from './shared/SectionHeader';
 // Constants
 import { PIPELINE_UI_CONSTANTS } from '../../styles/pipeline-constants';
 
+const logPipelineError = (context: string, error: any, isCritical = false) => {
+  if (isCritical) {
+    loggers.apiError(`PipelineCreator:${context}`, error, { 
+      component: 'ModernPipelineCreatorRefactored',
+      context 
+    });
+  } else {
+    console.warn(`⚠️ [PipelineCreator:${context}] Aviso (não crítico):`, error.message || error);
+  }
+};
+
+// ✅ NOVA: Função utilitária para identificar etapas que NÃO são finais (podem ter cadências)
+const isNonFinalStage = (stage: PipelineStage): boolean => {
+  // ✅ CRITÉRIO 1: Etapas finais têm order_index >= 998
+  if (stage.order_index >= 998) {
+    return false;
+  }
+  
+  // ✅ CRITÉRIO 2: Nomes de etapas finais conhecidos
+  const finalStageNames = [
+    'Ganho', 'Perdido', 
+    'Closed Won', 'Closed Lost',
+    'Ganha', 'Perdida',
+    'Won', 'Lost',
+    'Finalizado', 'Cancelado'
+  ];
+  
+  const stageName = stage.name?.trim().toLowerCase();
+  const isFinalByName = finalStageNames.some(finalName => 
+    stageName === finalName.toLowerCase()
+  );
+  
+  if (isFinalByName) {
+    return false;
+  }
+  
+  // ✅ CRITÉRIO 3: Etapas do sistema marcadas como finais
+  if (stage.is_system_stage && (stageName.includes('won') || stageName.includes('lost'))) {
+    return false;
+  }
+  
+  return true;
+};
+
 // Interfaces
-interface CustomField {
+interface LocalCustomField {
   id?: string;
   field_name: string;
   field_label: string;
@@ -100,7 +152,7 @@ interface CadenceConfig {
   is_active: boolean;
 }
 
-interface DistributionRule {
+interface LocalDistributionRule {
   mode: 'manual' | 'rodizio';
   is_active: boolean;
   working_hours_only: boolean;
@@ -119,29 +171,28 @@ interface PipelineFormData {
   description: string;
   member_ids: string[];
   stages: Omit<PipelineStage, 'id' | 'pipeline_id' | 'created_at' | 'updated_at'>[];
-  custom_fields: CustomField[];
+  custom_fields: LocalCustomField[];
   cadence_configs: CadenceConfig[];
-  distribution_rule?: DistributionRule;
+  distribution_rule?: LocalDistributionRule;
   temperature_config?: TemperatureConfig;
-  outcome_reasons?: {
-    won_reasons: Array<{ reason_text: string; display_order: number; }>;
-    lost_reasons: Array<{ reason_text: string; display_order: number; }>;
-  };
-  qualification_rules?: {
-    mql: Array<{ name: string; conditions: any[]; is_active: boolean; }>;
-    sql: Array<{ name: string; conditions: any[]; is_active: boolean; }>;
-  };
+  // ✅ NOVAS ABAS: Campos das 2 novas abas
+  qualification_rules?: QualificationRules;
+  outcome_reasons?: OutcomeReasons;
 }
 
 interface ModernPipelineCreatorProps {
   members: User[];
   pipeline?: Pipeline;
-  onSubmit: (data: PipelineFormData, shouldRedirect?: boolean) => void;
+  onSubmit: (data: PipelineFormData, shouldRedirect?: boolean) => Promise<Pipeline | void>;
   onCancel: () => void;
   title: string;
   submitText: string;
   onDuplicatePipeline?: () => Promise<void>;
   onArchivePipeline?: () => Promise<void>;
+  // ✅ NOVA: Callback para receber pipeline atualizada
+  onPipelineUpdated?: (pipeline: Pipeline) => void;
+  // ✅ NOVA: Callback para expor o footer
+  onFooterRender?: (footerElement: React.ReactNode) => void;
 }
 
 const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
@@ -153,11 +204,19 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
   submitText,
   onDuplicatePipeline,
   onArchivePipeline,
+  onPipelineUpdated,
+  onFooterRender,
 }) => {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const cacheManager = useIntelligentCache(true); // Debug mode ativo
   
-  // ✅ CORREÇÃO 3: Hook de validação de nome único
-  // Para edição, não passar nome inicial para evitar validação automática
+  // ✅ NOVO: Estado simples para detectar mudanças não salvas
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+  
+  // Hook de validação de nome único
   const pipelineNameValidation = usePipelineNameValidation(
     '', // Não passar nome inicial para evitar validação automática
     pipeline?.id
@@ -183,198 +242,232 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
       warm_days: 7,
       cold_days: 14
     },
-    outcome_reasons: {
-      won_reasons: [],
-      lost_reasons: []
-    },
-    qualification_rules: {
-      mql: [],
-      sql: []
-    }
+    // ✅ NOVAS ABAS: Inicialização dos campos das novas abas
+    qualification_rules: { mql: [], sql: [] },
+    outcome_reasons: { won: [], lost: [] }
   });
   
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('basic');
+  
+  // ✅ NOVA: Estados para feedback visual de salvamento
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // ✅ NOVA: Referência para evitar re-inicialização desnecessária
+  const lastInitializedPipelineId = useRef<string | null>(null);
   const [isIntentionalSubmit, setIsIntentionalSubmit] = useState(false);
   const [isExplicitButtonClick, setIsExplicitButtonClick] = useState(false);
-
-  // ✅ CORREÇÃO CRÍTICA: Callback com debounce para evitar múltiplas chamadas
-  const handleStagesChangeDebounced = React.useRef<NodeJS.Timeout | null>(null);
+  const [savingActivities, setSavingActivities] = useState(false);
+  const [isStageAction, setIsStageAction] = useState(false);
+  const [isNavigationChange, setIsNavigationChange] = useState(false);
   
-  const handleStagesChange = React.useCallback((customStages: PipelineStage[]) => {
+  // ✅ NOVO: Flag para detectar mudanças de distribuição
+  const [hasDistributionChanges, setHasDistributionChanges] = useState(false);
+  
+  // ✅ NOVO: Flag para detectar mudanças de qualificação
+  const [hasQualificationChanges, setHasQualificationChanges] = useState(false);
+  
+  // ✅ NOVO: Flag para detectar mudanças de motivos
+  const [hasMotivesChanges, setHasMotivesChanges] = useState(false);
+
+  // ✅ NOVO: Função para marcar formulário como modificado (só após inicialização)
+  const markFormDirty = useCallback(() => {
+    if (!hasUnsavedChanges && isInitialized) {
+      setHasUnsavedChanges(true);
+      console.log('📝 [Form] Marcado como modificado');
+    }
+  }, [hasUnsavedChanges, isInitialized]);
+
+  // ✅ NOVO: Função para limpar estado de mudanças
+  const markFormClean = useCallback(() => {
+    setHasUnsavedChanges(false);
+    setHasDistributionChanges(false);
+    setHasQualificationChanges(false);
+    console.log('✅ [Form] Marcado como limpo (incluindo distribuição e qualificação)');
+  }, []);
+
+  // ✅ NOVO: Referência para acessar estado do distributionManager
+  const distributionManagerRef = useRef<{ isInitializing: boolean } | null>(null);
+
+  // Callbacks para mudanças que marcam o formulário como dirty
+  const handleStagesChange = useCallback((customStages: PipelineStage[]) => {
     console.log('🔄 [handleStagesChange] Recebido:', {
       customStagesCount: customStages.length,
-      customStages: customStages.map((s: PipelineStage) => ({ name: s.name, order: s.order_index })),
       isEditMode: !!pipeline?.id,
-      pipelineId: pipeline?.id
     });
     
-    // ✅ CORREÇÃO CRÍTICA: No modo criação, não atualizar formData para evitar disparo de useEffects
-    // As etapas serão aplicadas apenas no submit manual
-    if (!pipeline?.id) {
-      console.log('⚠️ [handleStagesChange] BLOQUEADO: Não atualizar formData em modo criação:', {
-        pipelineId: pipeline?.id,
-        isCreationMode: !pipeline?.id,
-        customStagesCount: customStages.length,
-        reason: 'Evitar disparo de auto-save durante criação'
-      });
-      return;
-    }
+    setFormData(prev => {
+      const systemStages = prev.stages.filter(stage => stage.is_system_stage);
+      const allStages = [...systemStages, ...customStages];
+      return { ...prev, stages: allStages };
+    });
     
-    // Limpar timeout anterior
-    if (handleStagesChangeDebounced.current) {
-      clearTimeout(handleStagesChangeDebounced.current);
+    if (pipeline?.id) {
+      markFormDirty();
+      // ✅ CRÍTICO: Flag para identificar mudanças de stage
+      setIsStageAction(true);
+      console.log('🆕 [handleStagesChange] Marcando mudança como ação de stage');
     }
+  }, [pipeline?.id, markFormDirty]);
+
+  const handleFieldsUpdate = useCallback((custom_fields: LocalCustomField[]) => {
+    console.log('🔄 [handleFieldsUpdate] Atualizando campos:', {
+      fieldsCount: custom_fields.length,
+    });
     
-    // ✅ CORREÇÃO: Reduzir debounce para 100ms para melhor responsividade no drag
-    handleStagesChangeDebounced.current = setTimeout(() => {
-      console.log('🔄 [handleStagesChange] Executando callback debounced (edit mode)...', {
-        isEditMode: !!pipeline?.id,
-        pipelineId: pipeline?.id
-      });
-      
-      setFormData(prev => {
-        const systemStages = prev.stages.filter(stage => stage.is_system_stage);
-        const allStages = [...systemStages, ...customStages];
-        
-        console.log('🔄 [handleStagesChange] Atualizando formData.stages (edit mode):', {
-          prevStagesCount: prev.stages.length,
-          systemStagesCount: systemStages.length,
-          customStagesCount: customStages.length,
-          totalStages: allStages.length,
-          allStages: allStages.map(s => ({ name: s.name, order: s.order_index, isSystem: s.is_system_stage }))
-        });
-        
-        return { ...prev, stages: allStages };
-      });
-      
-      console.log('✅ [handleStagesChange] FormData atualizado, auto-save será executado (edit mode)');
-    }, 100); // Reduzido de 500ms para 100ms
+    setFormData(prev => ({ ...prev, custom_fields }));
+    // ✅ CORREÇÃO CRÍTICA: NÃO marcar formulário como dirty para campos customizados
+    // Campos customizados são salvos via API própria, não devem afetar estado do pipeline
+    // if (pipeline?.id) markFormDirty(); // REMOVIDO: Causa fechamento automático do modal
   }, [pipeline?.id]);
 
-  // ✅ CORREÇÃO CRÍTICA: Memoizar initialStages para evitar loop infinito
-  const initialCustomStages = React.useMemo(() => {
-    console.log('🔍 [ModernPipelineCreatorRefactored] Calculando initialCustomStages:', {
-      totalStages: formData.stages?.length || 0,
-      allStages: formData.stages?.map(s => ({ name: s.name, isSystem: s.is_system_stage })) || [],
-      customStages: formData.stages?.filter(stage => !stage.is_system_stage)?.length || 0
+  // ✅ NOVO: Throttling para evitar logs repetitivos
+  const cadenceLogThrottleRef = useRef<NodeJS.Timeout | null>(null);
+  const lastCadenceCountRef = useRef<number>(0);
+
+  const handleCadencesChange = useCallback((cadence_configs: any[]) => {
+    // ✅ CORREÇÃO: Capturar valor anterior ANTES da comparação
+    const previousCount = lastCadenceCountRef.current;
+    const currentCount = cadence_configs.length;
+    
+    // ✅ OTIMIZADO: Log apenas quando há mudanças significativas com throttling robusto
+    if (currentCount !== previousCount) {
+      if (cadenceLogThrottleRef.current) {
+        clearTimeout(cadenceLogThrottleRef.current);
+      }
+      
+      cadenceLogThrottleRef.current = setTimeout(() => {
+        // ✅ CORREÇÃO: Usar valores capturados para comparação precisa
+        const changeType = currentCount > previousCount ? 'adição' : 'exclusão';
+        console.log('🔄 [PipelineCreator] Cadências:', {
+          count: currentCount,
+          change: changeType,
+          diff: Math.abs(currentCount - previousCount)
+        });
+      }, 2000); // Aumentado de 1s para 2s
+      
+      // ✅ CRÍTICO: Atualizar referência APÓS capturar os valores para comparação
+      lastCadenceCountRef.current = currentCount;
+    }
+    
+    setFormData(prev => ({ ...prev, cadence_configs }));
+    if (pipeline?.id) markFormDirty();
+  }, [pipeline?.id, markFormDirty]);
+
+  const handleDistributionRuleChange = useCallback((distribution_rule: DistributionRule, isNavChange = false) => {
+    console.log('🔄 [handleDistributionRuleChange] Atualizando distribuição', { isNavChange });
+    
+    // ✅ CRÍTICO: Definir flag de navegação antes de qualquer operação
+    setIsNavigationChange(isNavChange);
+    setFormData(prev => ({ ...prev, distribution_rule }));
+    
+    // ✅ CORREÇÃO CRÍTICA: Só marcar como dirty se não for mudança de navegação e não estiver inicializando
+    const isDistributionInitializing = distributionManagerRef.current?.isInitializing;
+    if (pipeline?.id && !isDistributionInitializing && !isNavChange) {
+      markFormDirty();
+      // ✅ NOVO: Marcar que há mudanças de distribuição
+      setHasDistributionChanges(true);
+      console.log('📝 [handleDistributionRuleChange] Formulário e distribuição marcados como modificados');
+    } else if (isDistributionInitializing) {
+      console.log('🔇 [handleDistributionRuleChange] Mudança durante inicialização do distributionManager (ignorada)');
+    } else if (isNavChange) {
+      console.log('🔇 [handleDistributionRuleChange] Mudança de navegação entre modos (ignorada)');
+    }
+    
+    // ✅ CRÍTICO: Reset da flag após um breve delay para evitar submits automáticos
+    if (isNavChange) {
+      setTimeout(() => {
+        setIsNavigationChange(false);
+        console.log('🔄 [handleDistributionRuleChange] Flag de navegação resetada');
+      }, 100);
+    }
+  }, [pipeline?.id, markFormDirty]);
+
+  const handleTemperatureConfigChange = useCallback((temperature_config: TemperatureConfig) => {
+    console.log('🌡️ [handleTemperatureConfigChange] Recebido:', temperature_config);
+    setFormData(prev => ({ ...prev, temperature_config }));
+    if (pipeline?.id) markFormDirty();
+  }, [pipeline?.id, markFormDirty]);
+
+  const handleQualificationChange = useCallback((qualification_rules: QualificationRules) => {
+    console.log('🔄 [handleQualificationChange] Atualizando qualificação');
+    setFormData(prev => ({ ...prev, qualification_rules }));
+    
+    // ✅ CORREÇÃO CRÍTICA: Usar flag específica ao invés de markFormDirty para evitar fechamento do modal
+    if (pipeline?.id) {
+      setHasQualificationChanges(true);
+      console.log('📝 [handleQualificationChange] Qualificação marcada como modificada (sem fechar modal)');
+    }
+  }, [pipeline?.id]);
+
+  const handleMotivesChange = useCallback((outcome_reasons: OutcomeReasons) => {
+    console.log('🔄 [handleMotivesChange] Atualizando motivos');
+    setFormData(prev => ({ ...prev, outcome_reasons }));
+    setHasMotivesChanges(true); // ✅ NOVO: Flag específica para motivos
+    if (pipeline?.id) markFormDirty();
+  }, [pipeline?.id, markFormDirty]);
+
+  // ✅ NOVO: Handlers para campos básicos com debounce
+  const handleNameChange = useCallback((value: string) => {
+    setFormData(prev => ({ ...prev, name: value }));
+    // Sincronizar com hook de validação se necessário
+    if (pipelineNameValidation.name !== value) {
+      pipelineNameValidation.updateName(value);
+    }
+    if (pipeline?.id) markFormDirty();
+  }, [pipeline?.id, markFormDirty, pipelineNameValidation]);
+
+  const handleDescriptionChange = useCallback((value: string) => {
+    setFormData(prev => ({ ...prev, description: value }));
+    if (pipeline?.id) markFormDirty();
+  }, [pipeline?.id, markFormDirty]);
+
+  const handleMemberToggle = useCallback((memberId: string) => {
+    setFormData(prev => {
+      const newMemberIds = prev.member_ids.includes(memberId)
+        ? prev.member_ids.filter(id => id !== memberId)
+        : [...prev.member_ids, memberId];
+      return { ...prev, member_ids: newMemberIds };
     });
+    if (pipeline?.id) markFormDirty();
+  }, [pipeline?.id, markFormDirty]);
+
+  // Inicializar managers especializados
+  const initialCustomStages = React.useMemo(() => {
     return formData.stages.filter(stage => !stage.is_system_stage);
   }, [formData.stages]);
   
-  // ✅ CLEANUP: Limpar timeout quando componente desmontar
-  React.useEffect(() => {
-    return () => {
-      if (handleStagesChangeDebounced.current) {
-        clearTimeout(handleStagesChangeDebounced.current);
-      }
-    };
-  }, []);
-
-  // Inicializar managers especializados
   const stageManager = useStageManager({
     initialStages: initialCustomStages,
     onStagesChange: handleStagesChange
   });
 
-  // ✅ CORREÇÃO CRÍTICA: Callback para atualização de campos que bloqueia em modo criação
-  const handleFieldsUpdate = useCallback((custom_fields: CustomField[]) => {
-    // ✅ CORREÇÃO: No modo criação, não atualizar formData para evitar disparo de useEffects
-    if (!pipeline?.id) {
-      console.log('⚠️ [handleFieldsUpdate] BLOQUEADO: Não atualizar formData em modo criação:', {
-        pipelineId: pipeline?.id,
-        isCreationMode: !pipeline?.id,
-        fieldsCount: custom_fields.length,
-        reason: 'Evitar disparo de auto-save durante criação'
-      });
-      return;
-    }
-    
-    console.log('🔄 [handleFieldsUpdate] Atualizando campos em modo edição:', {
-      pipelineId: pipeline?.id,
-      fieldsCount: custom_fields.length
-    });
-    
-    setFormData(prev => ({ ...prev, custom_fields }));
-  }, [pipeline?.id]);
-
   const fieldsManager = useCustomFieldsManager({
     customFields: formData.custom_fields,
-    onFieldsUpdate: handleFieldsUpdate
+    onFieldsUpdate: handleFieldsUpdate,
+    pipelineId: pipeline?.id
   });
-
-  // ✅ CORREÇÃO CRÍTICA: Callback para cadências que bloqueia em modo criação
-  const handleCadencesChange = useCallback((cadence_configs: any[]) => {
-    // ✅ CORREÇÃO: No modo criação, não atualizar formData para evitar disparo de useEffects
-    if (!pipeline?.id) {
-      console.log('⚠️ [handleCadencesChange] BLOQUEADO: Não atualizar formData em modo criação:', {
-        pipelineId: pipeline?.id,
-        isCreationMode: !pipeline?.id,
-        cadencesCount: cadence_configs.length,
-        reason: 'Evitar disparo de auto-save durante criação'
-      });
-      return;
-    }
-    
-    console.log('🔄 [handleCadencesChange] Atualizando cadências em modo edição:', {
-      pipelineId: pipeline?.id,
-      cadencesCount: cadence_configs.length
-    });
-    
-    setFormData(prev => ({ ...prev, cadence_configs }));
-  }, [pipeline?.id]);
 
   const cadenceManager = useCadenceManager({
     initialCadences: formData.cadence_configs,
     availableStages: stageManager.stages,
-    onCadencesChange: handleCadencesChange
+    onCadencesChange: handleCadencesChange,
+    // ✅ NOVO: Habilitar integração com API se pipeline existir
+    pipelineId: pipeline?.id,
+    tenantId: user?.tenant_id,
+    enableApiIntegration: !!pipeline?.id
   });
-
-  // ✅ CORREÇÃO CRÍTICA: Callback para distribuição que bloqueia em modo criação
-  const handleDistributionRuleChange = useCallback((distribution_rule: DistributionRule) => {
-    // ✅ CORREÇÃO: No modo criação, não atualizar formData para evitar disparo de useEffects
-    if (!pipeline?.id) {
-      console.log('⚠️ [handleDistributionRuleChange] BLOQUEADO: Não atualizar formData em modo criação:', {
-        pipelineId: pipeline?.id,
-        isCreationMode: !pipeline?.id,
-        distributionRule: distribution_rule,
-        reason: 'Evitar disparo de auto-save durante criação'
-      });
-      return;
-    }
-    
-    console.log('🔄 [handleDistributionRuleChange] Atualizando distribuição em modo edição:', {
-      pipelineId: pipeline?.id,
-      distributionRule: distribution_rule
-    });
-    
-    setFormData(prev => ({ ...prev, distribution_rule }));
-  }, [pipeline?.id]);
 
   const distributionManager = useLocalDistributionManager({
     pipelineId: pipeline?.id || '',
     onRuleChange: handleDistributionRuleChange
   });
 
-  // Callback para mudanças de temperatura
-  const handleTemperatureConfigChange = useCallback((temperature_config: TemperatureConfig) => {
-    console.log('🌡️ [handleTemperatureConfigChange] Recebido:', {
-      temperature_config,
-      isEditMode: !!pipeline?.id,
-      pipelineId: pipeline?.id
-    });
-    
-    // ✅ CORREÇÃO: Só atualizar formData se estivermos em modo edição
-    // Durante criação, temperatura é apenas local e não deve disparar auto-save
-    if (pipeline?.id) {
-      console.log('✅ [handleTemperatureConfigChange] Modo edição: atualizando formData');
-      setFormData(prev => ({ ...prev, temperature_config }));
-    } else {
-      console.log('⚠️ [handleTemperatureConfigChange] Modo criação: ignorando atualização para evitar auto-save indevido');
-      // Em modo criação, não atualizar formData para evitar auto-save
-      // A configuração será aplicada quando o usuário clicar em "Criar Pipeline"
-    }
-  }, [pipeline?.id]);
+  // ✅ NOVO: Atualizar referência para o estado do distributionManager
+  useEffect(() => {
+    distributionManagerRef.current = { isInitializing: distributionManager.isInitializing };
+  }, [distributionManager.isInitializing]);
 
   const temperatureManager = useTemperatureConfig({
     pipelineId: pipeline?.id,
@@ -383,932 +476,594 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
     onConfigChange: handleTemperatureConfigChange
   });
 
-  // ✅ OUTCOME REASONS: Memoizar initialData para evitar re-criação
-  const initialOutcomeData = React.useMemo(() => {
-    if (!formData.outcome_reasons) return undefined;
-    
-    return {
-      won_reasons: formData.outcome_reasons.won_reasons.map((reason, index) => ({
-        reason_text: reason.reason_text,
-        display_order: reason.display_order,
-        is_active: true
-      })),
-      lost_reasons: formData.outcome_reasons.lost_reasons.map((reason, index) => ({
-        reason_text: reason.reason_text,
-        display_order: reason.display_order,
-        is_active: true
-      }))
-    };
-  }, [formData.outcome_reasons]);
-
-  // ✅ OUTCOME REASONS: Manager para motivos de ganho/perda
-  const outcomeReasonsManager = useOutcomeReasonsManager({
-    initialData: initialOutcomeData,
-    pipelineId: pipeline?.id
-  });
-
-  // ✅ QUALIFICATION: Callback para mudanças nas regras de qualificação
-  const handleQualificationRulesChange = useCallback((qualification_rules: any) => {
-    // ✅ CORREÇÃO: No modo criação, não atualizar formData para evitar disparo de useEffects
-    if (!pipeline?.id) {
-      console.log('⚠️ [handleQualificationRulesChange] BLOQUEADO: Não atualizar formData em modo criação:', {
-        pipelineId: pipeline?.id,
-        isCreationMode: !pipeline?.id,
-        rulesCount: (qualification_rules.mql?.length || 0) + (qualification_rules.sql?.length || 0),
-        reason: 'Evitar disparo de auto-save durante criação'
-      });
-      return;
-    }
-    
-    console.log('🔄 [handleQualificationRulesChange] Atualizando regras de qualificação em modo edição:', {
-      pipelineId: pipeline?.id,
-      mqlRules: qualification_rules.mql?.length || 0,
-      sqlRules: qualification_rules.sql?.length || 0
-    });
-    
-    setFormData(prev => ({ ...prev, qualification_rules }));
-  }, [pipeline?.id]);
-  
-  // ✅ CORREÇÃO: Função para aplicar configuração de temperatura no submit manual
-  const applyTemperatureConfigOnSubmit = useCallback(() => {
-    if (!pipeline?.id && temperatureManager.temperatureConfig) {
-      console.log('🌡️ [applyTemperatureConfigOnSubmit] Aplicando configuração de temperatura no submit manual:', temperatureManager.temperatureConfig);
-      setFormData(prev => ({ 
-        ...prev, 
-        temperature_config: temperatureManager.temperatureConfig 
+  // ✅ CORRIGIDO: Usar apenas campos do fieldsManager (já inclui sistema + customizados)
+  const getAvailableFields = useCallback(() => {
+    // fieldsManager.customFields já inclui campos sistema + customizados
+    return (fieldsManager.customFields || [])
+      .filter(field => field.field_name && field.field_label) // Garantir que têm nome e label
+      .map(field => ({
+        value: field.field_name,
+        label: field.field_label,
+        type: field.field_type
       }));
-    }
-  }, [pipeline?.id, temperatureManager.temperatureConfig]);
+  }, [fieldsManager.customFields]);
 
-  // ✅ CORREÇÃO CRÍTICA: Auto-salvamento quando etapas são modificadas (APENAS NA EDIÇÃO)
-  const autoSaveTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-  
-  // ✅ CORREÇÃO: Usar referência estabilizada para stages para evitar useEffect indevido
-  const stagesRef = React.useRef(formData.stages);
-  const stagesStringified = JSON.stringify(formData.stages?.map(s => ({ name: s.name, order: s.order_index, isSystem: s.is_system_stage })) || []);
-  
-  React.useEffect(() => {
-    // ✅ CORREÇÃO CRÍTICA: Só executar se stages realmente mudaram, não apenas formData
-    const currentStagesStringified = JSON.stringify(formData.stages?.map(s => ({ name: s.name, order: s.order_index, isSystem: s.is_system_stage })) || []);
-    const previousStagesStringified = JSON.stringify(stagesRef.current?.map(s => ({ name: s.name, order: s.order_index, isSystem: s.is_system_stage })) || []);
-    
-    if (currentStagesStringified === previousStagesStringified) {
-      return;
+  // ✅ NOVO: Handler para fechar modal com verificação de mudanças
+  const handleCloseAttempt = useCallback(() => {
+    if (hasUnsavedChanges && pipeline?.id) {
+      setShowUnsavedDialog(true);
+    } else {
+      onCancel();
     }
-    
-    stagesRef.current = formData.stages;
-    
-    // ============================================
-    // OTIMIZADO: Logs removidos para evitar HMR excessivo
-    // ============================================
-    
-    // ✅ CORREÇÃO CRÍTICA: Auto-save APENAS para edição (quando pipeline.id existe)
-    // Na criação (pipeline === undefined), não deve haver auto-save
-    if (!pipeline?.id) {
-      return;
-    }
-    
-    // Só auto-salvar se há etapas para salvar
-    if (!formData.stages?.length) {
-      return;
-    }
-    
-    const customStages = formData.stages.filter(stage => !stage.is_system_stage);
-    
-    // Só auto-salvar se há etapas customizadas
-    if (customStages.length === 0) {
-      return;
-    }
-    
-    // Auto-save timer iniciado
-    
-    // Limpar timeout anterior
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current);
-    }
-    
-    // ✅ CORREÇÃO: Reduzir tempo de auto-save para 500ms para melhor responsividade no drag
-    autoSaveTimeoutRef.current = setTimeout(async () => {
-      try {
-        // Auto-save de etapas em execução
-        await onSubmit(formData, false, { isUpdate: true });
-        // Auto-salvamento de etapas concluído
-      } catch (error) {
-        // AIDEV-NOTE: Silenciar erro de auto-salvamento para evitar spam no console
-        // O erro não afeta a funcionalidade principal
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('⚠️ Auto-salvamento falhou (não crítico):', error.message);
-        }
-      }
-    }, 500);
-    
-    // Cleanup do timeout
-    return () => {
-      if (autoSaveTimeoutRef.current) {
-        clearTimeout(autoSaveTimeoutRef.current);
-      }
-    };
-  }, [stagesStringified, pipeline?.id, onSubmit]);
+  }, [hasUnsavedChanges, pipeline?.id, onCancel]);
 
-  // ✅ CORREÇÃO CRÍTICA: Auto-salvamento quando campos customizados são modificados (APENAS NA EDIÇÃO)
-  const customFieldsRef = React.useRef(formData.custom_fields);
-  const customFieldsStringified = JSON.stringify(formData.custom_fields?.map(f => ({ name: f.field_name, label: f.field_label, type: f.field_type, required: f.is_required })) || []);
-  
-  React.useEffect(() => {
-    // ✅ CORREÇÃO CRÍTICA: Só executar se campos realmente mudaram, não apenas formData
-    const currentFieldsStringified = JSON.stringify(formData.custom_fields?.map(f => ({ name: f.field_name, label: f.field_label, type: f.field_type, required: f.is_required })) || []);
-    const previousFieldsStringified = JSON.stringify(customFieldsRef.current?.map(f => ({ name: f.field_name, label: f.field_label, type: f.field_type, required: f.is_required })) || []);
+  // ✅ NOVO: Salvar mudanças e fechar
+  const handleSaveAndClose = useCallback(async () => {
+    if (!pipeline?.id) return;
     
-    if (currentFieldsStringified === previousFieldsStringified) {
-      console.log('⚪ [Auto-save Fields] Campos não mudaram, ignorando useEffect');
-      return;
-    }
-    
-    customFieldsRef.current = formData.custom_fields;
-    
-    console.log('🔍 [Auto-save Fields] Executando useEffect - campos realmente mudaram:', {
-      pipelineId: pipeline?.id,
-      isEditMode: !!pipeline?.id,
-      customFieldsLength: formData.custom_fields?.length || 0
-    });
-    
-    // ✅ CORREÇÃO CRÍTICA: Auto-save APENAS para edição (quando pipeline.id existe)
-    // Na criação (pipeline === undefined), não deve haver auto-save
-    if (!pipeline?.id) {
-      console.log('⚠️ [Auto-save Fields] BLOQUEADO: modo criação (sem pipeline ID)', {
-        pipelineId: pipeline?.id,
-        isCreationMode: !pipeline?.id,
-        reason: 'Auto-save de campos não permitido durante criação'
-      });
-      return;
-    }
-    
-    // Só auto-salvar se há campos customizados para salvar
-    if (!formData.custom_fields?.length) {
-      console.log('⚠️ [Auto-save Fields] Cancelado: sem campos customizados', {
-        pipelineId: pipeline?.id,
-        fieldsLength: formData.custom_fields?.length
-      });
-      return;
-    }
-    
-    // Filtrar apenas campos personalizados (não obrigatórios do sistema)
-    const systemRequiredFields = ['nome_lead', 'email_lead', 'telefone_lead'];
-    const customFields = formData.custom_fields.filter(field => 
-      !systemRequiredFields.includes(field.field_name)
-    );
-    
-    // Só auto-salvar se há campos customizados
-    if (customFields.length === 0) {
-      console.log('⚠️ [Auto-save Fields] Cancelado: sem campos customizados reais');
-      return;
-    }
-    
-    console.log('🔄 [Auto-save Fields] Iniciando auto-save timer...', {
-      pipelineId: pipeline.id,
-      customFieldsCount: customFields.length,
-      fields: customFields.map(f => ({ name: f.field_name, label: f.field_label, type: f.field_type }))
-    });
-    
-    // Limpar timeout anterior
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current);
-    }
-    
-    // Auto-salvar após 3 segundos de inatividade (aumentado para reduzir conflitos)
-    autoSaveTimeoutRef.current = setTimeout(async () => {
-      try {
-        const autosaveOptions = { onlyCustomFields: true, isUpdate: true, isAutoSave: true };
-        console.log('🔄 [Auto-save Fields] Executando auto-save de campos:', {
-          pipelineId: pipeline.id,
-          customFieldsCount: customFields.length,
-          autosaveOptions,
-          timestamp: new Date().toISOString()
-        });
-        
-        await onSubmit(formData, false, autosaveOptions);
-        console.log('✅ Auto-salvamento de campos customizados concluído!');
-      } catch (error: any) {
-        console.warn('⚠️ Erro no auto-salvamento de campos (não crítico):', error.message);
-      }
-    }, 3000);
-    
-    // Cleanup do timeout
-    return () => {
-      if (autoSaveTimeoutRef.current) {
-        clearTimeout(autoSaveTimeoutRef.current);
-      }
-    };
-  }, [customFieldsStringified, pipeline?.id, onSubmit]);
-
-  // ✅ CORREÇÃO: Auto-salvamento de cadências desabilitado para evitar erro durante carregamento
-  // O auto-save de cadências será feito apenas no submit manual
-  // React.useEffect(() => {
-  //   // Auto-save temporariamente desabilitado
-  // }, [formData.cadence_configs, pipeline?.id, onSubmit]);
-
-  const loadPipelineData = useCallback(async () => {
-    if (!pipeline || !pipeline.id) {
-      console.warn('⚠️ [loadPipelineData] Pipeline ou ID não fornecido:', { pipeline, id: pipeline?.id });
-      return;
-    }
-    
-    setLoading(true);
     try {
-      // Carregando dados da pipeline: ${pipeline.id}
+      setLoading(true);
+      console.log('💾 [handleSaveAndClose] Salvando mudanças antes de fechar');
       
-      // ✅ CARREGAR VENDEDORES VINCULADOS DA PIPELINE
-      let memberIds: string[] = [];
-      try {
-        const { data: pipelineMembers, error: membersError } = await supabase
-          .from('pipeline_members')
-          .select('member_id')
-          .eq('pipeline_id', pipeline.id);
-
-        if (membersError) {
-          console.warn('⚠️ [loadPipelineData] Erro ao carregar vendedores vinculados:', membersError);
-        } else if (pipelineMembers) {
-          memberIds = pipelineMembers.map(pm => pm.member_id);
-          // Vendedores vinculados carregados
-        }
-      } catch (error) {
-        logPipelineError('loadMembers', error, true);
-      }
-
-      setFormData(prev => ({
-        ...prev,
-        name: pipeline.name,
-        description: pipeline.description || '',
-        member_ids: memberIds
-      }));
-
-      // ✅ INICIALIZAR VALIDADOR COM NOME DA PIPELINE SEM VALIDAR
-      pipelineNameValidation.initializeName(pipeline.name);
-
-      // ✅ CORREÇÃO 5: Carregar etapas com tratamento de erro específico
-      try {
-        const { data: stages, error: stagesError } = await supabase
-          .from('pipeline_stages')
-          .select('*')
-          .eq('pipeline_id', pipeline.id)
-          .order('order_index');
-
-        if (stagesError) {
-          console.warn('⚠️ [loadPipelineData] Erro ao carregar etapas:', stagesError);
-        } else if (stages) {
-          const stageData = stages.map(stage => ({
-            name: stage.name,
-            color: stage.color,
-            order_index: stage.order_index,
-            is_system_stage: stage.is_system_stage || false
-          }));
-          
-          // Etapas carregadas e setadas no formData
-          
-          setFormData(prev => ({ ...prev, stages: stageData }));
-          // Etapas carregadas: ${stages.length}
-        }
-      } catch (error) {
-        logPipelineError('loadStages', error, true);
-      }
-
-      // ✅ CORREÇÃO 5: Carregar campos customizados com tratamento de erro
-      try {
-        const { data: fields, error: fieldsError } = await supabase
-          .from('pipeline_custom_fields')
-          .select('*')
-          .eq('pipeline_id', pipeline.id)
-          .order('field_order');
-
-        if (fieldsError) {
-          console.warn('⚠️ [loadPipelineData] Erro ao carregar campos customizados:', fieldsError);
-        } else if (fields) {
-          setFormData(prev => ({ ...prev, custom_fields: fields }));
-          // Campos customizados carregados: ${fields.length}
-        }
-      } catch (error) {
-        logPipelineError('loadCustomFields', error, true);
-      }
-
-      // ✅ CORREÇÃO: Carregar cadências com tasks em JSONB
-      try {
-        const { data: cadences, error: cadencesError } = await supabase
-          .from('cadence_configs')
-          .select('*')
-          .eq('pipeline_id', pipeline.id);
-
-        if (cadencesError) {
-          console.warn('⚠️ [loadPipelineData] Erro ao carregar cadências:', cadencesError);
-          setFormData(prev => ({ ...prev, cadence_configs: [] }));
-        } else if (cadences && cadences.length > 0) {
-          const cadenceData = cadences.map(cadence => ({
-            id: cadence.id,
-            stage_name: cadence.stage_name,
-            stage_order: cadence.stage_order,
-            tasks: Array.isArray(cadence.tasks) ? cadence.tasks : (typeof cadence.tasks === 'string' && cadence.tasks !== '[]' ? JSON.parse(cadence.tasks) : []),
-            is_active: cadence.is_active
-          }));
-          
-          setFormData(prev => ({ ...prev, cadence_configs: cadenceData }));
-          console.log('✅ [loadPipelineData] Cadências carregadas:', {
-            count: cadences.length,
-            cadences: cadenceData.map(c => ({ stage: c.stage_name, tasks: c.tasks.length, active: c.is_active }))
-          });
-        } else {
-          setFormData(prev => ({ ...prev, cadence_configs: [] }));
-          console.log('ℹ️ [loadPipelineData] Nenhuma cadência encontrada');
-        }
-      } catch (error) {
-        logPipelineError('loadCadences', error, true);
-        setFormData(prev => ({ ...prev, cadence_configs: [] }));
-      }
-
-      // ✅ QUALIFICATION: Carregar regras de qualificação existentes
-      try {
-        if (pipeline.qualification_rules) {
-          const qualificationRules = typeof pipeline.qualification_rules === 'string' 
-            ? JSON.parse(pipeline.qualification_rules) 
-            : pipeline.qualification_rules;
-          
-          setFormData(prev => ({ ...prev, qualification_rules: qualificationRules }));
-          console.log('✅ [loadPipelineData] Regras de qualificação carregadas:', {
-            mqlRules: qualificationRules.mql?.length || 0,
-            sqlRules: qualificationRules.sql?.length || 0
-          });
-        } else {
-          setFormData(prev => ({ 
-            ...prev, 
-            qualification_rules: { mql: [], sql: [] }
-          }));
-          console.log('ℹ️ [loadPipelineData] Nenhuma regra de qualificação encontrada');
-        }
-      } catch (error) {
-        logPipelineError('loadQualificationRules', error, false);
-        setFormData(prev => ({ 
-          ...prev, 
-          qualification_rules: { mql: [], sql: [] }
-        }));
-      }
-
-      // Carregamento concluído da pipeline
-
+      await onSubmit(formData, false);
+      markFormClean();
+      setShowUnsavedDialog(false);
+      onCancel();
     } catch (error) {
-      logPipelineError('loadPipelineData', error, true);
-      showErrorToast(
-        'Erro ao carregar dados',
-        'Erro ao carregar dados da pipeline. Alguns dados podem não estar disponíveis.'
-      );
+      console.error('❌ [handleSaveAndClose] Erro ao salvar:', error);
+      showErrorToast('Erro ao salvar', 'Não foi possível salvar as mudanças');
     } finally {
       setLoading(false);
     }
-  }, [pipeline]);
+  }, [pipeline?.id, formData, onSubmit, markFormClean, onCancel]);
 
-  // ✅ CORREÇÃO: useEffect para carregar dados quando pipeline é fornecida
-  useEffect(() => {
-    // ✅ CORREÇÃO CRÍTICA: Aguardar um tick para garantir que pipeline foi definida
-    const timer = setTimeout(() => {
-      if (pipeline && pipeline.id) {
-        // Carregando dados da pipeline para edição
-        loadPipelineData();
-      } else if (pipeline === null) {
-        // Modo criação: resetando formulário
-        // Reset form para modo criação
-        setFormData({
-          name: '',
-          description: '',
-          member_ids: [],
-          stages: [],
-          custom_fields: [],
-          cadence_configs: [],
-          distribution_rule: {
-            mode: 'manual',
-            is_active: true,
-            working_hours_only: false,
-            skip_inactive_members: true,
-            fallback_to_manual: true
-          },
-          temperature_config: {
-            hot_days: 3,
-            warm_days: 7,
-            cold_days: 14
-          },
-          qualification_rules: {
-            mql: [],
-            sql: []
-          }
-        });
-      } else {
-        // Aguardando pipeline ser definida
-      }
-    }, 100); // Aguardar 100ms para pipeline ser definida
-
-    return () => clearTimeout(timer);
-  }, [pipeline, loadPipelineData]);
-
-  const validateForm = () => {
-    console.log('🔍 [validateForm] Validando formulário:', {
-      canSubmit: pipelineNameValidation.canSubmit,
-      isNameEmpty: pipelineNameValidation.isNameEmpty,
-      hasError: pipelineNameValidation.hasError,
-      isValidating: pipelineNameValidation.isValidating,
-      name: pipelineNameValidation.name,
-      formDataName: formData.name,
-      error: pipelineNameValidation.error,
-      memberIds: formData.member_ids?.length || 0
-    });
-
-    // ✅ CORREÇÃO 3: Usar validação de nome integrada
-    if (!pipelineNameValidation.canSubmit) {
-      if (pipelineNameValidation.isNameEmpty) {
-        console.log('❌ [validateForm] Nome vazio');
-        showWarningToast('Campo obrigatório', 'Nome do pipeline é obrigatório');
-      } else if (pipelineNameValidation.hasError) {
-        console.log('❌ [validateForm] Erro na validação:', pipelineNameValidation.error);
-        showErrorToast('Nome inválido', pipelineNameValidation.error || 'Nome do pipeline inválido');
-      } else if (pipelineNameValidation.isValidating) {
-        console.log('❌ [validateForm] Ainda validando');
-        showWarningToast('Validação em andamento', 'Aguarde a validação do nome ser concluída');
-      } else {
-        console.log('❌ [validateForm] Motivo desconhecido canSubmit=false');
-        showErrorToast('Nome inválido', 'Nome do pipeline inválido');
-      }
-      return false;
-    }
+  // ✅ NOVO: Salvar mudanças sem fechar (modo edição) - CORREÇÃO PRINCIPAL
+  const handleSaveChanges = useCallback(async () => {
+    if (!pipeline?.id) return;
     
-    if (formData.member_ids.length === 0) {
-      showWarningToast('Seleção obrigatória', 'Selecione pelo menos um vendedor');
-      return false;
-    }
+    try {
+      setLoading(true);
+      setIsSaving(true);
+      console.log('💾 [handleSaveChanges] Salvando mudanças em modo edição - MODAL PERMANECE ABERTO');
+      
+      // ✅ NOVO: Salvar configurações de distribuição antes de salvar pipeline
+      if (hasDistributionChanges && distributionManager.handleSave) {
+        console.log('🔄 [handleSaveChanges] Salvando configurações de distribuição primeiro...');
+        await distributionManager.handleSave();
+        setHasDistributionChanges(false); // ✅ CORREÇÃO: Limpar flag após salvar
+        console.log('✅ [handleSaveChanges] Configurações de distribuição salvas');
+      }
 
-    return true;
+      // ✅ NOVO: Salvar regras de qualificação se houver mudanças
+      if (hasQualificationChanges && formData.qualification_rules) {
+        console.log('🔄 [handleSaveChanges] Salvando regras de qualificação...');
+        await saveQualificationRules(pipeline.id, formData.qualification_rules);
+        setHasQualificationChanges(false); // ✅ CORREÇÃO: Limpar flag após salvar
+        console.log('✅ [handleSaveChanges] Regras de qualificação salvas');
+      }
+
+      // ✅ NOVO: Salvar motivos de ganho/perda se houver mudanças
+      if (hasMotivesChanges && formData.outcome_reasons) {
+        console.log('🔄 [handleSaveChanges] Salvando motivos de ganho/perda...');
+        await saveOutcomeReasons(pipeline.id, formData.outcome_reasons);
+        setHasMotivesChanges(false); // ✅ CORREÇÃO: Limpar flag após salvar
+        console.log('✅ [handleSaveChanges] Motivos salvos');
+      }
+      
+      // ✅ CORREÇÃO: Receber pipeline atualizada do onSubmit 
+      const updatedPipeline = await onSubmit(formData, false);
+      
+      // ✅ CRÍTICO: Limpar flag após uso
+      if (isStageAction) {
+        setIsStageAction(false);
+        console.log('🧹 [handleSaveChanges] Flag isStageAction limpo após salvamento');
+      }
+      
+      // ✅ CRÍTICO: Atualização otimista do cache React Query ANTES da invalidation
+      if (updatedPipeline && user?.tenant_id) {
+        console.log('⚡ [handleSaveChanges] Aplicando update otimista no cache...');
+        
+        // Update otimista da lista de pipelines
+        const existingPipelines = queryClient.getQueryData(['pipelines', user.tenant_id]) as Pipeline[] | undefined;
+        if (existingPipelines) {
+          const updatedPipelines = existingPipelines.map(p => 
+            p.id === updatedPipeline.id ? updatedPipeline : p
+          );
+          queryClient.setQueryData(['pipelines', user.tenant_id], updatedPipelines);
+          console.log('⚡ [handleSaveChanges] Cache atualizado otimisticamente');
+        }
+        
+        // Update otimista da pipeline individual
+        queryClient.setQueryData(['pipeline', pipeline.id], updatedPipeline);
+        
+        // Notificar componente local
+        if (onPipelineUpdated) {
+          onPipelineUpdated(updatedPipeline);
+          console.log('🔄 [handleSaveChanges] Pipeline local atualizada:', {
+            name: updatedPipeline.name,
+            description: updatedPipeline.description
+          });
+        }
+      }
+      
+      // ✅ OTIMIZADO: Cache inteligente com estratégias específicas por contexto
+      console.log('🧠 [handleSaveChanges] Executando cache strategy inteligente...', {
+        tenantId: user?.tenant_id,
+        pipelineId: pipeline?.id,
+        pipelineName: pipeline?.name
+      });
+      
+      // ✅ CORRIGIDO: Usar variável correta 'pipeline' ao invés de 'editingPipeline'
+      if (pipeline?.id && user?.tenant_id) {
+        await cacheManager.handlePipelineSave(user.tenant_id, pipeline.id);
+        console.log('✅ [handleSaveChanges] Cache strategy executada com sucesso');
+      } else {
+        console.warn('⚠️ [handleSaveChanges] Pulando cache strategy - dados insuficientes:', {
+          hasPipelineId: !!pipeline?.id,
+          hasTenantId: !!user?.tenant_id
+        });
+      }
+      
+      // ✅ FINAL: Disparar evento para notificar toda a aplicação
+      if (updatedPipeline) {
+        window.dispatchEvent(new CustomEvent('pipeline-updated', {
+          detail: {
+            pipeline: updatedPipeline,
+            source: 'save-changes',
+            timestamp: new Date().toISOString()
+          }
+        }));
+        console.log('📡 [handleSaveChanges] Evento pipeline-updated disparado');
+      }
+      
+      markFormClean();
+      setHasDistributionChanges(false); // ✅ CORREÇÃO: Limpar flag de distribuição
+      // ✅ NOVO: Marcar campos como salvos (stages são gerenciados pelo pai)
+      if (fieldsManager.handleSaveAllChanges) {
+        fieldsManager.handleSaveAllChanges();
+      }
+      // ✅ NOVA: Salvar configurações de cadência no banco
+      if (cadenceManager.handleSaveAllChanges) {
+        console.log('💾 [handleSaveChanges] Salvando configurações de cadência...');
+        await cadenceManager.handleSaveAllChanges();
+        console.log('✅ [handleSaveChanges] Configurações de cadência salvas');
+      }
+      setLastSavedAt(new Date()); // ✅ NOVA: Registrar timestamp do salvamento
+      showSuccessToast('Alterações salvas', 'Pipeline atualizada com sucesso. Modal permanece aberto para edições adicionais.');
+      
+      console.log('✅ [handleSaveChanges] Cache invalidado, dados atualizados e MODAL MANTIDO ABERTO');
+      
+      // ❌ CORREÇÃO PRINCIPAL: REMOVIDO onCancel() - modal permanece aberto
+      // onCancel(); ← Esta linha causava o fechamento automático
+      
+    } catch (error) {
+      console.error('❌ [handleSaveChanges] Erro ao salvar:', error);
+      showErrorToast('Erro ao salvar', 'Não foi possível salvar as mudanças');
+    } finally {
+      setLoading(false);
+      setIsSaving(false);
+    }
+  }, [pipeline?.id, formData, onSubmit, markFormClean, queryClient, user?.tenant_id, onPipelineUpdated]);
+
+  // ✅ NOVO: Descartar mudanças e fechar
+  const handleDiscardAndClose = useCallback(() => {
+    console.log('🗑️ [handleDiscardAndClose] Descartando mudanças');
+    markFormClean();
+    setShowUnsavedDialog(false);
+    onCancel();
+  }, [markFormClean, onCancel]);
+
+  // ✅ NOVO: Cancelar fechamento
+  const handleCancelClose = useCallback(() => {
+    setShowUnsavedDialog(false);
+  }, []);
+
+  // ✅ MELHORADO: Inicialização inteligente dos dados do pipeline
+  useEffect(() => {
+    if (!pipeline) return;
+
+    const initializePipelineData = async () => {
+      try {
+        // ✅ NOVA: Verificar se já está inicializado para esta pipeline
+        const isAlreadyInitialized = formData.name && 
+          pipeline.id === lastInitializedPipelineId.current &&
+          !hasUnsavedChanges;
+        
+        // ✅ PROTEÇÃO: Não reinicializar se há mudanças de distribuição pendentes
+        const hasDistributionPending = hasDistributionChanges || distributionManagerRef.current?.isInitializing;
+          
+        if (isAlreadyInitialized) {
+          console.log('🚫 [ModernPipelineCreatorRefactored] Pipeline já inicializada, ignorando re-inicialização:', pipeline.id);
+          return;
+        }
+        
+        if (hasDistributionPending) {
+          console.log('🚫 [ModernPipelineCreatorRefactored] Mudanças de distribuição pendentes, evitando reload:', {
+            hasDistributionChanges,
+            isDistributionInitializing: distributionManagerRef.current?.isInitializing
+          });
+          return;
+        }
+        
+        console.log('🔄 [ModernPipelineCreatorRefactored] Inicializando dados da pipeline:', pipeline.id);
+        lastInitializedPipelineId.current = pipeline.id;
+
+        const customFields = await loadCustomFields(pipeline.id);
+        const cadenceConfigs = await loadCadenceConfigs(pipeline.id);
+        const distributionRule = await loadDistributionRule(pipeline.id);
+        const temperatureConfig = await loadTemperatureConfig(pipeline.id);
+        const qualificationRules = await loadQualificationRules(pipeline.id);
+        const outcomeReasons = await loadOutcomeReasons(pipeline.id);
+        const pipelineMembers = await loadPipelineMembers(pipeline.id);
+
+        setFormData({
+          name: pipeline.name || '',
+          description: pipeline.description || '',
+          member_ids: pipelineMembers,
+          stages: pipeline.stages || [],
+          custom_fields: customFields,
+          cadence_configs: cadenceConfigs,
+          distribution_rule: distributionRule,
+          temperature_config: temperatureConfig,
+          qualification_rules: qualificationRules,
+          outcome_reasons: outcomeReasons
+        });
+
+        // Validar nome inicialmente e sincronizar com hook
+        if (pipeline.name) {
+          pipelineNameValidation.updateName(pipeline.name);
+        }
+
+        // ✅ CRÍTICO: Marcar como inicializado após carregar todos os dados
+        setIsInitialized(true);
+        console.log('✅ [Form] Inicialização completa - pronto para detectar mudanças');
+
+      } catch (error) {
+        logPipelineError('initialization', error, true);
+        showErrorToast('Erro de carregamento', 'Falha ao carregar dados da pipeline');
+        // Mesmo com erro, marcar como inicializado para evitar problemas
+        setIsInitialized(true);
+      }
+    };
+
+    initializePipelineData();
+  }, [pipeline?.id]); // ✅ CORREÇÃO: Dependência apenas do ID
+
+  // Funções de carregamento de dados (simplificadas)
+  const loadCustomFields = async (pipelineId: string): Promise<LocalCustomField[]> => {
+    try {
+      const { data: fields, error } = await supabase
+        .from('pipeline_custom_fields')
+        .select('*')
+        .eq('pipeline_id', pipelineId)
+        .order('field_order');
+
+      if (error) throw error;
+      return fields || [];
+    } catch (error) {
+      console.warn('⚠️ [loadCustomFields] Erro ao carregar campos:', error);
+      return [];
+    }
   };
 
+  const loadCadenceConfigs = async (pipelineId: string): Promise<CadenceConfig[]> => {
+    try {
+      // ✅ CORREÇÃO: Usar CadenceApiService para consistência com API backend
+      console.log('🔄 [loadCadenceConfigs] Carregando via CadenceApiService:', { pipelineId: pipelineId.substring(0, 8) });
+      const configs = await CadenceApiService.loadCadenceForPipeline(pipelineId);
+      console.log('✅ [loadCadenceConfigs] Configurações carregadas:', { count: configs.length });
+      return configs;
+    } catch (error) {
+      console.warn('⚠️ [loadCadenceConfigs] Erro ao carregar cadências:', error);
+      return [];
+    }
+  };
+
+  const loadDistributionRule = async (pipelineId: string): Promise<LocalDistributionRule> => {
+    try {
+      const { data: rule, error } = await supabase
+        .from('pipeline_distribution_rules')
+        .select('*')
+        .eq('pipeline_id', pipelineId)
+        .single();
+
+      if (error) throw error;
+      
+      // ✅ CORREÇÃO: Verificar especificamente se rule e rule.mode existem
+      if (!rule || !rule.mode) {
+        console.log('⚠️ [loadDistributionRule] Rule não encontrada ou sem mode, usando fallback manual');
+        return {
+          mode: 'manual',
+          is_active: true,
+          working_hours_only: false,
+          skip_inactive_members: true,
+          fallback_to_manual: true
+        };
+      }
+      
+      console.log('✅ [loadDistributionRule] Rule carregada do banco:', {
+        mode: rule.mode,
+        pipeline_id: pipelineId
+      });
+      
+      // ✅ PRESERVAR: Mode exato do banco de dados
+      return {
+        mode: rule.mode, // ✅ PRESERVAR mode original do banco
+        is_active: rule.is_active ?? true,
+        working_hours_only: rule.working_hours_only ?? false,
+        skip_inactive_members: rule.skip_inactive_members ?? true,
+        fallback_to_manual: rule.fallback_to_manual ?? true
+      };
+    } catch (error) {
+      console.warn('⚠️ [loadDistributionRule] Erro ao carregar regra:', error);
+      return {
+        mode: 'manual',
+        is_active: true,
+        working_hours_only: false,
+        skip_inactive_members: true,
+        fallback_to_manual: true
+      };
+    }
+  };
+
+  const loadTemperatureConfig = async (pipelineId: string): Promise<TemperatureConfig> => {
+    try {
+      const { data: config, error } = await supabase
+        .from('temperature_config')
+        .select('*')
+        .eq('pipeline_id', pipelineId)
+        .single();
+
+      if (error) throw error;
+      
+      // ✅ Mapear campos corretos da tabela temperature_config
+      return config ? {
+        hot_days: config.hot_threshold || 3,
+        warm_days: config.warm_threshold || 7,
+        cold_days: config.cold_threshold || 14
+      } : {
+        hot_days: 3,
+        warm_days: 7,
+        cold_days: 14
+      };
+    } catch (error) {
+      if (error.code === '42P01') {
+        console.warn('⚠️ [loadTemperatureConfig] Tabela temperature_config não existe, usando padrão');
+      } else {
+        console.warn('⚠️ [loadTemperatureConfig] Erro ao carregar configuração:', error);
+      }
+      return {
+        hot_days: 3,
+        warm_days: 7,
+        cold_days: 14
+      };
+    }
+  };
+
+  const loadQualificationRules = async (pipelineId: string): Promise<QualificationRules> => {
+    try {
+      // ✅ MIGRADO: Usar Backend API como outras abas (Distribuição, Cadência, etc.)
+      const { QualificationApiService } = await import('../../services/qualificationApi');
+      const qualificationRules = await QualificationApiService.loadQualificationRules(pipelineId);
+      
+      console.log('✅ [loadQualificationRules] Regras carregadas via Backend API:', {
+        mqlCount: qualificationRules.mql.length,
+        sqlCount: qualificationRules.sql.length
+      });
+      
+      return qualificationRules;
+    } catch (error: any) {
+      console.warn('⚠️ [loadQualificationRules] Erro ao carregar regras:', error.message);
+      return { mql: [], sql: [] };
+    }
+  };
+
+  // ✅ MIGRADO: Função para salvar regras de qualificação via Backend API (como outras abas)
+  const saveQualificationRules = async (pipelineId: string, qualificationRules: QualificationRules) => {
+    try {
+      console.log('🔄 [saveQualificationRules] Salvando via Backend API:', {
+        pipelineId,
+        mqlCount: qualificationRules.mql.length,
+        sqlCount: qualificationRules.sql.length
+      });
+
+      // ✅ MIGRADO: Usar Backend API como outras abas (Distribuição, Cadência, etc.)
+      const { QualificationApiService } = await import('../../services/qualificationApi');
+      await QualificationApiService.saveQualificationRules(pipelineId, qualificationRules);
+      
+      console.log('✅ [saveQualificationRules] Regras salvas com sucesso via Backend API:', {
+        mqlCount: qualificationRules.mql.length,
+        sqlCount: qualificationRules.sql.length
+      });
+
+      // ✅ NOVO: Cache strategy específica para qualificação
+      await cacheManager.handleQualificationSave(user?.tenant_id || '', pipelineId);
+
+    } catch (error: any) {
+      console.error('❌ [saveQualificationRules] Erro ao salvar regras via Backend API:', error.message);
+      throw error;
+    }
+  };
+
+  // ✅ NOVO: Função para salvar motivos de ganho/perda via Backend API
+  const saveOutcomeReasons = async (pipelineId: string, outcomeReasons: OutcomeReasons) => {
+    try {
+      console.log('🔄 [saveOutcomeReasons] Salvando via Backend API:', {
+        pipelineId,
+        wonCount: outcomeReasons.won.length,
+        lostCount: outcomeReasons.lost.length
+      });
+
+      // ✅ MIGRADO: Usar Backend API como outras abas (Distribuição, Cadência, Qualificação)
+      const { OutcomeReasonsApiService } = await import('../../services/outcomeReasonsApi');
+      await OutcomeReasonsApiService.saveOutcomeReasons(pipelineId, outcomeReasons);
+      
+      console.log('✅ [saveOutcomeReasons] Motivos salvos com sucesso via Backend API:', {
+        wonCount: outcomeReasons.won.length,
+        lostCount: outcomeReasons.lost.length
+      });
+
+      // ✅ NOVO: Cache strategy específica para motivos
+      await cacheManager.handleMotivesSave(user?.tenant_id || '', pipelineId);
+
+    } catch (error: any) {
+      console.error('❌ [saveOutcomeReasons] Erro ao salvar motivos via Backend API:', error.message);
+      throw error;
+    }
+  };
+
+  const loadOutcomeReasons = async (pipelineId: string): Promise<OutcomeReasons> => {
+    try {
+      console.log('🔄 [loadOutcomeReasons] Carregando via Backend API:', {
+        pipelineId
+      });
+
+      // ✅ MIGRADO: Usar Backend API como outras abas (Distribuição, Cadência, Qualificação)
+      const { OutcomeReasonsApiService } = await import('../../services/outcomeReasonsApi');
+      const outcomeReasons = await OutcomeReasonsApiService.loadOutcomeReasons(pipelineId);
+      
+      console.log('✅ [loadOutcomeReasons] Motivos carregados com sucesso via Backend API:', {
+        wonCount: outcomeReasons.won.length,
+        lostCount: outcomeReasons.lost.length
+      });
+      
+      return outcomeReasons;
+    } catch (error: any) {
+      console.error('❌ [loadOutcomeReasons] Erro ao carregar motivos via Backend API:', error.message);
+      return { won: [], lost: [] };
+    }
+  };
+
+  // ✅ CORREÇÃO: Carregar member_ids da tabela pipeline_members
+  const loadPipelineMembers = async (pipelineId: string): Promise<string[]> => {
+    try {
+      console.log('🔄 [loadPipelineMembers] Carregando membros da pipeline:', pipelineId);
+      
+      const { data: pipelineMembers, error } = await supabase
+        .from('pipeline_members')
+        .select('member_id')
+        .eq('pipeline_id', pipelineId);
+
+      if (error) {
+        console.warn('⚠️ [loadPipelineMembers] Erro ao carregar membros:', error);
+        return [];
+      }
+      
+      const member_ids = (pipelineMembers || []).map(pm => pm.member_id);
+      console.log('✅ [loadPipelineMembers] Membros carregados:', {
+        pipeline_id: pipelineId,
+        member_ids,
+        count: member_ids.length
+      });
+      
+      return member_ids;
+    } catch (error) {
+      console.warn('⚠️ [loadPipelineMembers] Erro ao carregar membros da pipeline:', error);
+      return [];
+    }
+  };
+
+  // Handler do submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    console.log('🚀 [handleSubmit] Iniciando submit do formulário:', {
-      isIntentionalSubmit,
-      isExplicitButtonClick,
-      isCreationMode: !pipeline?.id,
-      formData: {
-        name: formData.name,
-        memberIds: formData.member_ids?.length || 0,
-        stagesCount: formData.stages?.length || 0,
-        fieldsCount: formData.custom_fields?.length || 0,
-        cadencesCount: formData.cadence_configs?.length || 0
-      }
+    // ✅ GUARD: Detectar origem do submit e bloquear submits automáticos indesejados
+    const eventTarget = e.target as HTMLElement;
+    const eventType = e.type;
+    const activeElement = document.activeElement as HTMLElement;
+    
+    console.log('🔍 [handleSubmit] Submit detectado:', {
+      eventType,
+      eventTarget: eventTarget?.tagName || 'unknown',
+      activeElement: activeElement?.tagName || 'unknown',
+      hasUnsavedChanges,
+      isDistributionInitializing: distributionManagerRef.current?.isInitializing,
+      formDataKeys: Object.keys(formData),
+      stackTrace: new Error().stack?.split('\n').slice(0, 5)
     });
     
-    // ✅ CORREÇÃO CRÍTICA: No modo criação, só permitir submit se foi clique explícito no botão
-    if (!pipeline?.id && !isExplicitButtonClick) {
-      console.log('🚫 [handleSubmit] BLOQUEADO: Submit automático no modo criação cancelado:', {
-        isCreationMode: !pipeline?.id,
-        isExplicitButtonClick,
-        reason: 'Criação deve ser apenas via clique no botão'
+    // ✅ GUARD: Bloquear submit se for durante inicialização de distribuição
+    if (distributionManagerRef.current?.isInitializing) {
+      console.log('🚫 [handleSubmit] BLOQUEADO: Submit durante inicialização do distributionManager');
+      return;
+    }
+    
+    // ✅ GUARD: Bloquear submit se for mudança de navegação
+    if (isNavigationChange) {
+      console.log('🚫 [handleSubmit] BLOQUEADO: Submit é mudança de navegação');
+      return;
+    }
+    
+    // ✅ GUARD: Verificar se realmente há mudanças válidas para submeter
+    const hasAnyChanges = hasUnsavedChanges || hasDistributionChanges || hasQualificationChanges || hasMotivesChanges;
+    if (!hasAnyChanges && pipeline?.id) {
+      console.log('🚫 [handleSubmit] BLOQUEADO: Sem mudanças não salvas para submeter', {
+        hasUnsavedChanges,
+        hasDistributionChanges,
+        hasQualificationChanges,
+        hasMotivesChanges
       });
       return;
     }
     
-    if (!validateForm()) {
-      console.log('❌ [handleSubmit] Validação falhou, cancelando submit');
-      return;
-    }
-    
-    console.log('✅ [handleSubmit] Validação passou, continuando...');
-    
-    // ✅ CORREÇÃO: Aplicar configuração de temperatura antes do submit em modo criação
-    applyTemperatureConfigOnSubmit();
-    
-    // ✅ CORREÇÃO CRÍTICA: Em modo criação, coletar dados diretamente dos managers
-    // para evitar dependência do formData que foi bloqueado
-    let finalStages = formData.stages;
-    let finalCustomFields = formData.custom_fields;
-    let finalCadenceConfigs = formData.cadence_configs;
-    let finalDistributionRule = formData.distribution_rule;
-    
-    if (!pipeline?.id) {
-      // Modo criação: coletar dados diretamente dos managers
-      
-      // 1. Etapas do stageManager
-      const systemStages = [
-        { name: 'Lead', color: '#3B82F6', order_index: 0, is_system_stage: true },
-        { name: 'Ganho', color: '#10B981', order_index: 998, is_system_stage: true },
-        { name: 'Perdido', color: '#EF4444', order_index: 999, is_system_stage: true }
-      ];
-      const customStages = stageManager.stages.filter(s => !s.is_system_stage);
-      finalStages = [...systemStages, ...customStages];
-      
-      // 2. Campos customizados (se houver interface no fieldsManager)
-      // Para campos, vamos manter o formData pois não há interação que cause problemas
-      
-      // 3. Cadências do cadenceManager
-      finalCadenceConfigs = cadenceManager.cadences || [];
-      
-      // 4. Distribuição do distributionManager
-      finalDistributionRule = distributionManager.rule || formData.distribution_rule;
-      
-      console.log('🔄 [handleSubmit] Coletando dados dos managers para criação:', {
-        stagesData: {
-          systemStagesCount: systemStages.length,
-          customStagesCount: customStages.length,
-          totalStages: finalStages.length
-        },
-        fieldsData: {
-          customFieldsCount: finalCustomFields.length
-        },
-        cadenceData: {
-          cadenceConfigsCount: finalCadenceConfigs.length
-        },
-        distributionData: {
-          distributionRule: finalDistributionRule
-        }
-      });
-    }
-    
-    // ✅ CORREÇÃO: Garantir que usamos dados atualizados de todos os managers
-    const finalFormData = {
-      ...formData,
-      stages: finalStages,
-      custom_fields: finalCustomFields,
-      cadence_configs: finalCadenceConfigs,
-      distribution_rule: finalDistributionRule,
-      temperature_config: temperatureManager.temperatureConfig,
-      outcome_reasons: outcomeReasonsManager.getFormattedDataForAPI(),
-      qualification_rules: formData.qualification_rules
-    };
-    
-    console.log('🚀 [handleSubmit] FormData final com dados completos:', {
-      ...finalFormData,
-      temperature_config: finalFormData.temperature_config,
-      outcome_reasons: finalFormData.outcome_reasons
-    });
-    
-    setLoading(true);
-    try {
-      // ✅ CORREÇÃO: Usar flags corretas para criação vs edição
-      if (pipeline?.id) {
-        // Modo edição
-        await onSubmit(finalFormData, isIntentionalSubmit, { isUpdate: true });
-      } else {
-        // Modo criação
-        await onSubmit(finalFormData, isIntentionalSubmit, { isCreate: true });
-      }
-      setIsIntentionalSubmit(false); // Reset após submit
-      setIsExplicitButtonClick(false); // Reset após submit
-      // ✅ CORREÇÃO 5: Feedback de sucesso será tratado pelo componente pai
-    } catch (error: any) {
-      logPipelineError('handleSubmit', error, true);
-      
-      // ✅ CORREÇÃO 5: Tratamento de erros específicos
-      let errorMessage = 'Erro inesperado ao salvar pipeline. Tente novamente.';
-      
-      if (error?.message) {
-        if (error.message.includes('Nome já existe') || error.message.includes('already exists')) {
-          errorMessage = 'Este nome de pipeline já existe. Escolha outro nome.';
-        } else if (error.message.includes('Validation failed')) {
-          errorMessage = 'Dados inválidos. Verifique os campos e tente novamente.';
-        } else if (error.message.includes('Network Error') || error.message.includes('fetch')) {
-          errorMessage = 'Erro de conexão. Verifique sua internet e tente novamente.';
-        } else if (error.message.includes('Unauthorized') || error.message.includes('403')) {
-          errorMessage = 'Você não tem permissão para esta ação.';
-        } else {
-          errorMessage = error.message;
-        }
-      }
-      
-      showErrorToast('Erro ao salvar', errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleMemberToggle = (memberId: string) => {
-    setFormData(prev => ({
-      ...prev,
-      member_ids: prev.member_ids.includes(memberId)
-        ? prev.member_ids.filter(id => id !== memberId)
-        : [...prev.member_ids, memberId]
-    }));
-  };
-
-  // ✅ DROPDOWN ACTIONS: Callback para duplicar pipeline (via props)
-  const handleDuplicatePipelineInternal = async () => {
-    if (onDuplicatePipeline) {
-      await onDuplicatePipeline();
-    }
-  };
-
-  // ✅ DROPDOWN ACTIONS: Função para duplicar pipeline (mantida para compatibilidade)
-  const handleDuplicatePipeline = async () => {
-    if (!pipeline?.id || !user?.tenant_id) {
-      showErrorToast('Erro', 'Pipeline não encontrada para duplicação');
+    if (!pipelineNameValidation.canSubmit) {
+      showWarningToast('Validação', 'Verifique se o nome da pipeline é válido e único');
       return;
     }
 
     try {
       setLoading(true);
+      console.log('📤 [ModernPipelineCreatorRefactored] Enviando dados do formulário - SUBMIT AUTORIZADO');
       
-      // Gerar nome único para a cópia
-      const originalName = pipeline.name;
-      let duplicateName = `${originalName} - Cópia`;
+      await onSubmit(formData, true);
+      markFormClean();
       
-      // Verificar se já existe uma pipeline com este nome
-      const { data: existingPipelines } = await supabase
-        .from('pipelines')
-        .select('name')
-        .eq('tenant_id', user.tenant_id)
-        .ilike('name', `${originalName}%`);
-      
-      // Se existir, encontrar próximo número disponível
-      if (existingPipelines && existingPipelines.length > 0) {
-        const existingNames = existingPipelines.map(p => p.name);
-        let counter = 2;
-        
-        while (existingNames.includes(duplicateName)) {
-          duplicateName = `${originalName} (${counter})`;
-          counter++;
-        }
-      }
-
-      // 1. Duplicar pipeline principal
-      const { data: newPipeline, error: pipelineError } = await supabase
-        .from('pipelines')
-        .insert({
-          name: duplicateName,
-          description: `${pipeline.description || ''} (Duplicada)`,
-          tenant_id: user.tenant_id,
-          created_by: user.id,
-          is_active: true,
-          qualification_rules: pipeline.qualification_rules
-        })
-        .select()
-        .single();
-
-      if (pipelineError) throw pipelineError;
-      
-      const newPipelineId = newPipeline.id;
-
-      // 2. Duplicar etapas
-      const { data: stages } = await supabase
-        .from('pipeline_stages')
-        .select('*')
-        .eq('pipeline_id', pipeline.id);
-      
-      if (stages && stages.length > 0) {
-        const newStages = stages.map(stage => ({
-          pipeline_id: newPipelineId,
-          name: stage.name,
-          color: stage.color,
-          order_index: stage.order_index,
-          is_system_stage: stage.is_system_stage
-        }));
-        
-        await supabase.from('pipeline_stages').insert(newStages);
-      }
-
-      // 3. Duplicar campos customizados
-      const { data: customFields } = await supabase
-        .from('pipeline_custom_fields')
-        .select('*')
-        .eq('pipeline_id', pipeline.id);
-      
-      if (customFields && customFields.length > 0) {
-        const newCustomFields = customFields.map(field => ({
-          pipeline_id: newPipelineId,
-          field_name: field.field_name,
-          field_label: field.field_label,
-          field_type: field.field_type,
-          field_options: field.field_options,
-          is_required: field.is_required,
-          field_order: field.field_order,
-          placeholder: field.placeholder,
-          show_in_card: field.show_in_card
-        }));
-        
-        await supabase.from('pipeline_custom_fields').insert(newCustomFields);
-      }
-
-      // 4. Duplicar vendedores vinculados
-      const { data: members } = await supabase
-        .from('pipeline_members')
-        .select('member_id')
-        .eq('pipeline_id', pipeline.id);
-      
-      if (members && members.length > 0) {
-        const newMembers = members.map(member => ({
-          pipeline_id: newPipelineId,
-          member_id: member.member_id
-        }));
-        
-        await supabase.from('pipeline_members').insert(newMembers);
-      }
-
-      // 5. Duplicar regras de distribuição (se existirem)
-      const { data: distributionRules } = await supabase
-        .from('pipeline_distribution_rules')
-        .select('*')
-        .eq('pipeline_id', pipeline.id);
-      
-      if (distributionRules && distributionRules.length > 0) {
-        const newDistributionRules = distributionRules.map(rule => ({
-          pipeline_id: newPipelineId,
-          mode: rule.mode,
-          is_active: rule.is_active,
-          working_hours_only: rule.working_hours_only,
-          skip_inactive_members: rule.skip_inactive_members,
-          fallback_to_manual: rule.fallback_to_manual
-        }));
-        
-        await supabase.from('pipeline_distribution_rules').insert(newDistributionRules);
-      }
-
-      // 6. Duplicar cadências (se existirem)
-      const { data: cadences } = await supabase
-        .from('cadence_configs')
-        .select('*')
-        .eq('pipeline_id', pipeline.id);
-      
-      if (cadences && cadences.length > 0) {
-        const newCadences = cadences.map(cadence => ({
-          pipeline_id: newPipelineId,
-          stage_name: cadence.stage_name,
-          stage_order: cadence.stage_order,
-          tasks: cadence.tasks,
-          is_active: cadence.is_active
-        }));
-        
-        await supabase.from('cadence_configs').insert(newCadences);
-      }
-
-      showErrorToast('Pipeline duplicada', `"${duplicateName}" criada com sucesso!`);
-      
-      // Redirecionar para a nova pipeline ou recarregar lista
-      if (onCancel) {
-        onCancel(); // Voltar para a lista
-      }
-      
-    } catch (error: any) {
-      logPipelineError('handleDuplicatePipeline', error, true);
-      showErrorToast('Erro ao duplicar', error.message || 'Erro inesperado ao duplicar pipeline');
+    } catch (error) {
+      logPipelineError('submit', error, true);
+      showErrorToast('Erro no envio', 'Falha ao salvar pipeline');
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ DROPDOWN ACTIONS: Callback para arquivar pipeline (via props)
-  const handleArchivePipelineInternal = async () => {
-    if (onArchivePipeline) {
-      await onArchivePipeline();
-    }
-  };
-
-  // ✅ DROPDOWN ACTIONS: Função para arquivar pipeline (mantida para compatibilidade)
-  const handleArchivePipeline = async () => {
-    if (!pipeline?.id) {
-      showErrorToast('Erro', 'Pipeline não encontrada para arquivamento');
-      return;
-    }
-
-    // Confirmação antes de arquivar
-    const confirmed = window.confirm(
-      `Tem certeza que deseja arquivar a pipeline "${pipeline.name}"?\n\nEsta ação pode ser revertida posteriormente.`
-    );
-    
-    if (!confirmed) return;
-
-    try {
-      setLoading(true);
-      
-      // Marcar pipeline como inativa (arquivada)
-      const { error } = await supabase
-        .from('pipelines')
-        .update({ 
-          is_active: false,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', pipeline.id);
-
-      if (error) throw error;
-
-      showErrorToast('Pipeline arquivada', `"${pipeline.name}" foi arquivada com sucesso!`);
-      
-      // Voltar para a lista
-      if (onCancel) {
-        onCancel();
-      }
-      
-    } catch (error: any) {
-      logPipelineError('handleArchivePipeline', error, true);
-      showErrorToast('Erro ao arquivar', error.message || 'Erro inesperado ao arquivar pipeline');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ✅ DROPDOWN ACTIONS: Funções exportadas via props (removido header duplicado)
-
+  // Render da aba básico
   const renderBasicTab = () => (
-    <BlurFade delay={0.05} inView>
-      <div className={PIPELINE_UI_CONSTANTS.spacing.section}>
-        <SectionHeader
-          icon={Settings}
-          title="Informações Básicas"
-        />
-        
+    <BlurFade delay={0.1} inView>
+      <div className="space-y-6">
         <AnimatedCard>
-          <CardContent className={PIPELINE_UI_CONSTANTS.spacing.form}>
+          <CardHeader>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div>
-              <Label htmlFor="pipeline-name" className={`block text-sm font-medium ${PIPELINE_UI_CONSTANTS.spacing.labelSpacing}`}>
-                Nome do Pipeline *
-              </Label>
-              <div className="relative">
-                <Input
-                  id="pipeline-name"
-                  value={pipelineNameValidation.name}
-                  onChange={(e) => {
-                    pipelineNameValidation.updateName(e.target.value);
-                    setFormData(prev => ({ ...prev, name: e.target.value }));
-                  }}
-                  onBlur={pipelineNameValidation.validateImmediately}
-                  placeholder="Ex: Vendas Consultivas"
-                  className={`pr-10 ${
-                    pipelineNameValidation.showValidation
-                      ? pipelineNameValidation.isValid
-                        ? 'border-green-500 focus:ring-green-500'
-                        : 'border-red-500 focus:ring-red-500'
-                      : ''
-                  }`}
-                />
-                {/* ✅ Ícone de status da validação */}
-                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                  {pipelineNameValidation.isValidating ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-                  ) : pipelineNameValidation.showValidation ? (
-                    pipelineNameValidation.isValid ? (
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                    ) : (
-                      <AlertCircle className="h-4 w-4 text-red-500" />
-                    )
-                  ) : null}
-                </div>
-              </div>
-              
-              {/* ✅ Feedback de validação */}
-              {pipelineNameValidation.showValidation && (
-                <div className="mt-2 space-y-2">
-                  {pipelineNameValidation.hasError && (
-                    <p className="text-sm text-red-600 flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      {pipelineNameValidation.error}
-                    </p>
-                  )}
-                  
-                  {pipelineNameValidation.isValid && pipelineNameValidation.showValidation && (
-                    <p className="text-sm text-green-600 flex items-center gap-1">
-                      <CheckCircle className="h-3 w-3" />
-                      Nome disponível!
-                    </p>
-                  )}
-                  
-                  {pipelineNameValidation.suggestion && (
-                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <div className="flex items-start gap-2">
-                        <Lightbulb className="h-4 w-4 text-yellow-600 mt-0.5" />
-                        <div className="flex-1">
-                          <p className="text-sm text-yellow-800">
-                            Sugestão: <strong>{pipelineNameValidation.suggestion}</strong>
-                          </p>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={pipelineNameValidation.applySuggestion}
-                            className="mt-2 h-7 text-xs"
-                          >
-                            Usar sugestão
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {pipelineNameValidation.similarNames.length > 0 && (
-                    <div className="text-xs text-gray-600">
-                      Nomes similares: {pipelineNameValidation.similarNames.join(', ')}
-                    </div>
-                  )}
-                </div>
+              <Label htmlFor="pipeline-name">Nome da Pipeline *</Label>
+              <Input
+                id="pipeline-name"
+                value={pipelineNameValidation.name}
+                onChange={(e) => {
+                  pipelineNameValidation.updateName(e.target.value);
+                  handleNameChange(e.target.value);
+                }}
+                onBlur={pipelineNameValidation.validateImmediately}
+                placeholder="Ex: Vendas B2B, Leads Qualificados..."
+                className={`mt-1 ${
+                  pipelineNameValidation.hasError ? 'border-red-500' : 
+                  pipelineNameValidation.isValid ? 'border-green-500' : ''
+                }`}
+              />
+              {pipelineNameValidation.hasError && (
+                <p className="text-sm text-red-600 mt-1">Nome inválido ou já existe</p>
+              )}
+              {pipelineNameValidation.isValid && (
+                <p className="text-sm text-green-600 mt-1">Nome disponível</p>
               )}
             </div>
 
             <div>
-              <Label htmlFor="pipeline-description" className={`block text-sm font-medium ${PIPELINE_UI_CONSTANTS.spacing.labelSpacing}`}>
-                Descrição
-              </Label>
+              <Label htmlFor="pipeline-description">Descrição</Label>
               <Textarea
                 id="pipeline-description"
                 value={formData.description}
-                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                onChange={(e) => handleDescriptionChange(e.target.value)}
                 placeholder="Descreva o propósito e funcionamento do pipeline..."
                 rows={3}
               />
@@ -1316,7 +1071,6 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
 
             <div>
               <Label>Vendedores Vinculados *</Label>
-              {/* ✅ CORREÇÃO: Feedback quando não há membros */}
               {members.length === 0 ? (
                 <div className="mt-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                   <div className="flex items-center gap-2 text-yellow-800">
@@ -1346,17 +1100,113 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
             </div>
           </CardContent>
         </AnimatedCard>
-
       </div>
     </BlurFade>
   );
 
-  return (
-    <div className="space-y-6 p-6">
-      {/* ✅ DROPDOWN HEADER: Header removido - agora está no Modal */}
+  // ✅ NOVO: Footer unificado com status à esquerda e botão à direita
+  const renderFooter = () => {
+    // ✅ NOVO: Determinar se deve mostrar botão (criação OU edição com alterações)
+    const shouldShowButton = !pipeline || (pipeline && (hasUnsavedChanges || hasDistributionChanges || hasQualificationChanges || hasMotivesChanges));
+    
+    return (
+      <div className="p-6 bg-gray-50/50 border-t border-gray-200 rounded-b-lg">
+        <div className="flex items-center justify-between">
+          {/* LADO ESQUERDO: Status */}
+          <div className="flex items-center gap-2 text-sm">
+            {isSaving ? (
+              <div className="text-blue-600 dark:text-blue-400 flex items-center gap-2 animate-pulse">
+                <div className="w-4 h-4 border-2 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
+                <span>Salvando alterações...</span>
+              </div>
+            ) : (hasUnsavedChanges || hasDistributionChanges || hasQualificationChanges || hasMotivesChanges) ? (
+              <div className="text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />
+                <span>Você tem alterações não salvas</span>
+              </div>
+            ) : pipeline ? (
+              <div className="text-green-600 dark:text-green-400 flex items-center gap-2">
+                <CheckCircle className="h-4 w-4" />
+                <span>
+                  Todas as alterações foram salvas
+                  {lastSavedAt && (
+                    <span className="text-green-500/70 ml-2">
+                      • há {Math.floor((Date.now() - lastSavedAt.getTime()) / 1000)}s
+                    </span>
+                  )}
+                </span>
+              </div>
+            ) : (
+              <div className="text-gray-600 flex items-center gap-2">
+                <span>Preencha os campos para criar a pipeline</span>
+              </div>
+            )}
+          </div>
+          
+          {/* LADO DIREITO: Botão de Ação */}
+          {shouldShowButton && (
+            <Button
+              type={pipeline ? "button" : "submit"}
+              disabled={loading || isSaving || (!pipeline && !pipelineNameValidation.canSubmit)}
+              className="min-w-[120px]"
+              onClick={pipeline ? handleSaveChanges : () => {
+                console.log('🖱️ [Button] Clique explícito no botão Criar Pipeline');
+                setIsIntentionalSubmit(true);
+                setIsExplicitButtonClick(true);
+              }}
+            >
+              {(loading || isSaving) ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                  {pipeline ? 'Salvando...' : 'Criando...'}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Save className="h-4 w-4" />
+                  {pipeline ? 'Salvar Alterações' : submitText}
+                </div>
+              )}
+            </Button>
+          )}
+        </div>
+        
+        {/* ✅ DICA: Apenas para modo edição */}
+        {pipeline && !hasUnsavedChanges && lastSavedAt && (
+          <div className="flex items-center justify-center pt-2">
+            <div className="text-xs text-muted-foreground bg-muted/50 px-3 py-1 rounded-full">
+              💡 Modal permanece aberto para edições adicionais
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
-      <form onSubmit={handleSubmit}>
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+  // ✅ NOVO: Notificar o PipelineModal sobre o footer
+  useEffect(() => {
+    if (onFooterRender) {
+      onFooterRender(renderFooter());
+    }
+  }, [
+    onFooterRender,
+    isSaving,
+    hasUnsavedChanges,
+    hasDistributionChanges,
+    hasQualificationChanges,
+    hasMotivesChanges,
+    pipeline,
+    loading,
+    pipelineNameValidation.canSubmit,
+    submitText
+  ]);
+
+  return (
+    <>
+      {/* Conteúdo Principal com Scroll */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-6 pb-4">
+          <form onSubmit={handleSubmit}>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="basic" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
@@ -1377,13 +1227,16 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
             <TabsTrigger value="cadence" className="flex items-center gap-2">
               <Zap className="h-4 w-4" />
               Cadência
+              {savingActivities && (
+                <div className="w-3 h-3 border border-blue-600 border-t-transparent rounded-full animate-spin ml-1" />
+              )}
             </TabsTrigger>
             <TabsTrigger value="qualification" className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" />
+              <Users className="h-4 w-4" />
               Qualificação
             </TabsTrigger>
-            <TabsTrigger value="motivos" className="flex items-center gap-2">
-              <Award className="h-4 w-4" />
+            <TabsTrigger value="motives" className="flex items-center gap-2">
+              <Trophy className="h-4 w-4" />
               Motivos
             </TabsTrigger>
           </TabsList>
@@ -1407,79 +1260,89 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
           <TabsContent value="cadence">
             <CadenceManagerRender 
               cadenceManager={cadenceManager} 
-              availableStages={stageManager.allStages
-                .filter((s: PipelineStage) => s.name !== 'Ganho' && s.name !== 'Perdido' && s.name !== 'Closed Won' && s.name !== 'Closed Lost')
+              availableStages={(stageManager.stages || [])
+                .filter(isNonFinalStage) // ✅ CORREÇÃO: Usar função utilitária para filtrar etapas não-finais
                 .map((s: PipelineStage) => ({ 
                   name: s.name, 
                   order_index: s.order_index 
                 }))} 
+              // ✅ NOVO: Props para integração com API
+              isLoading={cadenceManager.cadenceConfigs ? false : true}
+              isApiEnabled={!!pipeline?.id}
             />
           </TabsContent>
 
           <TabsContent value="qualification">
-            <QualificationRulesManager
-              initialRules={formData.qualification_rules}
-              customFields={formData.custom_fields.map(field => ({
-                field_name: field.field_name,
-                field_label: field.field_label,
-                field_type: field.field_type
-              }))}
-              onRulesChange={handleQualificationRulesChange}
+            <QualificationManager
+              pipelineId={pipeline?.id}
+              qualificationRules={formData.qualification_rules || { mql: [], sql: [] }}
+              onQualificationRulesChange={handleQualificationChange}
               isEditMode={!!pipeline?.id}
-              temperatureManager={temperatureManager}
+              availableFields={getAvailableFields()}
             />
           </TabsContent>
 
-          <TabsContent value="motivos">
-            <OutcomeReasonsConfiguration
-              value={outcomeReasonsManager.outcomeReasonsData}
-              onChange={outcomeReasonsManager.updateOutcomeReasons}
-              pipelineId={pipeline?.id || 'temp-pipeline'} // temp ID para criação
-              isEditMode={!!pipeline?.id} // modo edição quando pipeline existe
+          <TabsContent value="motives">
+            <MotivesManager
+              pipelineId={pipeline?.id}
+              outcomeReasons={formData.outcome_reasons || { won: [], lost: [] }}
+              onOutcomeReasonsChange={handleMotivesChange}
+              isEditMode={!!pipeline?.id}
             />
           </TabsContent>
         </Tabs>
 
-        {/* Botões apenas para criação de pipeline, não para edição */}
-        {!pipeline && (
-          <div className="flex justify-end pt-6">
-            <Button
-              type="submit"
-              disabled={loading || !pipelineNameValidation.canSubmit}
-              className="min-w-[120px]"
-              onClick={() => {
-                console.log('🖱️ [Button] Clique explícito no botão Criar Pipeline');
-                setIsIntentionalSubmit(true);
-                setIsExplicitButtonClick(true);
-              }}
+        {/* ✅ REMOVIDO: Botão movido para footer fixo */}
+          </form>
+        </div>
+      </div>
+
+      {/* ✅ NOVO: AlertDialog para confirmar fechamento com mudanças não salvas */}
+      <AlertDialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-500" />
+              Alterações não salvas
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Você fez alterações que ainda não foram salvas. O que deseja fazer?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex flex-col sm:flex-row gap-2">
+            <AlertDialogCancel onClick={handleCancelClose}>
+              Cancelar
+            </AlertDialogCancel>
+            <Button 
+              variant="outline" 
+              onClick={handleDiscardAndClose}
+              className="text-red-600 hover:text-red-700"
+            >
+              Descartar alterações
+            </Button>
+            <AlertDialogAction 
+              onClick={handleSaveAndClose}
+              disabled={loading}
+              className="bg-blue-600 hover:bg-blue-700"
             >
               {loading ? (
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                   Salvando...
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
                   <Save className="h-4 w-4" />
-                  {submitText}
+                  Salvar e fechar
                 </div>
               )}
-            </Button>
-          </div>
-        )}
-        
-        {/* Mensagem informativa para modo de edição */}
-        {pipeline && (
-          <div className="pt-6">
-            <div className="flex items-center justify-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-              <Save className="h-4 w-4" />
-              <span>Suas alterações são salvas automaticamente</span>
-            </div>
-          </div>
-        )}
-      </form>
-    </div>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      
+    </>
   );
 };
 
-export default ModernPipelineCreatorRefactored; 
+export default ModernPipelineCreatorRefactored;

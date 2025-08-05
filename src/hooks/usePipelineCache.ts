@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Pipeline } from '../types/Pipeline';
 
 export interface PipelineCacheOptions {
@@ -28,6 +29,11 @@ export const usePipelineCache = ({
 }: PipelineCacheOptions): PipelineCacheReturn => {
   const [lastViewedPipeline, setLastViewedPipelineState] = useState<Pipeline | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
+  
+  // AIDEV-NOTE: Throttling para evitar spam de logs do React Query
+  const logThrottleRef = useRef<NodeJS.Timeout | null>(null);
+  const syncThrottleRef = useRef<NodeJS.Timeout | null>(null);
 
   // AIDEV-NOTE: Cache key específico por tenant para isolamento multi-tenant
   const CACHE_KEY = `crm_last_pipeline_${tenantId}`;
@@ -128,7 +134,7 @@ export const usePipelineCache = ({
   }, [CACHE_KEY, tenantId]);
 
   /**
-   * Effect para carregar pipeline inicial quando pipelines mudarem
+   * ✅ CORREÇÃO: Effect otimizado para carregar pipeline inicial - dependências mínimas
    */
   useEffect(() => {
     if (!pipelines || pipelines.length === 0) {
@@ -136,22 +142,131 @@ export const usePipelineCache = ({
       return;
     }
 
-    const bestPipeline = findBestPipeline();
+    // ✅ OTIMIZAÇÃO: Executar lógica diretamente no effect para evitar dependências extras
+    let bestPipeline: Pipeline | null = null;
+
+    // 1. Tentar pipeline do cache
+    const cached = getCachedPipeline();
+    if (cached && pipelines.find(p => p.id === cached.id)) {
+      bestPipeline = cached;
+    }
+    // 2. Tentar pipeline específica (fallback)
+    else if (fallbackToPipelineId) {
+      const fallback = pipelines.find(p => p.id === fallbackToPipelineId && p.is_active);
+      if (fallback) bestPipeline = fallback;
+    }
+    // 3. Primeira pipeline ativa disponível
+    else {
+      const firstActive = pipelines.find(p => p.is_active);
+      bestPipeline = firstActive || pipelines[0] || null;
+    }
     
     if (bestPipeline) {
       setLastViewedPipelineState(bestPipeline);
       // Atualizar cache apenas se não for do cache
-      const cached = getCachedPipeline();
       if (!cached || cached.id !== bestPipeline.id) {
         console.log(`🔄 [usePipelineCache] Atualizando cache inicial: ${bestPipeline.name} (${bestPipeline.id})`);
         setPipelineCache(bestPipeline);
       } else {
-        console.log(`📖 [usePipelineCache] Pipeline do cache mantida: ${bestPipeline.name} (${bestPipeline.id})`);
+        // AIDEV-NOTE: Log reduzido para evitar spam - apenas quando necessário
+        if (import.meta.env.DEV && import.meta.env.VITE_VERBOSE_LOGS === 'true') {
+          console.log(`📖 [usePipelineCache] Pipeline do cache mantida: ${bestPipeline.name} (${bestPipeline.id})`);
+        }
       }
     }
     
     setIsLoading(false);
-  }, [pipelines, findBestPipeline, getCachedPipeline, setPipelineCache]);
+  }, [pipelines, fallbackToPipelineId]); // ✅ OTIMIZAÇÃO: Dependências mínimas
+
+  /**
+   * ✅ NOVA: Sincronizar mudanças na pipeline atual quando ela é atualizada
+   */
+  useEffect(() => {
+    if (!lastViewedPipeline || !pipelines.length) return;
+    
+    // Procurar versão atualizada da pipeline atual
+    const updatedPipeline = pipelines.find(p => p.id === lastViewedPipeline.id);
+    
+    if (updatedPipeline && (
+      updatedPipeline.name !== lastViewedPipeline.name ||
+      updatedPipeline.description !== lastViewedPipeline.description ||
+      updatedPipeline.updated_at !== lastViewedPipeline.updated_at
+    )) {
+      // AIDEV-NOTE: Throttling para logs de sincronização - evitar spam
+      if (syncThrottleRef.current) {
+        clearTimeout(syncThrottleRef.current);
+      }
+      
+      syncThrottleRef.current = setTimeout(() => {
+        console.log('🔄 [usePipelineCache] Sincronizando mudanças da pipeline:', {
+          from: { name: lastViewedPipeline.name, updated: lastViewedPipeline.updated_at },
+          to: { name: updatedPipeline.name, updated: updatedPipeline.updated_at }
+        });
+      }, 1500);
+      
+      setLastViewedPipelineState(updatedPipeline);
+      setPipelineCache(updatedPipeline);
+    }
+  }, [pipelines, lastViewedPipeline, setPipelineCache]);
+
+  /**
+   * ✅ CRÍTICO: Listener para mudanças no React Query cache
+   */
+  useEffect(() => {
+    if (!lastViewedPipeline || !tenantId) return;
+
+    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+      // Escutar apenas eventos de pipelines updates
+      if (
+        event?.query?.queryKey &&
+        (event.query.queryKey.includes('pipelines') || 
+         event.query.queryKey.includes(lastViewedPipeline.id)) &&
+        event.type === 'updated'
+      ) {
+        // ✅ OTIMIZADO: Throttling agressivo para evitar spam de logs
+        if (logThrottleRef.current) {
+          clearTimeout(logThrottleRef.current);
+        }
+        
+        logThrottleRef.current = setTimeout(() => {
+          // ✅ CORREÇÃO: Log apenas quando há mudanças reais de dados
+          const freshPipelines = queryClient.getQueryData(['pipelines', tenantId]) as Pipeline[] | undefined;
+          if (freshPipelines && freshPipelines.length !== pipelines.length) {
+            console.log('🔄 [usePipelineCache] Cache atualizado:', {
+              pipelinesCount: freshPipelines.length,
+              change: freshPipelines.length > pipelines.length ? 'adição' : 'remoção'
+            });
+          }
+        }, 5000); // Aumentado de 2s para 5s
+        
+        // Buscar dados atualizados do cache
+        const freshPipelines = queryClient.getQueryData(['pipelines', tenantId]) as Pipeline[] | undefined;
+        
+        if (freshPipelines) {
+          const freshPipeline = freshPipelines.find(p => p.id === lastViewedPipeline.id);
+          
+          if (freshPipeline && (
+            freshPipeline.name !== lastViewedPipeline.name ||
+            freshPipeline.description !== lastViewedPipeline.description ||
+            freshPipeline.updated_at !== lastViewedPipeline.updated_at
+          )) {
+            // AIDEV-NOTE: Log de sync instantâneo apenas quando verbose habilitado
+            if (import.meta.env.DEV && import.meta.env.VITE_VERBOSE_LOGS === 'true') {
+              console.log('⚡ [usePipelineCache] Cache sync instantâneo:', {
+                from: { name: lastViewedPipeline.name },
+                to: { name: freshPipeline.name }
+              });
+            }
+            
+            setLastViewedPipelineState(freshPipeline);
+            setPipelineCache(freshPipeline);
+          }
+        }
+      }
+    });
+
+    return unsubscribe;
+  }, [lastViewedPipeline, tenantId, queryClient, setPipelineCache]);
 
   return {
     lastViewedPipeline,

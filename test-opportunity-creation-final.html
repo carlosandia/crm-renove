@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Final - Criação de Oportunidades</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-case { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #e7f5e7; border-color: #28a745; }
+        .error { background-color: #f8d7da; border-color: #dc3545; }
+        .loading { background-color: #fff3cd; border-color: #ffc107; }
+        button { margin: 5px; padding: 10px 15px; cursor: pointer; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 3px; overflow: auto; max-height: 300px; }
+        .form-section { margin: 15px 0; padding: 10px; background: #f8f9fa; border-radius: 5px; }
+        input, select { margin: 5px; padding: 8px; width: 200px; }
+        .results { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Teste Final - Sistema de Criação de Oportunidades</h1>
+    
+    <div class="test-case">
+        <h3>🔧 Configuração de Teste</h3>
+        <p>Este teste valida todas as correções implementadas:</p>
+        <ul>
+            <li>✅ Campo lifecycle_stage obrigatório</li>
+            <li>✅ Validação de custom_data (nunca null/undefined)</li>
+            <li>✅ Error handling detalhado</li>
+            <li>✅ Logs de debug completos</li>
+            <li>✅ UUID validation e stage validation</li>
+        </ul>
+    </div>
+
+    <div class="form-section">
+        <h3>📋 Dados de Teste</h3>
+        <div>
+            <label>Pipeline ID:</label>
+            <input type="text" id="pipelineId" placeholder="UUID da pipeline" style="width: 300px;">
+        </div>
+        <div>
+            <label>Stage ID (primeira etapa):</label>
+            <input type="text" id="stageId" placeholder="UUID da primeira etapa" style="width: 300px;">
+        </div>
+        <div>
+            <label>Nome da Oportunidade:</label>
+            <input type="text" id="nomeOportunidade" value="Teste Final - Correções Implementadas">
+        </div>
+        <div>
+            <label>Nome do Lead:</label>
+            <input type="text" id="nomeLead" value="João Teste Final">
+        </div>
+        <div>
+            <label>Email:</label>
+            <input type="email" id="email" value="joao.teste.final@exemplo.com">
+        </div>
+        <div>
+            <label>Telefone:</label>
+            <input type="text" id="telefone" value="(11) 99999-9999">
+        </div>
+        <div>
+            <label>Valor (opcional):</label>
+            <input type="text" id="valor" value="5000">
+        </div>
+    </div>
+
+    <div class="test-case">
+        <h3>🎯 Testes Automatizados</h3>
+        <button onclick="loadPipelines()">1. Carregar Pipelines</button>
+        <button onclick="testOpportunityCreation()">2. Testar Criação de Oportunidade</button>
+        <button onclick="testEmailValidation()">3. Testar Validação de Email</button>
+        <button onclick="runFullTest()">🚀 Executar Teste Completo</button>
+        <button onclick="clearResults()">🗑️ Limpar Resultados</button>
+    </div>
+
+    <div id="results" class="results"></div>
+
+    <script>
+        const API_BASE = 'http://127.0.0.1:3001';
+        let authToken = null;
+        let tenantId = null;
+        let currentUser = null;
+
+        // Auto-login ao carregar a página
+        window.onload = async () => {
+            await autoLogin();
+        };
+
+        async function autoLogin() {
+            try {
+                log('🔑 Realizando auto-login...', 'loading');
+                
+                const response = await fetch(`${API_BASE}/api/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: 'seraquevai@seraquevai.com',
+                        password: '123456'
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.message || 'Erro no login');
+                }
+
+                authToken = data.token;
+                tenantId = data.user.tenant_id;
+                currentUser = data.user;
+                
+                log(`✅ Login realizado com sucesso! User: ${data.user.email} | Role: ${data.user.role}`, 'success');
+                log(`🏢 Tenant ID: ${tenantId?.substring(0, 8)}...`, 'success');
+                
+            } catch (error) {
+                log(`❌ Erro no auto-login: ${error.message}`, 'error');
+            }
+        }
+
+        async function loadPipelines() {
+            if (!authToken) {
+                log('❌ Não autenticado. Execute o auto-login primeiro.', 'error');
+                return;
+            }
+
+            try {
+                log('📋 Carregando pipelines...', 'loading');
+                
+                const response = await fetch(`${API_BASE}/api/pipelines`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.message || 'Erro ao carregar pipelines');
+                }
+
+                if (data.length > 0) {
+                    const pipeline = data[0];
+                    document.getElementById('pipelineId').value = pipeline.id;
+                    log(`✅ Pipeline carregada: ${pipeline.name} (${pipeline.id.substring(0, 8)}...)`, 'success');
+                    
+                    // Carregar primeira etapa
+                    await loadFirstStage(pipeline.id);
+                } else {
+                    log('⚠️ Nenhuma pipeline encontrada', 'error');
+                }
+                
+            } catch (error) {
+                log(`❌ Erro ao carregar pipelines: ${error.message}`, 'error');
+            }
+        }
+
+        async function loadFirstStage(pipelineId) {
+            try {
+                log('🎯 Carregando primeira etapa...', 'loading');
+                
+                const response = await fetch(`${API_BASE}/api/pipelines/${pipelineId}/stages`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const stages = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(stages.message || 'Erro ao carregar etapas');
+                }
+
+                // Encontrar primeira etapa (order_index = 0)
+                const firstStage = stages.find(stage => stage.order_index === 0);
+                
+                if (firstStage) {
+                    document.getElementById('stageId').value = firstStage.id;
+                    log(`✅ Primeira etapa: ${firstStage.name} (${firstStage.id.substring(0, 8)}...)`, 'success');
+                } else {
+                    log('⚠️ Primeira etapa não encontrada', 'error');
+                }
+                
+            } catch (error) {
+                log(`❌ Erro ao carregar primeira etapa: ${error.message}`, 'error');
+            }
+        }
+
+        async function testOpportunityCreation() {
+            if (!authToken) {
+                log('❌ Não autenticado.', 'error');
+                return;
+            }
+
+            try {
+                log('🚀 Testando criação de oportunidade...', 'loading');
+                
+                const opportunityData = {
+                    pipeline_id: document.getElementById('pipelineId').value,
+                    stage_id: document.getElementById('stageId').value,
+                    nome_oportunidade: document.getElementById('nomeOportunidade').value,
+                    nome_lead: document.getElementById('nomeLead').value,
+                    email: document.getElementById('email').value,
+                    telefone: document.getElementById('telefone').value,
+                    valor: document.getElementById('valor').value,
+                    lead_source: 'new_lead'
+                };
+
+                log(`📋 Dados enviados:`, 'loading');
+                log(`<pre>${JSON.stringify(opportunityData, null, 2)}</pre>`, 'loading');
+                
+                const response = await fetch(`${API_BASE}/api/opportunities/create`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(opportunityData)
+                });
+
+                const result = await response.json();
+                
+                if (!response.ok) {
+                    log(`❌ Erro na criação (${response.status}):`, 'error');
+                    log(`<pre>${JSON.stringify(result, null, 2)}</pre>`, 'error');
+                    return;
+                }
+
+                log('🎉 Oportunidade criada com sucesso!', 'success');
+                log(`📄 Resposta completa:`, 'success');
+                log(`<pre>${JSON.stringify(result, null, 2)}</pre>`, 'success');
+                
+                // Verificar se os campos obrigatórios estão na resposta
+                if (result.opportunity_id && result.lead_id) {
+                    log('✅ Todos os campos obrigatórios presentes na resposta', 'success');
+                } else {
+                    log('⚠️ Alguns campos podem estar ausentes na resposta', 'error');
+                }
+                
+            } catch (error) {
+                log(`❌ Erro na requisição: ${error.message}`, 'error');
+            }
+        }
+
+        async function testEmailValidation() {
+            try {
+                log('📧 Testando validação de email...', 'loading');
+                
+                const email = document.getElementById('email').value;
+                
+                // Simular validação de email existente
+                const response = await fetch(`${API_BASE}/api/leads?email=${encodeURIComponent(email)}&limit=1`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    log('⚠️ Endpoint de validação não disponível', 'error');
+                    return;
+                }
+
+                const leads = await response.json();
+                
+                if (leads && leads.length > 0) {
+                    log(`✅ Email já existe: ${leads[0].first_name} ${leads[0].last_name}`, 'success');
+                } else {
+                    log('🆕 Email disponível para novo lead', 'success');
+                }
+                
+            } catch (error) {
+                log(`❌ Erro na validação de email: ${error.message}`, 'error');
+            }
+        }
+
+        async function runFullTest() {
+            log('🎯 Iniciando teste completo...', 'loading');
+            
+            await loadPipelines();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testEmailValidation();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testOpportunityCreation();
+            
+            log('🏁 Teste completo finalizado!', 'success');
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        function log(message, type = 'loading') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `test-case ${type}`;
+            div.innerHTML = `<div style="font-size: 14px; color: #666;">[${new Date().toLocaleTimeString()}]</div>${message}`;
+            results.appendChild(div);
+            results.scrollTop = results.scrollHeight;
+        }
+    </script>
+</body>
+</html>

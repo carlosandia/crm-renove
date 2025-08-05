@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Clock, User, Send, MessageSquare, Edit, Trash2, FileText, Mail, Phone, Calendar, Plus, RotateCcw, Sparkles } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { supabase } from '../../lib/supabase';
 import { showSuccessToast, showErrorToast, showWarningToast } from '../../hooks/useToast';
 

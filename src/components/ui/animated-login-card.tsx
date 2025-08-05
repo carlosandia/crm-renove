@@ -1,7 +1,7 @@
 import * as React from "react"
 import { motion } from "framer-motion"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./card"
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 interface AnimatedLoginCardProps {
   children: React.ReactNode

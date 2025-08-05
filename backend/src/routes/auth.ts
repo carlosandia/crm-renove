@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { supabase } from '../config/supabase';
-import { generateTokens, verifyRefreshToken, verifyToken, authMiddleware } from '../middleware/auth';
+import { authMiddleware } from '../middleware/auth';
 import { authRateLimiter } from '../middleware/rateLimiter';
 import { validateRequest, schemas } from '../middleware/validation';
 import { asyncHandler } from '../middleware/errorHandler';
@@ -8,210 +8,53 @@ import { User } from '../types/express';
 
 const router = Router();
 
-/**
- * 🔧 CORREÇÃO: Usar sistema de verificação enterprise do security.ts
- * Suporte para bcrypt, SHA-256 e senhas padrão
- */
-async function verifyPasswordSecure(inputPassword: string, storedPassword: string): Promise<boolean> {
-  try {
-    console.log('🔐 [AUTH] Verificando senha:', { inputPassword: inputPassword.substring(0, 3) + '***', storedHash: storedPassword?.substring(0, 10) + '...' });
-    
-    // Para debug, vamos verificar senhas padrão primeiro
-    const defaultPasswords = ['abc12345!', 'SuperAdmin123!', '123456', '123'];
-    if (defaultPasswords.includes(inputPassword)) {
-      console.log('✅ [AUTH] Senha padrão aceita');
-      return true;
-    }
-    
-    const { verifyPassword } = await import('../utils/security');
-    const result = await verifyPassword(inputPassword, storedPassword);
-    console.log('🔐 [AUTH] Resultado verificação:', result);
-    return result;
-  } catch (error) {
-    console.error('❌ [AUTH] Error verifying password:', error);
-    return false;
-  }
-}
+// AIDEV-NOTE: Função de verificação de senha removida
+// O sistema agora usa 100% Supabase Auth no frontend
+
+// AIDEV-NOTE: Função getUserByEmail removida
+// Não é mais necessária com Supabase Auth nativo
 
 /**
- * Buscar usuário por email
+ * Rota de login simplificada - apenas para compatibilidade
+ * O login real deve ser feito via Supabase Auth no frontend
  */
-async function getUserByEmail(email: string): Promise<User | null> {
-  try {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('email', email)
-      .eq('is_active', true)
-      .single();
-
-    if (error || !data) {
-      return null;
-    }
-
-    return data as User;
-  } catch (error) {
-    console.error('Erro ao buscar usuário:', error);
-    return null;
-  }
-}
-
-/**
- * Rota de login com JWT
- */
-router.post('/login', 
-  // authRateLimiter, // Rate limiting mais restritivo para login - temporariamente removido
-  // validateRequest(schemas.login), // Temporariamente removido para debug
-  async (req: Request, res: Response) => {
-    try {
-    console.log('🔐 [AUTH] Iniciando login:', { email: req.body.email, hasPassword: !!req.body.password });
-    
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      console.log('❌ [AUTH] Dados faltando:', { email: !!email, password: !!password });
-      res.status(400).json({
-        success: false,
-        error: 'Email e senha são obrigatórios',
-        message: 'Forneça email e senha'
-      });
-      return;
-    }
-
-    // 1. Buscar usuário no banco
-    console.log('🔍 [AUTH] Buscando usuário:', email);
-    const user = await getUserByEmail(email);
-    
-    if (!user) {
-      res.status(401).json({
-        success: false,
-        error: 'Credenciais inválidas',
-        message: 'Email ou senha incorretos'
-      });
-      return;
-    }
-
-    // 2. Verificar senha usando sistema enterprise corrigido
-    const isPasswordValid = await verifyPasswordSecure(password, user.password_hash || ''); // Usar senha salva ou padrões
-    
-    if (!isPasswordValid) {
-      res.status(401).json({
-        success: false,
-        error: 'Credenciais inválidas',
-        message: 'Email ou senha incorretos'
-      });
-      return;
-    }
-
-    // 🔧 CORREÇÃO 5: Migração automática de senhas para bcrypt
-    try {
-      const { migratePasswordIfNeeded, needsPasswordMigration } = await import('../utils/security');
-      
-      if (needsPasswordMigration(user.password_hash || '')) {
-        console.log(`🔄 [AUTH-MIGRATION] Migrating legacy password for user: ${user.email}`);
-        await migratePasswordIfNeeded(password, user.password_hash || '', user.id);
-        console.log(`✅ [AUTH-MIGRATION] Password successfully migrated to bcrypt for: ${user.email}`);
-      } else {
-        console.log(`✅ [AUTH-MIGRATION] User already has bcrypt password: ${user.email}`);
-      }
-    } catch (migrationError) {
-      // Não falhar o login por causa da migração
-      console.warn(`⚠️ [AUTH-MIGRATION] Migration failed for ${user.email}, but login continues:`, migrationError);
-    }
-
-    // 3. Gerar tokens JWT
-    const tokens = generateTokens(user);
-
-    // 4. Log de segurança
-    console.log(`✅ Login bem-sucedido: ${email} (${user.role}) em ${new Date().toISOString()}`);
-
-    // 5. Resposta com tokens padronizada
-    res.json({
-      success: true,
-      message: 'Login realizado com sucesso',
-      token: tokens.accessToken, // 🔧 CORREÇÃO: Compatibilidade com diferentes formatos
-      data: {
-        user: {
-          id: user.id,
-          email: user.email,
-          first_name: user.first_name,
-          last_name: user.last_name,
-          role: user.role,
-          tenant_id: user.tenant_id,
-          is_active: user.is_active
-        },
-        tokens: tokens
-      },
-      timestamp: new Date().toISOString()
-    });
-    
-    } catch (error) {
-      console.error('❌ [AUTH] Erro no login:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Erro interno do servidor',
-        message: 'Erro ao processar login',
-        timestamp: new Date().toISOString()
-      });
-    }
+router.post('/login', async (req: Request, res: Response) => {
+  res.status(400).json({
+    success: false,
+    error: 'Endpoint descontinuado',
+    message: 'Use Supabase Auth no frontend com supabase.auth.signInWithPassword()',
+    timestamp: new Date().toISOString()
   });
+});
+
+/**
+ * POST /regenerate-token
+ * DESATIVADO - Endpoint descontinuado 
+ * Use Supabase Auth no frontend
+ */
+router.post('/regenerate-token', async (req, res) => {
+  res.status(410).json({
+    success: false,
+    error: 'Endpoint descontinuado',
+    message: 'Use Supabase Auth no frontend com supabase.auth.signInWithPassword()',
+    migration: 'Sistema migrado para 100% Supabase Auth nativo',
+    timestamp: new Date().toISOString()
+  });
+});
 
 /**
  * Rota para refresh token
+ * DESATIVADO - Supabase Auth gerencia tokens automaticamente
  */
 router.post('/refresh', 
   asyncHandler(async (req: Request, res: Response) => {
-    const { refreshToken } = req.body;
-
-    if (!refreshToken) {
-      res.status(400).json({
-        success: false,
-        error: 'Refresh token requerido',
-        message: 'Forneça um refresh token válido'
-      });
-      return;
-    }
-
-    try {
-      // 1. Verificar refresh token
-      const { userId } = verifyRefreshToken(refreshToken);
-
-      // 2. Buscar usuário atualizado
-      const { data: userData, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .eq('is_active', true)
-        .single();
-
-      if (error || !userData) {
-        res.status(401).json({
-          success: false,
-          error: 'Usuário não encontrado',
-          message: 'O usuário associado ao refresh token não existe ou está inativo'
-        });
-        return;
-      }
-
-      // 3. Gerar novos tokens
-      const tokens = generateTokens(userData as User);
-
-      res.json({
-        success: true,
-        message: 'Tokens renovados com sucesso',
-        data: {
-          tokens: tokens
-        },
-        timestamp: new Date().toISOString()
-      });
-
-    } catch (error) {
-      res.status(401).json({
-        success: false,
-        error: 'Refresh token inválido',
-        message: error instanceof Error ? error.message : 'Token malformado'
-      });
-    }
+    res.status(410).json({
+      success: false,
+      error: 'Endpoint descontinuado',
+      message: 'Supabase Auth gerencia refresh de tokens automaticamente',
+      migration: 'Use supabase.auth.refreshSession() no frontend se necessário',
+      timestamp: new Date().toISOString()
+    });
   })
 );
 
@@ -326,8 +169,14 @@ router.post('/register',
   asyncHandler(async (req: Request, res: Response) => {
     const { email, first_name, last_name, role = 'member', tenant_id } = req.body;
 
-    // 1. Verificar se usuário já existe
-    const existingUser = await getUserByEmail(email);
+    // 1. Verificar se usuário já existe usando Supabase
+    const { data: existingUser, error: checkError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .eq('is_active', true)
+      .single();
+
     if (existingUser) {
       res.status(409).json({
         success: false,

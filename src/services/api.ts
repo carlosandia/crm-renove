@@ -4,6 +4,7 @@
  */
 
 import { API } from '@/utils/constants';
+import { environmentConfig } from '../config/environment';
 
 // ============================================
 // TIPOS BASE
@@ -38,7 +39,7 @@ class ApiService {
   private defaultHeaders: Record<string, string>;
 
   constructor() {
-    this.baseURL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api';
+    this.baseURL = environmentConfig.urls.api;
     this.defaultHeaders = {
       'Content-Type': 'application/json',
     };

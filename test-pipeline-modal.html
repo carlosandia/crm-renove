@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Pipeline Modal - "Alterações não salvas"</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+        }
+        .test-box {
+            border: 2px solid #007bff;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            background-color: #f8f9fa;
+        }
+        .correction {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .before {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .code {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            margin: 10px 0;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Teste: Correção "Alterações não salvas" no Pipeline Modal</h1>
+    
+    <div class="test-box before">
+        <h2>❌ Problema ANTES da correção:</h2>
+        <p>Ao abrir o modal de edição de pipeline, mesmo sem fazer alterações, aparecia imediatamente no footer:</p>
+        <div class="status error">
+            <strong>⚠️ Você tem alterações não salvas</strong>
+        </div>
+        <p><strong>Causa raiz:</strong> O <code>handleDistributionRuleChange</code> era chamado durante a inicialização do <code>useLocalDistributionManager</code>, marcando o formulário como "dirty" antes mesmo do usuário fazer qualquer alteração.</p>
+    </div>
+
+    <div class="test-box correction">
+        <h2>✅ Correção IMPLEMENTADA:</h2>
+        <h3>1. Modificações no useLocalDistributionManager:</h3>
+        <div class="code">
+// Expor estado de inicialização
+export interface UseLocalDistributionManagerReturn {
+  isInitializing: boolean; // ✅ NOVO
+  // ... outros campos
+}
+
+return {
+  isInitializing, // ✅ Expor estado
+  // ... outros campos
+};
+        </div>
+
+        <h3>2. Modificações no handleDistributionRuleChange:</h3>
+        <div class="code">
+const handleDistributionRuleChange = useCallback((distribution_rule: DistributionRule) => {
+  console.log('🔄 [handleDistributionRuleChange] Atualizando distribuição');
+  setFormData(prev => ({ ...prev, distribution_rule }));
+  
+  // ✅ CORREÇÃO CRÍTICA: Só marcar como dirty se não estiver inicializando
+  const isDistributionInitializing = distributionManagerRef.current?.isInitializing;
+  if (pipeline?.id && !isDistributionInitializing) {
+    markFormDirty();
+  } else if (isDistributionInitializing) {
+    console.log('🔇 [handleDistributionRuleChange] Mudança durante inicialização (ignorada)');
+  }
+}, [pipeline?.id, markFormDirty]);
+        </div>
+
+        <h3>3. Sistema de sincronização com useRef:</h3>
+        <div class="code">
+// Referência para acessar estado do distributionManager
+const distributionManagerRef = useRef&lt;{ isInitializing: boolean } | null&gt;(null);
+
+// Atualizar referência para o estado do distributionManager
+useEffect(() => {
+  distributionManagerRef.current = { isInitializing: distributionManager.isInitializing };
+}, [distributionManager.isInitializing]);
+        </div>
+    </div>
+
+    <div class="test-box">
+        <h2>🧪 Teste do comportamento:</h2>
+        <p>Para testar esta correção, você deve:</p>
+        <ol>
+            <li>Acessar o CRM em <a href="http://127.0.0.1:8080" target="_blank">http://127.0.0.1:8080</a></li>
+            <li>Fazer login como admin</li>
+            <li>Ir para o módulo de Pipelines</li>
+            <li>Criar ou editar uma pipeline existente</li>
+            <li>Observar que <strong>NÃO</strong> aparece mais "Você tem alterações não salvas" imediatamente</li>
+            <li>Fazer uma alteração real (ex: mudar nome) e verificar que aparece a mensagem</li>
+        </ol>
+        
+        <button onclick="window.open('http://127.0.0.1:8080', '_blank')">
+            🚀 Abrir CRM para Teste
+        </button>
+    </div>
+
+    <div class="test-box">
+        <h2>🔍 Logs esperados no console:</h2>
+        <div class="code">
+// Durante abertura do modal (modo edição):
+✅ [Form] Inicialização completa - pronto para detectar mudanças
+🔄 [handleDistributionRuleChange] Atualizando distribuição  
+🔇 [handleDistributionRuleChange] Mudança durante inicialização (ignorada)
+
+// Durante alteração real do usuário:
+🔄 [handleDistributionRuleChange] Atualizando distribuição
+📝 [Form] Marcado como modificado
+        </div>
+    </div>
+
+    <div class="test-box correction">
+        <h2>🎯 Resultado esperado:</h2>
+        <div class="status success">
+            <strong>✅ Modal abre limpo, sem "alterações não salvas"</strong><br>
+            <strong>✅ Mensagem só aparece quando usuário faz alterações reais</strong><br>
+            <strong>✅ Sistema diferencia entre inicialização e alterações</strong>
+        </div>
+    </div>
+
+    <script>
+        // Log para debuggar o teste
+        console.log('🧪 Página de teste carregada');
+        console.log('📅 Data:', new Date().toISOString());
+        console.log('🔧 Correção implementada: useLocalDistributionManager.isInitializing');
+    </script>
+</body>
+</html>

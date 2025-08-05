@@ -68,16 +68,30 @@ export const useModalManager = (): ModalManagerReturn => {
 
   // Funções centralizadas para abrir modais
   const openModal = useCallback((modalType: ModalState['activeModal'], data?: Lead, formData?: Record<string, any>) => {
-    console.log('🔄 [ModalManager] Abrindo modal:', modalType, data?.id);
+    console.log('🔄 [ModalManager] Abrindo modal:', modalType, {
+      leadId: data?.id?.substring(0, 8),
+      previousModal: modalState.activeModal,
+      hasData: !!data
+    });
     
-    setModalState(prev => ({
-      ...prev,
-      activeModal: modalType,
-      modalData: data || null,
-      leadFormData: formData || {},
-      isProcessing: false
-    }));
-  }, []);
+    setModalState(prev => {
+      const newState = {
+        ...prev,
+        activeModal: modalType,
+        modalData: data || null,
+        leadFormData: formData || {},
+        isProcessing: false
+      };
+      
+      console.log('✅ [ModalManager] Estado atualizado:', {
+        activeModal: newState.activeModal,
+        hasModalData: !!newState.modalData,
+        modalDataId: newState.modalData?.id?.substring(0, 8)
+      });
+      
+      return newState;
+    });
+  }, [modalState.activeModal]);
 
   // Função centralizada para fechar modais
   const closeModal = useCallback(() => {
@@ -131,7 +145,14 @@ export const useModalManager = (): ModalManagerReturn => {
     isDeleteConfirmModalOpen: modalState.activeModal === 'deleteConfirm',
 
     // Deal Details Modal
-    openDealDetailsModal: (lead: Lead) => openModal('dealDetails', lead),
+    openDealDetailsModal: (lead: Lead) => {
+      console.log('📋 [ModalManager] openDealDetailsModal chamado:', {
+        leadId: lead.id.substring(0, 8),
+        leadName: (lead.first_name || '') + ' ' + (lead.last_name || ''),
+        currentActiveModal: modalState.activeModal
+      });
+      openModal('dealDetails', lead);
+    },
     closeDealDetailsModal: () => closeModal(),
     isDealDetailsModalOpen: modalState.activeModal === 'dealDetails',
 

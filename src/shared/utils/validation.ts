@@ -148,7 +148,15 @@ export function validatePaginatedResponse<T>(
     has_prev: z.boolean()
   });
 
-  return parseSafe(paginatedSchema, response);
+  return parseSafe(paginatedSchema, response) as SafeParseResult<{
+    items: T[];
+    total_count: number;
+    page: number;
+    per_page: number;
+    total_pages: number;
+    has_next: boolean;
+    has_prev: boolean;
+  }>;
 }
 
 // ============================================
@@ -242,7 +250,7 @@ export function formatValidationError(result: SafeParseResult<any>): string {
     return '';
   }
 
-  const issues = result.error.issues;
+  const issues = (result as any).error.issues;
   if (issues.length === 1) {
     const issue = issues[0];
     const path = issue.path.length > 0 ? ` (${issue.path.join('.')})` : '';
@@ -263,7 +271,7 @@ export function getFirstError(result: SafeParseResult<any>): string {
     return '';
   }
 
-  const firstIssue = result.error.issues[0];
+  const firstIssue = (result as any).error.issues[0];
   return firstIssue?.message || 'Validation error';
 }
 
@@ -275,7 +283,7 @@ export function hasFieldError(result: SafeParseResult<any>, fieldPath: string): 
     return false;
   }
 
-  return result.error.issues.some(issue => 
+  return (result as any).error.issues.some(issue => 
     issue.path.join('.') === fieldPath
   );
 }
@@ -288,7 +296,7 @@ export function getFieldError(result: SafeParseResult<any>, fieldPath: string): 
     return '';
   }
 
-  const fieldIssue = result.error.issues.find(issue => 
+  const fieldIssue = (result as any).error.issues.find(issue => 
     issue.path.join('.') === fieldPath
   );
 

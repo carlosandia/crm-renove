@@ -226,7 +226,7 @@ export const useTemperatureConfig = useTemperatureConfigImpl;
 // COMPONENTE DE RENDERIZAÇÃO DE CONFIGURAÇÃO DE TEMPERATURA
 // ================================================================================
 interface TemperatureConfigRenderProps {
-  temperatureManager: UseTemperatureConfigReturn;
+  temperatureManager: TemperatureConfigReturn;
 }
 
 export function TemperatureConfigRender({ temperatureManager }: TemperatureConfigRenderProps) {
@@ -440,7 +440,7 @@ export function TemperatureConfigRender({ temperatureManager }: TemperatureConfi
 // ================================================================================
 // COMPONENTE PRINCIPAL
 // ================================================================================
-export const TemperatureConfig: React.FC<UseTemperatureConfigProps> = (props) => {
+export const TemperatureConfig: React.FC<TemperatureConfigProps> = (props) => {
   const temperatureManager = useTemperatureConfig(props);
 
   return (

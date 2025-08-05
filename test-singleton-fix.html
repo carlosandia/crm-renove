@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Singleton Fix - Multiple GoTrueClient Warning</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background: #d4edda; border-color: #c3e6cb; }
+        .warning { background: #fff3cd; border-color: #ffeaa7; }
+        .error { background: #f8d7da; border-color: #f5c6cb; }
+        pre { background: #f4f4f4; padding: 10px; border-radius: 3px; overflow-x: auto; }
+        button { padding: 8px 16px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Teste: Correção DEFINITIVA Multiple GoTrueClient Warning</h1>
+    
+    <div class="test-section">
+        <h3>📋 Status do Teste</h3>
+        <p><strong>Objetivo:</strong> Verificar se o warning "Multiple GoTrueClient instances" foi eliminado</p>
+        <p><strong>Implementação:</strong> Singleton único seguindo documentação oficial Supabase</p>
+        <p><strong>Correção:</strong> UM único client com createClient() e parâmetros consistentes</p>
+    </div>
+
+    <div class="test-section">
+        <h3>🔍 Instruções de Teste</h3>
+        <ol>
+            <li>Abra o console do browser (F12)</li>
+            <li>Clique no botão "Simular Criação de Oportunidade"</li>
+            <li>Observe se aparecem warnings de "Multiple GoTrueClient instances"</li>
+            <li>Verifique as métricas do singleton</li>
+        </ol>
+    </div>
+
+    <div class="test-section">
+        <h3>🧪 Controles de Teste</h3>
+        <button onclick="testSingletonBehavior()">🧪 Simular Criação de Oportunidade</button>
+        <button onclick="showMetrics()">📊 Ver Métricas Singleton</button>
+        <button onclick="clearConsole()">🧹 Limpar Console</button>
+    </div>
+
+    <div class="test-section" id="results">
+        <h3>📊 Resultados</h3>
+        <div id="metricsOutput">Clique em "Ver Métricas Singleton" para ver os resultados...</div>
+    </div>
+
+    <div class="test-section">
+        <h3>⚠️ O que observar no Console</h3>
+        <ul>
+            <li><strong>✅ SUCESSO:</strong> Logs de "Singleton HIT" aparecem após a primeira criação</li>
+            <li><strong>✅ SUCESSO:</strong> Não aparecem warnings de "Multiple GoTrueClient instances"</li>
+            <li><strong>❌ FALHA:</strong> Warning "Multiple GoTrueClient instances detected..." ainda aparece</li>
+            <li><strong>❌ FALHA:</strong> Sempre aparece "Singleton MISS" (não está reutilizando)</li>
+        </ul>
+    </div>
+
+    <script>
+        console.log('🧪 [TESTE] Página de teste carregada');
+        
+        async function testSingletonBehavior() {
+            console.log('🚀 [TESTE] Iniciando simulação de criação de oportunidade...');
+            
+            try {
+                // Simular múltiplas chamadas para verificar singleton
+                const results = [];
+                
+                for (let i = 1; i <= 3; i++) {
+                    console.log(`🔄 [TESTE] Tentativa ${i} - Obtendo client anônimo...`);
+                    
+                    // Importar e usar a função real do singleton único
+                    const module = await import('http://127.0.0.1:8080/src/lib/supabaseClientFactory.ts');
+                    const client = module.getSupabaseClientSingleton();
+                    
+                    results.push({
+                        attempt: i,
+                        clientCreated: !!client,
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                    // Pequena pausa entre chamadas
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                
+                console.log('✅ [TESTE] Simulação concluída:', results);
+                
+                // Mostrar métricas automaticamente
+                setTimeout(showMetrics, 500);
+                
+            } catch (error) {
+                console.error('❌ [TESTE] Erro durante simulação:', error);
+            }
+        }
+        
+        async function showMetrics() {
+            console.log('📊 [TESTE] Obtendo métricas do singleton...');
+            
+            try {
+                if (window.supabaseClientFactory) {
+                    const metrics = window.supabaseClientFactory.getMetrics();
+                    const singletonStatus = window.supabaseClientFactory.getSingletonStatus();
+                    
+                    console.log('📊 [MÉTRICAS] Client Factory:', metrics);
+                    console.log('🔍 [SINGLETON STATUS]:', singletonStatus);
+                    
+                    // Mostrar na página também
+                    document.getElementById('metricsOutput').innerHTML = `
+                        <h4>📊 Métricas do Client Factory:</h4>
+                        <pre>${JSON.stringify(metrics, null, 2)}</pre>
+                        
+                        <h4>🔍 Status dos Singletons:</h4>
+                        <pre>${JSON.stringify(singletonStatus, null, 2)}</pre>
+                        
+                        <h4>✅ Interpretação:</h4>
+                        <ul>
+                            <li><strong>singletonHits > 0:</strong> ${metrics.singletonHits > 0 ? '✅ Reutilização funcionando!' : '❌ Sem reutilização'}</li>
+                            <li><strong>totalCreations:</strong> ${metrics.totalCreations} (deve ser mínimo para singleton)</li>
+                            <li><strong>Singleton ativo:</strong> ${singletonStatus.active ? '✅ Ativo' : '❌ Não criado'}</li>
+                            <li><strong>Warning corrigido:</strong> ${singletonStatus.warningFixed ? '✅ Sim' : '❌ Não'}</li>
+                        </ul>
+                    `;
+                } else {
+                    const message = '⚠️ window.supabaseClientFactory não está disponível. Certifique-se que está em modo de desenvolvimento.';
+                    console.warn(message);
+                    document.getElementById('metricsOutput').innerHTML = `<p class="warning">${message}</p>`;
+                }
+            } catch (error) {
+                console.error('❌ [TESTE] Erro ao obter métricas:', error);
+                document.getElementById('metricsOutput').innerHTML = `<p class="error">Erro: ${error.message}</p>`;
+            }
+        }
+        
+        function clearConsole() {
+            console.clear();
+            console.log('🧹 [TESTE] Console limpo - pronto para novo teste');
+        }
+        
+        // Mostrar métricas iniciais
+        setTimeout(showMetrics, 1000);
+    </script>
+</body>
+</html>

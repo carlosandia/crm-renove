@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 
 export interface MemberTask {
   id: string;
@@ -172,7 +172,11 @@ interface UseMemberToolsResult {
   recordActivity: (activityData: any) => Promise<boolean>;
 }
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://127.0.0.1:3001';
+// AIDEV-NOTE: Configuração dinâmica da API base usando environment config
+const getApiBase = async () => {
+  const { environmentConfig } = await import('../config/environment');
+  return environmentConfig.urls.backend;
+};
 
 export function useMemberTools(): UseMemberToolsResult {
   const { user } = useAuth();
@@ -201,7 +205,8 @@ export function useMemberTools(): UseMemberToolsResult {
   // Fetch tasks
   const fetchTasks = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/tasks`, {
+      const apiBase = await getApiBase();
+      const response = await fetch(`${apiBase}/api/member-tools/tasks`, {
         headers: getAuthHeaders(),
       });
 

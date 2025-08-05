@@ -1,21 +1,26 @@
 import React, { Suspense, useEffect, useState, lazy, useRef, useCallback } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { usePipelineData } from '../../hooks/usePipelineData';
 import { usePipelineCache } from '../../hooks/usePipelineCache'; // ✅ FASE 2: Import cache inteligente
 import { useMembers } from '../../hooks/useMembers';
-import SafeErrorBoundary from '../SafeErrorBoundary';
-import { Pipeline } from '../../types/Pipeline';
+import { PipelineErrorBoundary } from '../ErrorBoundaries';
+import { Pipeline, Lead } from '../../types/Pipeline';
 import { showSuccessToast, showErrorToast } from '../../lib/toast';
 import { useAutoCleanupEventManager } from '../../services/EventManager';
 // ✅ FASE 2: Import enterprise-grade mutation hook
 import { useArchivePipelineMutation } from '../../hooks/useArchivePipelineMutation';
+import { useQueryClient } from '@tanstack/react-query';
+import { QueryKeys } from '../../lib/queryKeys';
+import { api } from '../../lib/api';
 
 // Lazy loading dos componentes principais
-const ModernAdminPipelineManagerRefactored = lazy(() => import('../ModernAdminPipelineManagerRefactored'));
+// ModernAdminPipelineManagerRefactored removido - usando PipelineKanbanView como substituto
 const PipelineKanbanView = lazy(() => import('./PipelineKanbanView'));
 
 // Import para modal de edição
 const PipelineModal = lazy(() => import('./PipelineModal'));
+const LeadDetailsModal = lazy(() => import('./LeadDetailsModal'));
+const StepLeadModal = lazy(() => import('./StepLeadModal'));
 
 interface UnifiedPipelineManagerProps {
   className?: string;
@@ -43,9 +48,17 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
   onPipelineChange,
   cacheLoading = false
 }) => {
-  const { user, authenticatedFetch } = useAuth();
-  const { pipelines, loading, refreshPipelines } = usePipelineData();
-  const { members, loading: membersLoading } = useMembers();
+  const { user } = useAuth();
+  const { 
+    pipelines: allPipelines, 
+    loading, 
+    refreshPipelines,
+    getUserPipelines,
+    getAdminCreatedPipelines,
+    getMemberLinkedPipelines 
+  } = usePipelineData();
+  const { members } = useMembers();
+  const queryClient = useQueryClient();
   
   // ✅ FASE 2: Enterprise-grade mutation hook
   const archiveMutation = useArchivePipelineMutation();
@@ -59,26 +72,52 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
   const [showCreateModal, setShowCreateModal] = useState(false);
   // ✅ PROTEÇÃO ADICIONAL: Flag para prevenir fechamento indevido
   const [isAutoSaveInProgress, setIsAutoSaveInProgress] = useState(false);
+  // 🚀 NOVA FUNCIONALIDADE: Estado de loading para duplicação
+  const [duplicatingPipelineId, setDuplicatingPipelineId] = useState<string | null>(null);
+  
+  // ✅ CORREÇÃO: Estados para LeadDetailsModal
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [showLeadModal, setShowLeadModal] = useState(false);
+  
+  // ✅ NOVO: Estados para StepLeadModal (Nova Oportunidade)
+  const [showStepLeadModal, setShowStepLeadModal] = useState(false);
+  const [selectedPipelineForLead, setSelectedPipelineForLead] = useState<Pipeline | null>(null);
 
   // Determinar interface baseada no role (MOVIDO PARA CIMA)
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
   const isMember = user?.role === 'member';
+  
+  // ✅ CONTROLE DE PERMISSÕES: Filtrar pipelines baseado no role
+  const pipelines = React.useMemo(() => {
+    if (isAdmin) {
+      return getAdminCreatedPipelines();
+    } else if (isMember) {
+      return getMemberLinkedPipelines();
+    }
+    return getUserPipelines();
+  }, [isAdmin, isMember, getAdminCreatedPipelines, getMemberLinkedPipelines, getUserPipelines]);
 
   // ================================================================================
   // HANDLERS PARA EDIÇÃO E ARQUIVAMENTO DE PIPELINE (UNIFICADOS)
   // ================================================================================
   
   const handleCreatePipeline = useCallback(() => {
+    // ✅ CONTROLE DE PERMISSÕES: Apenas admin pode criar pipelines
+    if (!isAdmin) {
+      showErrorToast('Acesso negado', 'Apenas administradores podem criar pipelines');
+      return;
+    }
     console.log('➕ [UnifiedPipelineManager] Abrindo modal de criação');
     setEditingPipeline(null);
     setShowCreateModal(true);
-  }, []);
+  }, [isAdmin]);
 
   const handleEditPipeline = useCallback((pipeline: Pipeline) => {
-    console.log('✏️ [UnifiedPipelineManager] Editando pipeline:', pipeline.name);
+    // ✅ CONTROLE DE PERMISSÕES: Admin pode editar, member só pode visualizar
+    console.log(`✏️ [UnifiedPipelineManager] ${isAdmin ? 'Editando' : 'Visualizando'} pipeline:`, pipeline.name);
     setEditingPipeline(pipeline);
     setShowEditModal(true);
-  }, []);
+  }, [isAdmin]);
 
   const handleDuplicatePipeline = useCallback(async (pipeline: Pipeline) => {
     try {
@@ -86,41 +125,61 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
       
       // Validação de permissão
       if (!isAdmin) {
-        throw new Error('Apenas administradores podem duplicar pipelines');
+        showErrorToast('Acesso negado', 'Apenas administradores podem duplicar pipelines');
+        return;
       }
 
       if (!pipeline?.id || !user?.tenant_id) {
-        throw new Error('Pipeline não encontrada para duplicação');
+        showErrorToast('Erro de validação', 'Pipeline não encontrada para duplicação');
+        return;
       }
 
-      const response = await authenticatedFetch(`/pipelines/${pipeline.id}/duplicate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
+      // 🚀 INICIAR loading state
+      setDuplicatingPipelineId(pipeline.id);
+
+      // ✅ CANCELAR queries em andamento para evitar race conditions
+      await queryClient.cancelQueries({ queryKey: QueryKeys.pipelines.byTenant(user.tenant_id) });
+
+      const response = await api.post(`/pipelines/${pipeline.id}/duplicate`);
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Erro na requisição');
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Erro desconhecido');
       }
-      
-      const result = await response.json();
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Erro desconhecido');
-      }
+
+      // 🎯 TOAST DE SUCESSO DETALHADO
+      showSuccessToast(
+        '🎉 Pipeline duplicada com sucesso!', 
+        `"${pipeline.name}" foi duplicada como "${response.data.pipeline.name}"`
+      );
 
       // Atualizar lista de pipelines
       await refreshPipelines();
       
-      console.log('✅ [UnifiedPipelineManager] Pipeline duplicada com sucesso:', result.pipeline?.name);
+      // 🔄 CORREÇÃO PONTUAL: Notificar AppDashboard sobre nova pipeline via evento
+      console.log('🔄 [CORREÇÃO-DROPDOWN] Notificando AppDashboard sobre pipeline duplicada');
+      window.dispatchEvent(new CustomEvent('pipeline-duplicated', {
+        detail: {
+          pipeline: response.data.pipeline,
+          timestamp: new Date().toISOString(),
+          source: 'pipeline-duplication'
+        }
+      }));
+      
+      // 🚀 NAVEGAÇÃO AUTOMÁTICA: Abrir modal da pipeline duplicada
+      console.log('✅ [UnifiedPipelineManager] Abrindo modal da pipeline duplicada:', response.data.pipeline.name);
+      setEditingPipeline(response.data.pipeline);
+      setShowEditModal(true);
+      
+      console.log('✅ [UnifiedPipelineManager] Pipeline duplicada com sucesso:', response.data.pipeline?.name);
       
     } catch (error: any) {
       console.error('❌ [UnifiedPipelineManager] Erro ao duplicar pipeline:', error);
-      throw error;
+      showErrorToast('Erro na duplicação', `Não foi possível duplicar a pipeline: ${error.message}`);
+    } finally {
+      // 🚀 FINALIZAR loading state
+      setDuplicatingPipelineId(null);
     }
-  }, [isAdmin, user?.tenant_id, authenticatedFetch, refreshPipelines]);
+  }, [isAdmin, user?.tenant_id, refreshPipelines, queryClient]);
 
   // ✅ FASE 2: ENTERPRISE-GRADE Archive Handler
   const handleArchivePipeline = useCallback(async (pipelineId: string, shouldArchive: boolean = true) => {
@@ -172,34 +231,46 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
     return handleArchivePipeline(pipelineId, false);
   }, [handleArchivePipeline]);
 
+  // ✅ CORREÇÃO: Handler para abrir LeadDetailsModal
+  const handleViewDetails = useCallback((lead: Lead) => {
+    console.log('📋 [UnifiedPipelineManager] Abrindo LeadDetailsModal para:', lead.first_name + ' ' + lead.last_name);
+    setSelectedLead(lead);
+    setShowLeadModal(true);
+  }, []);
+
+  // ✅ CORREÇÃO CRÍTICA: Memoizar funções onClose para evitar loops infinitos
+  const handleCloseCreateModal = useCallback(() => {
+    setShowCreateModal(false);
+  }, []);
+
+  const handleCloseEditModal = useCallback(() => {
+    // ✅ PROTEÇÃO: Não fechar durante autosave
+    if (isAutoSaveInProgress) {
+      console.warn('⚠️ [UnifiedPipelineManager] BLOQUEADO: Tentativa de fechar modal via onClose durante autosave');
+      return;
+    }
+    setShowEditModal(false);
+    setEditingPipeline(null);
+  }, [isAutoSaveInProgress]);
+
   const handlePipelineCreate = useCallback(async (pipelineData: any) => {
     try {
       console.log('💾 [UnifiedPipelineManager] Criando nova pipeline:', pipelineData);
       
-      const response = await authenticatedFetch('/pipelines', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ...pipelineData,
-          tenant_id: user?.tenant_id
-        })
+      // ✅ CANCELAR queries em andamento para evitar race conditions
+      await queryClient.cancelQueries({ queryKey: QueryKeys.pipelines.byTenant(user?.tenant_id!) });
+      
+      const response = await api.post('/pipelines', {
+        ...pipelineData,
+        tenant_id: user?.tenant_id
       });
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Erro ao criar pipeline');
-      }
-      
-      const result = await response.json();
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Erro desconhecido');
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Erro desconhecido');
       }
 
-      // ✅ OTIMIZADO: Cache simplificado + sem timeout desnecessário
-      localStorage.removeItem(`pipelines_${user?.tenant_id}`);
+      // ✅ OTIMIZADO: Cache invalidation adequado do TanStack Query
+      queryClient.invalidateQueries({ queryKey: QueryKeys.pipelines.byTenant(user?.tenant_id!) });
       
       // Fechar modal e refresh direto
       setShowCreateModal(false);
@@ -211,13 +282,34 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
       console.error('❌ [UnifiedPipelineManager] Erro ao criar pipeline:', error);
       showErrorToast('Erro ao criar', `Erro ao criar pipeline: ${error.message}`);
     }
-  }, [user, authenticatedFetch, refreshPipelines]);
+  }, [user, refreshPipelines, queryClient]);
 
   const handlePipelineUpdate = useCallback(async (pipelineData: any, shouldRedirect = true, options = {}) => {
     try {
+      // ✅ CORREÇÃO CRÍTICA: Interface adequada para options ANTES de usar
+      interface UpdateOptions {
+        onlyCustomFields?: boolean;
+        isAutoSave?: boolean;
+        isUpdate?: boolean;
+        tabName?: string;
+        onlyTab?: string;
+        pipelineId?: string; // ✅ NOVO: ID explícito da pipeline
+        correlationId?: string; // ✅ NOVO: Correlation ID para tracking
+        isStageAction?: boolean; // ✅ NOVO: Flag para ações de estágio
+        isNavigationChange?: boolean; // ✅ NOVO: Flag para mudanças de navegação
+      }
+      
+      const safeOptions: UpdateOptions = options || {};
+      
+      // ✅ CORREÇÃO CRÍTICA: Resolver stale closure - buscar pipeline atual
+      // Se options.pipelineId existe, usar ele; senão buscar do editingPipeline atual
+      const targetPipelineId = safeOptions.pipelineId || editingPipeline?.id;
+      
       // ✅ LOGS DETALHADOS PARA DEBUG
       console.log('✏️ [UnifiedPipelineManager] Atualizando pipeline - INÍCIO:', {
-        id: editingPipeline?.id,
+        editingPipelineId: editingPipeline?.id,
+        optionsPipelineId: safeOptions.pipelineId,
+        targetPipelineId,
         name: pipelineData.name,
         shouldRedirect,
         options,
@@ -226,59 +318,96 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
         timestamp: new Date().toISOString()
       });
       
-      if (!editingPipeline?.id) {
-        throw new Error('ID da pipeline não encontrado');
+      if (!targetPipelineId) {
+        throw new Error('ID da pipeline não encontrado - verifique se a pipeline está carregada corretamente');
       }
       
-      // ✅ DETECÇÃO ROBUSTA DE AUTOSAVE
-      const safeOptions = options || {};
       const isAutoSave = Boolean(
         safeOptions.onlyCustomFields === true || 
         safeOptions.isAutoSave === true ||
-        safeOptions.isUpdate === true
+        safeOptions.isUpdate === true ||
+        safeOptions.isStageAction === true ||
+        safeOptions.isNavigationChange === true
       );
       
-      console.log('🔍 [UnifiedPipelineManager] Análise de autosave:', {
+      // ✅ LOGGING ESTRUTURADO: Usar console.debug para logs detalhados
+      console.debug('🔍 [UnifiedPipelineManager] Análise de autosave:', {
+        correlationId: safeOptions.correlationId,
         isAutoSave,
+        targetPipelineId: targetPipelineId.substring(0, 8),
         onlyCustomFields: safeOptions.onlyCustomFields,
         isAutoSaveFlag: safeOptions.isAutoSave,
         isUpdate: safeOptions.isUpdate,
-        shouldCloseModal: !isAutoSave
+        isStageAction: safeOptions.isStageAction,
+        isNavigationChange: safeOptions.isNavigationChange,
+        tabName: safeOptions.tabName,
+        shouldCloseModal: !isAutoSave,
+        timestamp: new Date().toISOString()
       });
       
-      const response = await authenticatedFetch(`/pipelines/${editingPipeline.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ...pipelineData,
-          tenant_id: user?.tenant_id
-        })
+      // ✅ CANCELAR queries em andamento para evitar race conditions
+      await queryClient.cancelQueries({ queryKey: QueryKeys.pipelines.byTenant(user?.tenant_id!) });
+      
+      const response = await api.put(`/pipelines/${targetPipelineId}`, {
+        ...pipelineData,
+        tenant_id: user?.tenant_id
       });
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Erro ao atualizar pipeline');
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Erro desconhecido');
       }
       
-      const result = await response.json();
+      // ✅ CRÍTICO: Atualizar editingPipeline IMEDIATAMENTE com dados fresh
+      const updatedPipeline = response.data.pipeline || { 
+        ...editingPipeline, 
+        ...pipelineData,
+        updated_at: new Date().toISOString() // Forçar timestamp fresh
+      };
       
-      if (!result.success) {
-        throw new Error(result.error || 'Erro desconhecido');
+      if (editingPipeline && updatedPipeline) {
+        // ⚡ INSTANTÂNEO: Atualizar estado antes de invalidation
+        setEditingPipeline(updatedPipeline);
+        
+        console.log('⚡ [UnifiedPipelineManager] EditingPipeline atualizada INSTANTANEAMENTE:', {
+          id: updatedPipeline.id,
+          name: updatedPipeline.name,
+          description: updatedPipeline.description,
+          previous: editingPipeline.name
+        });
+        
+        // ✅ NOVA: Disparar evento para notificar outros componentes
+        window.dispatchEvent(new CustomEvent('pipeline-updated', {
+          detail: {
+            pipeline: updatedPipeline,
+            source: 'unified-manager',
+            timestamp: new Date().toISOString()
+          }
+        }));
       }
 
-      // ✅ OTIMIZADO: Cache simplificado
-      localStorage.removeItem(`pipelines_${user?.tenant_id}`);
+      // ✅ OTIMIZADO: Cache invalidation mais específico e abrangente
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: QueryKeys.pipelines.byTenant(user?.tenant_id!), exact: false }),
+        queryClient.invalidateQueries({ queryKey: ['pipeline', targetPipelineId], exact: false }),
+        queryClient.invalidateQueries({ queryKey: ['pipelines'], exact: false })
+      ]);
       
       // ✅ CORREÇÃO ROBUSTA: Lógica de fechamento do modal
       if (isAutoSave) {
         // Auto-save silencioso - modal permanece aberto
-        console.log('🔄 [UnifiedPipelineManager] Auto-save detectado - modal permanece aberto');
+        console.debug('🔄 [UnifiedPipelineManager] Auto-save detectado - modal permanece aberto', {
+          correlationId: safeOptions.correlationId,
+          tabName: safeOptions.tabName,
+          timestamp: new Date().toISOString()
+        });
         setIsAutoSaveInProgress(true);
         await refreshPipelines();
         setIsAutoSaveInProgress(false);
-        console.log('✅ [UnifiedPipelineManager] Auto-save concluído - modal mantido aberto');
+        console.debug('✅ [UnifiedPipelineManager] Auto-save concluído - modal mantido aberto', {
+          correlationId: safeOptions.correlationId,
+          tabName: safeOptions.tabName,
+          timestamp: new Date().toISOString()
+        });
       } else {
         // Submit manual - fechar modal e mostrar sucesso
         console.log('💾 [UnifiedPipelineManager] Submit manual detectado - fechando modal');
@@ -290,18 +419,24 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
           return;
         }
         
+        // Refresh antes de fechar para garantir dados atualizados
+        await refreshPipelines();
+        
         setShowEditModal(false);
         setEditingPipeline(null);
-        await refreshPipelines();
         showSuccessToast('Sucesso', 'Pipeline atualizada com sucesso!');
         console.log('✅ [UnifiedPipelineManager] Submit manual concluído - modal fechado');
       }
       
+      // ✅ NOVA: Retornar pipeline atualizada para permitir updates locais
+      return updatedPipeline;
+      
     } catch (error: any) {
       console.error('❌ [UnifiedPipelineManager] Erro ao atualizar pipeline:', error);
       showErrorToast('Erro ao atualizar', `Erro ao atualizar pipeline: ${error.message}`);
+      throw error; // Re-throw para que handleSaveChanges possa capturar
     }
-  }, [editingPipeline, user, authenticatedFetch, refreshPipelines]);
+  }, [user, refreshPipelines, queryClient, editingPipeline?.id]); // ✅ CRÍTICO: Adicionar editingPipeline.id
 
   // ✅ CORREÇÃO: Estado de seleção manual ANTES dos useMemo
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
@@ -331,10 +466,8 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
   const finalPipeline = selectedPipeline || fallbackPipeline;
   const finalSetPipeline = onPipelineChange || fallbackSetPipeline;
   const finalCacheLoading = selectedPipeline ? cacheLoading : fallbackCacheLoading;
-  const lastViewedPipeline = finalPipeline;
-  const setLastViewedPipeline = finalSetPipeline;
 
-  // ✅ CORREÇÃO: Estado de prontidão para evitar renderização prematura
+  // ✅ CORREÇÃO: Estado de prontidão para evitar renderização prematura (memoizado)
   const isDataReady = React.useMemo(() => {
     return !loading && !finalCacheLoading && userPipelines.length > 0;
   }, [loading, finalCacheLoading, userPipelines.length]);
@@ -363,11 +496,11 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
     // Para members: sempre usar acesso direto 
     if (isMember) return true;
     
-    // Para admins: usar acesso direto se dados estão prontos
-    if (isAdmin) return isDataReady;
+    // Para admins: sempre usar acesso direto (PipelineKanbanView)
+    if (isAdmin) return true;
     
     return false;
-  }, [isMember, isAdmin, isDataReady]);
+  }, [isMember, isAdmin]);
 
   // ✅ CORREÇÃO CRÍTICA: Controlar inicialização e aguardar cache estar pronto
   const hasInitialized = useRef(false);
@@ -439,22 +572,23 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
   // EVENT LISTENERS PARA EDIÇÃO E ARQUIVAMENTO (CORRIGE ACESSO DIRETO)
   // ================================================================================
   
+  // ✅ MEMOIZAÇÃO: Event handlers para evitar re-creation desnecessária
+  const handlePipelineEditEvent = useCallback((event: any) => {
+    const { pipeline } = event.detail;
+    if (pipeline) {
+      handleEditPipeline(pipeline);
+    }
+  }, [handleEditPipeline]);
+
+  const handlePipelineArchiveEvent = useCallback((event: any) => {
+    const { pipelineId, shouldArchive } = event.detail;
+    if (pipelineId) {
+      handleArchivePipeline(pipelineId, shouldArchive);
+    }
+  }, [handleArchivePipeline]);
+
   useEffect(() => {
     if (!isAdmin) return;
-
-    const handlePipelineEditEvent = (event: any) => {
-      const { pipeline } = event.detail;
-      if (pipeline) {
-        handleEditPipeline(pipeline);
-      }
-    };
-
-    const handlePipelineArchiveEvent = (event: any) => {
-      const { pipelineId, shouldArchive } = event.detail;
-      if (pipelineId) {
-        handleArchivePipeline(pipelineId, shouldArchive);
-      }
-    };
 
     // ✅ OTIMIZADO: Usar EventManager com deduplicação automática
     const unsubscribeEdit = eventManager.subscribe('pipeline-edit-requested', handlePipelineEditEvent, 'UnifiedPipelineManager-edit');
@@ -470,12 +604,32 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
   // EVENT LISTENER PARA CRIAÇÃO DE PIPELINE
   // ================================================================================
   
+  // ✅ MEMOIZAÇÃO: Event handler de criação
+  const handlePipelineCreateEvent = useCallback(() => {
+    handleCreatePipeline();
+  }, [handleCreatePipeline]);
+
+  // ✅ NOVO: Event handler para criação de oportunidade
+  const handleCreateOpportunityEvent = useCallback((event: CustomEvent) => {
+    const { pipelineId } = event.detail;
+    console.log('🎯 [UnifiedPipelineManager] Evento create-opportunity-requested recebido:', { pipelineId });
+    
+    // Encontrar a pipeline pelo ID
+    const pipeline = allPipelines.find(p => p.id === pipelineId);
+    if (pipeline) {
+      console.log('✅ [UnifiedPipelineManager] Abrindo StepLeadModal para pipeline:', pipeline.name);
+      setSelectedPipelineForLead(pipeline);
+      setShowStepLeadModal(true);
+    } else {
+      console.error('❌ [UnifiedPipelineManager] Pipeline não encontrada:', pipelineId);
+    }
+  }, [allPipelines]);
+
+  // ✅ NOVA ARQUITETURA: Não precisamos mais do handler onSubmit
+  // StepLeadModal agora gerencia criação internamente via useCreateOpportunity hook
+
   useEffect(() => {
     if (!shouldUseDirectAccess || !isAdmin) return;
-
-    const handlePipelineCreateEvent = (event: any) => {
-      handleCreatePipeline();
-    };
 
     // ✅ OTIMIZADO: EventManager com conditional registration
     const unsubscribe = eventManager.subscribe('pipeline-create-requested', handlePipelineCreateEvent, 'UnifiedPipelineManager-create');
@@ -484,54 +638,70 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
   }, [shouldUseDirectAccess, isAdmin, handleCreatePipeline, eventManager]);
 
   // ================================================================================
-  // EVENT LISTENER PARA TROCA DE PIPELINE
+  // EVENT LISTENER PARA CRIAÇÃO DE OPORTUNIDADE
   // ================================================================================
   
   useEffect(() => {
     if (!shouldUseDirectAccess) return;
 
-    const handlePipelineViewChanged = (event: any) => {
-      const { pipeline } = event.detail;
+    // ✅ NOVO: EventManager para create-opportunity-requested
+    const unsubscribe = eventManager.subscribe('create-opportunity-requested', handleCreateOpportunityEvent, 'UnifiedPipelineManager-opportunity');
+
+    return unsubscribe;
+  }, [shouldUseDirectAccess, handleCreateOpportunityEvent, eventManager]);
+
+  // ================================================================================
+  // EVENT LISTENER PARA TROCA DE PIPELINE
+  // ================================================================================
+  
+  // ✅ MEMOIZAÇÃO: Event handler complexo de mudança de view
+  const handlePipelineViewChanged = useCallback((event: any) => {
+    const { pipeline } = event.detail;
+    
+    if (pipeline && pipeline.id) {
+      setSelectedPipelineId(pipeline.id);
+      finalSetPipeline(pipeline);
       
-      if (pipeline && pipeline.id) {
-        setSelectedPipelineId(pipeline.id);
-        finalSetPipeline(pipeline);
-        
-        // Limpar cache específico para forçar re-render
-        const cacheKeys = [
-          'pipeline_view_cache',
-          `pipeline_leads_${pipeline.id}`,
-          `pipeline_metrics_${pipeline.id}`
-        ];
-        
-        cacheKeys.forEach(key => {
-          localStorage.removeItem(key);
-          sessionStorage.removeItem(key);
-        });
-      }
-    };
+      // ✅ INVALIDAR cache específico usando TanStack Query para forçar re-render
+      queryClient.invalidateQueries({ 
+        queryKey: QueryKeys.pipelineLeads.byPipeline(pipeline.id),
+        exact: false
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: QueryKeys.pipelineMetrics.byPipeline(pipeline.id),
+        exact: false
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: QueryKeys.views.pipelineCache(pipeline.id),
+        exact: false
+      });
+    }
+  }, [finalSetPipeline, queryClient]);
+
+  useEffect(() => {
+    if (!shouldUseDirectAccess) return;
 
     // ✅ OTIMIZADO: EventManager otimizado
     const unsubscribe = eventManager.subscribe('pipeline-view-changed', handlePipelineViewChanged, 'UnifiedPipelineManager-view');
 
     return unsubscribe;
-  }, [shouldUseDirectAccess, finalSetPipeline, eventManager]);
+  }, [shouldUseDirectAccess, finalSetPipeline, eventManager, queryClient]);
 
-  // ✅ CORREÇÃO: Loading unificado que previne duplicação
-  const LoadingComponent = () => (
-    <div className="flex items-center justify-center h-64">
-      <div className="flex flex-col items-center space-y-4">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <p className="text-sm text-gray-600">
-          Carregando Pipeline {isAdmin ? '(Admin)' : '(Vendedor)'}...
-        </p>
+  // ✅ CORREÇÃO CRÍTICA: LoadingComponent como componente React válido
+  const LoadingComponent = React.useCallback(() => {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <p className="text-sm text-gray-600">
+            Carregando Pipeline {isAdmin ? '(Admin)' : '(Vendedor)'}...
+          </p>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }, [isAdmin]);
 
-  // ✅ CORREÇÃO: Estados de loading centralizados
-  const isMainLoading = loading || membersLoading || cacheLoading;
-  const hasInitialData = pipelines && pipelines.length > 0;
+  // ✅ OTIMIZAÇÃO: Verificação inline de dados prontos quando necessário
 
   // Validação de permissões
   if (!user || (!isAdmin && !isMember)) {
@@ -552,28 +722,10 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
 
   return (
     <div className={`w-full h-full ${className}`}>
-      <SafeErrorBoundary 
-        fallback={
-          <div className="flex flex-col items-center justify-center h-64 bg-red-50 border border-red-200 rounded-lg p-8">
-            <div className="text-red-600 mb-4">
-              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-red-800 mb-2">
-              Erro ao carregar Pipeline
-            </h3>
-            <p className="text-red-600 text-center mb-4">
-              Houve um problema ao carregar o módulo de pipeline.
-            </p>
-            <button 
-              onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-            >
-              Recarregar Página
-            </button>
-          </div>
-        }
+      <PipelineErrorBoundary
+        pipelineId={selectedPipelineToRender?.id}
+        pipelineName={selectedPipelineToRender?.name}
+        showErrorDetails={process.env.NODE_ENV === 'development'}
       >
         {shouldUseDirectAccess ? (
           // ✅ CORREÇÃO: ACESSO DIRETO - aguardar dados estarem prontos
@@ -588,6 +740,7 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
                 userRole={user?.role as 'admin' | 'member' | 'super_admin'}
                 enableMetrics={isAdmin}
                 autoRefresh={true}
+                onViewDetails={handleViewDetails}
                 key={selectedPipelineToRender.id} // Force re-render when pipeline changes
               />
             ) : (
@@ -603,14 +756,6 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
               </div>
             )}
           </Suspense>
-        ) : isAdmin ? (
-          // 🔧 ADMIN: Interface administrativa tradicional (CRUD de pipelines) - FALLBACK
-          <Suspense fallback={<LoadingComponent />}>
-            <ModernAdminPipelineManagerRefactored 
-              searchTerm={searchTerm}
-              selectedFilter={selectedFilter}
-            />
-          </Suspense>
         ) : (
           // ⚠️ FALLBACK: Caso não deveria acontecer, mas mantemos por segurança
           <div className="flex items-center justify-center h-64">
@@ -619,15 +764,15 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
             </div>
           </div>
         )}
-      </SafeErrorBoundary>
+      </PipelineErrorBoundary>
       
       {/* Modal de criação de pipeline */}
       <Suspense fallback={<></>}>
         <PipelineModal
           isOpen={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
+          onClose={handleCloseCreateModal}
           pipeline={null}
-          members={members || []}
+          members={(members || []) as any[]}
           onSubmit={handlePipelineCreate}
           isEdit={false}
         />
@@ -637,23 +782,56 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
       <Suspense fallback={<></>}>
         <PipelineModal
           isOpen={showEditModal}
-          onClose={() => {
-            // ✅ PROTEÇÃO: Não fechar durante autosave
-            if (isAutoSaveInProgress) {
-              console.warn('⚠️ [UnifiedPipelineManager] BLOQUEADO: Tentativa de fechar modal via onClose durante autosave');
-              return;
-            }
-            setShowEditModal(false);
-            setEditingPipeline(null);
-          }}
+          onClose={handleCloseEditModal}
           pipeline={editingPipeline}
-          members={members || []}
+          members={(members || []) as any[]}
           onSubmit={handlePipelineUpdate}
           isEdit={true}
           onDuplicatePipeline={editingPipeline ? () => handleDuplicatePipeline(editingPipeline) : undefined}
+          duplicatingPipelineId={duplicatingPipelineId}
           onArchivePipeline={editingPipeline ? () => handleArchivePipeline(editingPipeline.id, true) : undefined}
           onUnarchivePipeline={editingPipeline ? () => handleUnarchivePipeline(editingPipeline.id) : undefined}
           loading={loading}
+        />
+      </Suspense>
+
+      {/* Modal de detalhes do lead com error handling */}
+      <Suspense fallback={
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 shadow-xl">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Carregando detalhes do lead...</p>
+          </div>
+        </div>
+      }>
+        <PipelineErrorBoundary
+          pipelineId={selectedPipelineToRender?.id}
+          pipelineName={selectedPipelineToRender?.name}
+        >
+          <LeadDetailsModal
+            isOpen={showLeadModal && !!selectedLead}
+            onClose={() => {
+              setShowLeadModal(false);
+              setSelectedLead(null);
+            }}
+            lead={selectedLead}
+            customFields={selectedPipelineToRender?.pipeline_custom_fields || []}
+            pipelineId={selectedPipelineToRender?.id || ''}
+          />
+        </PipelineErrorBoundary>
+      </Suspense>
+
+      {/* ✅ NOVO: Modal para criar nova oportunidade */}
+      <Suspense fallback={<></>}>
+        <StepLeadModal
+          isOpen={showStepLeadModal && !!selectedPipelineForLead}
+          onClose={() => {
+            setShowStepLeadModal(false);
+            setSelectedPipelineForLead(null);
+          }}
+          pipeline={selectedPipelineForLead}
+          members={members as any[]}
+          onSubmit={() => {}} // ✅ NOVA ARQUITETURA: Prop mantida para compatibilidade, mas não usada
         />
       </Suspense>
     </div>

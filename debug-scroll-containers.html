@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Scroll Containers - CRM</title>
+    <style>
+        .debug-highlight {
+            border: 2px solid red !important;
+            background-color: rgba(255, 0, 0, 0.1) !important;
+        }
+        .debug-info {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: white;
+            border: 1px solid #ccc;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            max-width: 300px;
+            z-index: 10000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div id="debug-info" class="debug-info">
+        <h4>🔍 Scroll Container Detector</h4>
+        <div id="scroll-containers-list"></div>
+        <button onclick="detectScrollContainers()">🔄 Re-scan</button>
+        <button onclick="clearHighlights()">🧹 Clear</button>
+    </div>
+
+    <script>
+        function detectScrollContainers() {
+            // Limpar highlights anteriores
+            clearHighlights();
+            
+            const scrollContainers = [];
+            const allElements = document.querySelectorAll('*');
+            
+            allElements.forEach((element, index) => {
+                const computedStyle = window.getComputedStyle(element);
+                const overflowX = computedStyle.overflowX;
+                const overflowY = computedStyle.overflowY;
+                const overflow = computedStyle.overflow;
+                
+                // Detectar elementos com scroll
+                if (
+                    overflow === 'auto' || overflow === 'scroll' ||
+                    overflowX === 'auto' || overflowX === 'scroll' ||
+                    overflowY === 'auto' || overflowY === 'scroll'
+                ) {
+                    const rect = element.getBoundingClientRect();
+                    const tagName = element.tagName.toLowerCase();
+                    const className = element.className || 'no-class';
+                    const id = element.id || 'no-id';
+                    
+                    // Verificar se é realmente scrollável
+                    const isScrollable = (
+                        element.scrollHeight > element.clientHeight ||
+                        element.scrollWidth > element.clientWidth
+                    );
+                    
+                    const containerInfo = {
+                        element,
+                        tagName,
+                        id,
+                        className: typeof className === 'string' ? className : className.toString(),
+                        overflow,
+                        overflowX,
+                        overflowY,
+                        isScrollable,
+                        rect: {
+                            width: rect.width,
+                            height: rect.height,
+                            top: rect.top,
+                            left: rect.left
+                        },
+                        scrollHeight: element.scrollHeight,
+                        clientHeight: element.clientHeight,
+                        scrollWidth: element.scrollWidth,
+                        clientWidth: element.clientWidth
+                    };
+                    
+                    scrollContainers.push(containerInfo);
+                    
+                    // Highlight visual
+                    element.classList.add('debug-highlight');
+                    
+                    // Adicionar label
+                    const label = document.createElement('div');
+                    label.innerHTML = `📦 ${tagName}${id ? '#' + id : ''}${className ? '.' + className.split(' ')[0] : ''}`;
+                    label.style.cssText = `
+                        position: absolute;
+                        background: red;
+                        color: white;
+                        padding: 2px 4px;
+                        font-size: 10px;
+                        z-index: 9999;
+                        pointer-events: none;
+                        top: ${rect.top + window.scrollY - 20}px;
+                        left: ${rect.left + window.scrollX}px;
+                    `;
+                    label.className = 'debug-highlight';
+                    document.body.appendChild(label);
+                }
+            });
+            
+            // Detectar aninhamento
+            const nestedContainers = [];
+            scrollContainers.forEach(container => {
+                let parent = container.element.parentElement;
+                let depth = 0;
+                
+                while (parent && depth < 10) {
+                    const parentContainer = scrollContainers.find(c => c.element === parent);
+                    if (parentContainer) {
+                        nestedContainers.push({
+                            child: container,
+                            parent: parentContainer,
+                            depth: depth + 1
+                        });
+                        break;
+                    }
+                    parent = parent.parentElement;
+                    depth++;
+                }
+            });
+            
+            // Atualizar display
+            updateScrollContainersList(scrollContainers, nestedContainers);
+            
+            // Log detalhado no console
+            console.group('🔍 SCROLL CONTAINERS DETECTED');
+            console.log('Total containers:', scrollContainers.length);
+            console.log('Nested containers:', nestedContainers.length);
+            
+            scrollContainers.forEach((container, index) => {
+                console.group(`📦 Container ${index + 1}: ${container.tagName}`);
+                console.log('Element:', container.element);
+                console.log('ID:', container.id);
+                console.log('Classes:', container.className);
+                console.log('Overflow properties:', {
+                    overflow: container.overflow,
+                    overflowX: container.overflowX,
+                    overflowY: container.overflowY
+                });
+                console.log('Scrollable:', container.isScrollable);
+                console.log('Dimensions:', {
+                    clientWidth: container.clientWidth,
+                    scrollWidth: container.scrollWidth,
+                    clientHeight: container.clientHeight,
+                    scrollHeight: container.scrollHeight
+                });
+                console.groupEnd();
+            });
+            
+            if (nestedContainers.length > 0) {
+                console.group('⚠️ NESTED SCROLL CONTAINERS (PROBLEMATIC)');
+                nestedContainers.forEach(nested => {
+                    console.log('🔴 NESTED:', {
+                        child: `${nested.child.tagName}#${nested.child.id}.${nested.child.className.split(' ')[0]}`,
+                        parent: `${nested.parent.tagName}#${nested.parent.id}.${nested.parent.className.split(' ')[0]}`,
+                        depth: nested.depth
+                    });
+                });
+                console.groupEnd();
+            }
+            
+            console.groupEnd();
+        }
+        
+        function updateScrollContainersList(scrollContainers, nestedContainers) {
+            const listElement = document.getElementById('scroll-containers-list');
+            
+            let html = `<div><strong>📊 Found: ${scrollContainers.length} containers</strong></div>`;
+            
+            if (nestedContainers.length > 0) {
+                html += `<div style="color: red;"><strong>⚠️ ${nestedContainers.length} NESTED CONTAINERS!</strong></div>`;
+                nestedContainers.forEach(nested => {
+                    html += `
+                        <div style="margin: 5px 0; padding: 3px; background: #ffe6e6; border-left: 3px solid red;">
+                            <div><strong>Child:</strong> ${nested.child.tagName}${nested.child.id ? '#' + nested.child.id : ''}</div>
+                            <div><strong>Parent:</strong> ${nested.parent.tagName}${nested.parent.id ? '#' + nested.parent.id : ''}</div>
+                            <div><strong>Depth:</strong> ${nested.depth}</div>
+                        </div>
+                    `;
+                });
+            }
+            
+            html += '<div style="margin-top: 10px;"><strong>All containers:</strong></div>';
+            scrollContainers.forEach((container, index) => {
+                const scrollable = container.isScrollable ? '✅' : '❌';
+                html += `
+                    <div style="margin: 2px 0; font-size: 11px;">
+                        ${scrollable} ${container.tagName}${container.id ? '#' + container.id : ''}
+                        <br><span style="color: #666;">${container.className.substring(0, 30)}...</span>
+                    </div>
+                `;
+            });
+            
+            listElement.innerHTML = html;
+        }
+        
+        function clearHighlights() {
+            document.querySelectorAll('.debug-highlight').forEach(element => {
+                element.classList.remove('debug-highlight');
+                if (element.tagName === 'DIV' && element.style.position === 'absolute') {
+                    element.remove();
+                }
+            });
+        }
+        
+        // Auto-detect ao carregar
+        window.addEventListener('load', () => {
+            setTimeout(detectScrollContainers, 1000);
+        });
+        
+        // Re-detect quando DOM muda
+        const observer = new MutationObserver(() => {
+            setTimeout(detectScrollContainers, 500);
+        });
+        
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['class', 'style']
+        });
+    </script>
+</body>
+</html>

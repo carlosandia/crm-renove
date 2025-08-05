@@ -149,7 +149,9 @@ export const useOutcomeReasonsManager = (params: UseOutcomeReasonsManagerParams 
   const clearReasons = useCallback(() => {
     const emptyData: OutcomeReasonsData = {
       won_reasons: [],
-      lost_reasons: []
+      lost_reasons: [],
+      ganho_reasons: [],
+      perdido_reasons: []
     };
     setOutcomeReasonsData(emptyData);
     setIsValid(true);

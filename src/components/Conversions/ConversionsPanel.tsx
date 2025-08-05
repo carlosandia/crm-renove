@@ -12,7 +12,7 @@ import {
   Download,
   X
 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { supabase } from '../../lib/supabase';
 import { BlurFade } from '../ui/blur-fade';
 import { ShimmerButton } from '../ui/shimmer-button';

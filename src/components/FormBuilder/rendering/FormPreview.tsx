@@ -1,5 +1,6 @@
 import React from 'react';
-import { DragEndEvent } from '@dnd-kit/core';
+// ❌ REMOVIDO @dnd-kit - BACKUP: Ver BACKUP_DND_KIT_LOGIC.md
+// import { DragEndEvent } from '@dnd-kit/core';
 import { 
   Star, Mail, Phone, Hash, Calendar, Clock, Globe, DollarSign, 
   Building, MapPin, Flag, Shield, Upload, User, GripVertical,
@@ -17,7 +18,8 @@ interface FormPreviewProps {
   previewMode: PreviewMode;
   selectedField?: FormField | null;
   onFieldSelect: (field: FormField) => void;
-  onDragEnd?: (event: DragEndEvent) => void;
+  // ❌ REMOVIDO @dnd-kit - BACKUP: Ver BACKUP_DND_KIT_LOGIC.md
+  // onDragEnd?: (event: DragEndEvent) => void;
   removeField?: (fieldId: string) => void;
   duplicateField?: (fieldId: string) => void;
 }
@@ -29,7 +31,7 @@ const FormPreview: React.FC<FormPreviewProps> = ({
   previewMode,
   selectedField,
   onFieldSelect,
-  onDragEnd,
+  // ❌ REMOVIDO @dnd-kit - onDragEnd,
   removeField = () => {},
   duplicateField = () => {}
 }) => {

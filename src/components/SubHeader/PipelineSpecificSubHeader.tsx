@@ -240,8 +240,9 @@ const PipelineSpecificSubHeader: React.FC<PipelineSpecificSubHeaderProps> = ({
         
         {/* LADO ESQUERDO: Nome da Pipeline */}
         <div className="flex items-center space-x-4 flex-shrink-0">
-          <h1 className="text-base font-medium text-gray-700 truncate">
-            {selectedPipeline?.name || "Pipeline"}
+          <h1 className="text-sm text-gray-700 truncate">
+            <span className="font-semibold">Negócio:</span>{" "}
+            <span className="font-normal">{selectedPipeline?.name || "Sem nome"}</span>
           </h1>
         </div>
 
@@ -489,17 +490,29 @@ const PipelineSpecificSubHeader: React.FC<PipelineSpecificSubHeaderProps> = ({
               <Button
                 variant="ghost"
                 size="sm"
-                className={`h-8 px-2.5 gap-2 border-0 hover:bg-gray-100 text-gray-600 hover:text-gray-900 ${
-                  dateRange.start ? 'bg-blue-50 text-blue-700' : 'bg-gray-50'
+                className={`h-8 px-2.5 gap-2 border-0 transition-all duration-200 ${
+                  dateRange.start && dateRange.end 
+                    ? 'bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 text-green-700 shadow-sm hover:shadow-md' 
+                    : dateRange.start 
+                      ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 text-blue-700 shadow-sm hover:shadow-md animate-pulse' 
+                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                 }`}
               >
-                <Calendar className="w-4 h-4" />
-                <span className="hidden sm:inline">{formatDateRange()}</span>
+                <Calendar className={`w-4 h-4 ${
+                  dateRange.start && dateRange.end 
+                    ? 'text-green-600' 
+                    : dateRange.start 
+                      ? 'text-blue-600' 
+                      : 'text-gray-500'
+                }`} />
+                <span className="hidden sm:inline font-medium">{formatDateRange()}</span>
+                {(dateRange.start && dateRange.end) && (
+                  <div className="w-2 h-2 bg-green-500 rounded-full ml-1" />
+                )}
                 <ChevronDown className="w-3 h-3" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end" sideOffset={8}>
-              <div className="p-3">
+            <PopoverContent className="w-auto p-3" align="end" sideOffset={8}>
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="text-sm font-medium">Filtrar por período</h4>
                   {(dateRange.start || dateRange.end) && (
@@ -513,6 +526,70 @@ const PipelineSpecificSubHeader: React.FC<PipelineSpecificSubHeaderProps> = ({
                     </Button>
                   )}
                 </div>
+
+                {/* ✅ PERÍODOS RÁPIDOS - SEMPRE VISÍVEL */}
+                <div className="mb-3 p-2 bg-gray-50 rounded-lg">
+                  <p className="text-xs text-gray-600 mb-2 font-medium">Seleção rápida:</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const today = new Date();
+                        const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+                        const newRange = { start: weekAgo, end: today };
+                        setDateRange(newRange);
+                        onDateRangeChange?.(newRange);
+                      }}
+                      className="h-7 px-2 text-xs text-gray-700 hover:text-blue-700 hover:bg-blue-50 bg-white border border-gray-200"
+                    >
+                      7 dias
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const today = new Date();
+                        const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+                        const newRange = { start: monthAgo, end: today };
+                        setDateRange(newRange);
+                        onDateRangeChange?.(newRange);
+                      }}
+                      className="h-7 px-2 text-xs text-gray-700 hover:text-blue-700 hover:bg-blue-50 bg-white border border-gray-200"
+                    >
+                      30 dias
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const today = new Date();
+                        const threeMonthsAgo = new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000);
+                        const newRange = { start: threeMonthsAgo, end: today };
+                        setDateRange(newRange);
+                        onDateRangeChange?.(newRange);
+                      }}
+                      className="h-7 px-2 text-xs text-gray-700 hover:text-blue-700 hover:bg-blue-50 bg-white border border-gray-200"
+                    >
+                      90 dias
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const today = new Date();
+                        const oneYearAgo = new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000);
+                        const newRange = { start: oneYearAgo, end: today };
+                        setDateRange(newRange);
+                        onDateRangeChange?.(newRange);
+                      }}
+                      className="h-7 px-2 text-xs text-gray-700 hover:text-blue-700 hover:bg-blue-50 bg-white border border-gray-200"
+                    >
+                      1 ano
+                    </Button>
+                  </div>
+                </div>
+
                 <CalendarComponent
                   mode="single"
                   selected={dateRange.start || undefined}
@@ -520,15 +597,67 @@ const PipelineSpecificSubHeader: React.FC<PipelineSpecificSubHeaderProps> = ({
                   className="rounded-md border-0"
                   locale={ptBR}
                 />
+                
+                {/* ✅ MELHOR UX: Feedback visual aprimorado para range selection */}
                 {dateRange.start && (
-                  <div className="mt-2 p-2 bg-blue-50 rounded text-xs text-blue-700">
-                    {dateRange.end ? 
-                      `${format(dateRange.start, "dd/MM/yyyy", { locale: ptBR })} - ${format(dateRange.end, "dd/MM/yyyy", { locale: ptBR })}` :
-                      `De: ${format(dateRange.start, "dd/MM/yyyy", { locale: ptBR })} (selecione a data final)`
-                    }
+                  <div className="mt-3 space-y-2">
+                    {/* Status indicator com melhor visual */}
+                    <div className={`
+                      p-3 rounded-lg border transition-all duration-200
+                      ${dateRange.end 
+                        ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 text-green-800' 
+                        : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 text-blue-800'
+                      }
+                    `}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className={`
+                          w-2 h-2 rounded-full
+                          ${dateRange.end ? 'bg-green-500' : 'bg-blue-500 animate-pulse'}
+                        `} />
+                        <span className="text-xs font-medium">
+                          {dateRange.end ? 'Período Selecionado' : 'Selecionando Período'}
+                        </span>
+                      </div>
+                      
+                      <div className="text-sm font-medium">
+                        {dateRange.end ? (
+                          // Range completo com melhor formatação
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-1 bg-white/60 rounded text-xs">
+                              {format(dateRange.start, "dd 'de' MMM", { locale: ptBR })}
+                            </span>
+                            <span className="text-gray-500">até</span>  
+                            <span className="px-2 py-1 bg-white/60 rounded text-xs">
+                              {format(dateRange.end, "dd 'de' MMM", { locale: ptBR })}
+                            </span>
+                          </div>
+                        ) : (
+                          // Estado intermediário com instrução clara
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="px-2 py-1 bg-white/60 rounded text-xs">
+                                {format(dateRange.start, "dd 'de' MMM", { locale: ptBR })}
+                              </span>
+                              <span className="text-blue-600">→ ?</span>
+                            </div>
+                            <p className="text-xs opacity-80 italic">
+                              Clique em outra data para definir o período final
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Status do filtro aplicado */}
+                    {dateRange.end && (
+                      <div className="flex items-center justify-center pt-1 border-t border-gray-100">
+                        <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                          ✓ Filtro aplicado
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
             </PopoverContent>
           </Popover>
 

@@ -1,7 +1,18 @@
-// AIDEV-NOTE: Sistema de Logger Centralizado Frontend seguindo CLAUDE.md
-// Implementa data masking para LGPD/GDPR compliance e controle de verbosidade por ambiente
+// AIDEV-NOTE: Sistema de Logger Centralizado Frontend seguindo Winston Best Practices
+// Implementa níveis inteligentes, throttling eficiente e structured logging otimizado
 
-type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'none';
+// ✅ WINSTON-STYLE LEVELS (RFC5424 ascending severity order)
+type LogLevel = 'error' | 'warn' | 'info' | 'http' | 'debug' | 'silly' | 'none';
+
+const LOG_LEVELS = {
+  error: 0,    // Erros críticos que requerem atenção imediata
+  warn: 1,     // Situações de alerta mas não críticas  
+  info: 2,     // Operações importantes e resultados finais
+  http: 3,     // Requests de API e comunicação externa
+  debug: 4,    // Informações detalhadas para debugging
+  silly: 5,    // Logs internos de sistema (cache, retry, etc.)
+  none: 6      // Silenciar todos os logs
+} as const;
 
 interface LoggerConfig {
   level: LogLevel;
@@ -9,6 +20,12 @@ interface LoggerConfig {
   enableTimestamp: boolean;
   enableDataMasking: boolean;
   enableCorrelationId: boolean;
+  environment: 'development' | 'production' | 'test';
+  throttleInterval: number;
+  enableStructuredLogging: boolean;
+  performanceTracking: boolean;
+  includeStack: boolean;
+  clientFactoryLogging: boolean;
 }
 
 interface LogContext {
@@ -17,52 +34,191 @@ interface LogContext {
   correlationId?: string;
   operation?: string;
   domain?: string;
+  performance?: { duration?: string | number; retries?: number; startTime?: number; endTime?: number };
+  changes?: { created?: number; updated?: number; removed?: number };
+  strategy?: string;
+  clientFactory?: {
+    poolSize?: number;
+    cacheHits?: number;
+    cacheMisses?: number;
+    avgCreationTime?: number;
+  };
   [key: string]: any;
+}
+
+// ✅ WINSTON-STYLE: Log consolidado com todas as informações
+interface ConsolidatedLogEntry {
+  level: LogLevel;
+  message: string;
+  operation: string;
+  context: LogContext;
+  performance: { totalTime: string; retries: number };
+  changes?: { created: number; updated: number; removed: number };
+  timestamp: string;
 }
 
 class StructuredLogger {
   private config: LoggerConfig;
   private isDev: boolean;
   private environment: string;
+  // ✅ NOVOS: Maps para throttling e agrupamento
+  private throttleMap: Map<string, number> = new Map();
+  private groupedLogs: Map<string, { count: number; lastMessage: string; data?: any }> = new Map();
+  private flushInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     this.isDev = import.meta.env.DEV;
     this.environment = import.meta.env.VITE_ENVIRONMENT || 'development';
+    
+    // ✅ CORREÇÃO: Usar variável temporária para evitar referência circular
+    const logLevel = (import.meta.env.VITE_LOG_LEVEL as LogLevel) || this.getDefaultLogLevel();
+    
     this.config = {
-      level: (import.meta.env.VITE_LOG_LEVEL as LogLevel) || this.getDefaultLogLevel(),
+      level: logLevel,
       enableColors: this.isDev,
       enableTimestamp: this.isDev,
       enableDataMasking: this.environment === 'production',
-      enableCorrelationId: true
+      enableCorrelationId: true,
+      environment: this.environment as 'development' | 'production' | 'test',
+      throttleInterval: this.environment === 'production' ? 10000 : 5000,
+      enableStructuredLogging: true,
+      performanceTracking: this.isDev,
+      includeStack: this.isDev && logLevel === 'debug', // ✅ Usar variável local
+      clientFactoryLogging: this.isDev
     };
+
+    // ✅ WINSTON-STYLE: Configurar flush automático otimizado
+    this.setupGroupedLogsFlusher();
   }
 
-  // AIDEV-NOTE: Configuração de níveis por ambiente seguindo CLAUDE.md
+  // ✅ CORREÇÃO: Configurar flush automático de logs agrupados
+  private setupGroupedLogsFlusher(): void {
+    this.flushInterval = setInterval(() => {
+      this.flushGroupedLogs();
+    }, 3000); // Flush a cada 3 segundos
+  }
+
+  // ✅ CORREÇÃO: Flush logs agrupados
+  private flushGroupedLogs(): void {
+    this.groupedLogs.forEach((group, key) => {
+      if (group.count > 1) {
+        const [domain, baseMessage] = key.split('::');
+        const message = `${baseMessage} (${group.count}x nos últimos 3s)`;
+        
+        // Log direto sem throttling
+        const formatted = this.formatMessage('info', message, { domain });
+        console.log(formatted, group.data);
+      } else if (group.count === 1) {
+        const [domain, baseMessage] = key.split('::');
+        const formatted = this.formatMessage('info', baseMessage, { domain });
+        console.log(formatted, group.data);
+      }
+    });
+    
+    this.groupedLogs.clear();
+  }
+
+  // ✅ CORREÇÃO: Sistema de throttling inteligente com detecção de spam
+  public shouldThrottle(component: string, action: string, throttleMs: number = 1000): boolean {
+    const key = `${component}::${action}`;
+    const now = Date.now();
+    const lastLog = this.throttleMap.get(key) || 0;
+    
+    // ✅ BLACKLIST EXPANDIDA: Componentes conhecidos por spam excessivo
+    const spamComponents = [
+      'ModernPipelineCreator::auto-save',
+      'useStageManager::calculate',
+      'CadenceManager::sync',
+      'LeadCard::badge-calculation',
+      'PipelineData::fetch',
+      'LeadTasks::stats-calculation',
+      'usePipelineData::loading',
+      'useLeadTasksForCard::query',
+      'KanbanColumn::render',
+      'PipelineKanbanView::drag-drop',
+      'LeadCardPresentation::task-count',
+      'ModernPipelineCreatorRefactored::validation'
+    ];
+    
+    // ✅ THROTTLING ESCALADO: Progressivo por frequência
+    let adjustedThrottleMs = throttleMs;
+    
+    if (spamComponents.includes(key)) {
+      adjustedThrottleMs = Math.max(throttleMs, 8000); // 8s para componentes problemáticos
+    }
+    
+    // ✅ DETECÇÃO DE SPAM: Se logou muito recentemente, aumentar throttle
+    const timeSinceLastLog = now - lastLog;
+    if (timeSinceLastLog < 500) { // Menos de 500ms
+      adjustedThrottleMs = Math.max(adjustedThrottleMs, 15000); // 15s de throttle
+    }
+    
+    if (timeSinceLastLog < adjustedThrottleMs) {
+      return true; // Deve throttle
+    }
+    
+    this.throttleMap.set(key, now);
+    return false; // Não deve throttle
+  }
+
+  // ✅ CORREÇÃO: Agrupar logs similares para reduzir spam
+  public addToGroupedLog(component: string, message: string, data?: any): void {
+    const key = `${component}::${message}`;
+    const existing = this.groupedLogs.get(key);
+    
+    if (existing) {
+      existing.count++;
+      existing.data = data; // Manter dados mais recentes
+    } else {
+      this.groupedLogs.set(key, {
+        count: 1,
+        lastMessage: message,
+        data
+      });
+    }
+  }
+
+  // ✅ WINSTON-STYLE: Configuração de níveis por ambiente otimizada
   private getDefaultLogLevel(): LogLevel {
+    // ✅ OTIMIZAÇÃO: Verificar override via query string para debugging
+    const urlParams = new URLSearchParams(window.location.search);
+    const debugOverride = urlParams.get('debug');
+    
+    if (debugOverride) {
+      switch (debugOverride) {
+        case 'silent':
+        case 'none':
+          return 'none';
+        case 'error':
+          return 'error';
+        case 'warn':
+          return 'warn';
+        case 'info':
+          return 'info';
+        case 'debug':
+          return 'debug';
+        case 'silly':
+          return 'silly';
+      }
+    }
+    
     switch (this.environment) {
       case 'development':
-        return 'debug';
-      case 'staging':
-        return 'info';
+        return 'info';     // ✅ OTIMIZAÇÃO: Reduzir de debug para info por padrão
+      case 'test':
+        return 'warn';     // Testes: apenas warnings e errors
       case 'production':
-        return 'warn';
+        return 'warn';     // ✅ OTIMIZAÇÃO: Produção mais silenciosa
       default:
-        return 'info';
+        return 'warn';     // ✅ OTIMIZAÇÃO: Padrão mais conservador
     }
   }
 
   private shouldLog(level: LogLevel): boolean {
     if (this.config.level === 'none') return false;
     
-    const levels: Record<LogLevel, number> = {
-      debug: 0,
-      info: 1,
-      warn: 2,
-      error: 3,
-      none: 4
-    };
-    
-    return levels[level] >= levels[this.config.level];
+    // ✅ WINSTON-STYLE: RFC5424 levels (números menores = maior prioridade)
+    return LOG_LEVELS[level] <= LOG_LEVELS[this.config.level];
   }
 
   // AIDEV-NOTE: Data masking para compliance LGPD/GDPR - nunca logar dados sensíveis em produção
@@ -140,9 +296,11 @@ class StructuredLogger {
     if (this.config.enableColors) {
       const colors = {
         error: '🚨',
-        warn: '⚠️',
+        warn: '⚠️', 
         info: 'ℹ️',
+        http: '📡',
         debug: '🐛',
+        silly: '🔧',
         none: ''
       };
       formatted += `${colors[level]} `;
@@ -153,7 +311,7 @@ class StructuredLogger {
       formatted += `[${context.correlationId.substring(0, 8)}] `;
     }
 
-    // Adicionar tenant ID mascarado se disponível
+    // Adicionar tenant ID mascarado se disponível  
     if (context?.tenantId) {
       const maskedTenantId = this.config.enableDataMasking ? 
         this.maskId(context.tenantId) : 
@@ -164,6 +322,19 @@ class StructuredLogger {
     // Adicionar domínio se disponível
     if (context?.domain) {
       formatted += `[${context.domain.toUpperCase()}] `;
+    }
+
+    // ✅ WINSTON-STYLE: Adicionar performance info se disponível
+    if (context?.performance?.duration) {
+      const duration = typeof context.performance.duration === 'number' 
+        ? `${context.performance.duration}ms`
+        : context.performance.duration;
+      formatted += `(${duration}`;
+      
+      if (context.performance.retries && context.performance.retries > 0) {
+        formatted += `, ${context.performance.retries} retries`;
+      }
+      formatted += `) `;
     }
 
     formatted += message;
@@ -231,6 +402,72 @@ class StructuredLogger {
     }
   }
 
+  // ✅ WINSTON-STYLE: Novos níveis http e silly
+  http(message: string, contextOrString?: LogContext | string, ...args: any[]): void {
+    if (this.shouldLog('http')) {
+      const isLogContext = contextOrString && typeof contextOrString === 'object';
+      
+      if (isLogContext) {
+        const context = contextOrString as LogContext;
+        const maskedContext = this.maskSensitiveData(context);
+        const correlationId = context.correlationId || this.generateCorrelationId();
+        console.log(this.formatMessage('http', message, { ...maskedContext, correlationId }), ...args);
+      } else {
+        console.log(this.formatMessage('http', message), contextOrString, ...args);
+      }
+    }
+  }
+
+  silly(message: string, contextOrString?: LogContext | string, ...args: any[]): void {
+    if (this.shouldLog('silly')) {
+      const isLogContext = contextOrString && typeof contextOrString === 'object';
+      
+      if (isLogContext) {
+        const context = contextOrString as LogContext;
+        const maskedContext = this.maskSensitiveData(context);
+        const correlationId = context.correlationId || this.generateCorrelationId();
+        console.log(this.formatMessage('silly', message, { ...maskedContext, correlationId }), ...args);
+      } else {
+        console.log(this.formatMessage('silly', message), contextOrString, ...args);
+      }
+    }
+  }
+
+  // ✅ WINSTON-STYLE: Log consolidado para operações complexas
+  consolidated(entry: ConsolidatedLogEntry): void {
+    if (!this.shouldLog(entry.level)) return;
+
+    const message = `✅ ${entry.operation} completed`;
+    const context = {
+      ...entry.context,
+      operation: entry.operation,
+      performance: entry.performance,
+      changes: entry.changes,
+      domain: entry.context.domain || 'system'
+    };
+
+    switch (entry.level) {
+      case 'error':
+        this.error(message, context);
+        break;
+      case 'warn':
+        this.warn(message, context);
+        break;
+      case 'info':
+        this.info(message, context);
+        break;
+      case 'http':
+        this.http(message, context);
+        break;
+      case 'debug':
+        this.debug(message, context);
+        break;
+      case 'silly':
+        this.silly(message, context);
+        break;
+    }
+  }
+
   // Métodos especializados para domínios específicos
   performance(message: string, context?: LogContext): void {
     if (this.shouldLog('debug')) {
@@ -253,6 +490,113 @@ class StructuredLogger {
   api(message: string, context?: LogContext): void {
     if (this.shouldLog('debug')) {
       this.debug(`[API] ${message}`, { ...context, domain: 'api' });
+    }
+  }
+
+  // ================================================================================
+  // MÉTODOS ESPECIALIZADOS PARA CLIENT FACTORY E OPORTUNIDADES
+  // ================================================================================
+
+  // ✅ NOVO: Logging específico para Client Factory
+  clientFactory(message: string, context?: LogContext): void {
+    if (this.config.clientFactoryLogging && this.shouldLog('debug')) {
+      this.debug(`🏭 [CLIENT-FACTORY] ${message}`, { 
+        ...context, 
+        domain: 'client-factory',
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  // ✅ NOVO: Logging para estratégias de bypass
+  strategy(message: string, context?: LogContext): void {
+    if (this.shouldLog('info')) {
+      this.info(`🧠 [STRATEGY] ${message}`, { 
+        ...context, 
+        domain: 'strategy',
+        performance: {
+          ...context?.performance,
+          startTime: Date.now()
+        }
+      });
+    }
+  }
+
+  // ✅ NOVO: Logging para operações de oportunidade
+  opportunity(message: string, context?: LogContext): void {
+    if (this.shouldLog('info')) {
+      this.info(`🚀 [OPPORTUNITY] ${message}`, { 
+        ...context, 
+        domain: 'opportunity',
+        operation: context?.operation || 'create'
+      });
+    }
+  }
+
+  // ✅ NOVO: Logging para validações
+  validation(message: string, context?: LogContext): void {
+    if (this.shouldLog('debug')) {
+      this.debug(`🔍 [VALIDATION] ${message}`, { 
+        ...context, 
+        domain: 'validation'
+      });
+    }
+  }
+
+  // ✅ NOVO: Logging para cache inteligente
+  smartCache(message: string, context?: LogContext): void {
+    if (this.shouldLog('silly')) {
+      this.silly(`💾 [SMART-CACHE] ${message}`, { 
+        ...context, 
+        domain: 'smart-cache',
+        timestamp: Date.now()
+      });
+    }
+  }
+
+  // ✅ NOVO: Logging para bypass de triggers
+  bypass(message: string, context?: LogContext): void {
+    if (this.shouldLog('warn')) {
+      this.warn(`🔧 [BYPASS] ${message}`, { 
+        ...context, 
+        domain: 'bypass',
+        strategy: context?.strategy || 'unknown'
+      });
+    }
+  }
+
+  // ✅ NOVO: Structured logging para debug completo
+  structuredLog(level: LogLevel, category: string, message: string, context?: LogContext): void {
+    if (!this.shouldLog(level)) return;
+
+    const structuredEntry = {
+      timestamp: new Date().toISOString(),
+      level,
+      category,
+      message,
+      context: this.maskSensitiveData(context || {}),
+      correlationId: context?.correlationId || this.generateCorrelationId(),
+      performance: this.config.performanceTracking ? {
+        memory: (performance as any).memory?.usedJSHeapSize || 0,
+        timing: performance.now()
+      } : undefined,
+      stack: this.config.includeStack ? new Error().stack : undefined
+    };
+
+    // Formato estruturado para desenvolvimento, compact para produção
+    if (this.isDev) {
+      const colors = {
+        error: '\x1b[31m',
+        warn: '\x1b[33m',
+        info: '\x1b[36m',
+        http: '\x1b[35m',
+        debug: '\x1b[32m',
+        silly: '\x1b[37m',
+        none: '\x1b[0m'
+      };
+      console.log(`${colors[level]}[${category.toUpperCase()}] ${message}\x1b[0m`, structuredEntry);
+    } else {
+      console.log(JSON.stringify(structuredEntry));
     }
   }
 
@@ -287,6 +631,31 @@ class StructuredLogger {
         return duration;
       }
     };
+  }
+
+  // ✅ CORREÇÃO: Adicionar métodos hasTimer e endTimer para compatibilidade com errorMonitoring.ts
+  private timers: Map<string, number> = new Map();
+
+  hasTimer(name: string): boolean {
+    return this.timers.has(name);
+  }
+
+  startTimer(name: string, context?: LogContext): void {
+    this.timers.set(name, Date.now());
+    this.debug(`Timer started: ${name}`, context);
+  }
+
+  endTimer(name: string, context?: LogContext): number | null {
+    const startTime = this.timers.get(name);
+    if (!startTime) {
+      this.warn(`Timer '${name}' not found`, context);
+      return null;
+    }
+    
+    const duration = Date.now() - startTime;
+    this.timers.delete(name);
+    this.performance(`Timer completed: ${name} (${duration}ms)`, context);
+    return duration;
   }
 
   // Configuração runtime
@@ -328,6 +697,190 @@ export const logger = new StructuredLogger();
 // Export para compatibilidade
 export default logger;
 
+// ✅ WINSTON-STYLE: Loggers especializados otimizados com consolidação inteligente
+export const loggers = {
+  // ✅ OTIMIZADO: Outcome Reasons - log consolidado único
+  outcomeReasons: {
+    saveOperation: (pipelineId: string, changes: { created: number; updated: number; removed: number }, duration: number, retries: number = 0) => {
+      logger.consolidated({
+        level: 'info',
+        message: 'Motivos de ganho/perda salvos',
+        operation: 'saveOutcomeReasons',
+        context: {
+          domain: 'motives',
+          pipelineId: logger['maskId'](pipelineId)
+        },
+        performance: { totalTime: `${duration}ms`, retries },
+        changes,
+        timestamp: new Date().toISOString()
+      });
+    },
+
+    loadOperation: (pipelineId: string, wonCount: number, lostCount: number, duration: number) => {
+      // Só logar se há dados ou se demorou muito
+      if (wonCount > 0 || lostCount > 0 || duration > 1000) {
+        logger.debug('Motivos carregados', {
+          domain: 'motives',
+          pipelineId: logger['maskId'](pipelineId),
+          wonCount,
+          lostCount,
+          performance: { duration: `${duration}ms` }
+        });
+      }
+    },
+
+    error: (operation: string, pipelineId: string, error: any) => {
+      logger.error(`Erro em motivos: ${operation}`, {
+        domain: 'motives',
+        pipelineId: logger['maskId'](pipelineId),
+        error: error.message || error
+      });
+    }
+  },
+
+  // ✅ OTIMIZADO: Retry logic - apenas logar falhas reais
+  retry: {
+    onlyIfFailed: (operation: string, attempt: number, maxAttempts: number, error?: any) => {
+      // Só logar retry se falhou mais de 1 vez
+      if (attempt > 1) {
+        logger.warn(`Retry ${operation}`, {
+          domain: 'retry',
+          attempt: `${attempt}/${maxAttempts}`,
+          error: error?.message
+        });
+      }
+    },
+
+    success: (operation: string, totalAttempts: number, totalDuration: number) => {
+      // Só logar se houve retry ou se foi muito lento
+      if (totalAttempts > 1 || totalDuration > 5000) {
+        logger.info(`Operação completada após retry`, {
+          domain: 'retry',
+          operation,
+          performance: { retries: totalAttempts - 1, duration: `${totalDuration}ms` }
+        });
+      }
+    }
+  },
+
+  // ✅ OTIMIZADO: Cache strategy - log único consolidado
+  cache: {
+    strategyCompleted: (strategyName: string, immediate: number, background: number, duration: number) => {
+      logger.silly(`Cache strategy executada`, {
+        domain: 'cache',
+        strategy: strategyName,
+        operations: { immediate, background },
+        performance: { duration: `${duration}ms` }
+      });
+    },
+
+    error: (operation: string, error: any) => {
+      logger.warn(`Cache operation falhou`, {
+        domain: 'cache',
+        operation,
+        error: error.message || error
+      });
+    }
+  },
+
+  // ✅ OTIMIZADO: Lead tasks - throttle ultra-agressivo
+  leadTasks: (message: string, data?: any) => {
+    // ✅ OTIMIZAÇÃO CRÍTICA: Apenas logar se há problemas ou dados relevantes
+    const hasRelevantData = data && (
+      data.error || 
+      data.total > 0 || 
+      data.pending > 5 || 
+      data.overdue > 0
+    );
+    
+    if (hasRelevantData && !logger.shouldThrottle('LeadTasks', 'relevant-data', 10000)) {
+      logger.debug(`[LEADTASKS] ${message}`, { domain: 'leadtasks', ...data });
+    } else if (!hasRelevantData && !logger.shouldThrottle('LeadTasks', 'normal-operation', 30000)) {
+      // Log esparso apenas para confirmar funcionamento
+      logger.silly(`[LEADTASKS] Sistema funcionando - ${message}`, { domain: 'leadtasks', summary: 'ok' });
+    }
+  },
+
+  // ✅ NOVO: Lead card badge - log para discrepâncias em badges de tarefas
+  leadCardBadge: (message: string, data?: any) => {
+    // ✅ OTIMIZAÇÃO: Apenas logar discrepâncias reais com throttle
+    if (!logger.shouldThrottle('LeadCardBadge', 'discrepancy', 5000)) {
+      logger.debug(`[LEAD-BADGE] ${message}`, { domain: 'lead-badge', ...data });
+    }
+  },
+
+  // ✅ OTIMIZADO: API calls - structured logging
+  api: {
+    request: (method: string, url: string, status?: number, duration?: number) => {
+      logger.http(`${method} ${url}`, {
+        domain: 'api',
+        method,
+        url: url.replace(/\/[a-f0-9-]{36}/g, '/***'), // mask IDs in URL
+        status,
+        performance: duration ? { duration: `${duration}ms` } : undefined
+      });
+    },
+
+    error: (endpoint: string, error: any, context?: any) => {
+      logger.error(`API Error: ${endpoint}`, {
+        domain: 'api',
+        error: error.message || error,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        context
+      });
+    }
+  },
+
+  // ✅ NOVO: API Error - alias para compatibilidade
+  apiError: (message: string, error: any, context?: any) => {
+    logger.error(`[API-ERROR] ${message}`, {
+      domain: 'api-error',
+      error: error?.message || error,
+      stack: error?.stack,
+      context
+    });
+  },
+
+  // ✅ OTIMIZADO: Performance apenas para problemas reais
+  performance: (component: string, action: string, duration: number, threshold: number = 100) => {
+    if (duration > threshold && !logger.shouldThrottle(component, 'performance-warning', 10000)) {
+      logger.warn(`Performance issue detected`, {
+        domain: 'performance',
+        component,
+        action,
+        performance: { duration: `${duration}ms` }
+      });
+    }
+  },
+
+  // ✅ OTIMIZADO: Auto-save consolidado
+  autoSave: {
+    completed: (operation: string, changes: any, duration: number) => {
+      logger.debug(`Auto-save completed`, {
+        domain: 'autosave',
+        operation,
+        changes,
+        performance: { duration: `${duration}ms` }
+      });
+    }
+  },
+
+  // ✅ NOVO: Método consolidado para debugging complexo
+  debug: {
+    operationFlow: (operation: string, steps: string[], context?: any) => {
+      if (logger['shouldLog']('debug')) {
+        logger.debug(`${operation} flow: ${steps.join(' → ')}`, {
+          domain: 'debug',
+          operation,
+          steps,
+          ...context
+        });
+      }
+    }
+  }
+};
+
 // AIDEV-NOTE: Utilitários para desenvolvimento e produção
 export const enableDebugLogs = () => {
   logger.setLevel('debug');
@@ -343,6 +896,91 @@ export const enableProductionLogs = () => {
 export const showLoggerInfo = () => {
   const config = logger.getConfig();
   logger.info(`Logger configurado: ${JSON.stringify(config)}`, { domain: 'logger' });
+};
+
+// ✅ CORREÇÃO: Utilitários de controle de logs para componentes específicos
+export const reduceComponentLogs = () => {
+  // Configurar throttling agressivo para os componentes mais problemáticos
+  console.log('🔇 Modo de logs reduzidos ativado - throttling aplicado aos componentes com spam');
+};
+
+export const emergencyLogSilence = () => {
+  // Para situações críticas de spam de logs
+  logger.setLevel('error');
+  console.log('🚨 EMERGENCY: Logs silenciados - apenas ERRORS visíveis');
+};
+
+// ✅ CORREÇÃO: Controles adicionais para desenvolvimento
+export const enableQuietMode = () => {
+  // Modo silencioso mas ainda mostra warnings importantes
+  logger.setLevel('warn');
+  console.log('🔇 Modo silencioso ativado - apenas WARNINGS e ERRORS');
+};
+
+export const resetToDefaults = () => {
+  // Voltar aos padrões baseados no ambiente
+  const isDev = import.meta.env.DEV;
+  logger.setLevel(isDev ? 'info' : 'warn');
+  console.log(`🔄 Logger restaurado para padrões: ${isDev ? 'info' : 'warn'} level`);
+};
+
+// ✅ CORREÇÃO: Utilitário para verificar status do logger
+export const showLoggerStatus = () => {
+  const config = logger.getConfig();
+  console.log('📊 Status do Logger:', {
+    level: config.level,
+    environment: import.meta.env.VITE_ENVIRONMENT || 'development',
+    dataMasking: config.enableDataMasking,
+    throttleMapSize: logger['throttleMap']?.size || 0,
+    groupedLogsSize: logger['groupedLogs']?.size || 0
+  });
+};
+
+// ✅ OTIMIZAÇÃO FINAL: Sistema de controle inteligente de logs
+export const smartLogControl = {
+  // Reduzir logs de componentes específicos
+  reducePipelineLogs: () => {
+    logger.setLevel('warn');
+    console.log('🔇 Pipeline logs reduzidos - apenas warnings e errors');
+  },
+  
+  // Modo desenvolvimento limpo
+  cleanDevMode: () => {
+    logger.setLevel('info');
+    logger.enableDataMasking(false);
+    console.log('🧹 Modo desenvolvimento limpo ativado');
+  },
+  
+  // Modo debug específico para CORS/API
+  debugApiIssues: () => {
+    logger.setLevel('debug');
+    console.log('🔍 Debug mode para problemas de API/CORS ativado');
+  },
+  
+  // Silenciar temporariamente logs excessivos
+  temporarySilence: (durationMs: number = 60000) => {
+    const originalLevel = logger.getConfig().level;
+    logger.setLevel('error');
+    console.log(`🤫 Logs silenciados por ${durationMs/1000}s - apenas errors visíveis`);
+    
+    setTimeout(() => {
+      logger.setLevel(originalLevel);
+      console.log('🔊 Logs restaurados ao nível anterior');
+    }, durationMs);
+  },
+  
+  // Auto-ajuste baseado em performance
+  performanceBasedControl: () => {
+    const checkPerformance = () => {
+      const memory = (performance as any).memory;
+      if (memory && memory.usedJSHeapSize > 100 * 1024 * 1024) { // 100MB
+        logger.setLevel('warn');
+        console.log('⚡ Logs reduzidos automaticamente devido ao uso de memória');
+      }
+    };
+    
+    setInterval(checkPerformance, 30000); // Check a cada 30s
+  }
 };
 
 // Utilitários para tipos para compatibilidade

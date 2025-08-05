@@ -1,5 +1,6 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
+import { cn } from '../../lib/utils';
 
 interface CalendarProps {
   mode: 'single' | 'multiple' | 'range';
@@ -8,6 +9,9 @@ interface CalendarProps {
   className?: string;
   locale?: any;
   disabled?: (date: Date) => boolean;
+  // Novas props para melhor UX
+  showToday?: boolean;
+  showWeekdays?: boolean;
 }
 
 export const Calendar: React.FC<CalendarProps> = ({
@@ -16,7 +20,9 @@ export const Calendar: React.FC<CalendarProps> = ({
   onSelect,
   className = '',
   locale,
-  disabled
+  disabled,
+  showToday = true,
+  showWeekdays = true
 }) => {
   const [currentDate, setCurrentDate] = React.useState(new Date());
 
@@ -92,13 +98,54 @@ export const Calendar: React.FC<CalendarProps> = ({
           key={day}
           onClick={() => handleDateClick(day)}
           disabled={isDisabled}
-          className={`
-            w-9 h-9 rounded-md text-sm font-medium transition-colors
-            ${isToday ? 'bg-blue-100 text-blue-900' : ''}
-            ${isSelected ? 'bg-blue-600 text-white' : 'text-gray-900 hover:bg-gray-100'}
-            ${isDisabled ? 'text-gray-400 cursor-not-allowed' : 'cursor-pointer'}
-            disabled:pointer-events-none disabled:opacity-50
-          `}
+          className={cn(
+            // Base class + Magic UI inspired
+            "day-button",
+            isToday && !isSelected && "today",
+            isSelected && "selected",
+            
+            // Base styles - Magic UI inspired com !important
+            "!relative !w-9 !h-9 !rounded-lg !text-sm !font-medium !transition-all !duration-200",
+            "!flex !items-center !justify-center",
+            "focus:!outline-none focus:!ring-2 focus:!ring-blue-500 focus:!ring-offset-1",
+            
+            // Default state com !important
+            "!text-gray-900 hover:!bg-gradient-to-r hover:!from-blue-50 hover:!to-indigo-50",
+            "hover:!text-blue-700 hover:!shadow-sm hover:!scale-105",
+            
+            // Today indicator
+            isToday && !isSelected && [
+              "!bg-gradient-to-r !from-blue-50 !to-indigo-50",
+              "!text-blue-700 !font-semibold",
+              "!ring-1 !ring-blue-200"
+            ],
+            
+            // Selected state - Magic UI gradient
+            isSelected && [
+              "!bg-gradient-to-r !from-blue-600 !to-indigo-600",
+              "!text-white !shadow-lg !shadow-blue-500/25",
+              "!scale-105 !ring-2 !ring-blue-300"
+            ],
+            
+            // Disabled state
+            isDisabled && [
+              "!text-gray-300 !cursor-not-allowed",
+              "hover:!bg-transparent hover:!text-gray-300",
+              "hover:!scale-100 hover:!shadow-none"
+            ],
+            
+            // Interactive states
+            !isDisabled && "!cursor-pointer active:!scale-95",
+            
+            // Magic UI shine effect on hover
+            !isDisabled && !isSelected && [
+              "before:!absolute before:!inset-0 before:!rounded-lg",
+              "before:!bg-gradient-to-r before:!from-transparent before:!via-white/10 before:!to-transparent",
+              "before:!translate-x-[-100%] hover:before:!translate-x-[100%]",
+              "before:!transition-transform before:!duration-1000",  
+              "!overflow-hidden"
+            ]
+          )}
         >
           {day}
         </button>
@@ -109,42 +156,77 @@ export const Calendar: React.FC<CalendarProps> = ({
   };
 
   return (
-    <div className={`p-3 ${className}`}>
-      {/* Header com navegação */}
-      <div className="flex items-center justify-between mb-4">
+    <div className={cn(
+      // Base container com especificidade aumentada
+      "!p-4 !bg-white !rounded-xl !shadow-lg !border !border-gray-200",
+      "!backdrop-blur-sm !bg-white/95 !relative !z-10",
+      "magic-ui-calendar", // Classe específica para evitar conflitos
+      className
+    )}>
+      {/* Header com navegação - Magic UI style com !important */}
+      <div className="!flex !items-center !justify-between !mb-6">
         <button
           onClick={goToPreviousMonth}
-          className="p-1 rounded-md hover:bg-gray-100 transition-colors"
+          data-nav="prev"
+          className={cn(
+            "!p-2 !rounded-lg !transition-all !duration-200",
+            "hover:!bg-gradient-to-r hover:!from-gray-50 hover:!to-gray-100",
+            "hover:!shadow-sm hover:!scale-105 active:!scale-95",
+            "focus:!outline-none focus:!ring-2 focus:!ring-blue-500 focus:!ring-offset-1",
+            "!group !cursor-pointer"
+          )}
         >
-          <ChevronLeft className="w-4 h-4" />
+          <ChevronLeft className="!w-4 !h-4 !text-gray-600 group-hover:!text-gray-800 !transition-colors" />
         </button>
         
-        <h2 className="text-sm font-semibold">
-          {monthNames[currentMonth]} {currentYear}
-        </h2>
+        <div className="!text-center">
+          <h2 className={cn(
+            "!text-lg !font-semibold !bg-gradient-to-r !from-gray-800 !to-gray-600",
+            "!bg-clip-text !text-transparent",
+            "!flex !items-center !gap-2 !justify-center"
+          )}>
+            <CalendarIcon className="!w-4 !h-4 !text-gray-600" />
+            {monthNames[currentMonth]} {currentYear}
+          </h2>
+        </div>
         
         <button
           onClick={goToNextMonth}
-          className="p-1 rounded-md hover:bg-gray-100 transition-colors"
+          data-nav="next"
+          className={cn(
+            "!p-2 !rounded-lg !transition-all !duration-200",
+            "hover:!bg-gradient-to-r hover:!from-gray-50 hover:!to-gray-100",
+            "hover:!shadow-sm hover:!scale-105 active:!scale-95",
+            "focus:!outline-none focus:!ring-2 focus:!ring-blue-500 focus:!ring-offset-1",
+            "!group !cursor-pointer"
+          )}
         >
-          <ChevronRight className="w-4 h-4" />
+          <ChevronRight className="!w-4 !h-4 !text-gray-600 group-hover:!text-gray-800 !transition-colors" />
         </button>
       </div>
 
-      {/* Dias da semana */}
-      <div className="grid grid-cols-7 mb-2">
-        {dayNames.map(day => (
-          <div
-            key={day}
-            className="w-9 h-9 text-xs font-medium text-gray-500 flex items-center justify-center"
-          >
-            {day}
-          </div>
-        ))}
-      </div>
+      {/* Dias da semana - Magic UI style com !important */}
+      {showWeekdays && (
+        <div className="weekdays !grid !grid-cols-7 !mb-3">
+          {dayNames.map(day => (
+            <div
+              key={day}
+              className={cn(
+                "weekday",
+                "!w-9 !h-8 !text-xs !font-semibold",
+                "!bg-gradient-to-r !from-gray-500 !to-gray-600 !bg-clip-text !text-transparent",
+                "!flex !items-center !justify-center",
+                "!border-b !border-gray-100 !pb-2"
+              )}
+            >
+              {day}
+            </div>
+          ))}
+        </div>
+      )}
 
-      {/* Grid de dias */}
-      <div className="grid grid-cols-7 gap-1">
+      {/* Grid de dias - com melhor spacing e !important */}
+      <div className="days-grid !grid !grid-cols-7 !gap-1.5">
         {renderDays()}
       </div>
     </div>

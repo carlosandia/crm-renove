@@ -1,2 +1,3 @@
 export { MultiStepForm } from './MultiStepForm';
-export { ABTestingManager } from './ABTestingManager'; 
+// ✅ CORREÇÃO: ABTestingManager removido - módulo não implementado
+// export { ABTestingManager } from './ABTestingManager'; 

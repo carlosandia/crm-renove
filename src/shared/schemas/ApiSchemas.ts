@@ -232,7 +232,7 @@ export const FilterParamsSchema = z.object({
 export const createEntityQueryParamsSchema = <T extends z.ZodTypeAny>(entitySchema: T) => 
   BaseQueryParamsSchema
     .merge(FilterParamsSchema)
-    .merge(entitySchema instanceof z.ZodObject ? entitySchema.partial() : entitySchema);
+    .merge(entitySchema instanceof z.ZodObject ? (entitySchema as z.AnyZodObject).partial() : entitySchema as unknown as z.AnyZodObject);
 
 // ============================================
 // REQUEST/RESPONSE PAIRS SCHEMAS
@@ -386,18 +386,9 @@ export const UserAuthSchema = z.object({
 });
 
 /**
- * 🔧 Token Schema para autenticação
+ * 🔧 AIDEV-NOTE: TokenSchema removido - sistema usa Session do Supabase
+ * Autenticação gerenciada 100% pelo Supabase Auth nativo
  */
-export const TokenSchema = z.object({
-  accessToken: z.string(),
-  refreshToken: z.string(),
-  expiresIn: z.number(),
-  tokenType: z.literal('Bearer'),
-  
-  // Informações do token
-  scope: z.string().optional(),
-  issuedAt: z.string().datetime()
-});
 
 /**
  * 🔧 Session Schema para autenticação
@@ -409,11 +400,10 @@ export const SessionSchema = z.object({
 });
 
 /**
- * 🔧 Login Response Schema
+ * 🔧 Login Response Schema - Sistema 100% Supabase Auth
  */
 export const LoginResponseSchema = z.object({
   user: UserAuthSchema,
-  tokens: TokenSchema,
   session: SessionSchema
 });
 

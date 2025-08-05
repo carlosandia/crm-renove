@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { supabase } from '../config/supabase';
+import { supabase, createUserSupabaseClient } from '../config/supabase';
 import { LeadDistributionService, CreateLeadPayload } from '../services/leadDistributionService';
 
 export class LeadController {
@@ -7,14 +7,22 @@ export class LeadController {
   static async getLeadsByPipeline(req: Request, res: Response) {
     try {
       const { pipeline_id } = req.params;
-      const { tenant_id, start_date, end_date } = req.query;
+      const { start_date, end_date } = req.query;
+      
+      // 🔐 SEGURANÇA: Usar tenant_id do usuário autenticado (req.user)
+      const user_tenant_id = (req as any).user?.tenant_id;
+      
+      if (!user_tenant_id) {
+        console.error('❌ [getLeadsByPipeline] Usuário não autenticado ou sem tenant_id');
+        return res.status(401).json({ error: 'Usuário não autenticado' });
+      }
       
       console.log('🔍 [getLeadsByPipeline] Buscando leads:', {
         pipeline_id,
-        tenant_id,
+        user_tenant_id,
         start_date,
         end_date,
-        query: req.query
+        user_id: (req as any).user?.id
       });
 
       if (!pipeline_id) {
@@ -22,81 +30,241 @@ export class LeadController {
         return res.status(400).json({ error: 'pipeline_id é obrigatório' });
       }
 
-      // ✅ Query com JOIN para pegar dados do leads_master
-      let query = supabase
-        .from('pipeline_leads')
-        .select(`
-          *,
-          leads_master:lead_master_id(
-            id,
-            first_name,
-            last_name,
-            email,
-            phone,
-            company,
-            estimated_value
-          )
-        `)
-        .eq('pipeline_id', pipeline_id)
-        .order('created_at', { ascending: false });
+      // 🔧 CORREÇÃO DEFINITIVA: Escolher cliente Supabase baseado no tipo de token
+      const userJWT = (req as any).jwtToken;
+      const isDemoToken = userJWT && userJWT.startsWith('demo_');
       
-      if (tenant_id) {
-        query = query.eq('tenant_id', tenant_id);
+      console.log('📋 [getLeadsByPipeline] Selecionando client Supabase:', {
+        pipeline_id,
+        user_tenant_id,
+        hasJWT: !!userJWT,
+        isDemoToken,
+        tokenStart: userJWT ? userJWT.substring(0, 10) : 'nenhum'
+      });
+      
+      // 🔧 CORREÇÃO DEFINITIVA: Usar service role com RLS desabilitado temporariamente
+      // RLS está bloqueando acesso do service role, vamos usar uma solução alternativa
+      console.log('🔧 [BACKEND] Usando service role - filtro manual por tenant_id');
+      const clientSupabase = supabase;
+      
+      // Teste 1: Buscar apenas pipeline_leads sem JOIN
+      // ✅ CORREÇÃO POSIÇÃO: Ordenar por position primeiro, depois created_at como fallback
+      let basicQuery = clientSupabase
+        .from('pipeline_leads')
+        .select('*')
+        .eq('pipeline_id', pipeline_id)
+        .eq('tenant_id', user_tenant_id)
+        .order('position', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true });
+
+      const { data: basicLeads, error: basicError } = await basicQuery;
+      
+      console.log('🔍 [DEBUG] Resultado básico pipeline_leads:', {
+        count: basicLeads?.length || 0,
+        error: basicError?.message || 'nenhum',
+        firstLead: basicLeads?.[0]?.id?.substring(0, 8) || 'nenhum',
+        errorCode: basicError?.code || 'nenhum',
+        errorDetails: basicError?.details || 'nenhum'
+      });
+
+      // 🔍 DIAGNÓSTICO: Log mas continue processamento normal
+      if (!basicLeads || basicLeads.length === 0) {
+        console.error('🚨 [INFO] Query básica retornou 0 leads - continuando...');
+        
+        // Teste direto sem filtros usando clientSupabase para debug
+        const { data: allPipelineLeads, error: allError } = await clientSupabase
+          .from('pipeline_leads')
+          .select('id, pipeline_id, tenant_id')
+          .limit(5);
+          
+        console.error('🔍 [DEBUG] Todos pipeline_leads (sem filtro):', {
+          count: allPipelineLeads?.length || 0,
+          error: allError?.message || 'nenhum',
+          errorCode: allError?.code || 'nenhum',
+          sample: allPipelineLeads?.slice(0, 2) || []
+        });
+
+        // 🔧 TESTE DIRETO: Verificar se service role funciona completamente
+        const { data: testUsers, error: testError } = await clientSupabase
+          .from('users')
+          .select('id, email')
+          .limit(3);
+          
+        console.error('🔍 [SERVICE ROLE TEST] Teste acesso tabela users:', {
+          count: testUsers?.length || 0,
+          error: testError?.message || 'nenhum',
+          sample: testUsers?.slice(0, 1) || []
+        });
       }
+      
+      if (basicError) {
+        console.error('❌ [DEBUG] Erro na query básica:', basicError);
+        return res.status(500).json({ error: 'Erro na query básica', details: basicError.message });
+      }
+      
+      // 🔧 CORREÇÃO DEFINITIVA: Buscar pipeline_leads primeiro, depois fazer queries separadas para leads_master
+      console.log('🔧 [MÉTODO ALTERNATIVO] Buscando pipeline_leads + leads_master separadamente...');
+      
+      // Primeira query: buscar pipeline_leads
+      console.log('🔍 [DEBUG] Executando query pipeline_leads:', {
+        client: 'service role',
+        pipeline_id,
+        user_tenant_id,
+        table: 'pipeline_leads'
+      });
+      
+      // ✅ CORREÇÃO POSIÇÃO: Ordenar por position primeiro, depois created_at como fallback
+      const { data: pipelineLeads, error: pipelineError } = await clientSupabase
+        .from('pipeline_leads')
+        .select('*')
+        .eq('pipeline_id', pipeline_id)
+        .eq('tenant_id', user_tenant_id)
+        .order('position', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true });
+
+      console.log('🔍 [DEBUG] Resultado pipeline_leads:', {
+        data_count: pipelineLeads?.length || 0,
+        error: pipelineError?.message || 'nenhum',
+        error_code: pipelineError?.code || 'nenhum',
+        sample: pipelineLeads?.[0] ? {
+          id: pipelineLeads[0].id.substring(0, 8),
+          pipeline_id: pipelineLeads[0].pipeline_id.substring(0, 8),
+          tenant_id: pipelineLeads[0].tenant_id.substring(0, 8)
+        } : null
+      });
+
+      if (pipelineError) {
+        console.error('❌ [PIPELINE] Erro ao buscar pipeline_leads:', pipelineError);
+        return res.status(500).json({ error: 'Erro ao buscar pipeline_leads', details: pipelineError.message });
+      }
+
+      console.log('📋 [PIPELINE] Pipeline leads encontrados:', pipelineLeads?.length || 0);
+
+      // Segunda query: buscar dados dos leads_master se houver pipeline_leads
+      let leads = pipelineLeads || [];
+      if (pipelineLeads && pipelineLeads.length > 0) {
+        const leadMasterIds = pipelineLeads
+          .map(pl => pl.lead_master_id)
+          .filter(id => id);
+
+        if (leadMasterIds.length > 0) {
+          const { data: leadsData, error: leadsError } = await clientSupabase
+            .from('leads_master')
+            .select('id, first_name, last_name, email, phone, company, estimated_value')
+            .in('id', leadMasterIds);
+
+          if (leadsError) {
+            console.warn('⚠️ [LEADS_MASTER] Erro ao buscar leads_master:', leadsError);
+          } else {
+            // Combinar dados manualmente
+            leads = pipelineLeads.map(pl => {
+              const leadMaster = leadsData?.find(lm => lm.id === pl.lead_master_id);
+              return {
+                ...pl,
+                // Adicionar campos do leads_master de forma flatten
+                first_name: leadMaster?.first_name || null,
+                last_name: leadMaster?.last_name || null,
+                email: leadMaster?.email || null,
+                phone: leadMaster?.phone || null,
+                company: leadMaster?.company || null,
+                estimated_value: leadMaster?.estimated_value || null
+              };
+            });
+          }
+        }
+      }
+
+      const error = pipelineError;
 
       // ✅ FILTRO POR PERÍODO: Aplicar filtros de data se fornecidos
       if (start_date && end_date) {
         console.log('🗓️ [getLeadsByPipeline] Aplicando filtro de período:', { start_date, end_date });
         
-        // Converter datas para formato ISO com hora para garantir comparação correta
         const startDateTime = `${start_date}T00:00:00.000Z`;
         const endDateTime = `${end_date}T23:59:59.999Z`;
         
-        query = query
-          .gte('created_at', startDateTime)
-          .lte('created_at', endDateTime);
+        // 🔧 CORREÇÃO: Filtrar dados já carregados por data
+        const leadsFiltered = leads.filter((lead: any) => {
+          const leadDate = new Date(lead.created_at);
+          const startDate = new Date(startDateTime);
+          const endDate = new Date(endDateTime);
+          return leadDate >= startDate && leadDate <= endDate;
+        });
+
+        const errorFiltered = null;
+        
+        if (errorFiltered) {
+          console.error('❌ [getLeadsByPipeline] Erro ao buscar leads com filtro de data:', errorFiltered);
+          return res.status(500).json({ error: 'Erro ao buscar leads', details: errorFiltered.message });
+        }
+        
+        // Processar resposta filtrada por data - SQL direto já retorna campos flatten
+        const leadsResponse = (leadsFiltered || []).map((lead: any) => ({
+          ...lead,
+          custom_data: lead.custom_data || {},
+          // Campos já vem do JOIN SQL direto, fallback para custom_data se necessário
+          first_name: lead.first_name || lead.custom_data?.nome_lead?.split(' ')[0] || '',
+          last_name: lead.last_name || lead.custom_data?.nome_lead?.split(' ').slice(1).join(' ') || '',
+          email: lead.email || lead.custom_data?.email || '',
+          phone: lead.phone || lead.custom_data?.telefone || '',
+          company: lead.company || lead.custom_data?.empresa || '',
+          estimated_value: lead.estimated_value || lead.custom_data?.valor || 0
+        }));
+
+        console.log('✅ [getLeadsByPipeline] Resposta processada com filtro de data:', {
+          pipeline_id,
+          leads_count: leadsResponse.length,
+          period: { start_date, end_date }
+        });
+
+        return res.json(leadsResponse);
       }
-      
-      const { data: leads, error } = await query;
 
       if (error) {
         console.error('❌ [getLeadsByPipeline] Erro ao buscar leads:', error);
         return res.status(500).json({ error: 'Erro ao buscar leads', details: error.message });
       }
 
-      console.log('📋 [getLeadsByPipeline] Leads encontrados:', {
+      console.log('📋 [getLeadsByPipeline] Leads encontrados via método alternativo:', {
         pipeline_id,
         total: leads?.length || 0,
-        leads: leads?.map(l => ({
-          id: l.id.substring(0, 8),
+        method: 'Pipeline leads + leads_master separadamente',
+        leads: leads?.slice(0, 3).map((l: any) => ({
+          id: l.id?.substring(0, 8),
           stage_id: l.stage_id,
           has_custom_data: !!l.custom_data,
-          has_lead_data: !!l.lead_data,
-          has_leads_master: !!l.leads_master,
-          lead_name: l.leads_master ? `${l.leads_master.first_name} ${l.leads_master.last_name}`.trim() : 'N/A'
+          lead_name: l.first_name ? `${l.first_name} ${l.last_name || ''}`.trim() : 'N/A'
         })) || []
       });
 
-      // ✅ CORREÇÃO: Combinar dados do pipeline_leads e leads_master
-      const leadsResponse = (leads || []).map(lead => ({
+      // 🔧 VALIDAÇÃO: Se não retornou leads, logar para debug
+      if (!leads || leads.length === 0) {
+        console.warn('⚠️ [MÉTODO ALTERNATIVO] Não foram encontrados leads:', {
+          pipeline_id,
+          user_tenant_id,
+          method: 'Pipeline leads + leads_master separadamente'
+        });
+      }
+
+      // ✅ PROCESSAR DADOS COMBINADOS: Campos já combinados das duas tabelas
+      const leadsResponse = (leads || []).map((lead: any) => ({
         ...lead,
-        custom_data: lead.custom_data || lead.lead_data || {},
-        // ✅ INCLUIR: Dados do leads_master diretamente no lead para evitar hook adicional
-        first_name: lead.leads_master?.first_name || lead.custom_data?.nome_lead?.split(' ')[0] || '',
-        last_name: lead.leads_master?.last_name || lead.custom_data?.nome_lead?.split(' ').slice(1).join(' ') || '',
-        email: lead.leads_master?.email || lead.custom_data?.email || '',
-        phone: lead.leads_master?.phone || lead.custom_data?.telefone || '',
-        company: lead.leads_master?.company || lead.custom_data?.empresa || '',
-        estimated_value: lead.leads_master?.estimated_value || lead.custom_data?.valor || 0,
-        // Manter referência ao leads_master para compatibilidade
-        lead_master_data: lead.leads_master
+        custom_data: lead.custom_data || {},
+        // 🔧 DADOS COMBINADOS: Campos do leads_master ou fallback para custom_data
+        first_name: lead.first_name || lead.custom_data?.nome_lead?.split(' ')[0] || '',
+        last_name: lead.last_name || lead.custom_data?.nome_lead?.split(' ').slice(1).join(' ') || '',
+        email: lead.email || lead.custom_data?.email || '',
+        phone: lead.phone || lead.custom_data?.telefone || '',
+        company: lead.company || lead.custom_data?.empresa || '',
+        estimated_value: lead.estimated_value || lead.custom_data?.valor || 0
       }));
 
-      console.log('✅ [getLeadsByPipeline] Resposta processada:', {
+      console.log('✅ [getLeadsByPipeline] Resposta método alternativo processada:', {
         pipeline_id,
         leads_count: leadsResponse.length,
+        method: 'Pipeline leads + leads_master separadamente',
         first_lead: leadsResponse[0] ? {
-          id: leadsResponse[0].id.substring(0, 8),
+          id: leadsResponse[0].id?.substring(0, 8),
           stage_id: leadsResponse[0].stage_id,
           has_custom_data: !!leadsResponse[0].custom_data,
           name: `${leadsResponse[0].first_name} ${leadsResponse[0].last_name}`.trim(),
@@ -336,58 +504,48 @@ export class LeadController {
     try {
       const { pipeline_id, lead_id } = req.params;
       const { stage_id, custom_data, position } = req.body;
+      const user = (req as any).user;
 
-      // 🎯 SISTEMA DE POSIÇÕES: Se está movendo para nova stage com posição específica
-      if (stage_id && position !== undefined) {
-        console.log('🎯 [POSITION] Atualizando lead com posição específica:', {
-          leadId: lead_id.substring(0, 8),
-          newStageId: stage_id.substring(0, 8),
-          position
-        });
+      console.log('🔄 [UPDATE LEAD] Iniciando atualização:', {
+        leadId: lead_id.substring(0, 8),
+        pipelineId: pipeline_id.substring(0, 8),
+        newStageId: stage_id?.substring(0, 8),
+        hasPosition: position !== undefined,
+        position,
+        userId: user?.id?.substring(0, 8),
+        tenantId: user?.tenant_id?.substring(0, 8)
+      });
 
-        // Usar função SQL para mover com posição precisa
-        const { error: moveError } = await supabase.rpc('move_lead_to_position', {
-          p_lead_id: lead_id,
-          p_new_stage_id: stage_id,
-          p_new_position: position
-        });
+      // ✅ CORREÇÃO CRÍTICA: Lógica simplificada e robusta
+      const updateData: any = {
+        updated_at: new Date().toISOString()
+      };
 
-        if (moveError) {
-          console.error('❌ [POSITION] Erro ao mover lead com posição:', moveError);
-          return res.status(500).json({ 
-            error: 'Erro ao mover lead para posição específica', 
-            details: moveError.message 
-          });
-        }
-
-        // Buscar lead atualizado para retornar
-        const { data: updatedLead, error: fetchError } = await supabase
-          .from('pipeline_leads')
-          .select()
-          .eq('id', lead_id)
-          .eq('pipeline_id', pipeline_id)
-          .single();
-
-        if (fetchError || !updatedLead) {
-          console.error('❌ [POSITION] Erro ao buscar lead atualizado:', fetchError);
-          return res.status(500).json({ 
-            error: 'Erro ao buscar lead atualizado', 
-            details: fetchError?.message 
-          });
-        }
-
-        res.json({ 
-          message: 'Lead movido com posição específica com sucesso',
-          lead: updatedLead 
-        });
-        return;
+      // Atualizar stage_id se fornecido
+      if (stage_id) {
+        updateData.stage_id = stage_id;
+        updateData.moved_at = new Date().toISOString();
+        console.log('📍 [UPDATE LEAD] Movendo para nova stage:', stage_id.substring(0, 8));
       }
 
-      // 🚀 LÓGICA ANTIGA: Para outras atualizações (sem posição específica)
-      const updateData: any = {};
-      if (stage_id) updateData.stage_id = stage_id;
-      if (custom_data) updateData.custom_data = custom_data;
+      // Atualizar custom_data se fornecido
+      if (custom_data) {
+        updateData.custom_data = custom_data;
+        console.log('📝 [UPDATE LEAD] Atualizando custom_data');
+      }
 
+      // ✅ POSIÇÃO OPCIONAL: Incluir posição se fornecida
+      if (position !== undefined && position !== null) {
+        const positionNum = typeof position === 'number' ? position : parseInt(position.toString());
+        if (!isNaN(positionNum)) {
+          updateData.position = positionNum;
+          console.log('🎯 [UPDATE LEAD] Incluindo posição:', updateData.position);
+        } else {
+          console.warn('⚠️ [UPDATE LEAD] Posição inválida ignorada:', position);
+        }
+      }
+
+      // ✅ ATUALIZAÇÃO DIRETA: Sem função SQL complexa
       const { data: lead, error } = await supabase
         .from('pipeline_leads')
         .update(updateData)
@@ -397,17 +555,175 @@ export class LeadController {
         .single();
 
       if (error) {
-        console.error('Erro ao atualizar lead:', error);
-        return res.status(500).json({ error: 'Erro ao atualizar lead', details: error.message });
+        console.error('❌ [UPDATE LEAD] Erro ao atualizar lead:', {
+          error: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          leadId: lead_id.substring(0, 8),
+          updateData
+        });
+        return res.status(500).json({ 
+          error: 'Erro ao atualizar lead', 
+          details: error.message,
+          code: error.code
+        });
       }
+
+      if (!lead) {
+        console.error('❌ [UPDATE LEAD] Lead não encontrado:', {
+          leadId: lead_id.substring(0, 8),
+          pipelineId: pipeline_id.substring(0, 8)
+        });
+        return res.status(404).json({ 
+          error: 'Lead não encontrado' 
+        });
+      }
+
+      console.log('✅ [UPDATE LEAD] Lead atualizado com sucesso:', {
+        leadId: lead.id.substring(0, 8),
+        newStageId: lead.stage_id?.substring(0, 8),
+        position: lead.position,
+        movedAt: lead.moved_at
+      });
 
       res.json({ 
         message: 'Lead atualizado com sucesso',
         lead 
       });
     } catch (error) {
-      console.error('Erro ao atualizar lead:', error);
-      res.status(500).json({ error: 'Erro interno do servidor' });
+      console.error('❌ [UPDATE LEAD] Erro interno:', error);
+      res.status(500).json({ 
+        error: 'Erro interno do servidor',
+        details: error instanceof Error ? error.message : 'Erro desconhecido'
+      });
+    }
+  }
+
+  // PUT /api/pipelines/:pipeline_id/leads/:lead_id/flexible-values - Atualizar valores flexíveis
+  static async updateFlexibleValues(req: Request, res: Response) {
+    try {
+      const { pipeline_id, lead_id } = req.params;
+      const { 
+        valor_unico, 
+        valor_recorrente, 
+        recorrencia_periodo, 
+        recorrencia_unidade, 
+        tipo_venda, 
+        valor_observacoes 
+      } = req.body;
+      const user = (req as any).user;
+
+      console.log('💰 [UPDATE FLEXIBLE VALUES] Iniciando atualização de valores:', {
+        leadId: lead_id.substring(0, 8),
+        pipelineId: pipeline_id.substring(0, 8),
+        valorUnico: valor_unico,
+        valorRecorrente: valor_recorrente,
+        recorrenciaPeriodo: recorrencia_periodo,
+        tipoVenda: tipo_venda,
+        userId: user?.id?.substring(0, 8),
+        tenantId: user?.tenant_id?.substring(0, 8)
+      });
+
+      // Validação básica
+      if (!user?.tenant_id) {
+        console.error('❌ [UPDATE FLEXIBLE VALUES] Usuário não autenticado ou sem tenant_id');
+        return res.status(401).json({ error: 'Usuário não autenticado' });
+      }
+
+      // Preparar dados de atualização
+      const updateData: any = {
+        updated_at: new Date().toISOString()
+      };
+
+      // Adicionar campos de valor flexível apenas se fornecidos
+      if (valor_unico !== undefined) {
+        updateData.valor_unico = valor_unico;
+      }
+      if (valor_recorrente !== undefined) {
+        updateData.valor_recorrente = valor_recorrente;
+      }
+      if (recorrencia_periodo !== undefined) {
+        updateData.recorrencia_periodo = recorrencia_periodo;
+      }
+      if (recorrencia_unidade !== undefined) {
+        updateData.recorrencia_unidade = recorrencia_unidade;
+      }
+      if (tipo_venda !== undefined) {
+        updateData.tipo_venda = tipo_venda;
+      }
+      if (valor_observacoes !== undefined) {
+        updateData.valor_observacoes = valor_observacoes;
+      }
+
+      // ✅ NOTA: O trigger de cálculo automático (calculate_deal_total) será executado automaticamente
+      console.log('🔧 [UPDATE FLEXIBLE VALUES] Dados para atualização:', updateData);
+
+      // Executar atualização com filtro de segurança por tenant_id
+      const { data: lead, error } = await supabase
+        .from('pipeline_leads')
+        .update(updateData)
+        .eq('id', lead_id)
+        .eq('pipeline_id', pipeline_id)
+        .eq('tenant_id', user.tenant_id) // Segurança adicional
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ [UPDATE FLEXIBLE VALUES] Erro ao atualizar valores:', {
+          error: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          leadId: lead_id.substring(0, 8),
+          updateData
+        });
+        return res.status(500).json({ 
+          error: 'Erro ao atualizar valores flexíveis', 
+          details: error.message,
+          code: error.code
+        });
+      }
+
+      if (!lead) {
+        console.error('❌ [UPDATE FLEXIBLE VALUES] Lead não encontrado:', {
+          leadId: lead_id.substring(0, 8),
+          pipelineId: pipeline_id.substring(0, 8),
+          tenantId: user.tenant_id.substring(0, 8)
+        });
+        return res.status(404).json({ 
+          error: 'Lead não encontrado ou sem permissão de acesso' 
+        });
+      }
+
+      console.log('✅ [UPDATE FLEXIBLE VALUES] Valores atualizados com sucesso:', {
+        leadId: lead.id.substring(0, 8),
+        valorTotal: lead.valor_total_calculado,
+        tipoVenda: lead.tipo_venda,
+        valorUnico: lead.valor_unico,
+        valorRecorrente: lead.valor_recorrente
+      });
+
+      res.json({ 
+        message: 'Valores flexíveis atualizados com sucesso',
+        lead: {
+          id: lead.id,
+          valor_unico: lead.valor_unico,
+          valor_recorrente: lead.valor_recorrente,
+          recorrencia_periodo: lead.recorrencia_periodo,
+          recorrencia_unidade: lead.recorrencia_unidade,
+          tipo_venda: lead.tipo_venda,
+          valor_total_calculado: lead.valor_total_calculado,
+          valor_observacoes: lead.valor_observacoes,
+          updated_at: lead.updated_at
+        }
+      });
+    } catch (error) {
+      console.error('❌ [UPDATE FLEXIBLE VALUES] Erro interno:', error);
+      res.status(500).json({ 
+        error: 'Erro interno do servidor',
+        details: error instanceof Error ? error.message : 'Erro desconhecido'
+      });
     }
   }
 

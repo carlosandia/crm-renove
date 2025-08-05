@@ -369,7 +369,7 @@ router.post('/',
             activation: {
               email_sent: true,
               activation_token: activationToken,
-              activation_url: `${process.env.APP_URL || 'http://127.0.0.1:8080'}/activate?token=${activationToken}`,
+              activation_url: `${process.env.APP_URL || 'https://crm.renovedigital.com.br'}/activate?token=${activationToken}`,
               expires_in: '48 horas',
               message_id: emailResult.messageId
             }

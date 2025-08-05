@@ -1,323 +1,251 @@
 import React, { useMemo } from 'react';
 import { Lead } from '../../types/Pipeline';
-import { 
-  Calendar, 
-  Clock, 
-  Mail, 
-  Phone, 
-  Building2, 
-  Eye,
-  User as UserIcon,
-  Bell,
-  Flame,
-  Snowflake,
-  Sun,
-  GripVertical,
-  CheckCircle,
-  XCircle,
-  Thermometer
-} from 'lucide-react';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
 import { useLeadOutcomeStatus } from '../../hooks/useLeadOutcomeStatus';
-import { useTemperatureAPI } from '../../hooks/useTemperatureAPI';
-import { generateTemperatureBadge } from '../../utils/temperatureUtils';
+import { EnhancedLeadCard } from './EnhancedLeadCard';
+import { useLeadTasksForCard } from '../../hooks/useLeadTasksForCard';
+// import { useCadenceActivityGenerator } from '../../hooks/useCadenceActivityGenerator'; // Removido - agora é automático
+import { loggers } from '../../utils/logger';
+
+// Componentes refatorados
+import LeadCardHeader from './components/LeadCardHeader';
+import LeadCardBody from './components/LeadCardBody';
+import LeadCardFooter from './components/LeadCardFooter';
+
+// Hooks customizados
+import { useLeadCardData } from './hooks/useLeadCardData';
+import { useLeadCardActions } from './hooks/useLeadCardActions';
+import { useLeadCardRealTime } from './hooks/useLeadCardRealTime';
 
 interface LeadCardPresentationProps {
   lead: Lead;
   pipelineId: string;
   onViewDetails?: (lead: Lead) => void;
-  showDragHandle?: boolean;
-  isDragging?: boolean;
-  dragListeners?: any;
-  dragAttributes?: any;
-  setActivatorNodeRef?: (element: HTMLElement | null) => void; // ✅ CORREÇÃO: Adicionar activator ref
+  onViewDetailsWithTab?: (lead: Lead, tab: string) => void;
 }
 
 /**
- * Componente apresentacional puro para o card de lead
- * NÃO usa hooks do dnd-kit - apenas renderização
- * ✅ FASE 3: React.memo para otimização de performance
+ * ✅ REFATORADO: Componente de UI puro sem Draggable
+ * O Draggable agora é implementado no KanbanColumn
  */
 const LeadCardPresentation: React.FC<LeadCardPresentationProps> = React.memo(({
   lead,
   pipelineId,
   onViewDetails,
-  showDragHandle = true,
-  isDragging = false,
-  dragListeners,
-  dragAttributes,
-  setActivatorNodeRef // ✅ CORREÇÃO: Receber activator ref
+  onViewDetailsWithTab
 }) => {
   
   // ✅ OUTCOME REASONS: Hook para verificar se lead tem motivos aplicados
   const { data: outcomeStatus, isLoading: isLoadingOutcome } = useLeadOutcomeStatus(lead.id);
   
-  // 🌡️ Hook para configuração de temperatura personalizada
-  const { config: temperatureConfig } = useTemperatureAPI({ 
-    pipelineId: pipelineId || lead.pipeline_id || '', 
-    autoLoad: true 
-  });
+  // 📊 TASKS: Hook para dados das tarefas e badge
+  const { 
+    tasks, 
+    loading: tasksLoading, 
+    pendingCount: tasksPending, 
+    overdueCount: tasksOverdue,
+    completeTask,
+    deleteTask, // ✅ NOVO: Obter função de deletar
+    forceRefreshCache, // ✅ NOVO: Função para invalidar cache
+    isGeneratingTasks 
+  } = useLeadTasksForCard(lead.id);
   
-  // Função para calcular dias totais do card (desde criação)
-  const getDaysInCard = (lead: Lead): number => {
-    const now = new Date();
-    const createDate = new Date(lead.created_at);
-    const diffTime = Math.abs(now.getTime() - createDate.getTime());
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  // ✅ SIMPLIFICADO: Removido hook de geração manual - agora é automático
+  // const { generateActivities, isGenerating: isGeneratingManually } = useCadenceActivityGenerator();
+  const isGeneratingManually = false; // Manter compatibilidade
+  
+  const tasksCompleted = tasks?.filter(t => t.status === 'completed').length || 0;
+
+  // Hooks customizados para separar responsabilidades
+  const leadData = useLeadCardData({ lead, pipelineId });
+  const actions = useLeadCardActions({ lead, onViewDetails, onViewDetailsWithTab });
+  const realTime = useLeadCardRealTime({ leadId: lead.id, tenantId: lead.custom_data?.tenant_id || '' });
+
+  // ✅ SIMPLIFICADO: Função para abrir dropdown de atividades
+  const handleBadgeClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Evita abrir o modal do lead
+    // TODO: Implementar abertura do dropdown de atividades
+    console.log('📊 [BADGE-CLICK] Abrindo dropdown de atividades para lead:', lead.id.substring(0, 8));
   };
 
-  // Função para formatação de data
-  const formatDate = (dateString: string): string => {
-    const date = new Date(dateString);
-    const day = date.getDate();
-    const month = date.toLocaleDateString('pt-BR', { month: 'short' });
-    return `${day}/${month}`;
-  };
-
-  // 🚀 MEMOIZAÇÃO DE TAG DE TEMPERATURA COM CONFIGURAÇÃO PERSONALIZADA
-  const temperatureBadge = useMemo(() => {
-    // Determinar nível de temperatura baseado no lead
-    const temperatureLevel = lead.temperature_level || 'hot'; // fallback para 'hot' se não definido
+  // 📊 Badge de progresso das tarefas memoizado com sistema acumulativo
+  const progressBadge = useMemo(() => {
+    const totalTasks = tasks.length;
     
-    const badge = generateTemperatureBadge(temperatureLevel, temperatureConfig ?? null);
+    // ✅ CORREÇÃO: Lógica mais robusta para detectar discrepâncias reais
+    // NOTA: tasksOverdue são um subconjunto de tasksPending, não uma categoria separada
+    const expectedTotal = tasksCompleted + tasksPending;
+    const discrepancy = totalTasks - expectedTotal;
     
-    // Converter ícones emoji para componentes React
-    let iconComponent;
-    switch (badge.icon) {
-      case '🔥':
-        iconComponent = <Flame className="h-3 w-3" />;
-        break;
-      case '🌡️':
-        iconComponent = <Thermometer className="h-3 w-3" />;
-        break;
-      case '☀️':
-        iconComponent = <Sun className="h-3 w-3" />;
-        break;
-      case '❄️':
-        iconComponent = <Snowflake className="h-3 w-3" />;
-        break;
-      default:
-        iconComponent = <Thermometer className="h-3 w-3" />;
+    // Só considerar discrepância real se > 1 (tolerância para race conditions)
+    const hasRealDiscrepancy = totalTasks > 0 && Math.abs(discrepancy) > 1;
+    
+    // ✅ CORREÇÃO: Log apenas problemas genuínos com dados completos para debug
+    if (hasRealDiscrepancy) {
+      loggers.leadCardBadge('Discrepância real no cálculo de badge de tarefas', {
+        leadId: lead.id.substring(0, 8),
+        totalTasks,
+        tasksCompleted,
+        tasksPending,
+        tasksOverdue,
+        expectedTotal,
+        discrepancy,
+        tolerance: 1,
+        note: 'overdue_tasks_are_subset_of_pending_tasks'
+      });
+    }
+    
+    // Estado de geração de tarefas (automática ou manual)
+    if (isGeneratingTasks || isGeneratingManually) {
+      return {
+        text: '⏳',
+        color: 'bg-blue-100 text-blue-700 ring-1 ring-blue-200 animate-pulse',
+        title: isGeneratingManually ? 'Gerando atividades...' : 'Gerando atividades automaticamente...',
+        onClick: undefined // Desabilitar clique durante geração
+      };
+    }
+    
+    // ✅ SISTEMA ACUMULATIVO: Sempre mostrar formato "X/Y" mesmo quando Y=0
+    // TODO: Implementar cálculo do total esperado baseado na configuração de cadência
+    const progressText = `${tasksCompleted}/${totalTasks}`;
+    
+    // ✅ SIMPLIFICADO: Se não há atividades, mostrar 0/0 informativo
+    if (totalTasks === 0) {
+      return {
+        text: '0/0',
+        color: 'bg-gray-100 text-gray-600 ring-1 ring-gray-200 hover:bg-gray-200 cursor-pointer',
+        title: 'Nenhuma atividade configurada para esta etapa - atividades são geradas automaticamente',
+        onClick: handleBadgeClick
+      };
+    }
+    
+    if (tasksOverdue > 0) {
+      return {
+        text: progressText,
+        color: 'bg-red-100 text-red-700 ring-1 ring-red-200',
+        title: `${tasksOverdue} tarefa(s) vencida(s)`
+      };
+    }
+    
+    if (tasksPending > 0) {
+      return {
+        text: progressText,
+        color: 'bg-amber-100 text-amber-700 ring-1 ring-amber-200',
+        title: `${tasksPending} tarefa(s) pendente(s)`
+      };
     }
     
     return {
-      ...badge,
-      icon: iconComponent
+      text: progressText,
+      color: 'bg-green-100 text-green-700 ring-1 ring-green-200',
+      title: 'Todas as tarefas concluídas'
     };
-  }, [lead.temperature_level, temperatureConfig]);
-
-  // Dados do lead
-  const opportunityName = lead.custom_data?.nome_oportunidade || lead.custom_data?.titulo || 
-    (lead.first_name && lead.last_name ? `Proposta - ${lead.first_name} ${lead.last_name}`.trim() : 'Oportunidade sem nome');
+  }, [tasksCompleted, tasksPending, tasksOverdue, isGeneratingTasks, isGeneratingManually, tasks.length, handleBadgeClick]);
   
-  const leadName = lead.first_name ? 
-    `${lead.first_name} ${lead.last_name || ''}`.trim() : 
-    lead.custom_data?.nome_lead || 'Lead sem nome';
-  
-  const leadEmail = lead.email || lead.custom_data?.email || '';
-  const leadPhone = lead.phone || lead.custom_data?.telefone || '';
-  const leadCompany = lead.company || lead.custom_data?.empresa || '';
-  // ✅ CORREÇÃO: Melhor tratamento de tipos para valor
-  const rawValue = lead.custom_data?.valor || lead.estimated_value || 0;
-  const leadValue = typeof rawValue === 'string' ? parseFloat(rawValue) || 0 : Number(rawValue) || 0;
-  const daysInCard = getDaysInCard(lead);
-
-  // ✨ OPTIMISTIC UPDATES: Identificar se é lead otimista com debug
-  const isOptimistic = Boolean((lead as any).isOptimistic);
-  const isCreating = Boolean((lead as any).isCreating);
-  const tempId = (lead as any).tempId;
-  
-  // 🐛 DEBUG: Log para identificar cards com estado otimista incorreto
-  if (isOptimistic && import.meta.env.DEV) {
-    console.log(`🐛 [LeadCard] Card otimista detectado:`, {
-      id: lead.id.substring(0, 8),
-      nome: opportunityName,
-      isOptimistic,
-      isCreating,
-      tempId,
-      hasTimestamp: !!(lead as any).__timestamp,
-      hasMoved: !!(lead as any).__moved
-    });
-  }
+  // Log removido para evitar spam - cards otimistas são normais durante operações
 
   return (
-    <div
+    <EnhancedLeadCard
+      leadId={lead.id}
       className={`
-        rounded-md transition-all duration-200 group min-h-[100px] mb-2
-        ${isOptimistic 
+        rounded-lg transition-all duration-200 group h-[120px] cursor-pointer overflow-hidden
+        ${leadData.optimisticState.isOptimistic 
           ? 'bg-green-50 ring-1 ring-green-200' 
-          : 'bg-white hover:ring-1 ring-gray-300'
+          : 'bg-white'
         }
-        ${isCreating 
+        ${leadData.optimisticState.isCreating 
           ? 'opacity-80 animate-pulse' 
           : ''
         }
-        ${isDragging ? 'shadow-xl ring-2 ring-blue-400' : 'shadow-sm'}
       `}
-      style={{
-        // ✅ CORREÇÃO ESPAÇAMENTO: margem removida - deixar CSS controlar (.kanban-card)
-      }}
+      enableAnimations={true}
+      showTasksDropdown={false}  // TasksDropdown integrado no badge - não mostrar separadamente
+      showProgressBadge={false}  // Badge integrado customizado - não usar o padrão
     >
       {/* Conteúdo Principal - Sem área de drag handle */}
-      <div className="w-full p-2">
-          {/* LINHA 1: Nome da Oportunidade + Sino de Notificação */}
-          <div className="flex items-center justify-between mb-1">
-            <h4 
-              className="font-medium text-gray-900 truncate flex-1 hover:text-blue-600 transition-colors cursor-pointer"
-              onClick={(e) => {
-                e.stopPropagation(); // ✅ IMPORTANTE: Prevenir propagação para não interferir com drag
-                onViewDetails?.(lead);
-              }}
-              title={opportunityName}
-            >
-              {opportunityName}
-            </h4>
-            
-            <div className="flex items-center gap-2">
-              {/* ✨ OPTIMISTIC UPDATES: Indicador de criação */}
-              {isCreating && (
-                <div 
-                  title="Criando oportunidade..."
-                  className="flex items-center gap-1 px-2 py-1 bg-green-100 rounded-full"
-                >
-                  <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span className="text-xs font-medium text-green-700">Criando...</span>
-                </div>
-              )}
-              
-              {/* ✅ OUTCOME REASONS: Badge quando há motivos aplicados */}
-              {outcomeStatus?.hasOutcome && !isCreating && (
-                <div 
-                  title={`Motivo de ${outcomeStatus.lastOutcome?.outcome_type === 'ganho' || outcomeStatus.lastOutcome?.outcome_type === 'won' ? 'Ganho' : 'Perda'}: ${outcomeStatus.lastOutcome?.reason_text}`}
-                  className="flex-shrink-0"
-                >
-                  {(outcomeStatus.lastOutcome?.outcome_type === 'ganho' || outcomeStatus.lastOutcome?.outcome_type === 'won') ? (
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <XCircle className="h-4 w-4 text-red-600" />
-                  )}
-                </div>
-              )}
-              
-              {/* Sino de Notificação para Cadências */}
-              <div title="Notificações de cadência">
-                <Bell 
-                  className="h-4 w-4 text-amber-500 cursor-pointer hover:text-amber-600 transition-colors flex-shrink-0" 
-                />
-              </div>
-            </div>
-          </div>
+      <div 
+        className="w-full h-full p-3 flex flex-col justify-between overflow-hidden"
+        onClick={actions.handleCardClick}
+      >
+        {/* HEADER: Nome da Oportunidade + Badge + Nome do Lead */}
+        <LeadCardHeader
+          opportunityName={leadData.opportunityName}
+          leadName={leadData.leadName}
+          leadId={lead.id}
+          pipelineId={pipelineId} // ✅ NOVO: Pipeline ID para modal
+          isCreating={leadData.optimisticState.isCreating}
+          tasks={tasks}
+          tasksLoading={tasksLoading}
+          tasksPending={tasksPending}
+          tasksOverdue={tasksOverdue}
+          tasksCompleted={tasksCompleted}
+          isGeneratingTasks={isGeneratingTasks}
+          completeTask={completeTask}
+          deleteTask={deleteTask} // ✅ NOVO: Função de deletar implementada
+          forceRefreshCache={actions.forceRefreshCache}
+          progressBadge={progressBadge}
+        />
 
-          {/* LINHA 2: Nome do Lead + Valor */}
-          <div className="flex items-center justify-between" style={{ marginBottom: '0.1rem' }}>
-            <div className="flex items-center gap-1 flex-1">
-              <UserIcon className="h-3 w-3 text-gray-400" />
-              <span className="text-sm text-gray-700 truncate">
-                {leadName}
-              </span>
-            </div>
-            {leadValue && (
-              <span className="text-sm font-medium text-green-600 flex-shrink-0 ml-2">
-                {new Intl.NumberFormat('pt-BR', {
-                  style: 'currency',
-                  currency: 'BRL',
-                }).format(Number(leadValue))}
-              </span>
-            )}
-          </div>
+        {/* BODY: Data + Tempo + Temperatura */}
+        <LeadCardBody
+          leadCreatedAt={lead.created_at}
+          daysInCard={leadData.daysInCard}
+          temperatureBadge={leadData.temperatureBadge}
+        />
 
-          {/* LINHA 3: Data + Tempo no Card + Temperatura */}
-          <div className="flex items-center justify-between" style={{ marginBottom: '0.1rem' }}>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1">
-                <Calendar className="h-3 w-3 text-gray-400" />
-                <span className="text-xs text-gray-500">
-                  {formatDate(lead.created_at)}
-                </span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Clock className="h-3 w-3 text-gray-400" />
-                <span className="text-xs text-gray-500">
-                  {daysInCard}d
-                </span>
-              </div>
-            </div>
-            
-            <Badge 
-              variant="outline" 
-              className={`text-xs ${temperatureBadge.color} flex-shrink-0 flex items-center gap-1`}
-              title={temperatureBadge.tooltip}
-            >
-              {temperatureBadge.icon}
-              {temperatureBadge.label}
-            </Badge>
-          </div>
-
-          {/* LINHA 4: Ícones de Contato + Olhinho */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {/* Ícones de Contato */}
-              {leadPhone && (
-                <div title={leadPhone}>
-                  <Phone className="h-3 w-3 text-gray-400 hover:text-blue-500 cursor-pointer transition-colors" />
-                </div>
-              )}
-              {leadEmail && (
-                <div title={`Enviar e-mail para ${leadEmail}`}>
-                  <Mail className="h-3 w-3 text-gray-400 hover:text-blue-500 cursor-pointer transition-colors" />
-                </div>
-              )}
-              {leadCompany && (
-                <div title={leadCompany}>
-                  <Building2 className="h-3 w-3 text-gray-400 hover:text-blue-500 cursor-pointer transition-colors" />
-                </div>
-              )}
-            </div>
-            
-            {/* Botão do Olhinho */}
-            {onViewDetails && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0 text-blue-600 hover:bg-blue-50 hover:text-blue-700 transition-all border border-blue-200 hover:border-blue-300 relative z-10"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation(); // ✅ IMPORTANTE: Prevenir propagação para não interferir com drag
-                  onViewDetails?.(lead);
-                }}
-                onMouseDown={(e) => {
-                  e.stopPropagation(); // ✅ CORREÇÃO: Prevenir mouse down event de iniciar drag
-                }}
-                onPointerDown={(e) => {
-                  e.stopPropagation(); // ✅ CORREÇÃO: Prevenir pointer down event de iniciar drag
-                }}
-                title="Ver detalhes completos do lead"
-                style={{ pointerEvents: 'auto' }}
-              >
-                <Eye className="h-3 w-3" />
-              </Button>
-            )}
-          </div>
+        {/* FOOTER: Valor + Ícones de Ação */}
+        <LeadCardFooter
+          lead={lead}
+          leadValue={leadData.leadValue}
+          leadEmail={leadData.leadEmail}
+          leadPhone={leadData.leadPhone}
+          connectionIndicator={realTime.connectionIndicator}
+          connectionStatus={realTime.connectionStatus}
+          forceRefresh={realTime.forceRefresh}
+          onEmailClick={actions.handleEmailClick}
+          onScheduleMeetingClick={actions.handleScheduleMeetingClick}
+        />
       </div>
-    </div>
+    </EnhancedLeadCard>
   );
 }, (prevProps, nextProps) => {
-  // ✅ FASE 3: Comparação customizada para React.memo - apenas re-renderizar quando necessário
-  return (
-    prevProps.lead.id === nextProps.lead.id &&
-    (prevProps.lead.first_name || '') + ' ' + (prevProps.lead.last_name || '') === (nextProps.lead.first_name || '') + ' ' + (nextProps.lead.last_name || '') &&
-    prevProps.lead.email === nextProps.lead.email &&
-    prevProps.lead.lead_temperature === nextProps.lead.lead_temperature &&
-    prevProps.lead.stage_id === nextProps.lead.stage_id &&
-    prevProps.pipelineId === nextProps.pipelineId &&
-    prevProps.showDragHandle === nextProps.showDragHandle &&
-    prevProps.isDragging === nextProps.isDragging &&
-    // ✅ CORREÇÃO: Comparar valor para re-renderizar quando mudar
-    prevProps.lead.custom_data?.valor === nextProps.lead.custom_data?.valor &&
-    // Comparar apenas propriedades críticas para evitar comparações custosas
-    prevProps.lead.created_at === nextProps.lead.created_at
+  // 🚀 V2.0: Comparação otimizada para evitar re-renders desnecessários
+  
+  // Lead core data comparison
+  const leadDataChanged = (
+    prevProps.lead.id !== nextProps.lead.id ||
+    prevProps.lead.stage_id !== nextProps.lead.stage_id ||
+    prevProps.lead.temperature_level !== nextProps.lead.temperature_level ||
+    prevProps.lead.email !== nextProps.lead.email ||
+    prevProps.lead.created_at !== nextProps.lead.created_at
   );
+  
+  // Props comparison
+  const propsChanged = (
+    prevProps.pipelineId !== nextProps.pipelineId
+  );
+  
+  // Name comparison (memoized string concat)
+  const prevName = (prevProps.lead.first_name || '') + ' ' + (prevProps.lead.last_name || '');
+  const nextName = (nextProps.lead.first_name || '') + ' ' + (nextProps.lead.last_name || '');
+  const nameChanged = prevName !== nextName;
+  
+  // Custom data comparison (critical fields for display)
+  const customDataChanged = (
+    prevProps.lead.custom_data?.valor !== nextProps.lead.custom_data?.valor ||
+    prevProps.lead.custom_data?.empresa !== nextProps.lead.custom_data?.empresa ||
+    prevProps.lead.custom_data?.nome_oportunidade !== nextProps.lead.custom_data?.nome_oportunidade ||
+    prevProps.lead.custom_data?.titulo !== nextProps.lead.custom_data?.titulo ||
+    prevProps.lead.custom_data?.email !== nextProps.lead.custom_data?.email ||
+    prevProps.lead.custom_data?.telefone !== nextProps.lead.custom_data?.telefone ||
+    prevProps.lead.custom_data?.nome_lead !== nextProps.lead.custom_data?.nome_lead
+  );
+  
+  // Functions are stable (useCallback), so we don't need to compare them
+  const shouldUpdate = leadDataChanged || propsChanged || nameChanged || customDataChanged;
+  
+  // Log de re-render removido para evitar spam - re-renders são normais
+  
+  return !shouldUpdate; // React.memo returns true when props are equal (no re-render needed)
 });
 
 // Definir displayName para debugging

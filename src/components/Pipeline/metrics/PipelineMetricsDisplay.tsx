@@ -228,14 +228,16 @@ const MetricCard: React.FC<MetricCardProps> = ({
         />
       );
 
-    // Métricas de reunião (dados reais do banco)
+    // ✅ CORREÇÃO CRÍTICA: Métricas de reunião (dados reais do backend)
     case 'meetings_scheduled':
       return (
         <VolumeMetricCard
           title="Reuniões Agendadas"
-          totalLeads={pipelineMetrics.total_leads}
-          totalOpportunities={5} // Baseado em dados reais: 5 agendadas
-          opportunitiesPerLead={pipelineMetrics.total_leads > 0 ? 5 / pipelineMetrics.total_leads : 0}
+          totalLeads={pipelineMetrics.unique_leads_count}
+          totalOpportunities={pipelineMetrics.meetings_scheduled} // ✅ Dados reais do backend
+          opportunitiesPerLead={pipelineMetrics.unique_leads_count > 0 ? 
+            pipelineMetrics.meetings_scheduled / pipelineMetrics.unique_leads_count : 0}
+          displayField="opportunities" // Mostrar número de reuniões
           size={size}
           className="h-full"
           // ✅ FASE 2: Passar ícone e cores semânticas
@@ -247,11 +249,13 @@ const MetricCard: React.FC<MetricCardProps> = ({
 
     case 'meetings_attended':
       return (
-        <ConversionMetricCard
+        <VolumeMetricCard
           title="Reuniões Realizadas"
-          conversionRate={16.67} // Taxa real de comparecimento
-          totalLeads={6} // Total de reuniões que poderiam ter sido realizadas
-          convertedLeads={1} // 1 reunião realizada
+          totalLeads={pipelineMetrics.meetings_scheduled} // Total agendadas
+          totalOpportunities={pipelineMetrics.meetings_attended} // ✅ Dados reais do backend
+          opportunitiesPerLead={pipelineMetrics.meetings_scheduled > 0 ? 
+            pipelineMetrics.meetings_attended / pipelineMetrics.meetings_scheduled : 0}
+          displayField="opportunities" // Mostrar número de reuniões realizadas
           size={size}
           className="h-full"
           // ✅ FASE 2: Passar ícone e cores semânticas
@@ -265,9 +269,11 @@ const MetricCard: React.FC<MetricCardProps> = ({
       return (
         <VolumeMetricCard
           title="No-Shows"
-          totalLeads={6} // Total elegível
-          totalOpportunities={5} // 5 reagendadas/no-show
-          opportunitiesPerLead={5/6} // Proporção de no-show
+          totalLeads={pipelineMetrics.meetings_scheduled} // Total agendadas
+          totalOpportunities={pipelineMetrics.meetings_noshow} // ✅ Dados reais do backend
+          opportunitiesPerLead={pipelineMetrics.meetings_scheduled > 0 ? 
+            pipelineMetrics.meetings_noshow / pipelineMetrics.meetings_scheduled : 0}
+          displayField="opportunities" // Mostrar número de no-shows
           size={size}
           className="h-full"
           // ✅ FASE 2: Passar ícone e cores semânticas
@@ -281,9 +287,9 @@ const MetricCard: React.FC<MetricCardProps> = ({
       return (
         <ConversionMetricCard
           title="Taxa No-Show"
-          conversionRate={83.33} // Taxa real de no-show
-          totalLeads={6} // Total de reuniões elegíveis
-          convertedLeads={5} // 5 no-shows
+          conversionRate={pipelineMetrics.meetings_noshow_rate} // ✅ Taxa calculada no backend
+          totalLeads={pipelineMetrics.meetings_scheduled} // Total agendadas
+          convertedLeads={pipelineMetrics.meetings_noshow} // No-shows
           size={size}
           className="h-full"
           // ✅ FASE 2: Passar ícone e cores semânticas

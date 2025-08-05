@@ -14,8 +14,7 @@
   display: flex;
   gap: 16px;
   width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible;
   padding: 16px 32px;
   box-sizing: border-box;
   min-height: 100%;
@@ -38,8 +37,7 @@
 /* Conteúdo da stage com scroll */
 .kanban-stage .stage-content {
   position: relative;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: visible;
   scrollbar-width: none;
   -ms-overflow-style: none;
   scroll-behavior: smooth;

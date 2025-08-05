@@ -676,4 +676,104 @@ router.get('/admin-dashboard/team-performance', async (req, res) => {
   }
 });
 
+// ==========================================
+// 7. OPERAÇÕES ESPECÍFICAS MIGRADAS DO FRONTEND
+// ==========================================
+
+/**
+ * POST /admin/create-opportunity
+ * Endpoint seguro para criação de oportunidades usando service role
+ * MIGRADO de useCreateOpportunity.ts para eliminar service role no frontend
+ */
+router.post('/create-opportunity', async (req, res) => {
+  console.log('🔧 [ADMIN-API] Recebendo solicitação de criação de oportunidade');
+  
+  try {
+    const {
+      pipeline_id,
+      stage_id,
+      lead_master_id,
+      assigned_to,
+      custom_data = {},
+      tenant_id,
+      created_by,
+      position = 1000,
+      status = 'active',
+      lifecycle_stage = 'lead'
+    } = req.body;
+
+    // ✅ VALIDAÇÃO: Campos obrigatórios
+    if (!pipeline_id || !stage_id || !lead_master_id || !tenant_id || !created_by) {
+      return res.status(400).json({
+        success: false,
+        error: 'validation_error',
+        message: 'Campos obrigatórios ausentes',
+        missing_fields: {
+          pipeline_id: !pipeline_id,
+          stage_id: !stage_id,
+          lead_master_id: !lead_master_id,
+          tenant_id: !tenant_id,
+          created_by: !created_by
+        }
+      });
+    }
+
+    console.log('🔍 [ADMIN-API] Dados validados:', {
+      pipeline_id: pipeline_id.substring(0, 8),
+      stage_id: stage_id.substring(0, 8),
+      tenant_id: tenant_id.substring(0, 8),
+      custom_data_size: JSON.stringify(custom_data).length
+    });
+
+    // ✅ PREPARAR DADOS: Criar objeto para insert
+    const newPipelineLead = {
+      pipeline_id,
+      stage_id,
+      lead_master_id,
+      assigned_to: assigned_to || created_by,
+      custom_data: custom_data || {},
+      tenant_id,
+      created_by,
+      position,
+      status,
+      lifecycle_stage
+    };
+
+    console.log('🚀 [ADMIN-API] Executando INSERT com service role (bypass RLS)');
+
+    // ✅ SERVICE ROLE INSERT: Usar supabaseAdmin (já configurado)
+    const result = await supabaseAdmin.adminInsert('pipeline_leads', newPipelineLead);
+
+    if (!result || (Array.isArray(result) && result.length === 0)) {
+      console.error('❌ [ADMIN-API] Service role retornou result vazio');
+      return res.status(500).json({
+        success: false,
+        error: 'empty_result',
+        message: 'INSERT retornou resultado vazio'
+      });
+    }
+
+    const opportunity = Array.isArray(result) ? result[0] : result;
+    console.log('✅ [ADMIN-API] Oportunidade criada com sucesso:', opportunity.id?.substring(0, 8));
+
+    return res.status(201).json({
+      success: true,
+      message: 'Oportunidade criada via service role backend',
+      opportunity_id: opportunity.id,
+      lead_id: lead_master_id,
+      strategy_used: 'backend-service-role'
+    });
+
+  } catch (error: any) {
+    console.error('❌ [ADMIN-API] Erro na criação de oportunidade:', error);
+    
+    return res.status(500).json({
+      success: false,
+      error: 'internal_error',
+      message: 'Erro interno do servidor',
+      details: error?.message || 'Erro desconhecido'
+    });
+  }
+});
+
 export default router; 

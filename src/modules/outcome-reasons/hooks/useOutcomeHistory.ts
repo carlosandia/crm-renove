@@ -26,11 +26,25 @@ export const outcomeHistoryKeys = {
 // ============================================
 
 export const useOutcomeHistory = (params: UseOutcomeHistoryParams) => {
+  // ✅ CORREÇÃO CRÍTICA: Validar leadId antes de executar query
+  const isValidLeadId = params.leadId && 
+                       params.leadId.trim().length > 0 && 
+                       params.leadId !== 'undefined' && 
+                       params.leadId !== 'null';
+
   const query = useQuery({
     queryKey: outcomeHistoryKeys.lead(params.leadId),
     queryFn: () => outcomeReasonsApi.getLeadHistory(params.leadId),
-    enabled: params.enabled ?? true,
-    staleTime: 2 * 60 * 1000, // 2 minutos
+    enabled: Boolean((params.enabled ?? true) && isValidLeadId), // ✅ GUARD: Só executar se leadId for válido
+    staleTime: 15 * 60 * 1000, // ✅ CORREÇÃO CRÍTICA: 15 minutos (era 2)
+    gcTime: 30 * 60 * 1000,    // ✅ CORREÇÃO: 30 minutos cache
+    retry: (failureCount, error: any) => {
+      // ✅ CORREÇÃO: Não retry em erros 429 (rate limit)
+      if (error?.status === 429) return false;
+      return failureCount < 1; // Apenas 1 retry
+    },
+    refetchOnWindowFocus: false, // ✅ CORREÇÃO: Não refetch ao focar janela
+    refetchOnMount: false,       // ✅ CORREÇÃO: Não refetch ao montar se já tem cache
   });
 
   return {

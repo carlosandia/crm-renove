@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { showSuccessToast, showErrorToast } from '../lib/toast';
 import { logger } from '../lib/logger';
 

@@ -7,7 +7,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { showSuccessToast, showErrorToast } from '../../hooks/useToast';
 
 interface LeadsImportExportDropdownProps {
@@ -28,9 +28,9 @@ const LeadsImportExportDropdown: React.FC<LeadsImportExportDropdownProps> = ({
     try {
       setIsDownloading(true);
       
-      // URL do endpoint de template
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
-      const templateUrl = `${apiUrl}/api/leads/template`;
+      // URL do endpoint de template usando configuração centralizada
+      const { environmentConfig } = await import('../../config/environment');
+      const templateUrl = `${environmentConfig.urls.api}/leads/template`;
       
       // Fazer download do template
       const response = await fetch(templateUrl, {

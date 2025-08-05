@@ -4,7 +4,7 @@ import {
   X, Building, User, Mail, Phone, Globe, MapPin, Calendar, 
   Edit, Save, Eye, EyeOff, Users, Target, TrendingUp, CheckCircle, XCircle, Lock
 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { usePasswordManager } from '../../hooks/usePasswordManager';
 import { formatPhone } from '../../utils/formatUtils';
 import CityAutocomplete from '../CityAutocomplete';

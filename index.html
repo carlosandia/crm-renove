@@ -4,7 +4,12 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CRM</title>
+    <title>CRM Marketing System</title>
+    
+    <!-- ✅ CORREÇÃO: Security headers removidos do HTML -->
+    <!-- Headers de segurança são definidos via Helmet.js no backend (HTTP headers) -->
+    <!-- X-Frame-Options via meta tag causa warning - só pode ser HTTP header -->
+    <meta name="robots" content="noindex, nofollow">
   </head>
   <body>
     <div id="root"></div>

@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Simple App</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+            background: #f5f5f5; 
+        }
+        .container { 
+            max-width: 800px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+        }
+        .log { 
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; 
+            background: #f8f9fa; 
+            padding: 10px; 
+            border-radius: 4px; 
+            border-left: 3px solid #007acc; 
+            margin: 5px 0; 
+            font-size: 13px; 
+        }
+        .status { 
+            padding: 8px 12px; 
+            border-radius: 4px; 
+            font-weight: 500; 
+            margin: 10px 0; 
+        }
+        .status.loading { background: #e3f2fd; color: #1976d2; }
+        .status.success { background: #e8f5e8; color: #2e7d32; }
+        .status.error { background: #ffebee; color: #c62828; }
+        button { 
+            background: #007acc; 
+            color: white; 
+            border: none; 
+            padding: 8px 16px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            margin: 5px; 
+        }
+        button:hover { background: #005a9e; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, createContext, useContext } = React;
+        
+        // Supabase client
+        const supabase = supabase.createClient(
+            'https://marajvabdwkpgopytvhh.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hcmFqdmFiZHdrcGdvcHl0dmhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjQwMDksImV4cCI6MjA2NTM0MDAwOX0.C_2W2u8JyApjbhqPJm1q1dFX82KoRSm3auBfE7IpmDU'
+        );
+
+        // Context para Auth
+        const AuthContext = createContext();
+
+        // Auth Provider simplificado
+        const SimpleAuthProvider = ({ children }) => {
+            const [user, setUser] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [logs, setLogs] = useState([]);
+            const [step, setStep] = useState('initializing');
+
+            const addLog = (message) => {
+                console.log(message);
+                setLogs(prev => [...prev.slice(-20), `${new Date().toLocaleTimeString()}: ${message}`]);
+            };
+
+            // Simulação do fluxo real do AuthProvider
+            useEffect(() => {
+                let mounted = true;
+
+                const initialize = async () => {
+                    try {
+                        setStep('checking_session');
+                        addLog('🔄 [AUTH] Iniciando verificação de sessão...');
+
+                        // Simular delay que pode estar causando problema
+                        await new Promise(resolve => setTimeout(resolve, 100));
+
+                        const { data: { session }, error } = await supabase.auth.getSession();
+
+                        addLog(`🔍 [AUTH] Resultado getSession: hasSession=${!!session}, hasUser=${!!session?.user}, error=${error?.message || 'nenhum'}`);
+
+                        if (error) {
+                            addLog(`❌ [AUTH] Erro ao verificar sessão: ${error.message}`);
+                            setStep('no_session');
+                            return;
+                        }
+
+                        if (session && session.user && mounted) {
+                            setStep('found_session');
+                            addLog(`🔍 [AUTH] Sessão encontrada: ${session.user.email}`);
+
+                            // Simular busca na tabela users
+                            setStep('fetching_user');
+                            const { data: userData, error: userError } = await supabase
+                                .from('users')
+                                .select('*')
+                                .eq('id', session.user.id)
+                                .eq('is_active', true)
+                                .single();
+
+                            addLog(`🔍 [AUTH] Resultado busca users: userData=${userData ? 'encontrado' : 'não encontrado'}, error=${userError?.message || 'nenhum'}`);
+
+                            if (userError || !userData) {
+                                setStep('user_not_found');
+                                addLog('⚠️ [AUTH] Usuário não encontrado na tabela users');
+                                await supabase.auth.signOut();
+                                if (mounted) setUser(null);
+                            } else {
+                                setStep('user_loaded');
+                                const mockUser = {
+                                    id: session.user.id,
+                                    email: session.user.email,
+                                    role: userData.role,
+                                    tenant_id: userData.tenant_id
+                                };
+                                if (mounted) setUser(mockUser);
+                                addLog(`✅ [AUTH] Usuário configurado: ${mockUser.email} (${mockUser.role})`);
+                            }
+                        } else {
+                            setStep('no_session');
+                            addLog('ℹ️ [AUTH] Nenhuma sessão encontrada');
+                            if (mounted) setUser(null);
+                        }
+
+                    } catch (error) {
+                        setStep('error');
+                        addLog(`❌ [AUTH] Erro crítico: ${error.message}`);
+                        if (mounted) setUser(null);
+                    } finally {
+                        if (mounted) {
+                            setStep('finished');
+                            addLog('🏁 [AUTH] Finalizando, setando loading = false');
+                            setLoading(false);
+                        }
+                    }
+                };
+
+                initialize();
+
+                return () => {
+                    mounted = false;
+                };
+            }, []);
+
+            return (
+                <AuthContext.Provider value={{ user, loading, logs, step }}>
+                    {children}
+                </AuthContext.Provider>
+            );
+        };
+
+        const useAuth = () => useContext(AuthContext);
+
+        // Componente principal similar ao ProtectedDashboard
+        const TestComponent = () => {
+            const { user, loading, logs, step } = useAuth();
+            const [componentLogs, setComponentLogs] = useState([]);
+
+            const addComponentLog = (message) => {
+                console.log(message);
+                setComponentLogs(prev => [...prev.slice(-10), `${new Date().toLocaleTimeString()}: ${message}`]);
+            };
+
+            useEffect(() => {
+                addComponentLog(`🔍 Estado: loading=${loading}, user=${user ? user.email : 'null'}, step=${step}`);
+                
+                if (!loading && !user) {
+                    addComponentLog('🔄 Deveria redirecionar para login aqui');
+                }
+            }, [user, loading, step]);
+
+            const getStatusClass = () => {
+                if (loading) return 'loading';
+                if (user) return 'success';
+                return 'error';
+            };
+
+            return (
+                <div className="container">
+                    <h1>🧪 Teste Isolado do AuthProvider</h1>
+                    
+                    <div className={`status ${getStatusClass()}`}>
+                        <strong>Status:</strong> {
+                            loading ? 'Carregando...' :
+                            user ? `Logado como ${user.email} (${user.role})` :
+                            'Não logado'
+                        }
+                    </div>
+
+                    <div className={`status ${getStatusClass()}`}>
+                        <strong>Etapa atual:</strong> {step}
+                    </div>
+
+                    {!loading && !user && (
+                        <div style={{ background: '#fff3cd', padding: '10px', borderRadius: '4px', color: '#856404', margin: '10px 0' }}>
+                            ⚠️ <strong>Simulação de redirecionamento:</strong> Em um app real, redirecionaria para /login agora
+                        </div>
+                    )}
+
+                    <h3>📋 Logs do AuthProvider ({logs.length}):</h3>
+                    <div style={{ maxHeight: '200px', overflow: 'auto', background: '#f8f9fa', padding: '10px', borderRadius: '4px' }}>
+                        {logs.map((log, index) => (
+                            <div key={index} className="log">{log}</div>
+                        ))}
+                    </div>
+
+                    <h3>📋 Logs do Componente ({componentLogs.length}):</h3>
+                    <div style={{ maxHeight: '200px', overflow: 'auto', background: '#f8f9fa', padding: '10px', borderRadius: '4px' }}>
+                        {componentLogs.map((log, index) => (
+                            <div key={index} className="log">{log}</div>
+                        ))}
+                    </div>
+
+                    <div style={{ marginTop: '20px' }}>
+                        <button onClick={() => window.location.reload()}>
+                            🔄 Recarregar Teste
+                        </button>
+                        <button onClick={() => {setComponentLogs([])}}>
+                            🧹 Limpar Logs do Componente
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // Renderizar
+        ReactDOM.render(
+            <SimpleAuthProvider>
+                <TestComponent />
+            </SimpleAuthProvider>,
+            document.getElementById('root')
+        );
+    </script>
+</body>
+</html>

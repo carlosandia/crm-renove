@@ -11,6 +11,19 @@ export default {
         // Modern Design System Colors
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        gray: {
+          25: "#FAFAFA", // Fundo super sutil para grupos expandidos
+          50: "#F9FAFB",
+          100: "#F3F4F6",
+          200: "#E5E7EB",
+          300: "#D1D5DB",
+          400: "#9CA3AF",
+          500: "#6B7280",
+          600: "#4B5563",
+          700: "#374151",
+          800: "#1F2937",
+          900: "#111827",
+        },
         card: "hsl(var(--card))",
         "card-foreground": "hsl(var(--card-foreground))",
         popover: "hsl(var(--popover))",
@@ -73,11 +86,9 @@ export default {
         'fade-in': 'fadeIn 0.3s ease-out',
         'slide-in': 'slideIn 0.3s ease-out',
         'scale-in': 'scaleIn 0.2s ease-out',
-        'glass-morph': 'glassMorph 0.5s ease-out',
-        'shimmer-slide': 'shimmer-slide 1s ease-in-out infinite alternate',
-        'spin-around': 'spin-around calc(var(--speed) * 2) infinite linear',
-        'rippling': 'rippling var(--duration) ease-out',
-        'rainbow': 'rainbow var(--speed, 2s) infinite linear',
+        'slide-down': 'slideDown 0.3s ease-out',
+        'slide-up': 'slideUp 0.3s ease-out',
+        'border-beam': 'border-beam calc(var(--duration)*1s) infinite linear',
       },
       keyframes: {
         fadeIn: {
@@ -92,26 +103,18 @@ export default {
           '0%': { opacity: '0', transform: 'scale(0.95)' },
           '100%': { opacity: '1', transform: 'scale(1)' },
         },
-        glassMorph: {
-          '0%': { backdropFilter: 'blur(0px)', background: 'rgba(255, 255, 255, 0)' },
-          '100%': { backdropFilter: 'blur(8px)', background: 'rgba(255, 255, 255, 0.8)' },
+        slideDown: {
+          '0%': { height: '0', opacity: '0' },
+          '100%': { height: 'var(--radix-collapsible-content-height)', opacity: '1' },
         },
-        'shimmer-slide': {
-          'to': { transform: 'translate(calc(100cqw - 100%), 0)' },
+        slideUp: {
+          '0%': { height: 'var(--radix-collapsible-content-height)', opacity: '1' },
+          '100%': { height: '0', opacity: '0' },
         },
-        'spin-around': {
-          '0%': { transform: 'translateZ(0) rotate(0)' },
-          '15%, 35%': { transform: 'translateZ(0) rotate(90deg)' },
-          '65%, 85%': { transform: 'translateZ(0) rotate(270deg)' },
-          '100%': { transform: 'translateZ(0) rotate(360deg)' },
-        },
-        rippling: {
-          '0%': { transform: 'scale(0)', opacity: '1' },
-          '100%': { transform: 'scale(4)', opacity: '0' },
-        },
-        rainbow: {
-          '0%': { 'background-position': '0%' },
-          '100%': { 'background-position': '200%' },
+        'border-beam': {
+          '100%': {
+            'offset-distance': '100%',
+          },
         },
       },
       spacing: {
@@ -120,5 +123,7 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    require("tailwindcss-animate")
+  ],
 }

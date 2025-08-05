@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { useSupabaseCrud } from './useSupabaseCrud';
 import { ContactSchema } from '../shared/schemas/ContactSchemas';
 import type { Contact } from '../shared/types/Domain';
@@ -202,7 +202,7 @@ export const useContacts = (filters?: ContactFilters) => {
 
   return {
     // ✅ DADOS DO HOOK BASE UNIFICADO
-    contacts: contactsCrud.data,
+    contacts: contactsCrud.data as Contact[],
     loading: contactsCrud.isLoading,
     isLoading: contactsCrud.isLoading, // ✅ COMPATIBILIDADE 
     error: contactsCrud.error,

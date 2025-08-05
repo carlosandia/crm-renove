@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, MapPin, Users, FileText, X, CheckCircle, AlertCircle } from 'lucide-react';
 import { Lead } from '../types/Pipeline';
 import { GoogleCalendarAuth, CalendarEvent } from '../services/googleCalendarAuth';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
 

@@ -24,6 +24,7 @@ export interface CreateCustomFieldData {
   is_required?: boolean;
   placeholder?: string;
   show_in_card?: boolean;
+  tenant_id: string;
 }
 
 export class CustomFieldService {

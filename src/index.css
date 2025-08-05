@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 @import './styles/components.css';
+@import './styles/components/magic-calendar.css';
 @import './styles/dnd-fixes.css';
 @tailwind base;
 @tailwind components;
@@ -74,6 +75,9 @@
   #root {
     width: 100%;
     min-height: 100vh;
+  }
+  .theme {
+    --animate-pulse: pulse var(--duration) ease-out infinite;
   }
 }
 
@@ -433,5 +437,25 @@
   }
   50% {
     transform: translateY(-20px);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@theme inline {
+  @keyframes pulse {
+  0%, 100% {
+    boxShadow: 0 0 0 0 var(--pulse-color);
+    }
+  50% {
+    boxShadow: 0 0 0 8px var(--pulse-color);
+    }
   }
 }

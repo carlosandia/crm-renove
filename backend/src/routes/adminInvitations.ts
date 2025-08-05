@@ -98,7 +98,7 @@ router.post('/send',
           message: 'Convite enviado com sucesso',
           messageId: emailResult.messageId,
           to: adminEmail,
-          activationUrl: `${process.env.APP_URL || 'http://127.0.0.1:8080'}/activate?token=${activationToken}`,
+          activationUrl: `${process.env.APP_URL || 'https://crm.renovedigital.com.br'}/activate?token=${activationToken}`,
           provider: process.env.EMAIL_PROVIDER || 'mailtrap',
           timestamp: new Date().toISOString()
         });

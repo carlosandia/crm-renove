@@ -3,7 +3,8 @@ import {
   Star, Upload, Building, MapPin, Flag, Shield, 
   Mail, Phone, Hash, Globe, DollarSign
 } from 'lucide-react';
-import { FormField, TextAlign } from '../../../types/Forms';
+import { FormField } from '../../../shared/types/Domain';
+import { TextAlign } from '../../../types/Forms';
 
 interface FieldRendererProps {
   field: FormField;
@@ -47,7 +48,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
     hasError ? 'border-red-500' : ''
   }`;
 
-  switch (field.field_type) {
+  switch (field.type) {
     case 'text':
       return (
         <input
@@ -57,7 +58,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
           placeholder={field.placeholder}
           style={baseInputStyle}
           className={inputClassNames}
-          required={field.is_required}
+          required={field.required}
         />
       );
 
@@ -70,7 +71,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
           placeholder={field.placeholder}
           style={baseInputStyle}
           className={inputClassNames}
-          required={field.is_required}
+          required={field.required}
         />
       );
 
@@ -83,7 +84,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
           placeholder={field.placeholder}
           style={baseInputStyle}
           className={inputClassNames}
-          required={field.is_required}
+          required={field.required}
         />
       );
 
@@ -96,7 +97,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
           style={baseInputStyle}
           className={`${inputClassNames} resize-none`}
           rows={4}
-          required={field.is_required}
+          required={field.required}
         />
       );
 
@@ -109,7 +110,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
           placeholder={field.placeholder}
           style={baseInputStyle}
           className={inputClassNames}
-          required={field.is_required}
+          required={field.required}
         />
       );
 
@@ -121,7 +122,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
           onChange={(e) => onChange(field.id, e.target.value)}
           style={baseInputStyle}
           className={inputClassNames}
-          required={field.is_required}
+          required={field.required}
         />
       );
 
@@ -133,7 +134,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
           onChange={(e) => onChange(field.id, e.target.value)}
           style={baseInputStyle}
           className={inputClassNames}
-          required={field.is_required}
+          required={field.required}
         />
       );
 
@@ -146,7 +147,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
           placeholder={field.placeholder}
           style={baseInputStyle}
           className={inputClassNames}
-          required={field.is_required}
+          required={field.required}
         />
       );
 
@@ -173,7 +174,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
               paddingLeft: '2.5rem',
             }}
             className={inputClassNames}
-            required={field.is_required}
+            required={field.required}
           />
         </div>
       );
@@ -196,21 +197,21 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
               {fieldValue ? 'Arquivo selecionado' : 'Clique para enviar arquivo'}
             </span>
             <span className="text-xs text-gray-500 mt-1">
-              {field.field_options?.accept || 'Todos os tipos'} • 
-              Max: {field.field_options?.max_size || '10MB'}
+              {(field.validation_rules?.accept as string) || 'Todos os tipos'} • 
+              Max: {(field.validation_rules?.max_size as string) || '10MB'}
             </span>
             <input
               type="file"
               className="hidden"
-              accept={field.field_options?.accept}
-              multiple={field.field_options?.multiple}
+              accept={field.validation_rules?.accept as string}
+              multiple={field.validation_rules?.multiple as boolean}
               onChange={(e) => {
                 const files = e.target.files;
                 if (files && files.length > 0) {
-                  onChange(field.id, field.field_options?.multiple ? Array.from(files) : files[0]);
+                  onChange(field.id, field.validation_rules?.multiple ? Array.from(files) : files[0]);
                 }
               }}
-              required={field.is_required}
+              required={field.required}
             />
           </label>
         </div>
@@ -220,24 +221,24 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
       return (
         <div className="space-y-3">
           <div className="flex justify-between text-sm text-gray-600">
-            <span>{field.field_options?.min || 0}</span>
+            <span>{(field.validation_rules?.min as number) || 0}</span>
             <span className="font-medium text-blue-600">
-              {fieldValue || Math.round(((field.field_options?.max || 100) + (field.field_options?.min || 0)) / 2)}
+              {fieldValue || Math.round((((field.validation_rules?.max as number) || 100) + ((field.validation_rules?.min as number) || 0)) / 2)}
             </span>
-            <span>{field.field_options?.max || 100}</span>
+            <span>{(field.validation_rules?.max as number) || 100}</span>
           </div>
           <input
             type="range"
-            min={field.field_options?.min || 0}
-            max={field.field_options?.max || 100}
-            step={field.field_options?.step || 1}
-            value={fieldValue || Math.round(((field.field_options?.max || 100) + (field.field_options?.min || 0)) / 2)}
+            min={(field.validation_rules?.min as number) || 0}
+            max={(field.validation_rules?.max as number) || 100}
+            step={(field.validation_rules?.step as number) || 1}
+            value={fieldValue || Math.round((((field.validation_rules?.max as number) || 100) + ((field.validation_rules?.min as number) || 0)) / 2)}
             onChange={(e) => onChange(field.id, parseInt(e.target.value))}
             style={{
               accentColor: field.styling?.borderColor || '#3b82f6',
             }}
             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-            required={field.is_required}
+            required={field.required}
           />
         </div>
       );
@@ -249,10 +250,10 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
           onChange={(e) => onChange(field.id, e.target.value)}
           style={baseInputStyle}
           className={inputClassNames}
-          required={field.is_required}
+          required={field.required}
         >
           <option value="">Selecione uma opção</option>
-          {field.field_options.options?.map((option: string, idx: number) => (
+          {field.options?.map((option: string, idx: number) => (
             <option key={idx} value={option}>{option}</option>
           ))}
         </select>
@@ -261,16 +262,16 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
     case 'radio':
       return (
         <div className="space-y-3">
-          {field.field_options.options?.map((option: string, idx: number) => (
+          {field.options?.map((option: string, idx: number) => (
             <label key={idx} className="flex items-center cursor-pointer group">
               <input
                 type="radio"
-                name={field.field_name}
+                name={field.name}
                 value={option}
                 checked={fieldValue === option}
                 onChange={(e) => onChange(field.id, e.target.value)}
                 className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500 focus:ring-2"
-                required={field.is_required}
+                required={field.required}
               />
               <span 
                 className="ml-3 text-gray-700 group-hover:text-gray-900 transition-colors"
@@ -286,7 +287,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
     case 'checkbox':
       return (
         <div className="space-y-3">
-          {field.field_options.options?.map((option: string, idx: number) => (
+          {field.options?.map((option: string, idx: number) => (
             <label key={idx} className="flex items-center cursor-pointer group">
               <input
                 type="checkbox"
@@ -315,7 +316,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
     case 'rating':
       return (
         <div className="flex space-x-1">
-          {Array.from({ length: field.field_options.max_rating || 5 }).map((_, idx) => (
+          {Array.from({ length: (field.validation_rules?.max_rating as number) || 5 }).map((_, idx) => (
             <button
               key={idx}
               type="button"
@@ -345,11 +346,11 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
             list={`cities-${field.id}`}
             style={baseInputStyle}
             className={inputClassNames}
-            required={field.is_required}
+            required={field.required}
           />
           <Building className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
           <datalist id={`cities-${field.id}`}>
-            {field.field_options?.suggestions?.map((city: string, idx: number) => (
+            {(field.validation_rules?.suggestions as string[])?.map((city: string, idx: number) => (
               <option key={idx} value={city} />
             ))}
           </datalist>
@@ -364,10 +365,10 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
             onChange={(e) => onChange(field.id, e.target.value)}
             style={baseInputStyle}
             className={`${inputClassNames} appearance-none`}
-            required={field.is_required}
+            required={field.required}
           >
             <option value="">Selecione um estado...</option>
-            {field.field_options?.options?.map((state: string, idx: number) => (
+            {(field.validation_rules?.suggestions as string[])?.map((state: string, idx: number) => (
               <option key={idx} value={state}>{state}</option>
             ))}
           </select>
@@ -383,10 +384,10 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
             onChange={(e) => onChange(field.id, e.target.value)}
             style={baseInputStyle}
             className={`${inputClassNames} appearance-none`}
-            required={field.is_required}
+            required={field.required}
           >
             <option value="">Selecione um país...</option>
-            {field.field_options?.options?.map((country: string, idx: number) => (
+            {(field.validation_rules?.suggestions as string[])?.map((country: string, idx: number) => (
               <option key={idx} value={country}>{country}</option>
             ))}
           </select>
@@ -416,24 +417,24 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
             placeholder="Digite o resultado..."
             style={baseInputStyle}
             className={inputClassNames}
-            required={field.is_required}
+            required={field.required}
           />
         </div>
       );
 
     case 'heading':
-      const HeadingTag = `h${field.field_options?.level || 2}` as keyof JSX.IntrinsicElements;
+      const HeadingTag = `h${(field.validation_rules?.level as number) || 2}` as keyof JSX.IntrinsicElements;
       return (
         <HeadingTag
           style={{
             fontSize: field.styling?.fontSize || '24px',
             color: field.styling?.textColor || '#374151',
-            textAlign: (field.field_options?.align as TextAlign) || 'left',
+            textAlign: ((field.validation_rules?.align as TextAlign) || 'left'),
             margin: 0,
             fontWeight: 'bold'
           }}
         >
-          {field.field_label}
+          {field.label}
         </HeadingTag>
       );
 
@@ -443,12 +444,12 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
           style={{
             fontSize: field.styling?.fontSize || '16px',
             color: field.styling?.textColor || '#6b7280',
-            textAlign: (field.field_options?.align as TextAlign) || 'left',
+            textAlign: ((field.validation_rules?.align as TextAlign) || 'left'),
             margin: 0,
             lineHeight: 1.6
           }}
         >
-          {field.field_description || field.field_label}
+          {field.description || field.label}
         </p>
       );
 
@@ -466,11 +467,11 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
     case 'image':
       return (
         <img
-          src={field.field_options?.src}
-          alt={field.field_options?.alt || field.field_label}
+          src={(field.validation_rules?.src as string)}
+          alt={(field.validation_rules?.alt as string) || field.label}
           style={{
-            width: field.field_options?.width || 'auto',
-            height: field.field_options?.height || 'auto',
+            width: (field.validation_rules?.width as string) || 'auto',
+            height: (field.validation_rules?.height as string) || 'auto',
             borderRadius: field.styling?.borderRadius || '8px',
             maxWidth: '100%'
           }}
@@ -483,8 +484,8 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
         <button
           type="button"
           onClick={() => {
-            const phone = field.field_options?.number || '';
-            const message = field.field_options?.message || '';
+            const phone = (field.validation_rules?.number as string) || '';
+            const message = (field.validation_rules?.message as string) || '';
             const whatsappUrl = `https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
             window.open(whatsappUrl, '_blank');
           }}
@@ -498,7 +499,7 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
           className="border-0 cursor-pointer hover:bg-green-600 transition-colors flex items-center space-x-2"
         >
           <Phone size={16} />
-          <span>{field.field_options?.button_text || 'Enviar WhatsApp'}</span>
+          <span>{(field.validation_rules?.button_text as string) || 'Enviar WhatsApp'}</span>
         </button>
       );
 
@@ -510,23 +511,34 @@ const FieldRenderer: React.FC<FieldRendererProps> = ({
             fontSize: field.styling?.fontSize || '16px',
             padding: field.styling?.padding || '12px 24px',
             borderRadius: field.styling?.borderRadius || '8px',
-            backgroundColor: field.field_options?.background_color || '#3b82f6',
-            color: field.field_options?.text_color || '#ffffff',
+            backgroundColor: (field.validation_rules?.background_color as string) || '#3b82f6',
+            color: (field.validation_rules?.text_color as string) || '#ffffff',
           }}
           className="border-0 cursor-pointer hover:opacity-90 transition-opacity font-medium"
         >
-          {field.field_options?.button_text || 'Enviar'}
+          {(field.validation_rules?.button_text as string) || 'Enviar'}
         </button>
       );
 
     default:
       return (
         <div className="text-gray-500 text-sm">
-          Tipo de campo não suportado: {field.field_type}
+          Tipo de campo não suportado: {field.type}
         </div>
       );
   }
 };
 
-// Exportando com React.memo para otimização de performance (FASE 5.6)
-export default React.memo(FieldRenderer); 
+// ✅ CORREÇÃO FASE 2: Exportando com React.memo e função de comparação customizada
+export default React.memo(FieldRenderer, (prevProps, nextProps) => {
+  return (
+    prevProps.field.id === nextProps.field.id &&
+    prevProps.field.type === nextProps.field.type &&
+    prevProps.field.required === nextProps.field.required &&
+    prevProps.field.label === nextProps.field.label &&
+    prevProps.value === nextProps.value &&
+    prevProps.onChange === nextProps.onChange &&
+    JSON.stringify(prevProps.field.validation_rules) === JSON.stringify(nextProps.field.validation_rules) &&
+    JSON.stringify(prevProps.field.options) === JSON.stringify(nextProps.field.options)
+  );
+}); 

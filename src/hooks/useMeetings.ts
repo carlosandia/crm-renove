@@ -1,15 +1,17 @@
 // =====================================================================================
-// HOOKS: Sistema de Reuniões
+// HOOKS: Sistema de Reuniões (Refatorado - Autenticação Supabase Básica)
 // Autor: Claude (Arquiteto Sênior)
-// Descrição: Hooks personalizados para gestão de reuniões com TanStack Query
+// Descrição: Hooks personalizados para gestão de reuniões - SEM JWT, usando padrão das atividades
 // =====================================================================================
 
+import React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MeetingsAPI, MeetingsUtils } from '../services/meetingsApi';
 import { showSuccessToast, showErrorToast } from '../lib/toast';
 import type {
   CreateMeeting,
   UpdateMeetingOutcome,
+  UpdateMeetingData,
   ListMeetingsQuery,
   MeetingMetricsQuery,
   MeetingWithRelations,
@@ -49,8 +51,14 @@ export function useMeetingMetrics(query?: Partial<MeetingMetricsQuery>) {
   return useQuery({
     queryKey: meetingsQueryKeys.metrics(query),
     queryFn: () => MeetingsAPI.getMeetingMetrics(query),
-    staleTime: 2 * 60 * 1000, // 2 minutos
-    gcTime: 5 * 60 * 1000,    // 5 minutos
+    staleTime: 10 * 60 * 1000, // ✅ CORREÇÃO: 10 minutos (era 2)
+    gcTime: 20 * 60 * 1000,    // ✅ CORREÇÃO: 20 minutos (era 5)
+    retry: (failureCount, error: any) => {
+      // ✅ CORREÇÃO: Não retry em erros 429 (rate limit)
+      if (error?.status === 429) return false;
+      return failureCount < 2;
+    },
+    retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 }
 
@@ -119,6 +127,39 @@ export function useUpdateMeetingOutcome() {
       };
       
       showSuccessToast(outcomeMessages[variables.outcomeData.outcome]);
+    },
+    
+    onError: (error: Error) => {
+      showErrorToast(`Erro ao atualizar reunião: ${error.message}`);
+    }
+  });
+}
+
+// =====================================================================================
+// Hook: useUpdateMeeting - Atualizar dados básicos da reunião (título e observações)
+// =====================================================================================
+export function useUpdateMeeting() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ meetingId, updateData }: {
+      meetingId: string;
+      updateData: UpdateMeetingData;
+    }) => MeetingsAPI.updateMeeting(meetingId, updateData),
+    
+    onSuccess: (updatedMeeting, variables) => {
+      // AIDEV-NOTE: Invalidar cache relacionado
+      queryClient.invalidateQueries({
+        queryKey: meetingsQueryKeys.lead(updatedMeeting.pipeline_lead_id!)
+      });
+      queryClient.invalidateQueries({
+        queryKey: meetingsQueryKeys.lead(updatedMeeting.lead_master_id!)
+      });
+      queryClient.invalidateQueries({
+        queryKey: meetingsQueryKeys.metrics()
+      });
+
+      showSuccessToast('Reunião atualizada com sucesso!');
     },
     
     onError: (error: Error) => {
@@ -265,7 +306,5 @@ export function useMeetingFilters(leadId: string, initialFilters?: Partial<ListM
   };
 }
 
-// AIDEV-NOTE: Importar React para useState
-import React from 'react';
-
+// AIDEV-NOTE: Exportar utilitários para uso em componentes
 export { MeetingsUtils };

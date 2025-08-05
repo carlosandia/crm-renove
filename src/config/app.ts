@@ -2,6 +2,8 @@
 // CONFIGURAÇÃO CENTRALIZADA DA APLICAÇÃO
 // ============================================
 
+import { environmentConfig } from './environment';
+
 export interface AppConfig {
   // Informações da aplicação
   app: {
@@ -63,13 +65,13 @@ function getConfig(): AppConfig {
     },
     
     api: {
-      baseUrl: import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001',
+      baseUrl: environmentConfig.urls.api,
       timeout: parseInt(import.meta.env.VITE_API_TIMEOUT || '30000', 10)
     },
     
     supabase: {
-      url: import.meta.env.VITE_SUPABASE_URL || 'https://marajvabdwkpgopytvhh.supabase.co',
-      anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hcmFqdmFiZHdrcGdvcHl0dmhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjQwMDksImV4cCI6MjA2NTM0MDAwOX0.C_2W2u8JyApjbhqPJm1q1dFX82KoRSm3auBfE7IpmDU'
+      url: environmentConfig.supabase.url,
+      anonKey: environmentConfig.supabase.anonKey
     },
     
     debug: {

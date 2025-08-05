@@ -53,8 +53,14 @@ export const useOutcomeReasonsApi = ({ pipelineId, enabled = true }: UseOutcomeR
       reason_type: 'all',
       active_only: false 
     }),
-    enabled: enabled && !!pipelineId,
-    staleTime: 1000 * 60 * 5, // 5 minutos
+    enabled: Boolean(enabled && !!pipelineId),
+    staleTime: 1000 * 60 * 15, // ✅ CORREÇÃO: 15 minutos (era 5)
+    gcTime: 1000 * 60 * 30,    // ✅ CORREÇÃO: 30 minutos cache
+    retry: (failureCount, error: any) => {
+      // ✅ CORREÇÃO: Não retry em erros 429 (rate limit)
+      if (error?.status === 429) return false;
+      return failureCount < 1; // Apenas 1 retry
+    },
   });
 
   // ============================================
@@ -76,7 +82,7 @@ export const useOutcomeReasonsApi = ({ pipelineId, enabled = true }: UseOutcomeR
 
   const updateReasonMutation = useMutation({
     mutationFn: ({ id, ...data }: { id: string } & Partial<OutcomeReason>) => 
-      outcomeReasonsApi.updateReason({ id, ...data }),
+      outcomeReasonsApi.updateReason({ id, ...data } as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['outcome-reasons', pipelineId] });
       toast.success('Motivo atualizado com sucesso');
@@ -118,11 +124,11 @@ export const useOutcomeReasonsApi = ({ pipelineId, enabled = true }: UseOutcomeR
   
   const formattedData: OutcomeReasonsData = {
     // ✅ BUGFIX CRÍTICO: Corrigir nomenclatura para compatibilidade com componente
-    ganho_reasons: reasonsData?.filter(r => r.reason_type === 'won' || r.reason_type === 'win') || [],
-    perdido_reasons: reasonsData?.filter(r => r.reason_type === 'lost' || r.reason_type === 'loss') || [],
+    ganho_reasons: reasonsData?.filter(r => r.reason_type === 'won' || r.reason_type === 'ganho') || [],
+    perdido_reasons: reasonsData?.filter(r => r.reason_type === 'lost' || r.reason_type === 'perdido') || [],
     // ✅ COMPATIBILIDADE: Manter campos antigos para transição
-    won_reasons: reasonsData?.filter(r => r.reason_type === 'won' || r.reason_type === 'win') || [],
-    lost_reasons: reasonsData?.filter(r => r.reason_type === 'lost' || r.reason_type === 'loss') || []
+    won_reasons: reasonsData?.filter(r => r.reason_type === 'won' || r.reason_type === 'ganho') || [],
+    lost_reasons: reasonsData?.filter(r => r.reason_type === 'lost' || r.reason_type === 'perdido') || []
   };
 
   // ============================================

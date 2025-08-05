@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useAuth } from '../../../contexts/AuthContext';
+import { useAuth } from '../../../providers/AuthProvider';
 import { supabase } from '../../../lib/supabase';
 import { logger } from '../../../lib/logger';
 import { showSuccessToast, showErrorToast, showWarningToast } from '../../../lib/toast';

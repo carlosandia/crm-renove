@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import SafeErrorBoundary from './SafeErrorBoundary';
 
 // Lazy loading otimizado por prioridade

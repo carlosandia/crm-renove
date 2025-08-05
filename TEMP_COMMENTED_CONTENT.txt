@@ -1,0 +1,3 @@
+// CONTEÚDO QUE PRECISA SER COMENTADO NO ARQUIVO
+
+// Vou criar um script rápido para comentar tudo de uma vez

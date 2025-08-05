@@ -2,10 +2,10 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   User, Mail, Phone, Building, Calendar, MapPin, 
   ExternalLink, Target, Tag, Clock, TrendingUp,
-  Globe, Search, Eye, X, History, Activity, Info, Edit, Check, X as XIcon
+  Globe, Search, Eye, X, History, Activity, Info, Edit, Check, X as XIcon, FileText
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { useToast } from '../../hooks/useToast';
 import {
   Dialog,
@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Input } from '../ui/input';
 import { DetailsModalProps } from '../../types/CommonProps';
+import { AnnotationsTab } from '../Annotations';
 
 interface LeadMaster {
   id: string;
@@ -1580,7 +1581,7 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
           </DialogHeader>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-            <TabsList className="grid w-full grid-cols-3 bg-slate-100 border border-slate-200 rounded-lg p-1 mb-3">
+            <TabsList className="grid w-full grid-cols-4 bg-slate-100 border border-slate-200 rounded-lg p-1 mb-3">
               <TabsTrigger 
                 value="info" 
                 className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:text-blue-600"
@@ -1604,6 +1605,14 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
                 <History className="w-4 h-4" />
                 <span className="hidden sm:inline">Histórico</span>
                 <span className="sm:hidden">Hist</span>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="annotations" 
+                className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:text-orange-600"
+              >
+                <FileText className="w-4 h-4" />
+                <span className="hidden sm:inline">Anotações</span>
+                <span className="sm:hidden">Anot</span>
               </TabsTrigger>
             </TabsList>
 
@@ -1777,6 +1786,16 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
                       )}
                     </CardContent>
                   </Card>
+              </TabsContent>
+
+              <TabsContent value="annotations" className="space-y-3 m-0 px-3">
+                <AnnotationsTab
+                  leadId={leadData.id}
+                  leadType="lead_master"
+                  leadName={`${leadData.first_name} ${leadData.last_name}`.trim()}
+                  companyName={leadData.company}
+                  className="max-h-[600px]"
+                />
               </TabsContent>
             </div>
           </Tabs>

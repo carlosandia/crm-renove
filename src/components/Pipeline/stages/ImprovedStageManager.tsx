@@ -3,7 +3,6 @@ import { CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { AnimatedCard } from '@/components/ui/animated-card';
 import { Edit, Trash2, Save, Plus, UserPlus, Trophy, XCircle, Lock, HelpCircle, Target, Workflow, X, ChevronUp, ChevronDown } from 'lucide-react';
@@ -25,19 +24,6 @@ interface StageData {
   description?: string;
 }
 
-// Constantes
-const STAGE_COLORS = [
-  '#3B82F6', // Blue
-  '#10B981', // Green  
-  '#EF4444', // Red
-  '#F59E0B', // Yellow
-  '#8B5CF6', // Purple
-  '#06B6D4', // Cyan
-  '#EC4899', // Pink
-  '#84CC16', // Lime
-  '#F97316', // Orange
-  '#6366F1', // Indigo
-];
 
 const SYSTEM_STAGES: StageData[] = [
   { 
@@ -105,13 +91,14 @@ interface UseStageManagerReturn {
   setEditStageIndex: React.Dispatch<React.SetStateAction<number | null>>;
   showStageModal: boolean;
   setShowStageModal: React.Dispatch<React.SetStateAction<boolean>>;
-  handleAddStage: () => void;
-  handleEditStage: (index: number) => void;
+  handleAddStage: (event?: React.MouseEvent) => void;
+  handleEditStage: (index: number, event?: React.MouseEvent) => void;
   handleSaveStage: () => void;
   handleDeleteStage: (index: number) => void;
-  moveStageUp: (index: number) => void;
-  moveStageDown: (index: number) => void;
+  moveStageUp: (index: number, event?: React.MouseEvent) => void;
+  moveStageDown: (index: number, event?: React.MouseEvent) => void;
   organizeStages: (stages: StageData[]) => StageData[];
+  // Removido: Controle local de mudanças não salvas (agora gerenciado pelo componente pai)
 }
 
 export function useStageManager({ 
@@ -141,6 +128,8 @@ export function useStageManager({
   const [editStageIndex, setEditStageIndex] = useState<number | null>(null);
   const [showStageModal, setShowStageModal] = useState(false);
   
+  // Removido: Estado local de mudanças não salvas (agora gerenciado pelo componente pai)
+  
   // 🔧 CORREÇÃO: Memoizar initialStages para evitar comparação desnecessária
   const memoizedInitialStages = React.useMemo(() => initialStages, [
     initialStages.length,
@@ -161,22 +150,13 @@ export function useStageManager({
     const nonSystemStages = stages.filter(stage => !stage.is_system_stage);
     const systemStages = stages.filter(stage => stage.is_system_stage);
 
-    // 🔧 CORREÇÃO: Só logar se necessário para reduzir spam
-    if (stages.length > 0) {
-      console.log('🔄 [organizeStages] Organizando etapas:', {
-        totalStages: stages.length,
-        nonSystemStages: nonSystemStages.length,
-        systemStages: systemStages.length,
-        nonSystemStagesNames: nonSystemStages.map(s => s.name),
-        systemStagesNames: systemStages.map(s => s.name)
-      });
-    }
+    // ✅ REMOVIDO: Log de debug interno desnecessário
 
-    // ✅ CORREÇÃO: Manter ordem atual das etapas não-sistema durante drag
-    // Não reordenar por order_index, manter posição do drag
+    // ✅ CORREÇÃO: Preservar ordem real após movimento (não forçar reindexação sequencial)
+    // Manter posição do drag e atualizar order_index baseado na posição real
     const reindexedStages = nonSystemStages.map((stage, index) => ({
       ...stage,
-      order_index: index + 1
+      order_index: index + 1 // ✅ Agora reflete posição real pós-movimento
     }));
 
     // Encontrar etapas do sistema por nome
@@ -213,7 +193,13 @@ export function useStageManager({
     return organized;
   }, []); // 🔧 CORREÇÃO: Sem dependências para memoização completa
 
-  const handleAddStage = () => {
+  const handleAddStage = (event?: React.MouseEvent) => {
+    // ✅ CRÍTICO: Prevenir propagação e form submission
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
     setEditingStage({
       name: '',
       order_index: stages.filter(s => !s.is_system_stage).length + 1,
@@ -222,16 +208,40 @@ export function useStageManager({
     });
     setEditStageIndex(null);
     setShowStageModal(true);
+    
+    console.log('🆕 [ImprovedStageManager] Nova etapa iniciada - modal deve permanecer aberto');
   };
 
-  const handleEditStage = (index: number) => {
-    const stage = stages[index];
+  const handleEditStage = (index: number, event?: React.MouseEvent) => {
+    // ✅ CRÍTICO: Prevenir propagação e form submission
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
+    // ✅ CORREÇÃO: Usar allStages (estado atual) para encontrar etapa correta após movimento
+    const currentStages = allStages;
+    const stage = currentStages[index];
+    
+    // ✅ VALIDAÇÃO: Verificar se etapa existe no índice fornecido
+    if (!stage) {
+      console.warn('⚠️ [handleEditStage] Etapa não encontrada no índice:', index, 'Total stages:', currentStages.length);
+      return;
+    }
+    
+    console.log('✏️ [handleEditStage] Editando etapa:', {
+      index,
+      stageName: stage.name,
+      isSystemStage: stage.is_system_stage,
+      totalStages: currentStages.length
+    });
     
     // Para etapas do sistema, apenas mostrar informações (visualização)
     if (stage.is_system_stage) {
       setEditingStage({ ...stage });
       setEditStageIndex(index);
       setShowStageModal(true);
+      console.log('👀 [handleEditStage] Visualizando etapa do sistema - modal deve permanecer aberto');
       return;
     }
     
@@ -239,6 +249,7 @@ export function useStageManager({
     setEditingStage({ ...stage });
     setEditStageIndex(index);
     setShowStageModal(true);
+    console.log('✏️ [handleEditStage] Editando etapa customizada - modal deve permanecer aberto');
   };
 
   const handleSaveStage = () => {
@@ -253,18 +264,35 @@ export function useStageManager({
       return;
     }
 
-    const newStages = [...stages];
+    // ✅ CORREÇÃO: Usar allStages para verificações, pois stages pode estar desatualizado
+    const currentStages = allStages.filter(s => !s.is_system_stage); // Só etapas customizadas
+    const newStages = [...currentStages];
     
     if (editStageIndex !== null) {
-      // Verificação adicional: se o índice corresponde a uma etapa do sistema, abortar
-      if (stages[editStageIndex]?.is_system_stage) {
+      // ✅ VALIDAÇÃO DUPLA: Verificar se o índice ainda corresponde à etapa correta
+      const currentStageAtIndex = allStages[editStageIndex];
+      if (currentStageAtIndex?.is_system_stage) {
         console.warn('⚠️ Tentativa de sobrescrever etapa do sistema bloqueada');
         setShowStageModal(false);
         setEditingStage(null);
         setEditStageIndex(null);
         return;
       }
-      newStages[editStageIndex] = editingStage;
+      
+      // Encontrar a posição correta na lista de etapas customizadas
+      const customIndex = currentStages.findIndex(s => 
+        s.name === editingStage.name || 
+        (currentStageAtIndex && s.name === currentStageAtIndex.name)
+      );
+      
+      if (customIndex >= 0) {
+        newStages[customIndex] = editingStage;
+        console.log('✏️ [handleSaveStage] Etapa atualizada no índice customizado:', customIndex);
+      } else {
+        // Se não encontrou, adicionar como nova
+        newStages.push(editingStage);
+        console.log('✏️ [handleSaveStage] Etapa adicionada como nova (não encontrada para edição)');
+      }
     } else {
       newStages.push(editingStage);
     }
@@ -275,6 +303,7 @@ export function useStageManager({
     setShowStageModal(false);
     setEditingStage(null);
     setEditStageIndex(null);
+    // ✅ NOVO: Etapa salva (estado de mudanças gerenciado pelo componente pai)
   };
 
   const handleDeleteStage = (index: number) => {
@@ -286,32 +315,86 @@ export function useStageManager({
     onStagesChange?.(organizedStages);
   };
 
-  const moveStageUp = (index: number) => {
-    if (index <= 0 || stages[index]?.is_system_stage) return;
+  const moveStageUp = (index: number, event?: React.MouseEvent) => {
+    // ✅ CRÍTICO: Prevenir propagação e form submission
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
+    // ✅ CORREÇÃO: Usar allStages para movimento visual
+    const currentStages = [...allStages];
+    
+    if (index <= 0 || currentStages[index]?.is_system_stage) return;
     
     // Não permitir mover para posição de etapa do sistema
-    if (stages[index - 1]?.is_system_stage) return;
+    if (currentStages[index - 1]?.is_system_stage) return;
     
-    const newStages = [...stages];
-    [newStages[index], newStages[index - 1]] = [newStages[index - 1], newStages[index]];
+    // ✅ MOVIMENTO DIRETO: Swap de posições sem reorganizar
+    [currentStages[index], currentStages[index - 1]] = [currentStages[index - 1], currentStages[index]];
     
-    const organizedStages = organizeStages(newStages);
-    setStages(organizedStages);
-    onStagesChange?.(organizedStages);
+    // ✅ ATUALIZAR APENAS CUSTOM STAGES para persistência COM ORDER_INDEX CORRETO
+    const customStagesOnly = currentStages.filter(s => !s.is_system_stage);
+    
+    // ✅ CRÍTICO: Recalcular order_index baseado na nova posição no array
+    const customStagesWithCorrectOrder = customStagesOnly.map((stage, arrayIndex) => ({
+      ...stage,
+      order_index: arrayIndex + 1 // ✅ Posição real no array = order_index correto
+    }));
+    
+    setStages(customStagesWithCorrectOrder);
+    
+    // ✅ MODIFICADO: Chamar onStagesChange diretamente para propagar mudanças ao componente pai
+    if (onStagesChange) {
+      onStagesChange(customStagesWithCorrectOrder);
+    }
+    
+    console.log('⬆️ [moveStageUp] Etapa movida para cima - mudanças propagadas', {
+      movedStage: currentStages[index - 1]?.name,
+      newPosition: index - 1,
+      newOrder: customStagesWithCorrectOrder.map(s => ({ name: s.name, order_index: s.order_index }))
+    });
   };
 
-  const moveStageDown = (index: number) => {
-    if (index >= stages.length - 1 || stages[index]?.is_system_stage) return;
+  const moveStageDown = (index: number, event?: React.MouseEvent) => {
+    // ✅ CRÍTICO: Prevenir propagação e form submission
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
+    // ✅ CORREÇÃO: Usar allStages para movimento visual
+    const currentStages = [...allStages];
+    
+    if (index >= currentStages.length - 1 || currentStages[index]?.is_system_stage) return;
     
     // Não permitir mover para posição de etapa do sistema
-    if (stages[index + 1]?.is_system_stage) return;
+    if (currentStages[index + 1]?.is_system_stage) return;
     
-    const newStages = [...stages];
-    [newStages[index], newStages[index + 1]] = [newStages[index + 1], newStages[index]];
+    // ✅ MOVIMENTO DIRETO: Swap de posições sem reorganizar
+    [currentStages[index], currentStages[index + 1]] = [currentStages[index + 1], currentStages[index]];
     
-    const organizedStages = organizeStages(newStages);
-    setStages(organizedStages);
-    onStagesChange?.(organizedStages);
+    // ✅ ATUALIZAR APENAS CUSTOM STAGES para persistência COM ORDER_INDEX CORRETO
+    const customStagesOnly = currentStages.filter(s => !s.is_system_stage);
+    
+    // ✅ CRÍTICO: Recalcular order_index baseado na nova posição no array  
+    const customStagesWithCorrectOrder = customStagesOnly.map((stage, arrayIndex) => ({
+      ...stage,
+      order_index: arrayIndex + 1 // ✅ Posição real no array = order_index correto
+    }));
+    
+    setStages(customStagesWithCorrectOrder);
+    
+    // ✅ MODIFICADO: Chamar onStagesChange diretamente para propagar mudanças ao componente pai
+    if (onStagesChange) {
+      onStagesChange(customStagesWithCorrectOrder);
+    }
+    
+    console.log('⬇️ [moveStageDown] Etapa movida para baixo - mudanças propagadas', {
+      movedStage: currentStages[index + 1]?.name,
+      newPosition: index + 1,
+      newOrder: customStagesWithCorrectOrder.map(s => ({ name: s.name, order_index: s.order_index }))
+    });
   };
 
   // Calcular allStages combinando etapas do sistema com customizadas
@@ -320,28 +403,20 @@ export function useStageManager({
     const systemStages = SYSTEM_STAGES.map(stage => ({ ...stage }));
     const customStages = currentStages.filter(stage => !stage.is_system_stage);
     
-    console.log('🔍 [useStageManager] Calculando allStages:', {
-      currentStagesCount: currentStages.length,
-      systemStagesCount: systemStages.length,
-      customStagesCount: customStages.length,
-      currentStages: currentStages.map(s => ({ name: s.name, isSystem: s.is_system_stage })),
-      systemStages: systemStages.map(s => ({ name: s.name, order: s.order_index })),
-      customStages: customStages.map(s => ({ name: s.name, order: s.order_index }))
-    });
+    // ✅ REMOVIDO: Log de debug interno desnecessário
     
     // Combinar etapas do sistema com customizadas, mantendo organização
     const organized = organizeStages([...systemStages, ...customStages]);
     
-    console.log('🔍 [useStageManager] allStages organizadas:', {
-      organizedCount: organized.length,
-      organized: organized.map(s => ({ name: s.name, order: s.order_index, isSystem: s.is_system_stage }))
-    });
+    // ✅ REMOVIDO: Log de debug interno desnecessário
     
     return organized;
   }, [stages]);
 
+  // Removido: handleSaveAllChanges (agora todas as mudanças são propagadas diretamente via onStagesChange)
+
   return {
-    stages: allStages,
+    stages: allStages || [], // ✅ SEGURANÇA: Garantir que nunca seja undefined
     setStages,
     editingStage,
     setEditingStage,
@@ -356,6 +431,7 @@ export function useStageManager({
     moveStageUp,
     moveStageDown,
     organizeStages
+    // Removido: hasUnsavedChanges e handleSaveAllChanges (agora gerenciado pelo componente pai)
   };
 }
 
@@ -402,6 +478,7 @@ function StageItem({ stage, index, onEdit, onDelete, onMoveUp, onMoveDown, canMo
                 ) : (
                   <div className="flex flex-col">
                     <Button
+                      type="button"
                       variant="ghost"
                       size="sm"
                       onClick={() => onMoveUp(index)}
@@ -411,6 +488,7 @@ function StageItem({ stage, index, onEdit, onDelete, onMoveUp, onMoveDown, canMo
                       <ChevronUp className="h-3 w-3" />
                     </Button>
                     <Button
+                      type="button"
                       variant="ghost"
                       size="sm"
                       onClick={() => onMoveDown(index)}
@@ -472,6 +550,7 @@ function StageItem({ stage, index, onEdit, onDelete, onMoveUp, onMoveDown, canMo
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
+                          type="button"
                           variant="ghost"
                           size="sm"
                           onClick={() => onEdit(index)}
@@ -488,6 +567,7 @@ function StageItem({ stage, index, onEdit, onDelete, onMoveUp, onMoveDown, canMo
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
+                          type="button"
                           variant="ghost"
                           size="sm"
                           onClick={() => onDelete(index)}
@@ -530,42 +610,11 @@ export function StageManagerRender({ stageManager }: StageManagerRenderProps) {
     handleDeleteStage,
     moveStageUp,
     moveStageDown
+    // Removido: hasUnsavedChanges e handleSaveAllChanges (agora gerenciado pelo componente pai)
   } = stageManager;
   
   const stagesToRender = stages;
 
-  // Estados locais para o formulário
-  const [localName, setLocalName] = useState('');
-  const [localDescription, setLocalDescription] = useState('');
-  const [localColor, setLocalColor] = useState('#3B82F6');
-
-  // Limpar campos quando modal abrir
-  React.useEffect(() => {
-    if (showStageModal && editingStage) {
-      setLocalName(editingStage.name || '');
-      setLocalDescription(editingStage.description || '');
-      setLocalColor(editingStage.color || '#3B82F6');
-    } else if (showStageModal) {
-      setLocalName('');
-      setLocalDescription('');
-      setLocalColor('#3B82F6');
-    }
-  }, [showStageModal, editingStage]);
-
-  const handleSaveLocal = () => {
-    // ✅ CORREÇÃO: Atualizar editingStage com dados locais e salvar em uma única operação
-    const updatedStage = {
-      ...editingStage,
-      name: localName,
-      description: localDescription,
-      color: localColor,
-      order_index: editingStage?.order_index || stages.length,
-    } as StageData;
-    
-    // Chamar handleSaveStage do hook com os dados atualizados
-    setEditingStage(updatedStage);
-    handleSaveStage();
-  };
 
 
   const stageIds = stagesToRender.map((_: StageData, index: number) => `stage-${index}`);
@@ -577,7 +626,10 @@ export function StageManagerRender({ stageManager }: StageManagerRenderProps) {
         icon={Workflow}
         title="Etapas da Pipeline"
         action={
-          <Button onClick={handleAddStage}>
+          <Button 
+            type="button" 
+            onClick={handleAddStage}
+          >
             <Plus className="h-4 w-4 mr-2" />
             Nova Etapa
           </Button>
@@ -589,6 +641,8 @@ export function StageManagerRender({ stageManager }: StageManagerRenderProps) {
         <Target className="h-4 w-4" />
         <span>Use os botões de seta para reordenar as etapas customizadas</span>
       </div>
+
+      {/* Removido: Botão de salvamento local - agora usamos apenas o botão azul do componente pai */}
 
       {/* ✅ FORMULÁRIO INLINE EXPANSÍVEL - Posicionado após o indicador */}
       {showStageModal && (
@@ -629,111 +683,25 @@ export function StageManagerRender({ stageManager }: StageManagerRenderProps) {
               </Button>
             </div>
 
-            {/* Corpo do Formulário */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Coluna Esquerda - Configurações Básicas */}
-              <div className="space-y-4">
-                {/* Nome da Etapa */}
-                <div>
-                  <Label htmlFor="stageName" className="text-sm font-medium mb-2 block">
-                    Nome da Etapa
-                  </Label>
-                  <Input
-                    id="stageName"
-                    type="text"
-                    placeholder="Ex: Qualificação"
-                    value={editingStage?.name || ''}
-                    onChange={(e) => setEditingStage({ 
-                      ...editingStage!, 
-                      name: e.target.value 
-                    })}
-                    disabled={editingStage?.is_system_stage}
-                    className={editingStage?.is_system_stage ? "bg-gray-100 text-gray-600" : ""}
-                  />
-                </div>
-
-                {/* Descrição da Etapa */}
-                <div>
-                  <Label htmlFor="stageDescription" className="text-sm font-medium mb-2 block">
-                    Descrição (Opcional)
-                  </Label>
-                  <Textarea
-                    id="stageDescription"
-                    placeholder="Descreva o objetivo desta etapa..."
-                    value={editingStage?.description || ''}
-                    onChange={(e) => setEditingStage({ 
-                      ...editingStage!, 
-                      description: e.target.value 
-                    })}
-                    rows={3}
-                    disabled={editingStage?.is_system_stage}
-                    className={editingStage?.is_system_stage ? "bg-gray-100 text-gray-600" : ""}
-                  />
-                </div>
-              </div>
-
-              {/* Coluna Direita - Cor da Etapa */}
-              <div className="space-y-4">
-                <div>
-                  <Label className="text-sm font-medium mb-3 block">
-                    Cor da Etapa
-                  </Label>
-                  <div className="grid grid-cols-6 gap-2">
-                    {STAGE_COLORS.map((color) => (
-                      <TooltipProvider key={color}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button
-                              type="button"
-                              className={`w-8 h-8 rounded-full border-2 transition-all ${
-                                editingStage?.color === color 
-                                  ? 'border-gray-800 shadow-lg scale-110' 
-                                  : 'border-gray-300 hover:border-gray-600 hover:scale-105'
-                              }`}
-                              style={{ backgroundColor: color }}
-                              onClick={() => setEditingStage({ 
-                                ...editingStage!, 
-                                color 
-                              })}
-                              disabled={editingStage?.is_system_stage}
-                            />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            {color}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Preview da Etapa */}
-                <div>
-                  <Label className="text-sm font-medium mb-3 block">
-                    Preview
-                  </Label>
-                  <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-4 h-4 rounded-full"
-                        style={{ backgroundColor: editingStage?.color }}
-                      />
-                      <span className="font-medium">
-                        {editingStage?.name || 'Nome da Etapa'}
-                      </span>
-                      {editingStage?.is_system_stage && (
-                        <Badge variant="outline" className="text-xs">
-                          Sistema
-                        </Badge>
-                      )}
-                    </div>
-                    {editingStage?.description && (
-                      <p className="text-sm text-gray-600 mt-2">
-                        {editingStage.description}
-                      </p>
-                    )}
-                  </div>
-                </div>
+            {/* Corpo do Formulário Simplificado */}
+            <div className="space-y-4">
+              {/* Nome da Etapa */}
+              <div>
+                <Label htmlFor="stageName" className="text-sm font-medium mb-2 block">
+                  Nome da Etapa
+                </Label>
+                <Input
+                  id="stageName"
+                  type="text"
+                  placeholder="Ex: Qualificação"
+                  value={editingStage?.name || ''}
+                  onChange={(e) => setEditingStage({ 
+                    ...editingStage!, 
+                    name: e.target.value 
+                  })}
+                  disabled={editingStage?.is_system_stage}
+                  className={editingStage?.is_system_stage ? "bg-gray-100 text-gray-600" : ""}
+                />
               </div>
             </div>
 
@@ -758,55 +726,19 @@ export function StageManagerRender({ stageManager }: StageManagerRenderProps) {
         </BlurFade>
       )}
 
-      {/* Lista de Etapas */}
+      {/* Lista de Etapas - NOVA ORDEM: Customizadas primeiro */}
       <div className="space-y-4">
-        {/* Etapas do Sistema */}
-        {stagesToRender.some((stage: StageData) => stage.is_system_stage) && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px bg-gradient-to-r from-blue-200 to-blue-100 dark:from-blue-800 dark:to-blue-900"></div>
-              <div className="flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full dark:bg-blue-900/50 dark:text-blue-200">
-                <Lock className="h-3 w-3" />
-                Etapas do Sistema
-              </div>
-              <div className="flex-1 h-px bg-gradient-to-l from-blue-200 to-blue-100 dark:from-blue-800 dark:to-blue-900"></div>
-            </div>
-            
-            {stagesToRender
-              .filter((stage: StageData) => stage.is_system_stage)
-              .map((stage: StageData, originalIndex: number) => {
-                const stageIndex = stagesToRender.findIndex((s: StageData) => s === stage);
-                return (
-                  <StageItem
-                    key={`${stage.name}-${stageIndex}`}
-                    stage={stage}
-                    index={stageIndex}
-                    onEdit={handleEditStage}
-                    onDelete={handleDeleteStage}
-                    onMoveUp={moveStageUp}
-                    onMoveDown={moveStageDown}
-                    canMoveUp={false}
-                    canMoveDown={false}
-                  />
-                );
-              })
-            }
-          </div>
-        )}
-
-        {/* Etapas Customizadas */}
+        {/* Etapas Customizadas - PRIMEIRA SEÇÃO */}
         {stagesToRender.some((stage: StageData) => !stage.is_system_stage) && (
           <div className="space-y-3">
-            {stagesToRender.some((stage: StageData) => stage.is_system_stage) && (
-              <div className="flex items-center gap-3 mt-6">
-                <div className="flex-1 h-px bg-gradient-to-r from-gray-200 to-gray-100 dark:from-gray-700 dark:to-gray-800"></div>
-                <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 text-gray-700 text-sm font-medium rounded-full dark:bg-gray-800 dark:text-gray-300">
-                  <Target className="h-3 w-3" />
-                  Etapas Customizadas
-                </div>
-                <div className="flex-1 h-px bg-gradient-to-l from-gray-200 to-gray-100 dark:from-gray-700 dark:to-gray-800"></div>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-gradient-to-r from-gray-200 to-gray-100 dark:from-gray-700 dark:to-gray-800"></div>
+              <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 text-gray-700 text-sm font-medium rounded-full dark:bg-gray-800 dark:text-gray-300">
+                <Target className="h-3 w-3" />
+                Etapas Customizadas
               </div>
-            )}
+              <div className="flex-1 h-px bg-gradient-to-l from-gray-200 to-gray-100 dark:from-gray-700 dark:to-gray-800"></div>
+            </div>
             
             {stagesToRender
               .filter((stage: StageData) => !stage.is_system_stage)
@@ -817,7 +749,7 @@ export function StageManagerRender({ stageManager }: StageManagerRenderProps) {
                 
                 return (
                   <StageItem
-                    key={`${stage.name}-${stageIndex}`}
+                    key={`custom-${stage.name}-${customIndex}`}
                     stage={stage}
                     index={stageIndex}
                     onEdit={handleEditStage}
@@ -840,12 +772,66 @@ export function StageManagerRender({ stageManager }: StageManagerRenderProps) {
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
                   Adicione etapas personalizadas para seu processo de vendas
                 </p>
-                <Button onClick={handleAddStage} size="sm">
+                <Button 
+                  type="button" 
+                  onClick={handleAddStage} 
+                  size="sm"
+                >
                   <Plus className="h-4 w-4 mr-2" />
                   Criar primeira etapa
                 </Button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Etapas do Sistema - SEGUNDA SEÇÃO */}
+        {stagesToRender.some((stage: StageData) => stage.is_system_stage) && (
+          <div className="space-y-3">
+            {/* Separador visual quando há etapas customizadas */}
+            {stagesToRender.some((stage: StageData) => !stage.is_system_stage) && (
+              <div className="mt-6 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-gradient-to-r from-blue-200 to-blue-100 dark:from-blue-800 dark:to-blue-900"></div>
+                  <div className="flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full dark:bg-blue-900/50 dark:text-blue-200">
+                    <Lock className="h-3 w-3" />
+                    Etapas do Sistema
+                  </div>
+                  <div className="flex-1 h-px bg-gradient-to-l from-blue-200 to-blue-100 dark:from-blue-800 dark:to-blue-900"></div>
+                </div>
+              </div>
+            )}
+            {/* Header quando não há etapas customizadas */}
+            {!stagesToRender.some((stage: StageData) => !stage.is_system_stage) && (
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-gradient-to-r from-blue-200 to-blue-100 dark:from-blue-800 dark:to-blue-900"></div>
+                <div className="flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full dark:bg-blue-900/50 dark:text-blue-200">
+                  <Lock className="h-3 w-3" />
+                  Etapas do Sistema
+                </div>
+                <div className="flex-1 h-px bg-gradient-to-l from-blue-200 to-blue-100 dark:from-blue-800 dark:to-blue-900"></div>
+              </div>
+            )}
+            
+            {stagesToRender
+              .filter((stage: StageData) => stage.is_system_stage)
+              .map((stage: StageData, originalIndex: number) => {
+                const stageIndex = stagesToRender.findIndex((s: StageData) => s === stage);
+                return (
+                  <StageItem
+                    key={`system-${stage.name}-${stage.order_index}`}
+                    stage={stage}
+                    index={stageIndex}
+                    onEdit={handleEditStage}
+                    onDelete={handleDeleteStage}
+                    onMoveUp={moveStageUp}
+                    onMoveDown={moveStageDown}
+                    canMoveUp={false}
+                    canMoveDown={false}
+                  />
+                );
+              })
+            }
           </div>
         )}
       </div>

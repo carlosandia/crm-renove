@@ -393,7 +393,6 @@ const ErrorDisplay: React.FC<{ message: string }> = ({ message }) => (
       className="w-4 h-4 flex-shrink-0" 
       aria-hidden="true"
       role="img"
-      title="Ícone de erro"
     />
     <span className="text-sm" aria-label={`Erro: ${message}`}>
       {message}

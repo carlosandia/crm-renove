@@ -147,7 +147,7 @@ class EventManager {
           this.listeners[listenerKey].lastUsed = Date.now();
         }
         
-        handler(event as PipelineEvents[T]);
+        handler(event as unknown as PipelineEvents[T]);
       } catch (error) {
         logIfEnabled('ENABLE_EVENT_MANAGER_LOGGING', 'error', 
           `Erro no handler ${listenerKey}: ${error}`, LogContext.EVENT_MANAGER);

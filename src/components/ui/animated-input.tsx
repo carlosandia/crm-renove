@@ -2,7 +2,7 @@ import * as React from "react"
 import { motion } from "framer-motion"
 import { Input } from "./input"
 import { Label } from "./label"
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 import { Eye, EyeOff } from "lucide-react"
 
 interface AnimatedInputProps extends React.InputHTMLAttributes<HTMLInputElement> {

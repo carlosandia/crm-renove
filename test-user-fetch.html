@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Test User Fetch</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #f5f5f5; }
+        .result { background: white; padding: 15px; margin: 10px 0; border-radius: 4px; border-left: 4px solid #007acc; }
+        .error { border-left-color: #dc3545; }
+        .success { border-left-color: #28a745; }
+        button { background: #007acc; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px; }
+        button:hover { background: #005a9e; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Teste Busca de Usuário</h1>
+    <button onclick="testUserFetch()">Testar Busca</button>
+    <button onclick="clearLogs()">Limpar</button>
+    <div id="output"></div>
+
+    <script>
+        const supabase = supabase.createClient(
+            'https://marajvabdwkpgopytvhh.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hcmFqdmFiZHdrcGdvcHl0dmhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjQwMDksImV4cCI6MjA2NTM0MDAwOX0.C_2W2u8JyApjbhqPJm1q1dFX82KoRSm3auBfE7IpmDU'
+        );
+
+        const output = document.getElementById('output');
+        
+        function log(message, type = 'result') {
+            console.log(message);
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}:</strong> ${message}`;
+            output.appendChild(div);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function clearLogs() {
+            output.innerHTML = '';
+        }
+
+        async function testUserFetch() {
+            try {
+                log('🔄 Iniciando teste completo...');
+
+                // 1. Verificar sessão
+                log('🔍 1. Verificando sessão atual...');
+                const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+                
+                if (sessionError) {
+                    log(`❌ Erro na sessão: ${sessionError.message}`, 'error');
+                    return;
+                }
+
+                if (!session || !session.user) {
+                    log('ℹ️ Nenhuma sessão ativa. Tentando fazer login...', 'result');
+                    
+                    // 2. Tentar fazer login
+                    const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+                        email: 'seraquevai@seraquevai.com',
+                        password: 'abc12345!'
+                    });
+
+                    if (loginError) {
+                        log(`❌ Erro no login: ${loginError.message}`, 'error');
+                        return;
+                    }
+
+                    if (!loginData.user) {
+                        log('❌ Login retornou sem usuário', 'error');
+                        return;
+                    }
+
+                    log(`✅ Login bem-sucedido: ${loginData.user.email}`, 'success');
+                    
+                    // Usar dados do login
+                    session = loginData.session;
+                } else {
+                    log(`✅ Sessão ativa encontrada: ${session.user.email}`, 'success');
+                }
+
+                // 3. Buscar usuário na tabela users
+                log(`🔍 2. Buscando usuário na tabela users (ID: ${session.user.id})...`);
+                
+                const { data: userData, error: userError } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('id', session.user.id)
+                    .eq('is_active', true)
+                    .single();
+
+                if (userError) {
+                    log(`❌ Erro ao buscar usuário: ${userError.message}`, 'error');
+                    log(`❌ Código do erro: ${userError.code}`, 'error');
+                    
+                    // Tentar buscar sem filtro is_active
+                    log('🔍 2.1. Tentando buscar sem filtro is_active...');
+                    const { data: userData2, error: userError2 } = await supabase
+                        .from('users')
+                        .select('*')
+                        .eq('id', session.user.id)
+                        .single();
+                    
+                    if (userError2) {
+                        log(`❌ Erro mesmo sem filtro: ${userError2.message}`, 'error');
+                    } else {
+                        log(`⚠️ Usuário encontrado mas is_active=${userData2.is_active}`, 'result');
+                        log(`📋 Dados: ${JSON.stringify(userData2, null, 2)}`, 'result');
+                    }
+                    return;
+                }
+
+                if (!userData) {
+                    log('❌ Usuário não encontrado na tabela users', 'error');
+                    return;
+                }
+
+                log(`✅ Usuário encontrado na tabela users!`, 'success');
+                log(`📋 Dados completos: ${JSON.stringify(userData, null, 2)}`, 'success');
+
+                // 4. Simular conversão do usuário
+                const internalUser = {
+                    id: session.user.id,
+                    email: session.user.email,
+                    first_name: userData.first_name || '',
+                    last_name: userData.last_name || '',
+                    role: userData.role,
+                    tenant_id: userData.tenant_id,
+                    is_active: userData.is_active
+                };
+
+                log(`✅ Usuário convertido para formato interno:`, 'success');
+                log(`📋 ${JSON.stringify(internalUser, null, 2)}`, 'success');
+
+                // 5. Teste de requisição ao backend
+                log('🔍 3. Testando requisição para o backend...');
+                try {
+                    const response = await fetch('http://127.0.0.1:3001/api/auth/me', {
+                        headers: {
+                            'Authorization': `Bearer ${session.access_token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (response.ok) {
+                        const backendData = await response.json();
+                        log(`✅ Backend respondeu corretamente:`, 'success');
+                        log(`📋 ${JSON.stringify(backendData, null, 2)}`, 'success');
+                    } else {
+                        log(`❌ Backend retornou erro: ${response.status} ${response.statusText}`, 'error');
+                        const errorText = await response.text();
+                        log(`❌ Resposta: ${errorText}`, 'error');
+                    }
+                } catch (fetchError) {
+                    log(`❌ Erro na requisição para backend: ${fetchError.message}`, 'error');
+                }
+
+                log('🎉 Teste completo finalizado com sucesso!', 'success');
+
+            } catch (error) {
+                log(`❌ Erro geral: ${error.message}`, 'error');
+                console.error('Erro completo:', error);
+            }
+        }
+    </script>
+</body>
+</html>

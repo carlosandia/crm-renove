@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Company, CompanyAdmin } from '../../types/Company';
 import { showSuccessToast, showErrorToast } from '../../hooks/useToast';
+import { modernAlerts } from '../../utils/modernAlerts';
 import { 
   Eye, User, Calendar, Mail, 
   ToggleRight, ToggleLeft, CheckCircle, Clock, AlertTriangle, XCircle 
@@ -33,8 +34,10 @@ const CompanyList: React.FC<CompanyListProps> = ({
     const acao = company.is_active ? 'desativar' : 'ativar';
     const confirmMessage = `Tem certeza que deseja ${acao} a empresa "${company.name}"?`;
     
-    if (confirm(confirmMessage)) {
+    const confirmed = await modernAlerts.confirm(confirmMessage, `Confirmar ${acao}`);
+    if (confirmed) {
       await onToggleStatus(company);
+      modernAlerts.success(`Empresa ${acao}da com sucesso!`, 'Status Atualizado');
     }
   };
 

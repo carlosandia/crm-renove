@@ -24,8 +24,18 @@ export const useLeadHistory = (leadId: string): UseLeadHistoryReturn => {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // ✅ CORREÇÃO CRÍTICA: Validar leadId antes de executar qualquer operação
+  const isValidLeadId = leadId && leadId.trim().length > 0 && leadId !== 'undefined' && leadId !== 'null';
+
   // Carregar histórico
   const loadHistory = useCallback(async () => {
+    // ✅ GUARD: Não executar se leadId for inválido
+    if (!isValidLeadId) {
+      console.warn('⚠️ [useLeadHistory] leadId inválido, pulando carregamento:', leadId);
+      setHistory([]);
+      return;
+    }
+
     try {
       setHistoryLoading(true);
       
@@ -85,7 +95,7 @@ export const useLeadHistory = (leadId: string): UseLeadHistoryReturn => {
     } finally {
       setHistoryLoading(false);
     }
-  }, [leadId]);
+  }, [leadId, isValidLeadId]);
 
   return {
     history,

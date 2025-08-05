@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug AuthProvider</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Debug AuthProvider - Teste Detalhado</h1>
+    
+    <div>
+        <button onclick="debugAuth()">Debug Processo de Auth</button>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const { createClient } = supabase;
+        const supabaseClient = createClient(
+            'https://marajvabdwkpgopytvhh.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hcmFqdmFiZHdrcGdvcHl0dmhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjQwMDksImV4cCI6MjA2NTM0MDAwOX0.C_2W2u8JyApjbhqPJm1q1dFX82KoRSm3auBfE7IpmDU'
+        );
+
+        const resultDiv = document.getElementById('result');
+
+        async function debugAuth() {
+            resultDiv.innerHTML = '🔄 Iniciando debug...<br>';
+            
+            try {
+                // Passo 1: Login
+                resultDiv.innerHTML += '1️⃣ Fazendo login...<br>';
+                const { data: loginData, error: loginError } = await supabaseClient.auth.signInWithPassword({
+                    email: 'seraquevai@seraquevai.com',
+                    password: 'abc12345!'
+                });
+
+                if (loginError) {
+                    resultDiv.innerHTML += `❌ Login falhou: ${loginError.message}<br>`;
+                    return;
+                }
+
+                resultDiv.innerHTML += `✅ Login OK! User ID: ${loginData.user.id}<br>`;
+
+                // Passo 2: Verificar sessão
+                resultDiv.innerHTML += '2️⃣ Verificando sessão...<br>';
+                const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+
+                if (sessionError) {
+                    resultDiv.innerHTML += `❌ Erro na sessão: ${sessionError.message}<br>`;
+                    return;
+                }
+
+                resultDiv.innerHTML += `✅ Sessão OK! Usuário: ${sessionData.session?.user?.email}<br>`;
+
+                // Passo 3: Buscar usuário na tabela users (simulando AuthProvider)
+                resultDiv.innerHTML += '3️⃣ Buscando na tabela users...<br>';
+                const { data: userData, error: userError } = await supabaseClient
+                    .from('users')
+                    .select('*')
+                    .eq('id', sessionData.session.user.id)
+                    .eq('is_active', true)
+                    .single();
+
+                if (userError) {
+                    resultDiv.innerHTML += `❌ Erro ao buscar usuário: ${userError.message}<br>`;
+                    resultDiv.innerHTML += `🔍 Detalhes do erro: ${JSON.stringify(userError)}<br>`;
+                    return;
+                }
+
+                if (!userData) {
+                    resultDiv.innerHTML += `❌ Usuário não encontrado na tabela users<br>`;
+                    return;
+                }
+
+                resultDiv.innerHTML += `✅ Usuário encontrado! Email: ${userData.email}, Role: ${userData.role}<br>`;
+                resultDiv.innerHTML += `📊 Dados completos: ${JSON.stringify(userData, null, 2)}<br>`;
+
+                // Passo 4: Testar backend
+                resultDiv.innerHTML += '4️⃣ Testando backend...<br>';
+                const backendResponse = await fetch('http://127.0.0.1:3001/api/pipelines', {
+                    headers: {
+                        'Authorization': `Bearer ${sessionData.session.access_token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const backendResult = await backendResponse.json();
+
+                if (backendResponse.ok) {
+                    resultDiv.innerHTML += `✅ Backend OK! Pipelines: ${backendResult.pipelines?.length || 0}<br>`;
+                } else {
+                    resultDiv.innerHTML += `❌ Backend erro: ${backendResponse.status} - ${backendResult.error || backendResult.message}<br>`;
+                }
+
+                resultDiv.innerHTML += '<br>🎉 <strong>Debug completo! Todo o fluxo funcionou!</strong><br>';
+
+            } catch (error) {
+                resultDiv.innerHTML += `❌ Erro crítico: ${error.message}<br>`;
+                console.error('Erro no debug:', error);
+            }
+        }
+    </script>
+</body>
+</html>

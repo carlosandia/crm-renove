@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import RoleBasedMenu from './RoleBasedMenu';
 import CRMLayout from './CRMLayout';
 import { usePipelineSubHeader, useLeadsSubHeader } from '../hooks/useSubHeaderContent';
@@ -14,10 +14,13 @@ const AppDashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { pipelines, loading: pipelinesLoading } = usePipelineData();
+  const { pipelines, loading: pipelinesLoading, refreshPipelines } = usePipelineData();
   
   // 🚀 ESTADO LOCAL: Para atualizações imediatas do dropdown
   const [localPipelines, setLocalPipelines] = useState(pipelines);
+  
+  // ✅ THROTTLING: Ref para controlar logs duplicados
+  const lastLoggedPipeline = useRef<string | null>(null);
   
   // 🔄 SINCRONIZAR: Estado local com dados do hook
   useEffect(() => {
@@ -74,6 +77,49 @@ const AppDashboard: React.FC = () => {
     
     return () => {
       window.removeEventListener('pipeline-archive-updated', handlePipelineArchiveUpdate as EventListener);
+    };
+  }, [localPipelines]);
+  
+  
+  // 🔄 CORREÇÃO PONTUAL: Listener para pipeline duplicada - atualização imediata do dropdown
+  useEffect(() => {
+    const handlePipelineDuplicated = (event: CustomEvent) => {
+      const { pipeline } = event.detail;
+      
+      console.log('🔄 [CORREÇÃO-DROPDOWN] Pipeline duplicada recebida:', {
+        name: pipeline.name,
+        id: pipeline.id.substring(0, 8),
+        localPipelinesLength: localPipelines?.length || 0
+      });
+      
+      // Adicionar nova pipeline ao estado local imediatamente
+      setLocalPipelines(prevPipelines => {
+        if (!prevPipelines) return [pipeline];
+        
+        // Verificar se já existe para evitar duplicatas
+        const exists = prevPipelines.find(p => p.id === pipeline.id);
+        if (exists) {
+          console.log('🔄 [CORREÇÃO-DROPDOWN] Pipeline já existe, pulando adição');
+          return prevPipelines;
+        }
+        
+        // Adicionar no início da lista (mais recente primeiro)
+        const updated = [pipeline, ...prevPipelines];
+        
+        console.log('✅ [CORREÇÃO-DROPDOWN] Pipeline adicionada ao dropdown imediatamente:', {
+          name: pipeline.name,
+          totalPipelines: updated.length,
+          action: 'immediate-local-update'
+        });
+        
+        return updated;
+      });
+    };
+
+    window.addEventListener('pipeline-duplicated', handlePipelineDuplicated as EventListener);
+    
+    return () => {
+      window.removeEventListener('pipeline-duplicated', handlePipelineDuplicated as EventListener);
     };
   }, [localPipelines]);
   
@@ -158,6 +204,35 @@ const AppDashboard: React.FC = () => {
     pipelines: userPipelines, // ✅ CORRIGIDO: Agora userPipelines está definido antes
     fallbackToPipelineId: undefined // Pode ser usado para pipeline específica
   });
+
+  // ⚡ LISTENER: Atualização instantânea quando pipeline é editada (MOVIDO APÓS usePipelineCache)
+  useEffect(() => {
+    const handlePipelineUpdated = (event: CustomEvent) => {
+      const { pipeline, source, timestamp } = event.detail;
+      
+      console.log('⚡ [AppDashboard] Pipeline atualizada - forçando atualização instantânea:', {
+        name: pipeline.name,
+        description: pipeline.description,
+        source,
+        timestamp
+      });
+      
+      // ✅ Forçar atualização do lastViewedPipeline se for a mesma
+      if (lastViewedPipeline && lastViewedPipeline.id === pipeline.id) {
+        setLastViewedPipeline(pipeline);
+        console.log('⚡ [AppDashboard] LastViewedPipeline sincronizada instantaneamente');
+      }
+      
+      // ✅ Forçar refresh das pipelines para atualizar SubHeader
+      refreshPipelines();
+    };
+
+    window.addEventListener('pipeline-updated', handlePipelineUpdated as EventListener);
+    
+    return () => {
+      window.removeEventListener('pipeline-updated', handlePipelineUpdated as EventListener);
+    };
+  }, [lastViewedPipeline, setLastViewedPipeline, refreshPipelines]);
 
   // 🎯 SUBHEADER: Estados para módulo de Pipelines
   const [searchTerm, setSearchTerm] = useState('');
@@ -358,16 +433,21 @@ const AppDashboard: React.FC = () => {
         return null;
       }
       
-      console.log('🎯 [AppDashboard] Criando SubHeader com cache inteligente unificado:', {
-        pipelineId: pipeline.id,
-        pipelineName: pipeline.name,
-        activeModule,
-        userRole: user.role,
-        fromCache: !!lastViewedPipeline,
-        cacheMatched: lastViewedPipeline?.id === pipeline.id,
-        totalPipelines: userPipelines.length,
-        logic: 'unified-cache-direct'
-      });
+      // ✅ THROTTLING: Log apenas se pipeline mudou para reduzir spam
+      const pipelineLogKey = `subheader-${pipeline.id}`;
+      if (!lastLoggedPipeline.current || lastLoggedPipeline.current !== pipeline.id) {
+        console.log('🎯 [AppDashboard] Criando SubHeader com cache inteligente unificado:', {
+          pipelineId: pipeline.id,
+          pipelineName: pipeline.name,
+          activeModule,
+          userRole: user.role,
+          fromCache: !!lastViewedPipeline,
+          cacheMatched: lastViewedPipeline?.id === pipeline.id,
+          totalPipelines: userPipelines.length,
+          logic: 'unified-cache-direct'
+        });
+        lastLoggedPipeline.current = pipeline.id;
+      }
       
       return (
         <PipelineSpecificSubHeader
@@ -438,12 +518,12 @@ const AppDashboard: React.FC = () => {
     
     return null;
   }, [
-    // ✅ FASE 2: DEPENDÊNCIAS SIMPLIFICADAS - removidas dependências conflitantes
+    // ✅ CORREÇÃO: DEPENDÊNCIAS OTIMIZADAS - removidas funções estáveis
     userPipelines, 
     pipelineSearchTerm, 
     activeModule,
     lastViewedPipeline,
-    setLastViewedPipeline,
+    // setLastViewedPipeline removida - função estável do useCallback
     cacheLoading,
     pipelinesLoading,
     user,

@@ -6,7 +6,7 @@ import {
   Target, Briefcase, Globe, Hash, AlignLeft
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { toast } from 'sonner';
 import {
   Dialog,

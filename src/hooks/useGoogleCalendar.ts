@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { GoogleCalendarAuth, GoogleCalendar } from '../services/googleCalendarAuth';
 import { showSuccessToast, showErrorToast, showWarningToast } from '../lib/toast';
 import { logOnlyInDevelopment } from './useOptimizedLogging';

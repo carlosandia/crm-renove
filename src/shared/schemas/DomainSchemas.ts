@@ -277,19 +277,76 @@ export const VendorUpdateSchema = VendorCreateSchema.partial();
 // ============================================
 
 /**
+ * 🔧 Form Field Validation Rules Schema - Regras de validação flexíveis
+ */
+export const FormFieldValidationRulesSchema = z.object({
+  // Validação básica
+  min_length: z.number().optional(),
+  max_length: z.number().optional(),
+  pattern: z.string().optional(),
+  custom_message: z.string().optional(),
+  required_message: z.string().optional(),
+  
+  // Validação numérica
+  min: z.number().optional(),
+  max: z.number().optional(),
+  step: z.number().optional(),
+  
+  // Rating
+  max_rating: z.number().optional(),
+  
+  // File
+  accept: z.string().optional(),
+  max_size: z.string().optional(),
+  multiple: z.boolean().optional(),
+  
+  // City/State/Country
+  suggestions: z.array(z.string()).optional(),
+  
+  // Text Alignment
+  align: z.enum(['left', 'center', 'right']).optional(),
+  level: z.number().min(1).max(6).optional(),
+  
+  // Image
+  src: z.string().optional(),
+  alt: z.string().optional(),
+  width: z.string().optional(),
+  height: z.string().optional(),
+  
+  // WhatsApp
+  number: z.string().optional(),
+  message: z.string().optional(),
+  
+  // Submit Button
+  button_text: z.string().optional(),
+  background_color: z.string().optional(),
+  text_color: z.string().optional(),
+}).optional();
+
+/**
  * 🔧 Form Field Schema - Campo de formulário
  */
 export const FormFieldSchema = z.object({
   id: z.string().uuid(),
-  type: z.enum(['text', 'email', 'phone', 'number', 'textarea', 'select', 'checkbox', 'radio', 'date']),
+  type: z.enum(['text', 'email', 'phone', 'number', 'textarea', 'select', 'checkbox', 'radio', 'date', 'time', 'url', 'currency', 'file', 'range', 'rating', 'city', 'state', 'country', 'captcha', 'heading', 'paragraph', 'divider', 'image', 'whatsapp', 'submit']),
   label: z.string().min(1),
   name: z.string().min(1),
   required: z.boolean().default(false),
   placeholder: z.string().optional(),
   default_value: z.string().optional(),
-  validation_rules: z.record(z.unknown()).optional(),
+  description: z.string().optional(),
+  validation_rules: FormFieldValidationRulesSchema,
   options: z.array(z.string()).optional(), // Para select, checkbox, radio
-  order: z.number().int().nonnegative()
+  order: z.number().int().nonnegative(),
+  // ✅ CORREÇÃO: Adicionado styling para compatibilidade com FormBuilder
+  styling: z.object({
+    fontSize: z.string().optional(),
+    padding: z.string().optional(),
+    borderRadius: z.string().optional(),
+    borderColor: z.string().optional(),
+    backgroundColor: z.string().optional(),
+    textColor: z.string().optional()
+  }).optional()
 });
 
 /**
@@ -334,6 +391,71 @@ export const FormCreateSchema = FormSchema.omit({
 export const FormUpdateSchema = FormCreateSchema.partial();
 
 // ============================================
+// FLEXIBLE VALUE SYSTEM SCHEMAS
+// ============================================
+
+/**
+ * 🔧 Flexible Value Schema - Sistema de valores flexíveis
+ */
+export const FlexibleValueSchema = z.object({
+  // Valores únicos
+  valor_unico: z.number().nonnegative().optional(),
+  valor_unico_moeda: z.string().default('BRL').optional(),
+  
+  // Valores recorrentes
+  valor_recorrente: z.number().nonnegative().optional(),
+  valor_recorrente_moeda: z.string().default('BRL').optional(),
+  recorrencia_periodo: z.number().int().positive().optional(),
+  recorrencia_unidade: z.enum(['mes', 'ano']).default('mes').optional(),
+  
+  // Campos calculados e tipo
+  valor_total_calculado: z.number().nonnegative().optional(),
+  tipo_venda: z.enum(['unico', 'recorrente', 'hibrido']).default('unico').optional(),
+  valor_observacoes: z.string().optional()
+}).refine((data) => {
+  // Validação de regras de negócio
+  if (data.tipo_venda === 'unico') {
+    return data.valor_unico !== undefined && data.valor_unico > 0;
+  }
+  if (data.tipo_venda === 'recorrente') {
+    return data.valor_recorrente !== undefined && data.valor_recorrente > 0 && 
+           data.recorrencia_periodo !== undefined && data.recorrencia_periodo > 0;
+  }
+  if (data.tipo_venda === 'hibrido') {
+    return (data.valor_unico !== undefined && data.valor_unico > 0) ||
+           (data.valor_recorrente !== undefined && data.valor_recorrente > 0 && 
+            data.recorrencia_periodo !== undefined && data.recorrencia_periodo > 0);
+  }
+  return true;
+}, {
+  message: "Valores devem ser consistentes com o tipo de venda selecionado"
+});
+
+/**
+ * 🔧 Flexible Value Create Schema - Para criação de valores (sem trigger calculations)
+ */
+export const FlexibleValueCreateSchema = z.object({
+  // Valores únicos
+  valor_unico: z.number().nonnegative().optional(),
+  valor_unico_moeda: z.string().default('BRL').optional(),
+  
+  // Valores recorrentes
+  valor_recorrente: z.number().nonnegative().optional(),
+  valor_recorrente_moeda: z.string().default('BRL').optional(),
+  recorrencia_periodo: z.number().int().positive().optional(),
+  recorrencia_unidade: z.enum(['mes', 'ano']).default('mes').optional(),
+  
+  // Campos manuais (valor_total_calculado é calculado pelo trigger)
+  tipo_venda: z.enum(['unico', 'recorrente', 'hibrido']).default('unico').optional(),
+  valor_observacoes: z.string().optional()
+});
+
+/**
+ * 🔧 Flexible Value Update Schema - Para atualização de valores
+ */
+export const FlexibleValueUpdateSchema = FlexibleValueCreateSchema.partial();
+
+// ============================================
 // LEAD DOMAIN SCHEMAS
 // ============================================
 
@@ -353,6 +475,18 @@ export const LeadSchema = z.object({
   tenant_id: z.string().uuid().optional(),
   assigned_to: z.string().uuid().optional(),
   pipeline_id: z.string().uuid().optional(),
+  
+  // Sistema de Valores Flexíveis
+  valor: z.string().optional(), // Campo legado para compatibilidade
+  valor_unico: z.number().nonnegative().optional(),
+  valor_unico_moeda: z.string().default('BRL').optional(),
+  valor_recorrente: z.number().nonnegative().optional(),
+  valor_recorrente_moeda: z.string().default('BRL').optional(),
+  recorrencia_periodo: z.number().int().positive().optional(),
+  recorrencia_unidade: z.enum(['mes', 'ano']).default('mes').optional(),
+  valor_total_calculado: z.number().nonnegative().optional(),
+  tipo_venda: z.enum(['unico', 'recorrente', 'hibrido']).default('unico').optional(),
+  valor_observacoes: z.string().optional(),
   
   // UTM Tracking
   utm_source: z.string().optional(),

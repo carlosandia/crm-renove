@@ -382,103 +382,9 @@ router.delete('/:id/members/:member_id', PipelineController.removeMember);
 router.get('/member/:member_id', PipelineController.getPipelinesByMember);
 
 // ============================================
-// ROTAS DE ETAPAS (mantidas temporariamente)
+// ROTAS DE ETAPAS REMOVIDAS (implementações duplicadas)
+// As rotas /:id/stages estão definidas mais abaixo com autenticação adequada
 // ============================================
-
-// GET /api/pipelines/:id/stages - Listar etapas
-router.get('/:id/stages', async (req, res) => {
-  try {
-    const { id: pipeline_id } = req.params;
-
-    const { data: stages, error } = await supabase
-      .from('pipeline_stages')
-      .select(`
-        *,
-        follow_ups(*)
-      `)
-      .eq('pipeline_id', pipeline_id)
-      .order('order_index');
-
-    if (error) {
-      console.error('Erro ao buscar etapas:', error);
-      return res.status(500).json({ error: 'Erro ao buscar etapas' });
-    }
-
-    res.json({ stages: stages || [] });
-  } catch (error) {
-    console.error('Erro interno:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
-// POST /api/pipelines/:id/stages - Criar etapa
-router.post('/:id/stages', async (req, res) => {
-  try {
-    const { id: pipeline_id } = req.params;
-    const { name, color = '#3B82F6' } = req.body;
-
-    if (!name) {
-      return res.status(400).json({ error: 'Nome da etapa é obrigatório' });
-    }
-
-    // Buscar próximo order_index
-    const { data: lastStage } = await supabase
-      .from('pipeline_stages')
-      .select('order_index')
-      .eq('pipeline_id', pipeline_id)
-      .order('order_index', { ascending: false })
-      .limit(1)
-      .single();
-
-    const order_index = (lastStage?.order_index || 0) + 1;
-
-    const { data: stage, error } = await supabase
-      .from('pipeline_stages')
-      .insert({
-        pipeline_id,
-        name,
-        order_index,
-        color
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Erro ao criar etapa:', error);
-      return res.status(500).json({ error: 'Erro ao criar etapa' });
-    }
-
-    res.status(201).json({ 
-      message: 'Etapa criada com sucesso',
-      stage 
-    });
-  } catch (error) {
-    console.error('Erro interno:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
-// DELETE /api/pipelines/:id/stages/:stage_id - Excluir etapa
-router.delete('/:id/stages/:stage_id', async (req, res) => {
-  try {
-    const { stage_id } = req.params;
-
-    const { error } = await supabase
-      .from('pipeline_stages')
-      .delete()
-      .eq('id', stage_id);
-
-    if (error) {
-      console.error('Erro ao excluir etapa:', error);
-      return res.status(500).json({ error: 'Erro ao excluir etapa' });
-    }
-
-    res.json({ message: 'Etapa excluída com sucesso' });
-  } catch (error) {
-    console.error('Erro interno:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
 
 // ============================================
 // ROTAS DE CAMPOS CUSTOMIZADOS
@@ -504,7 +410,7 @@ router.put('/:pipeline_id/custom-fields/reorder', authenticateToken, CustomField
 // ============================================
 
 // GET /api/pipelines/:pipeline_id/leads - Buscar leads de uma pipeline
-router.get('/:pipeline_id/leads', LeadController.getLeadsByPipeline);
+router.get('/:pipeline_id/leads', authenticateToken, LeadController.getLeadsByPipeline);
 
 // POST /api/pipelines/:pipeline_id/leads - Criar novo lead
 router.post('/:pipeline_id/leads', LeadController.createLead);
@@ -514,6 +420,9 @@ router.put('/:pipeline_id/leads/:lead_id', LeadController.updateLead);
 
 // DELETE /api/pipelines/:pipeline_id/leads/:lead_id - Excluir lead
 router.delete('/:pipeline_id/leads/:lead_id', LeadController.deleteLead);
+
+// PUT /api/pipelines/:pipeline_id/leads/:lead_id/flexible-values - Atualizar valores flexíveis
+router.put('/:pipeline_id/leads/:lead_id/flexible-values', LeadController.updateFlexibleValues);
 
 // ============================================
 // ROTAS DE FOLLOW-UPS (mantidas temporariamente)
@@ -741,9 +650,20 @@ router.get('/:pipeline_id/metrics', async (req, res) => {
       .eq('pipeline_id', pipeline_id)
       .eq('tenant_id', tenant_id);
 
+    // ✅ CORREÇÃO CRÍTICA: Buscar reuniões relacionadas à pipeline
+    const { data: meetings, error: meetingsError } = await supabase
+      .from('meetings')
+      .select('id, outcome, planned_at, pipeline_lead_id')
+      .in('pipeline_lead_id', leads?.map(lead => lead.id) || [])
+      .eq('tenant_id', tenant_id);
+
     if (leadsError) {
       console.error('❌ [getMetricsByPipeline] Erro ao buscar leads:', leadsError);
       return res.status(500).json({ error: 'Erro ao buscar dados da pipeline' });
+    }
+
+    if (meetingsError) {
+      console.warn('⚠️ [getMetricsByPipeline] Erro ao buscar reuniões (continuando sem dados de meetings):', meetingsError);
     }
 
     // ✅ CORREÇÃO: Calcular métricas corretamente
@@ -798,6 +718,12 @@ router.get('/:pipeline_id/metrics', async (req, res) => {
     
     const avgCycleTimeFinal = wonDeals > 0 ? averageCycleTime / wonDeals : 0;
 
+    // ✅ CORREÇÃO CRÍTICA: Calcular métricas de reuniões corretamente
+    const totalMeetingsScheduled = meetings?.length || 0;
+    const meetingsAttended = meetings?.filter(meeting => meeting.outcome === 'attended').length || 0;
+    const meetingsNoShow = meetings?.filter(meeting => meeting.outcome === 'no_show').length || 0;
+    const meetingsNoShowRate = totalMeetingsScheduled > 0 ? (meetingsNoShow / totalMeetingsScheduled) * 100 : 0;
+
     const metricsData = {
       pipeline_name: pipeline.name,
       // ✅ CORREÇÃO: Adicionar campos esperados pelo frontend
@@ -815,7 +741,12 @@ router.get('/:pipeline_id/metrics', async (req, res) => {
       average_cycle_time: avgCycleTimeFinal,
       active_opportunities: activeOpportunities,
       pending_follow_ups: 0, // Implementar quando houver tabela de follow-ups
-      overdue_tasks: 0 // Implementar quando houver tabela de tasks
+      overdue_tasks: 0, // Implementar quando houver tabela de tasks
+      // ✅ CORREÇÃO CRÍTICA: Adicionar métricas de reuniões
+      meetings_scheduled: totalMeetingsScheduled,
+      meetings_attended: meetingsAttended,
+      meetings_noshow: meetingsNoShow,
+      meetings_noshow_rate: meetingsNoShowRate
     };
 
     console.log('✅ [getMetricsByPipeline] Métricas calculadas:', {
@@ -825,7 +756,9 @@ router.get('/:pipeline_id/metrics', async (req, res) => {
       total_opportunity_cards: totalOpportunityCards,
       won_deals: wonDeals,
       total_revenue: totalRevenue,
-      conversion_rate: conversionRate.toFixed(2) + '%'
+      conversion_rate: conversionRate.toFixed(2) + '%',
+      meetings_scheduled: totalMeetingsScheduled,
+      meetings_attended: meetingsAttended
     });
 
     res.json({
@@ -1976,5 +1909,563 @@ router.post('/:id/unarchive', authenticateToken, PipelineController.unarchivePip
 
 // GET /api/pipelines/archived - Listar pipelines arquivadas
 router.get('/archived', authenticateToken, PipelineController.getArchivedPipelines);
+
+// ============================================
+// ✅ FASE 3: BATCH UPDATE DE POSIÇÕES
+// ============================================
+
+// PUT /api/pipelines/:pipeline_id/leads/positions - Atualizar posições de múltiplos leads em lote
+router.put('/:pipeline_id/leads/positions', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { pipeline_id } = req.params;
+    const { positionUpdates } = req.body; // Array de { leadId: string, position: number }
+    const user = (req as any).user;
+
+    console.log('🎯 [BATCH POSITIONS] Iniciando atualização em lote:', {
+      pipelineId: pipeline_id.substring(0, 8),
+      updatesCount: positionUpdates?.length || 0,
+      userId: user?.id?.substring(0, 8),
+      tenantId: user?.tenant_id?.substring(0, 8)
+    });
+
+    // Validações
+    if (!pipeline_id) {
+      return res.status(400).json({ error: 'pipeline_id é obrigatório' });
+    }
+
+    if (!Array.isArray(positionUpdates) || positionUpdates.length === 0) {
+      return res.status(400).json({ 
+        error: 'positionUpdates deve ser um array não vazio com { leadId, position }' 
+      });
+    }
+
+    // ✅ CORREÇÃO: Debug detalhado antes da validação
+    console.log('🔍 [BATCH DEBUG] Request details:', {
+      user: !!user,
+      hasUserId: !!user?.id,
+      hasTenantId: !!user?.tenant_id,
+      tenant_id: user?.tenant_id?.substring(0, 8) || 'undefined',
+      userType: typeof user,
+      userKeys: user ? Object.keys(user) : [],
+      updates: positionUpdates.length,
+      firstUpdate: positionUpdates[0] ? {
+        leadId: positionUpdates[0].leadId?.substring(0, 8),
+        position: positionUpdates[0].position,
+        type: typeof positionUpdates[0].position
+      } : null
+    });
+
+    if (!user?.tenant_id) {
+      console.error('❌ [BATCH DEBUG] Falha na validação tenant_id:', {
+        user: !!user,
+        tenant_id: user?.tenant_id,
+        fullUser: user
+      });
+      return res.status(401).json({ error: 'Usuário não autenticado ou sem tenant_id' });
+    }
+
+    // Validar formato dos updates
+    const invalidUpdates = positionUpdates.filter(update => 
+      !update.leadId || 
+      typeof update.position !== 'number' || 
+      update.position < 1
+    );
+
+    if (invalidUpdates.length > 0) {
+      return res.status(400).json({ 
+        error: 'Formato inválido em positionUpdates',
+        invalidItems: invalidUpdates
+      });
+    }
+
+    // ✅ CORREÇÃO: Debug antes de executar updates
+    console.log('🔍 [BATCH DEBUG] Executando updates:', {
+      count: positionUpdates.length,
+      pipeline_id: pipeline_id.substring(0, 8),
+      tenant_id: user.tenant_id.substring(0, 8),
+      sampleUpdate: positionUpdates[0] ? {
+        leadId: positionUpdates[0].leadId.substring(0, 8),
+        position: positionUpdates[0].position
+      } : null
+    });
+
+    // ✅ FASE 3: Executar updates em lote usando transação
+    const updatePromises = positionUpdates.map(({ leadId, position }, index) => {
+      console.log(`🔍 [BATCH DEBUG] Update ${index + 1}/${positionUpdates.length}:`, {
+        leadId: leadId.substring(0, 8),
+        position,
+        pipeline_id: pipeline_id.substring(0, 8),
+        tenant_id: user.tenant_id.substring(0, 8)
+      });
+      
+      // ✅ CORREÇÃO CRÍTICA: Usar service role com filtro manual por tenant_id
+      const clientSupabase = supabase;
+      return clientSupabase
+        .from('pipeline_leads')
+        .update({ 
+          position,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', leadId)
+        .eq('pipeline_id', pipeline_id)
+        .eq('tenant_id', user.tenant_id)
+        .select('id, position, stage_id');
+    });
+
+    // ✅ FASE 3: Executar todos os updates em paralelo
+    console.log('🔍 [BATCH DEBUG] Executando Promise.allSettled com', updatePromises.length, 'promises');
+    const results = await Promise.allSettled(updatePromises);
+    
+    // ✅ CORREÇÃO: Debug dos resultados
+    console.log('🔍 [BATCH DEBUG] Resultados Promise.allSettled:', {
+      total: results.length,
+      fulfilled: results.filter(r => r.status === 'fulfilled').length,
+      rejected: results.filter(r => r.status === 'rejected').length,
+      sampleResult: results[0] ? {
+        status: results[0].status,
+        value: results[0].status === 'fulfilled' ? 'data present' : 'no data',
+        reason: results[0].status === 'rejected' ? (results[0] as any).reason?.message : 'no error'
+      } : null
+    });
+    
+    // ✅ FASE 3: Analisar resultados
+    const successful: any[] = [];
+    const failed: any[] = [];
+
+    results.forEach((result, index) => {
+      const update = positionUpdates[index];
+      if (result.status === 'fulfilled' && result.value.data) {
+        successful.push({
+          leadId: update.leadId,
+          position: update.position,
+          data: result.value.data[0]
+        });
+      } else {
+        failed.push({
+          leadId: update.leadId,
+          position: update.position,
+          error: result.status === 'rejected' 
+            ? result.reason 
+            : result.value.error
+        });
+      }
+    });
+
+    // ✅ FASE 3: Log dos resultados
+    console.log('✅ [BATCH POSITIONS] Atualização concluída:', {
+      successful: successful.length,
+      failed: failed.length,
+      totalRequested: positionUpdates.length
+    });
+
+    // ✅ FASE 3: Resposta com status detalhado
+    const response = {
+      success: true,
+      message: `${successful.length}/${positionUpdates.length} posições atualizadas com sucesso`,
+      results: {
+        successful: successful.length,
+        failed: failed.length,
+        total: positionUpdates.length
+      },
+      data: {
+        updated: successful,
+        ...(failed.length > 0 && { errors: failed })
+      }
+    };
+
+    // Se houve falhas, retornar status 207 (Multi-Status)
+    const statusCode = failed.length > 0 ? 207 : 200;
+    
+    res.status(statusCode).json(response);
+
+  } catch (error) {
+    console.error('❌ [BATCH POSITIONS] Erro interno:', error);
+    res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      details: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
+  }
+});
+
+// ============================================
+// 🆕 ENDPOINTS PARA REGRAS DE QUALIFICAÇÃO (MQL/SQL)
+// ============================================
+
+// POST /api/pipelines/:pipelineId/qualification-rules - Salvar regras de qualificação
+router.post('/:pipelineId/qualification-rules', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { pipelineId } = req.params;
+    const { qualification_rules } = req.body;
+
+    console.log('💾 [Qualification] Salvando regras de qualificação:', {
+      pipelineId,
+      mqlCount: qualification_rules?.mql?.length || 0,
+      sqlCount: qualification_rules?.sql?.length || 0
+    });
+
+    // Validar dados obrigatórios
+    if (!pipelineId || !qualification_rules) {
+      return res.status(400).json({
+        success: false,
+        error: 'Pipeline ID e regras de qualificação são obrigatórios'
+      });
+    }
+
+    // Verificar se a pipeline existe e obter tenant_id
+    const { data: pipeline, error: pipelineError } = await supabase
+      .from('pipelines')
+      .select('id, name, tenant_id')
+      .eq('id', pipelineId)
+      .single();
+
+    if (pipelineError || !pipeline) {
+      console.error('Pipeline não encontrada:', pipelineError);
+      return res.status(404).json({
+        success: false,
+        error: 'Pipeline não encontrada'
+      });
+    }
+
+    // Primeiro, remover regras existentes da pipeline
+    const { error: deleteError } = await supabase
+      .from('pipeline_qualification_rules')
+      .delete()
+      .eq('pipeline_id', pipelineId)
+      .eq('tenant_id', pipeline.tenant_id);
+
+    if (deleteError) {
+      console.warn('⚠️ [Qualification] Aviso ao remover regras existentes:', deleteError.message);
+    }
+
+    // Preparar regras para inserção
+    const rulesToInsert = [
+      // Regras MQL
+      ...(qualification_rules.mql || []).map((rule: any) => ({
+        pipeline_id: pipelineId,
+        rule_type: 'mql',
+        rule_name: rule.description || `${rule.field} ${rule.operator}`,
+        conditions: {
+          field: rule.field,
+          operator: rule.operator,
+          value: rule.value,
+          description: rule.description
+        },
+        is_active: true,
+        tenant_id: pipeline.tenant_id
+      })),
+      // Regras SQL
+      ...(qualification_rules.sql || []).map((rule: any) => ({
+        pipeline_id: pipelineId,
+        rule_type: 'sql',
+        rule_name: rule.description || `${rule.field} ${rule.operator}`,
+        conditions: {
+          field: rule.field,
+          operator: rule.operator,
+          value: rule.value,
+          description: rule.description
+        },
+        is_active: true,
+        tenant_id: pipeline.tenant_id
+      }))
+    ];
+
+    // Inserir novas regras se houver
+    let insertedRules = [];
+    if (rulesToInsert.length > 0) {
+      const { data: inserted, error: insertError } = await supabase
+        .from('pipeline_qualification_rules')
+        .insert(rulesToInsert)
+        .select();
+
+      if (insertError) {
+        console.error('❌ [Qualification] Erro ao inserir regras:', insertError);
+        return res.status(500).json({
+          success: false,
+          error: 'Erro ao salvar regras de qualificação',
+          details: insertError.message
+        });
+      }
+
+      insertedRules = inserted || [];
+    }
+
+    console.log('✅ [Qualification] Regras salvas com sucesso:', {
+      pipelineId,
+      totalInserted: insertedRules.length,
+      mqlCount: insertedRules.filter(r => r.rule_type === 'mql').length,
+      sqlCount: insertedRules.filter(r => r.rule_type === 'sql').length
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        pipeline_id: pipelineId,
+        qualification_rules: qualification_rules,
+        inserted_count: insertedRules.length
+      },
+      message: 'Regras de qualificação salvas com sucesso'
+    });
+
+  } catch (error: any) {
+    console.error('❌ [Qualification] Erro ao salvar regras:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      details: error.message
+    });
+  }
+});
+
+// GET /api/pipelines/:pipelineId/qualification-rules - Buscar regras de qualificação
+router.get('/:pipelineId/qualification-rules', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { pipelineId } = req.params;
+
+    console.log('🔍 [Qualification] Buscando regras para pipeline:', pipelineId);
+
+    // Verificar se a pipeline existe
+    const { data: pipeline, error: pipelineError } = await supabase
+      .from('pipelines')
+      .select('id, name, tenant_id')
+      .eq('id', pipelineId)
+      .single();
+
+    if (pipelineError || !pipeline) {
+      console.error('Pipeline não encontrada:', pipelineError);
+      return res.status(404).json({
+        success: false,
+        error: 'Pipeline não encontrada'
+      });
+    }
+
+    // Buscar regras existentes
+    const { data: rules, error: rulesError } = await supabase
+      .from('pipeline_qualification_rules')
+      .select('*')
+      .eq('pipeline_id', pipelineId)
+      .eq('tenant_id', pipeline.tenant_id)
+      .order('created_at', { ascending: true });
+
+    if (rulesError) {
+      console.error('❌ [Qualification] Erro ao buscar regras:', rulesError);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao buscar regras de qualificação',
+        details: rulesError.message
+      });
+    }
+
+    // Organizar regras por tipo
+    const mql = (rules || [])
+      .filter(r => r.rule_type === 'mql')
+      .map(rule => ({
+        id: rule.id,
+        field: rule.conditions?.field || '',
+        operator: rule.conditions?.operator || 'equals',
+        value: rule.conditions?.value || '',
+        description: rule.conditions?.description || rule.rule_name || ''
+      }));
+
+    const sql = (rules || [])
+      .filter(r => r.rule_type === 'sql')
+      .map(rule => ({
+        id: rule.id,
+        field: rule.conditions?.field || '',
+        operator: rule.conditions?.operator || 'equals',
+        value: rule.conditions?.value || '',
+        description: rule.conditions?.description || rule.rule_name || ''
+      }));
+
+    const qualificationRules = { mql, sql };
+
+    console.log('✅ [Qualification] Regras carregadas:', {
+      pipelineId,
+      mqlCount: mql.length,
+      sqlCount: sql.length
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        pipeline_id: pipelineId,
+        qualification_rules: qualificationRules
+      },
+      message: 'Regras de qualificação carregadas com sucesso'
+    });
+
+  } catch (error: any) {
+    console.error('❌ [Qualification] Erro ao buscar regras:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      details: error.message
+    });
+  }
+});
+
+// ================================================================================
+// NOVOS ENDPOINTS PARA STEPleadmodal  
+// ================================================================================
+
+/**
+ * GET /api/pipelines/:id/stages
+ * Carregar stages de uma pipeline específica
+ */
+router.get('/:id/stages', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id: pipelineId } = req.params;
+    
+    console.log('🔍 [PipelineStages] GET /:id/stages - Rota acessada:', {
+      pipeline: pipelineId.substring(0, 8),
+      hasUser: !!req.user,
+      userTenant: req.user?.tenant_id?.substring(0, 8)
+    });
+    
+    const { tenant_id } = req.user!;
+    
+    console.log('🔍 [PipelineStages] GET /:id/stages - Carregando stages:', {
+      pipeline: pipelineId.substring(0, 8),
+      tenant: tenant_id.substring(0, 8)
+    });
+
+    const { data: stages, error } = await supabase
+      .from('pipeline_stages')
+      .select(`
+        id,
+        name,
+        order_index,
+        stage_type
+      `)
+      .eq('pipeline_id', pipelineId)
+      .eq('tenant_id', tenant_id)
+      .order('order_index', { ascending: true });
+
+    if (error) {
+      console.error('❌ [PipelineStages] Erro ao carregar stages:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao carregar stages da pipeline',
+        data: []
+      });
+    }
+
+    console.log('✅ [PipelineStages] Stages carregadas:', stages?.length || 0);
+
+    res.json({
+      success: true,
+      message: 'Stages carregadas com sucesso',
+      data: stages || []
+    });
+
+  } catch (error) {
+    console.error('❌ [PipelineStages] Erro geral:', {
+      error: error instanceof Error ? error.message : error,
+      pipeline: req.params.id?.substring(0, 8),
+      tenant: req.user?.tenant_id?.substring(0, 8)
+    });
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor',
+      data: []
+    });
+  }
+});
+
+/**
+ * GET /api/pipelines/:id/members
+ * Carregar membros de uma pipeline específica
+ */
+router.get('/:id/members', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id: pipelineId } = req.params;
+    
+    console.log('🔍 [PipelineMembers] GET /:id/members - Rota acessada:', {
+      pipeline: pipelineId.substring(0, 8),
+      hasUser: !!req.user,
+      userTenant: req.user?.tenant_id?.substring(0, 8)
+    });
+    
+    const { tenant_id } = req.user!;
+    
+    console.log('🔍 [PipelineMembers] GET /:id/members - Carregando membros:', {
+      pipeline: pipelineId.substring(0, 8),
+      tenant: tenant_id.substring(0, 8)
+    });
+
+    // Buscar membros da pipeline
+    const { data: pipelineMembers, error: membersError } = await supabase
+      .from('pipeline_members')
+      .select('member_id')
+      .eq('pipeline_id', pipelineId);
+
+    if (membersError) {
+      console.error('❌ [PipelineMembers] Erro ao buscar membros da pipeline:', membersError);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao carregar membros da pipeline',
+        data: []
+      });
+    }
+
+    // Se não há membros, retornar lista vazia
+    if (!pipelineMembers || pipelineMembers.length === 0) {
+      console.log('ℹ️ [PipelineMembers] Pipeline não possui membros associados');
+      return res.json({
+        success: true,
+        message: 'Pipeline não possui membros associados',
+        data: []
+      });
+    }
+
+    // Buscar dados dos usuários
+    const memberIds = pipelineMembers.map(pm => pm.member_id);
+    const { data: users, error } = await supabase
+      .from('users')
+      .select(`
+        id,
+        email,
+        first_name,
+        last_name
+      `)
+      .in('id', memberIds);
+
+    if (error) {
+      console.error('❌ [PipelineMembers] Erro ao carregar membros:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao carregar membros da pipeline',
+        data: []
+      });
+    }
+
+    // Transformar dados
+    const members = (users || []).map((user: any) => ({
+      id: user.id,
+      email: user.email,
+      first_name: user.first_name,
+      last_name: user.last_name
+    }));
+
+    console.log('✅ [PipelineMembers] Membros carregados:', members.length);
+
+    res.json({
+      success: true,
+      message: 'Membros carregados com sucesso',
+      data: members
+    });
+
+  } catch (error) {
+    console.error('❌ [PipelineMembers] Erro geral:', {
+      error: error instanceof Error ? error.message : error,
+      pipeline: req.params.id?.substring(0, 8),
+      tenant: req.user?.tenant_id?.substring(0, 8)
+    });
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor',
+      data: []
+    });
+  }
+});
 
 export default router;

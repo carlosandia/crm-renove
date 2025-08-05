@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useAuth } from '../../../contexts/AuthContext';
+import { useAuth } from '../../../providers/AuthProvider';
 import { FORM_TYPES, FormType, FormTypeConfig } from '../types/FormTypeDefinitions';
 
 export interface UseFormTypesReturn {

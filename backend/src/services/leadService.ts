@@ -1,6 +1,7 @@
 import { supabase } from '../config/supabase';
 import { supabaseAdmin } from './supabase-admin';
 import { LeadTasksService } from './leadTasksService';
+import { CadenceService } from './cadenceService';
 
 export interface Lead {
   id: string;
@@ -31,11 +32,13 @@ export interface UpdateLeadData {
 
 export class LeadService {
   static async getLeadsByPipeline(pipelineId: string): Promise<Lead[]> {
+    // ✅ CORREÇÃO POSIÇÃO: Ordenar por position primeiro, depois created_at como fallback
     const { data: leads, error } = await supabase
       .from('pipeline_leads')
       .select('*')
       .eq('pipeline_id', pipelineId)
-      .order('created_at', { ascending: false });
+      .order('position', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true });
 
     if (error) {
       throw new Error(`Erro ao buscar leads: ${error.message}`);
@@ -45,11 +48,13 @@ export class LeadService {
   }
 
   static async getLeadsByStage(stageId: string): Promise<Lead[]> {
+    // ✅ CORREÇÃO POSIÇÃO: Ordenar por position primeiro, depois moved_at como fallback
     const { data: leads, error } = await supabase
       .from('pipeline_leads')
       .select('*')
       .eq('stage_id', stageId)
-      .order('moved_at', { ascending: false });
+      .order('position', { ascending: true, nullsFirst: false })
+      .order('moved_at', { ascending: true });
 
     if (error) {
       throw new Error(`Erro ao buscar leads da etapa: ${error.message}`);
@@ -119,33 +124,48 @@ export class LeadService {
   }
 
   static async moveLeadToStage(leadId: string, newStageId: string, position?: number): Promise<Lead> {
-    // 🎯 SISTEMA DE POSIÇÕES: Usar função SQL para mover com posição precisa
-    if (position !== undefined) {
-      console.log('🎯 [POSITION] Movendo lead com posição específica:', {
-        leadId: leadId.substring(0, 8),
-        newStageId: newStageId.substring(0, 8),
-        position
-      });
+    console.log('🔄 [MOVE LEAD] Iniciando movimentação:', {
+      leadId: leadId.substring(0, 8),
+      newStageId: newStageId.substring(0, 8),
+      hasPosition: position !== undefined,
+      position
+    });
 
-      // Usar função SQL para mover com posição precisa
-      const { error: moveError } = await supabaseAdmin.rpc('move_lead_to_position', {
-        p_lead_id: leadId,
-        p_new_stage_id: newStageId,
-        p_new_position: position
-      });
+    // ✅ CORREÇÃO CRÍTICA: Lógica simplificada usando updateLead
+    const updateData: UpdateLeadData = {
+      stage_id: newStageId,
+      moved_at: new Date().toISOString()
+    };
 
-      if (moveError) {
-        console.error('❌ [POSITION] Erro ao mover lead com posição:', moveError);
-        throw new Error(`Erro ao mover lead para posição específica: ${moveError.message}`);
-      }
-    } else {
-      // 🚀 OTIMIZADO - Manter lógica antiga como fallback (sem posição específica)
-      console.log('📍 [FALLBACK] Movendo lead sem posição específica (será adicionado ao final)');
+    // ✅ POSIÇÃO OPCIONAL: Incluir posição se fornecida
+    if (position !== undefined && position !== null) {
+      // Converter position para campo no updateData
+      // Como UpdateLeadData não tem position, vamos usar o método direto
+      console.log('🎯 [MOVE LEAD] Incluindo posição:', position);
       
-      await this.updateLead(leadId, { 
-        stage_id: newStageId,
-        moved_at: new Date().toISOString()
-      });
+      const positionNum = typeof position === 'number' ? position : parseInt(position.toString());
+      const { data: lead, error } = await supabase
+        .from('pipeline_leads')
+        .update({
+          stage_id: newStageId,
+          position: !isNaN(positionNum) ? positionNum : null,
+          moved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', leadId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ [MOVE LEAD] Erro ao mover lead com posição:', error);
+        throw new Error(`Erro ao mover lead para posição específica: ${error.message}`);
+      }
+
+      console.log('✅ [MOVE LEAD] Lead movido com posição com sucesso');
+    } else {
+      // ✅ LÓGICA PADRÃO: Sem posição específica
+      console.log('📍 [MOVE LEAD] Movendo lead sem posição específica');
+      await this.updateLead(leadId, updateData);
     }
 
     // Buscar lead atualizado para retornar
@@ -171,10 +191,12 @@ export class LeadService {
   }
 
   static async getLeadsByMember(memberId: string): Promise<Lead[]> {
+    // ✅ CORREÇÃO POSIÇÃO: Ordenar por position primeiro, depois updated_at como fallback
     const { data: leads, error } = await supabase
       .from('pipeline_leads')
       .select('*')
       .eq('assigned_to', memberId)
+      .order('position', { ascending: true, nullsFirst: false })
       .order('updated_at', { ascending: false });
 
     if (error) {

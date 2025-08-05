@@ -6,7 +6,7 @@
 
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useCallback, useMemo } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { api } from '../lib/api';
 import { logger, LogContext } from '../utils/loggerOptimized';
 

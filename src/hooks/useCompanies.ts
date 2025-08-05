@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
 import { Company, CompanyAdmin } from '../types/Company';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { showSuccessToast, showErrorToast } from './useToast';
 
 export const useCompanies = () => {
@@ -244,7 +244,7 @@ export const useCompanies = () => {
         });
       } else {
         // Fallback para desenvolvimento sem autenticação
-        response = await fetch(`http://127.0.0.1:3001/api/companies/${company.id}`, {
+        response = await fetch(`import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/companies/${company.id}`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' }
         });
@@ -288,7 +288,8 @@ export const useCompanies = () => {
         });
       } else {
         // Fallback para desenvolvimento sem autenticação
-        response = await fetch('http://127.0.0.1:3001/api/admin-invitations/send', {
+        const { environmentConfig } = await import('../config/environment');
+        response = await fetch(`${environmentConfig.urls.api}/admin-invitations/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

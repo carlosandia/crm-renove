@@ -18,7 +18,7 @@ export const convertLeadToDeal = (lead: Lead): Deal => {
     currency: 'BRL',
     close_date: leadData.data_fechamento || leadData.close_date || undefined,
     probability: leadData.probabilidade || leadData.probability || undefined,
-    status: lead.status === 'won' ? 'won' : lead.status === 'lost' ? 'lost' : 'open',
+    status: lead.status === 'ganho' ? 'won' : lead.status === 'perdido' ? 'lost' : 'open',
     owner_id: lead.assigned_to || lead.created_by || undefined,
     owner_name: leadData.vendedor || leadData.responsavel || undefined,
     description: leadData.descricao || leadData.description || leadData.observacoes || undefined,

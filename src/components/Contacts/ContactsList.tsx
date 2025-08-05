@@ -4,7 +4,7 @@ import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { BlurFade } from '../ui/blur-fade';
-import { Contact } from '../../integrations/supabase/types';
+import { Contact } from '../../shared/types/Domain';
 
 interface ContactsListProps {
   contacts: Contact[];

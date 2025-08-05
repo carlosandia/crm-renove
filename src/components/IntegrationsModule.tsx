@@ -32,7 +32,7 @@ import {
   Users,
   Mail // ➕ NOVO: Ícone para aba E-mail pessoal
 } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { supabase } from '../lib/supabase';
 import ConversionsPanel from './Conversions/ConversionsPanel';
 import ConversionConfigPanel from './ConversionConfigPanel';

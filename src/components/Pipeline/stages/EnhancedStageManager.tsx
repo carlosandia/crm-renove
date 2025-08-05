@@ -517,6 +517,10 @@ export function EnhancedStageManagerRender({ stageManager }: EnhancedStageManage
                     index={-1}
                     onEdit={() => handleEditStage(-1, stageWithId)}
                     onDelete={handleDeleteStage}
+                    onMoveUp={() => {}} // Sistema não pode mover
+                    onMoveDown={() => {}} // Sistema não pode mover
+                    canMoveUp={false}
+                    canMoveDown={false}
                     isDragging={false}
                     isSystemStage={true}
                   />
@@ -533,6 +537,10 @@ export function EnhancedStageManagerRender({ stageManager }: EnhancedStageManage
                     index={customIndex}
                     onEdit={handleEditStage}
                     onDelete={handleDeleteStage}
+                    onMoveUp={() => {}} // TODO: Implementar moveStageUp
+                    onMoveDown={() => {}} // TODO: Implementar moveStageDown
+                    canMoveUp={customIndex > 0}
+                    canMoveDown={customIndex < stages.length - 1}
                     isDragging={false}
                     isSystemStage={false}
                   />
@@ -550,6 +558,10 @@ export function EnhancedStageManagerRender({ stageManager }: EnhancedStageManage
                     index={-1}
                     onEdit={() => handleEditStage(-1, stageWithId)}
                     onDelete={handleDeleteStage}
+                    onMoveUp={() => {}} // Sistema não pode mover
+                    onMoveDown={() => {}} // Sistema não pode mover
+                    canMoveUp={false}
+                    canMoveDown={false}
                     isDragging={false}
                     isSystemStage={true}
                   />

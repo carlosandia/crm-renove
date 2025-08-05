@@ -7,7 +7,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { 
   EnterpriseMetrics, 
   DetailedMetrics,
@@ -111,7 +111,7 @@ export const useEnterpriseMetrics = (
   const metricsQuery = useQuery({
     queryKey: metricsQueryKeys.list(currentFilters),
     queryFn: () => EnterpriseMetricsService.getMetrics(currentFilters),
-    enabled: enabled && !!currentFilters.tenant_id,
+    enabled: Boolean(enabled && !!currentFilters.tenant_id),
     staleTime,
     gcTime: cacheTime,
     refetchInterval: enableAutoRefresh ? autoRefreshInterval : false,
@@ -129,7 +129,7 @@ export const useEnterpriseMetrics = (
   const detailedQuery = useQuery({
     queryKey: metricsQueryKeys.detail(currentFilters),
     queryFn: () => EnterpriseMetricsService.getDetailedMetrics(currentFilters),
-    enabled: enabled && loadDetailed && !!currentFilters.tenant_id,
+    enabled: Boolean(enabled && loadDetailed && !!currentFilters.tenant_id),
     staleTime: CACHE_CONFIG.DETAILED_METRICS.staleTime,
     gcTime: CACHE_CONFIG.DETAILED_METRICS.cacheTime,
     retry: (failureCount, error: any) => {
@@ -145,7 +145,7 @@ export const useEnterpriseMetrics = (
   const filtersQuery = useQuery({
     queryKey: metricsQueryKeys.filters(currentFilters.tenant_id),
     queryFn: () => EnterpriseMetricsService.getFilters(currentFilters.tenant_id),
-    enabled: enabled && loadFilters && !!currentFilters.tenant_id,
+    enabled: Boolean(enabled && loadFilters && !!currentFilters.tenant_id),
     staleTime: CACHE_CONFIG.FILTERS.staleTime,
     gcTime: CACHE_CONFIG.FILTERS.cacheTime,
     retry: (failureCount, error: any) => {

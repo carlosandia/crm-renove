@@ -1,9 +1,17 @@
 import { useState, useCallback, useMemo, useEffect, useDebugValue } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { api } from '../lib/api';
 import { Lead, Pipeline, PipelineStage } from '../types/Pipeline';
+
+// ✅ CORREÇÃO: Tipo estendido para Leads com propriedades otimistas
+interface OptimisticLead extends Lead {
+  isOptimistic?: boolean;
+  isCreating?: boolean;
+  tempId?: string;
+}
 import { useEnterpriseMetrics } from './useEnterpriseMetrics';
+import { useCadenceActivityGenerator } from './useCadenceActivityGenerator';
 import { logger, LogContext, useLoggerDebug, startTimer, endTimer, clearTimer, hasTimer, group, groupEnd } from '../utils/loggerOptimized';
 import { LOGGING, isDevelopment } from '../utils/constants';
 import { 
@@ -376,7 +384,9 @@ export const usePipelineKanban = ({
           return {
             id: pipelineId,
             name: 'Pipeline (Offline)',
+            description: 'Pipeline em modo offline',
             tenant_id: user?.tenant_id || 'offline',
+            created_by: user?.id || 'offline',
             pipeline_stages: [
               { id: 'stage-1', name: 'Lead', order_index: 0, color: '#3B82F6', stage_type: 'contato_inicial' },
               { id: 'stage-2', name: 'Ganho', order_index: 1, color: '#10B981', stage_type: 'ganho' },
@@ -392,17 +402,21 @@ export const usePipelineKanban = ({
       }
     },
     enabled: !!pipelineId && !!user?.tenant_id,
-    staleTime: 2 * 60 * 1000, // 2 minutos
-    gcTime: 10 * 60 * 1000, // 10 minutos
+    staleTime: 10 * 60 * 1000, // ✅ CORREÇÃO: 10 minutos (era 2)
+    gcTime: 20 * 60 * 1000, // ✅ CORREÇÃO: 20 minutos (era 10)
     refetchInterval: autoRefresh ? autoRefreshInterval : false,
+    refetchOnWindowFocus: false, // ✅ CORREÇÃO: Não refetch ao focar janela
+    refetchOnMount: false,       // ✅ CORREÇÃO: Não refetch ao montar se já tem cache
     retry: (failureCount, error: any) => {
+      // ✅ CORREÇÃO: Não retry para 429 (rate limit)
+      if (error?.status === 429) return false;
       // AIDEV-NOTE: Não retry para ERR_CONNECTION_REFUSED ou Network Error
       if (error?.code === 'ERR_NETWORK' || error?.message === 'Network Error' || error?.code === 'ECONNREFUSED' || error?.code === 'ERR_CONNECTION_REFUSED') {
         return false;
       }
-      return failureCount < 2; // Máximo 2 retries para outros erros
+      return failureCount < 1; // ✅ CORREÇÃO: Apenas 1 retry (era 2)
     },
-    retryDelay: (attemptIndex) => Math.min(1500 * 2 ** attemptIndex, 10000)
+    retryDelay: (attemptIndex) => Math.min(3000 * 2 ** attemptIndex, 15000) // ✅ CORREÇÃO: Delay maior
   });
 
   // Query para leads da pipeline com validação robusta
@@ -509,21 +523,25 @@ export const usePipelineKanban = ({
     },
     // 🔧 CORREÇÃO: Aguardar pipeline ser carregada para evitar race condition
     enabled: !!pipelineId && !!user?.tenant_id && !!pipelineQuery.data,
-    staleTime: 2 * 60 * 1000, // 2 minutos (aumentado para reduzir refetches)
-    gcTime: 10 * 60 * 1000, // 10 minutos (aumentado para melhor cache)
+    staleTime: 10 * 60 * 1000, // ✅ CORREÇÃO: 10 minutos (era 2)
+    gcTime: 20 * 60 * 1000, // ✅ CORREÇÃO: 20 minutos (era 10)
     refetchInterval: autoRefresh ? autoRefreshInterval : false,
-    // ✅ NOVA CORREÇÃO: Desabilitar structural sharing para garantir re-renders
-    structuralSharing: false,
+    refetchOnWindowFocus: false, // ✅ CORREÇÃO: Não refetch ao focar janela
+    refetchOnMount: false,       // ✅ CORREÇÃO: Não refetch ao montar se já tem cache
+    // ✅ CORREÇÃO OPTIMISTIC: Manter structural sharing para optimistic updates funcionarem
+    // structuralSharing deve estar habilitado (default: true) para optimistic updates
     // ✅ BACKUP: Forçar re-render em propriedades específicas (baseado na documentação)
     notifyOnChangeProps: ['data', 'dataUpdatedAt', 'error'],
     retry: (failureCount, error: any) => {
+      // ✅ CORREÇÃO: Não retry para 429 (rate limit)
+      if (error?.status === 429) return false;
       // AIDEV-NOTE: Não retry para ERR_CONNECTION_REFUSED ou Network Error
       if (error?.code === 'ERR_NETWORK' || error?.message === 'Network Error' || error?.code === 'ECONNREFUSED' || error?.code === 'ERR_CONNECTION_REFUSED') {
         return false;
       }
-      return failureCount < 2; // Máximo 2 retries para outros erros
+      return failureCount < 1; // ✅ CORREÇÃO: Apenas 1 retry (era 2)
     },
-    retryDelay: (attemptIndex) => Math.min(1500 * 2 ** attemptIndex, 10000)
+    retryDelay: (attemptIndex) => Math.min(3000 * 2 ** attemptIndex, 15000) // ✅ CORREÇÃO: Delay maior
   });
 
   // Query para campos customizados
@@ -602,6 +620,9 @@ export const usePipelineKanban = ({
     cacheTime: 10 * 60 * 1000 // 10 minutos de cache
   });
 
+  // ✅ NOVO: Hook para geração automática de atividades em mudanças de etapa
+  const { generateActivities } = useCadenceActivityGenerator();
+
   // ============================================
   // DADOS PROCESSADOS (COMPUTED VALUES)
   // ============================================
@@ -666,16 +687,29 @@ export const usePipelineKanban = ({
     }
   }, [pipelineId]);
 
+
   // ============================================
   // MUTATIONS
   // ============================================
 
-  // Mutation para mover lead entre stages com OPTIMISTIC UPDATES
+  // 🚀 MUTATION COM OPTIMISTIC UPDATES: Mover lead sem refresh (como Trello)
   const moveLeadMutation = useMutation({
-    mutationFn: async ({ leadId, newStageId, position }: { leadId: string; newStageId: string; position?: number }) => {
+    mutationFn: async ({ 
+      leadId, 
+      newStageId, 
+      position,
+      sourceStageId,
+      destinationIndex 
+    }: { 
+      leadId: string; 
+      newStageId: string; 
+      position?: number;
+      sourceStageId?: string;
+      destinationIndex?: number;
+    }) => {
       setState(prev => ({ ...prev, isUpdatingStage: true }));
       
-      // 🎯 SISTEMA DE POSIÇÕES: Incluir posição na requisição se fornecida
+      // Payload simples para a API
       const requestBody: any = {
         stage_id: newStageId,
         tenant_id: user?.tenant_id
@@ -683,278 +717,171 @@ export const usePipelineKanban = ({
       
       if (position !== undefined) {
         requestBody.position = position;
-        console.log('🎯 [FRONTEND] Enviando posição específica:', { leadId: leadId.substring(0, 8), position });
+      }
+      
+      if (import.meta.env.DEV) {
+        console.log('🎯 [moveLeadMutation] Enviando requisição (background):', {
+          leadId: leadId.substring(0, 8),
+          newStageId: newStageId.substring(0, 8),
+          position
+        });
       }
       
       const response = await api.put(`/pipelines/${pipelineId}/leads/${leadId}`, requestBody);
-      
       return response.data;
     },
-    // ✨ OPTIMISTIC UPDATE: Move card imediatamente na UI
-    onMutate: async ({ leadId, newStageId }) => {
-      console.log('🚀 [OPTIMISTIC] Iniciando movimentação otimista:', { leadId, newStageId });
+    
+    // 🎯 OPTIMISTIC UPDATE: Atualização simples e eficaz
+    onMutate: async (variables) => {
+      const queryKey = getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange);
       
-      // 1. Cancelar queries pendentes para evitar race conditions
-      await queryClient.cancelQueries({ queryKey: getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange) });
-      
-      // 2. Snapshot dos dados atuais (para rollback)
-      const previousLeads = queryClient.getQueryData(getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange));
-      
-      // 3. ✅ CORREÇÃO STRUCTURAL SHARING: Força nova referência em TODOS os objetos
-      const globalTimestamp = Date.now();
-      const forceRenderKey = Math.random();
-      
-      queryClient.setQueryData(getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange), (old: any) => {
-        if (!Array.isArray(old)) return old;
-        
-        // ✅ QUEBRA STRUCTURAL SHARING: Novo array + todos objetos com nova referência
-        const newLeads = [...old].map((lead: any) => {
-          if (lead.id === leadId) {
-            console.log('✨ [OPTIMISTIC] Lead movido na UI:', { 
-              leadId, 
-              from: lead.stage_id, 
-              to: newStageId 
-            });
-            // Lead movido: nova referência completa
-            return {
-              ...lead,
-              stage_id: newStageId,
-              moved_at: new Date().toISOString(),
-              isOptimistic: true,
-              __timestamp: globalTimestamp,
-              __force_render: forceRenderKey,
-              __moved: true // Flag especial para lead movido
-            };
-          }
-          // ✅ CRÍTICO: Força mudança estrutural em TODOS os leads
-          return {
-            ...lead,
-            __timestamp: globalTimestamp,
-            __force_render: forceRenderKey
-          };
+      if (import.meta.env.DEV) {
+        console.log('🎯 [OPTIMISTIC] Iniciando update simples:', {
+          leadId: variables.leadId.substring(0, 8),
+          toStage: variables.newStageId.substring(0, 8),
+          position: variables.position
         });
-        
-        console.log('🎯 [OPTIMISTIC] Cache atualizado com quebra de structural sharing');
-        return newLeads;
-      });
+      }
       
-      // 4. ✅ FORÇA RE-RENDER VIA QUERY STATE: Atualiza metadados da query
-      const queryCache = queryClient.getQueryCache();
-      const query = queryCache.find(getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange));
-      if (query) {
-        query.setState({ 
-          ...query.state, 
-          dataUpdatedAt: globalTimestamp,
-          __forceUpdate: forceRenderKey
-        });
-        
-        // ✅ CORREÇÃO DEFINITIVA: Atualizar cache imediatamente com padrão oficial
-        // Baseado na documentação oficial do TanStack Query v5
-        try {
-          // 1. Cancelar queries pendentes para evitar overwrites
-          await queryClient.cancelQueries({ 
-            queryKey: getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange) 
-          });
-          
-          // 2. Atualizar cache IMEDIATAMENTE (força React re-render)
-          queryClient.setQueryData(getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange), (oldData: any) => {
-            if (!oldData) return oldData;
-            
-            // Encontrar e mover lead para nova stage
-            return oldData.map((lead: any) => {
-              if (lead.id === leadId) {
-                return { ...lead, stage_id: newStageId, updated_at: new Date().toISOString() };
-              }
-              return lead;
-            });
-          });
-          
-          console.log('✅ [OPTIMISTIC] Cache atualizado instantaneamente com setQueryData');
-        } catch (error) {
-          console.warn('⚠️ [OPTIMISTIC] Erro ao atualizar cache:', error);
+      // 1. Cancelar queries pendentes para evitar conflitos
+      await queryClient.cancelQueries({ queryKey });
+      
+      // 2. Backup dos dados atuais para rollback
+      const previousData = queryClient.getQueryData(queryKey);
+      
+      // 3. Atualização simples - apenas o lead movido
+      queryClient.setQueryData(queryKey, (oldData: Lead[]) => {
+        if (!Array.isArray(oldData)) {
+          console.warn('⚠️ [OPTIMISTIC] Cache não é array:', typeof oldData);
+          return oldData;
         }
         
-        console.log('🔄 [OPTIMISTIC] Query state atualizado manualmente');
-      }
-      
-      // 5. FORÇA RE-RENDER MÚLTIPLO: Estratégia combinada
-      queryClient.invalidateQueries({ 
-        queryKey: getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange),
-        refetchType: 'none'
-      });
-      
-      // 6. FORÇA RE-RENDER ASSÍNCRONO: Garantia adicional
-      setTimeout(() => {
-        queryClient.invalidateQueries({ 
-          queryKey: getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange),
-          refetchType: 'none'
-        });
-        console.log('🔄 [OPTIMISTIC] Re-render assíncrono executado');
-      }, 0);
-      
-      // 7. FORÇA ATUALIZAÇÃO RELACIONADA: Pipeline queries
-      queryClient.invalidateQueries({ 
-        queryKey: ['pipeline'],
-        refetchType: 'none'
-      });
-      
-      console.log('🔄 [OPTIMISTIC] Structural sharing quebrado + múltiplas invalidações');
-      
-      // 8. Retornar contexto expandido
-      return { 
-        previousLeads, 
-        leadId, 
-        newStageId,
-        oldStageId: previousLeads ? (previousLeads as any[]).find((l: any) => l.id === leadId)?.stage_id : null,
-        updateTimestamp: globalTimestamp,
-        forceRenderKey
-      };
-    },
-    // ✅ SUCCESS: Confirmar movimentação (remover flag otimista)
-    onSuccess: (response, { leadId, newStageId }, context) => {
-      console.log('✅ [OPTIMISTIC] Movimentação confirmada pelo servidor');
-      
-      // ✅ CONFIRMAÇÃO COM STRUCTURAL SHARING BREAK
-      const confirmTimestamp = Date.now();
-      queryClient.setQueryData(getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange), (old: any) => {
-        if (!Array.isArray(old)) return old;
-        
-        // ✅ QUEBRA STRUCTURAL SHARING NA CONFIRMAÇÃO: Novo array
-        const confirmedLeads = [...old].map((lead: any) => {
-          if (lead.id === leadId) {
-            // Lead confirmado: remover flags otimistas + nova referência
+        const updatedLeads = oldData.map((lead: Lead) => {
+          if (lead.id === variables.leadId) {
             return {
               ...lead,
-              isOptimistic: false,
-              updated_at: new Date().toISOString(),
-              __timestamp: confirmTimestamp,
-              __confirmed: true,
-              // Remover campos temporários
-              __force_render: undefined,
-              __moved: undefined
+              stage_id: variables.newStageId,
+              position: variables.position || lead.position,
+              moved_at: new Date().toISOString()
             };
           }
-          // ✅ FORÇA MUDANÇA EM TODOS: Nova referência para garantir re-render
-          return {
-            ...lead,
-            __timestamp: confirmTimestamp
-          };
+          return lead;
         });
         
-        console.log('🔄 [OPTIMISTIC] Flag otimista removida com structural sharing break');
-        return confirmedLeads;
-      });
-      
-      // ✅ FORÇA QUERY STATE UPDATE NA CONFIRMAÇÃO
-      const queryCache = queryClient.getQueryCache();
-      const query = queryCache.find(getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange));
-      if (query) {
-        query.setState({ 
-          ...query.state, 
-          dataUpdatedAt: confirmTimestamp,
-          __confirmed: true
-        });
-        
-        // ✅ CONFIRMAÇÃO: Cache já foi atualizado no onMutate
-        // TanStack Query automaticamente sincroniza com dados do servidor
-        console.log('✅ [SUCCESS] Movimentação confirmada pelo servidor - cache já atualizado');
-        
-        console.log('🔄 [OPTIMISTIC] Query state confirmação atualizado');
-      }
-      
-      // ✅ FORÇA RE-RENDER FINAL: Múltiplas estratégias
-      queryClient.invalidateQueries({ 
-        queryKey: getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange),
-        refetchType: 'none'
-      });
-      
-      setTimeout(() => {
-        queryClient.invalidateQueries({ 
-          queryKey: getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange),
-          refetchType: 'none'
-        });
-        console.log('✅ [OPTIMISTIC] Re-render final assíncrono executado');
-      }, 0);
-      
-      // ✅ OTIMIZAÇÃO: Invalidação inteligente das métricas
-      if (enableMetrics) {
-        queryClient.invalidateQueries({ 
-          queryKey: ['enterprise-metrics'],
-          refetchType: 'none'
-        });
-      }
-      
-      console.log('✅ [OPTIMISTIC] Movimentação 100% concluída com structural sharing');
-    },
-    // ❌ ERROR: Rollback automático
-    onError: (error, { leadId, newStageId }, context) => {
-      console.error('❌ [OPTIMISTIC] Erro na movimentação, fazendo rollback:', error);
-      
-      if (context?.previousLeads) {
-        // ✅ ROLLBACK COM STRUCTURAL SHARING BREAK
-        const rollbackTimestamp = Date.now();
-        const rollbackKey = Math.random();
-        
-        // Restaurar dados com nova referência
-        queryClient.setQueryData(getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange), (old: any) => {
-          // ✅ QUEBRA STRUCTURAL SHARING NO ROLLBACK: Força nova referência
-          const rolledBackLeads = [...(context.previousLeads as any[])].map((lead: any) => ({
-            ...lead,
-            __timestamp: rollbackTimestamp,
-            __rollback: rollbackKey,
-            // Remover flags otimistas se existirem
-            isOptimistic: false,
-            __force_render: undefined,
-            __moved: undefined
-          }));
-          
-          console.log('🔙 [OPTIMISTIC] Rollback com structural sharing break');
-          return rolledBackLeads;
-        });
-        
-        // ✅ FORÇA QUERY STATE UPDATE NO ROLLBACK
-        const queryCache = queryClient.getQueryCache();
-        const query = queryCache.find(getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange));
-        if (query) {
-          query.setState({ 
-            ...query.state, 
-            dataUpdatedAt: rollbackTimestamp,
-            __rollback: rollbackKey
-          });
-          
-          // ✅ ROLLBACK: Usar setQueryData para restaurar estado anterior
-          queryClient.setQueryData(getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange), context.previousLeads);
-          console.log('🔄 [ROLLBACK] Cache restaurado com setQueryData');
-          
-          console.log('🔄 [OPTIMISTIC] Query state rollback atualizado');
+        if (import.meta.env.DEV) {
+          console.log('✅ [OPTIMISTIC] Lead atualizado - UI deve atualizar AGORA');
         }
         
-        // ✅ FORÇA RE-RENDER APÓS ROLLBACK: Múltiplas estratégias
-        queryClient.invalidateQueries({ 
-          queryKey: getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange),
-          refetchType: 'none'
-        });
-        
-        setTimeout(() => {
-          queryClient.invalidateQueries({ 
-            queryKey: getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange),
-            refetchType: 'none'
-          });
-          console.log('🔙 [OPTIMISTIC] Re-render rollback assíncrono executado');
-        }, 0);
-        
-        console.log('🔙 [OPTIMISTIC] Rollback executado com structural sharing');
+        return updatedLeads;
+      });
+      
+      // Retornar contexto para rollback em caso de erro
+      return { previousData };
+    },
+    
+    // ✅ SUCCESS: Background sync + geração automática de atividades
+    onSuccess: async (data, variables) => {
+      setState(prev => ({ ...prev, isUpdatingStage: false }));
+      
+      if (import.meta.env.DEV) {
+        console.log('✅ [moveLeadMutation] Sucesso - sync concluído (sem refresh)');
       }
       
-      logger.error('Erro ao mover lead', LogContext.LEADS, error);
+      // ✅ NOVO: Gerar atividades automaticamente para a nova etapa (sistema acumulativo)
+      try {
+        console.log('🔄 [moveLeadMutation] Gerando atividades automaticamente para nova etapa...', {
+          leadId: variables.leadId.substring(0, 8),
+          newStageId: variables.newStageId.substring(0, 8),
+          pipelineId: pipelineId.substring(0, 8)
+        });
+        
+        // ✅ DEBUG: Buscar dados do lead movido para obter assigned_to
+        const movedLead = leadsQuery.data?.find(lead => lead.id === variables.leadId);
+        console.log('🔍 [moveLeadMutation] Dados do lead encontrado:', {
+          leadFound: !!movedLead,
+          leadId: variables.leadId.substring(0, 8),
+          assignedTo: movedLead?.assigned_to?.substring(0, 8) || 'undefined',
+          leadsInCache: leadsQuery.data?.length || 0,
+          userIdFallback: user?.id?.substring(0, 8) || 'undefined'
+        });
+        
+        const activityResult = await generateActivities({
+          leadId: variables.leadId,
+          pipelineId: pipelineId,
+          stageId: variables.newStageId,
+          assignedTo: movedLead?.assigned_to || user?.id || ''
+        });
+        
+        if (activityResult.success) {
+          const tasksCreated = activityResult.tasksCreated || 0;
+          if (tasksCreated === 0) {
+            console.log('ℹ️ [moveLeadMutation] Sistema anti-duplicação: atividades já existem para este lead/etapa', {
+              leadId: variables.leadId.substring(0, 8),
+              message: activityResult.message
+            });
+          } else {
+            console.log(`✅ [moveLeadMutation] Atividades geradas automaticamente: ${tasksCreated} atividades`, {
+              leadId: variables.leadId.substring(0, 8),
+              message: activityResult.message
+            });
+          }
+        } else {
+          console.warn('⚠️ [moveLeadMutation] Falha na geração automática de atividades:', {
+            leadId: variables.leadId.substring(0, 8),
+            error: activityResult.error || activityResult.message
+          });
+        }
+      } catch (activityError) {
+        console.error('❌ [moveLeadMutation] Erro ao gerar atividades automaticamente:', {
+          leadId: variables.leadId.substring(0, 8),
+          error: activityError.message || activityError,
+          stack: activityError.stack?.split('\n').slice(0, 3)
+        });
+        // Não bloquear o fluxo principal - a mudança de etapa já foi feita com sucesso
+      }
+      
+      // ✅ CORREÇÃO CRÍTICA: Invalidar cache das atividades após movimentação para mostrar atividades novas
+      try {
+        // Invalidar queries de atividades para que novas atividades apareçam no dropdown
+        await queryClient.invalidateQueries({ 
+          queryKey: ['card-tasks', variables.leadId, user?.tenant_id],
+          refetchType: 'active'
+        });
+        
+        await queryClient.invalidateQueries({ 
+          queryKey: ['activities', 'combined', variables.leadId],
+          refetchType: 'active'
+        });
+        
+        console.log('✅ [moveLeadMutation] Cache de atividades invalidado - dropdown será atualizado', {
+          leadId: variables.leadId.substring(0, 8),
+          queries: ['card-tasks', 'activities-combined']
+        });
+      } catch (cacheError) {
+        console.warn('⚠️ [moveLeadMutation] Erro ao invalidar cache de atividades:', cacheError);
+      }
+      
+      // NÃO invalidar cache de leads - dados já foram atualizados otimisticamente
     },
+    
+    // ❌ ERROR: Rollback em caso de falha
+    onError: (error, variables, context) => {
+      if (import.meta.env.DEV) {
+        console.error('❌ [moveLeadMutation] Erro - fazendo rollback:', error);
+      }
+      
+      // Restaurar dados anteriores em caso de erro
+      if (context?.previousData) {
+        const queryKey = getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange);
+        queryClient.setQueryData(queryKey, context.previousData);
+      }
+      
+      setState(prev => ({ ...prev, isUpdatingStage: false }));
+    },
+    
     // 🏁 SETTLED: Limpeza final
     onSettled: () => {
       setState(prev => ({ ...prev, isUpdatingStage: false }));
-      console.log('🏁 [OPTIMISTIC] Processo de movimentação finalizado');
-      
-      // ✅ CORREÇÃO: Agendar limpeza das flags otimistas
-      cleanOptimisticFlags();
     }
   });
 
@@ -1140,7 +1067,7 @@ export const usePipelineKanban = ({
     return results;
   }, [leadsQuery.data, leadsQuery.isPending, state.filters]);
 
-  // Leads agrupados por stage com processamento otimizado e cache de ordenação
+  // Leads agrupados por stage com processamento otimizado e ordenação por posição
   const leadsByStage = useMemo(() => {
     const grouped: Record<string, Lead[]> = {};
     
@@ -1161,13 +1088,44 @@ export const usePipelineKanban = ({
       }
     });
     
-    // ✅ OTIMIZAÇÃO: Ordenar leads em cada stage de forma otimizada
+    // ✅ CORREÇÃO CRÍTICA: Ordenar leads priorizando position
     Object.keys(grouped).forEach(stageId => {
       // Skip ordenação se não há leads nesta stage
       if (grouped[stageId].length <= 1) return;
       
+      const stageName = stages.find(s => s.id === stageId)?.name || 'Unknown';
+      
       grouped[stageId].sort((a, b) => {
-        // ✅ PERFORMANCE: Cache de valores para evitar recalculação
+        // ✅ PRIORIDADE 1: Ordenação por position (1-based do backend)
+        const positionA = a.position ?? 999999;
+        const positionB = b.position ?? 999999;
+        
+        // Debug condicional
+        if (import.meta.env.DEV && (window as any).debugDragDrop) {
+          console.log('🔍 [STAGE SORT] Comparando leads:', {
+            stage: stageName,
+            leadA: { id: a.id.substring(0, 8), position: positionA },
+            leadB: { id: b.id.substring(0, 8), position: positionB }
+          });
+        }
+        
+        // Se posições são diferentes, usar position (sempre prioritário)
+        if (positionA !== positionB) {
+          const result = positionA - positionB;
+          if (import.meta.env.DEV && (window as any).debugDragDrop) {
+            console.log('✅ [STAGE SORT] Ordenado por posição:', {
+              stage: stageName,
+              leadA: a.id.substring(0, 8),
+              leadB: b.id.substring(0, 8),
+              positionA,
+              positionB,
+              result
+            });
+          }
+          return result;
+        }
+        
+        // ✅ PRIORIDADE 2: Se positions são iguais, usar critério de sortBy
         let valueA: any, valueB: any;
         
         switch (state.sortBy) {
@@ -1184,7 +1142,6 @@ export const usePipelineKanban = ({
             valueB = Number(b.custom_data?.valor || 0);
             break;
           case 'name':
-            // ✅ CACHE: Evitar toLowerCase múltiplo
             valueA = (a.custom_data?.nome_oportunidade || '').toLowerCase();
             valueB = (b.custom_data?.nome_oportunidade || '').toLowerCase();
             break;
@@ -1192,10 +1149,34 @@ export const usePipelineKanban = ({
             return 0;
         }
         
-        return state.sortOrder === 'asc' 
+        const fallbackResult = state.sortOrder === 'asc' 
           ? (valueA > valueB ? 1 : valueA < valueB ? -1 : 0)
           : (valueA < valueB ? 1 : valueA > valueB ? -1 : 0);
+          
+        if (import.meta.env.DEV && (window as any).debugDragDrop && fallbackResult !== 0) {
+          console.log('🔄 [STAGE SORT] Fallback por', state.sortBy + ':', {
+            stage: stageName,
+            leadA: a.id.substring(0, 8),
+            leadB: b.id.substring(0, 8),
+            result: fallbackResult
+          });
+        }
+        
+        return fallbackResult;
       });
+      
+      // ✅ DEBUG FINAL: Log da ordenação final de cada stage
+      if (import.meta.env.DEV && (window as any).debugDragDrop && grouped[stageId].length > 1) {
+        console.log('✅ [STAGE SORT] Ordenação final da stage:', {
+          stage: stageName,
+          count: grouped[stageId].length,
+          positions: grouped[stageId].map((lead, index) => ({
+            index,
+            id: lead.id.substring(0, 8),
+            position: lead.position
+          }))
+        });
+      }
     });
     
     return grouped;
@@ -1296,9 +1277,21 @@ export const usePipelineKanban = ({
     }));
   }, [state.isUpdatingStage]);
 
-  const handleLeadMove = useCallback(async (leadId: string, newStageId: string, position?: number) => {
+  const handleLeadMove = useCallback(async (
+    leadId: string, 
+    newStageId: string, 
+    position?: number,
+    sourceStageId?: string,
+    destinationIndex?: number
+  ) => {
     try {
-      await moveLeadMutation.mutateAsync({ leadId, newStageId, position });
+      await moveLeadMutation.mutateAsync({ 
+        leadId, 
+        newStageId, 
+        position,
+        sourceStageId,
+        destinationIndex
+      });
     } catch (error) {
       logger.error('Erro ao mover lead', LogContext.LEADS, error);
       throw error;
@@ -1316,12 +1309,47 @@ export const usePipelineKanban = ({
 
   const handleUpdateLead = useCallback(async (leadId: string, updateData: any) => {
     try {
-      await updateLeadMutation.mutateAsync({ leadId, updateData });
+      // 🎯 CORREÇÃO: Se há posição no updateData, usar moveLeadMutation que suporta posição
+      if (updateData.position !== undefined && updateData.stage_id) {
+        console.log('🎯 [handleUpdateLead] Detectado movimento com posição específica:', {
+          leadId: leadId.substring(0, 8),
+          stage_id: updateData.stage_id.substring(0, 8),
+          position: updateData.position,
+          updateType: 'movement_with_position'
+        });
+        
+        await moveLeadMutation.mutateAsync({ 
+          leadId, 
+          newStageId: updateData.stage_id, 
+          position: updateData.position 
+        });
+      } else if (updateData.stage_id && updateData.position === undefined) {
+        // Movimento sem posição específica - usar posição padrão (fim da lista)
+        console.log('🔄 [handleUpdateLead] Movimento sem posição específica:', {
+          leadId: leadId.substring(0, 8),
+          stage_id: updateData.stage_id.substring(0, 8),
+          updateType: 'movement_to_end'
+        });
+        
+        await moveLeadMutation.mutateAsync({ 
+          leadId, 
+          newStageId: updateData.stage_id
+        });
+      } else {
+        // Usar mutation normal para outros updates (sem movimento de stage)
+        console.log('📝 [handleUpdateLead] Atualização de dados:', {
+          leadId: leadId.substring(0, 8),
+          updateType: 'data_update',
+          hasCustomData: !!updateData.custom_data
+        });
+        
+        await updateLeadMutation.mutateAsync({ leadId, updateData });
+      }
     } catch (error) {
       logger.error('Erro ao atualizar lead', LogContext.LEADS, error);
       throw error;
     }
-  }, [updateLeadMutation]);
+  }, [updateLeadMutation, moveLeadMutation]);
 
   const refreshData = useCallback(async () => {
     // ✅ CORREÇÃO: Verificar se timer já existe antes de criar um novo
@@ -1380,6 +1408,35 @@ export const usePipelineKanban = ({
   // EFEITOS
   // ============================================
 
+  // ✅ FILTRO POR PERÍODO: Event listener para conectar filtro de data
+  useEffect(() => {
+    const handleDateFilterChange = (event: CustomEvent) => {
+      const { dateRange } = event.detail;
+      
+      logger.debouncedLog(
+        'pipeline-date-filter-event',
+        'debug',
+        'Evento de filtro de data recebido',
+        LogContext.FILTERS,
+        {
+          pipelineId: pipelineId.substring(0, 8),
+          hasDateRange: !!dateRange,
+          dateRange
+        },
+        1000
+      );
+      
+      updateDateRange(dateRange);
+    };
+
+    // Adicionar listener para eventos de filtro de data
+    window.addEventListener('pipeline-date-filter-changed', handleDateFilterChange as EventListener);
+    
+    return () => {
+      window.removeEventListener('pipeline-date-filter-changed', handleDateFilterChange as EventListener);
+    };
+  }, [updateDateRange, pipelineId]);
+
   // Cleanup ao desmontar
   useEffect(() => {
     return () => {
@@ -1432,14 +1489,14 @@ export const usePipelineKanban = ({
         if (!Array.isArray(old)) return old;
         
         // Verificar se há leads com flags otimistas antigas
-        const hasOptimisticFlags = old.some((lead: any) => lead.isOptimistic);
+        const hasOptimisticFlags = old.some((lead: any) => (lead as any).isOptimistic);
         if (!hasOptimisticFlags) return old;
         
         console.log('🧹 [CLEANUP] Limpando flags otimistas persistentes');
         
         // Limpar todas as flags otimistas
         return old.map((lead: any) => {
-          if (lead.isOptimistic || lead.isCreating || lead.tempId) {
+          if ((lead as any).isOptimistic || (lead as any).isCreating || (lead as any).tempId) {
             return {
               ...lead,
               isOptimistic: false,
@@ -1472,7 +1529,8 @@ export const usePipelineKanban = ({
     hasError: !!(pipelineQuery.error || leadsQuery.error),
     renderCount: performanceMetrics.renderCount,
     avgRenderTime: performanceMetrics.averageRenderTime,
-    slowRenders: performanceMetrics.slowRenders
+    slowRenders: performanceMetrics.slowRenders,
+    errorCount: (pipelineQuery.error ? 1 : 0) + (leadsQuery.error ? 1 : 0)
   }), [
     pipelineId,
     pipelineQuery.data?.name,

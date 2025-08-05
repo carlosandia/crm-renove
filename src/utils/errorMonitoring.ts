@@ -304,7 +304,7 @@ class FrontendErrorMonitoringService {
     const startTime = performance.now();
     // AIDEV-NOTE: Usar startTimer público ao invés de método privado timer
     if (logger.hasTimer && !logger.hasTimer(operationName)) {
-      logger.startTimer(operationName, context.operation || 'PERFORMANCE');
+      logger.startTimer(operationName, { operation: context.operation || 'PERFORMANCE' });
     }
 
     return Promise.resolve(operation())
@@ -312,7 +312,7 @@ class FrontendErrorMonitoringService {
         const duration = performance.now() - startTime;
         // AIDEV-NOTE: Usar endTimer público ao invés de método privado timer.end
         if (logger.hasTimer && logger.hasTimer(operationName)) {
-          logger.endTimer(operationName, context.operation || 'PERFORMANCE');
+          logger.endTimer(operationName, { operation: context.operation || 'PERFORMANCE' });
         }
         
         // Capturar operações muito lentas como warning
@@ -330,7 +330,7 @@ class FrontendErrorMonitoringService {
         const duration = performance.now() - startTime;
         // AIDEV-NOTE: Usar endTimer público ao invés de método privado timer.end
         if (logger.hasTimer && logger.hasTimer(operationName)) {
-          logger.endTimer(operationName, context.operation || 'PERFORMANCE');
+          logger.endTimer(operationName, { operation: context.operation || 'PERFORMANCE' });
         }
         
         this.captureError(error, {

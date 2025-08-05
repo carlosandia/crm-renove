@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { supabase } from '../lib/supabase';
 import { logger } from '../utils/logger';
 import { Search, Filter, ThumbsUp, ThumbsDown, Clock, User, Building, Eye, X, ChevronDown, ChevronUp, Facebook, Chrome, Linkedin, Globe, FileText, Zap } from 'lucide-react';

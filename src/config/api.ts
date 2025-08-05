@@ -1,6 +1,8 @@
 // Configuração centralizada da API
+import { environmentConfig } from './environment';
+
 export const API_CONFIG = {
-  BASE_URL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001',
+  BASE_URL: environmentConfig.urls.api,
   ENDPOINTS: {
     // Auth
     AUTH: '/api/auth',

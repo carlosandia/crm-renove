@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { z } from 'zod';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { supabase } from '../lib/supabase';
 import { useAsyncState } from './useAsyncState';
 import { parseSafe, validateArray, formatValidationError } from '../shared/utils/validation';
@@ -495,7 +495,7 @@ export function useApiCrud<T extends Record<string, unknown>>(config: ApiConfig)
   const updateState = useAsyncState<T>();
   const deleteState = useAsyncState<void>();
 
-  const baseUrl = config.baseUrl || process.env.REACT_APP_API_URL || 'http://127.0.0.1:3001';
+  const baseUrl = config.baseUrl || process.env.REACT_APP_API_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
 
   // Headers padrão com autenticação
   const getHeaders = useCallback(() => {

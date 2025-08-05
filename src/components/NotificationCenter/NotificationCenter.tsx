@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Bell, X, Check, Clock, AlertCircle, Info, CheckCircle, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { supabase } from '../../lib/supabase';
 import { logger } from '../../utils/logger';
 import { useArrayState } from '../../hooks/useArrayState';
@@ -66,7 +66,8 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 2000);
         
-        const healthResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'}/api/health`, {
+        const { environmentConfig } = await import('../../config/environment');
+        const healthResponse = await fetch(`${environmentConfig.urls.api}/health`, {
           signal: controller.signal,
           method: 'GET',
           headers: {

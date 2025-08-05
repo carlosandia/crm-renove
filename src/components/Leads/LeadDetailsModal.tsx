@@ -42,7 +42,7 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
       probabilidade: lead.probability?.toString()
     },
     temperature_level: (lead.lead_temperature as 'warm' | 'hot' | 'cold' | 'frozen') || 'warm',
-    status: lead.status === 'converted' ? 'won' : lead.status === 'lost' ? 'lost' : 'active',
+    status: lead.status === 'converted' ? 'ganho' : lead.status === 'lost' ? 'perdido' : 'active',
     created_at: lead.created_at,
     updated_at: lead.updated_at,
     assigned_to: lead.assigned_to,

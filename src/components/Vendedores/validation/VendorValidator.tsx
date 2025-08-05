@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { useAuth } from '../../../contexts/AuthContext';
+import { useAuth } from '../../../providers/AuthProvider';
 import { supabase } from '../../../lib/supabase';
 import { logger } from '../../../lib/logger';
 import { Eye, EyeOff, CheckCircle, XCircle, Loader2, AlertCircle } from 'lucide-react';

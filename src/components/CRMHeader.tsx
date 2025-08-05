@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { 
   BarChart3, 
   Users, 
@@ -137,8 +137,8 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
       return [
         { id: 'Dashboard Admin', label: 'Dashboard', icon: BarChart3, category: 'primary' },
         { id: 'Leads', label: 'Leads', icon: Users, category: 'primary' },
-        { id: 'Gestão de pipeline', label: 'Pipelines', icon: GitBranch, category: 'primary' },
-        { id: 'Vendedores', label: 'Vendedores', icon: Users, category: 'secondary' },
+        { id: 'Gestão de pipeline', label: 'Negócios', icon: GitBranch, category: 'primary' },
+        { id: 'Vendedores', label: 'Equipe', icon: Users, category: 'secondary' },
         { id: 'Gestão de formulários', label: 'Formulários', icon: FileText, category: 'secondary' },
         { id: 'Acompanhamento', label: 'Acompanhamento', icon: Eye, category: 'secondary' },
         { id: 'Integrações', label: 'Integrações', icon: Settings, category: 'secondary' }
@@ -148,7 +148,7 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
     if (user?.role === 'member') {
       return [
         { id: 'Meu Dashboard', label: 'Dashboard', icon: BarChart3, category: 'primary' },
-        { id: 'Pipeline', label: 'Pipeline', icon: GitBranch, category: 'primary' },
+        { id: 'Pipeline', label: 'Negócios', icon: GitBranch, category: 'primary' },
         { id: 'Leads', label: 'Leads', icon: Users, category: 'primary' },
         { id: 'Acompanhamento', label: 'Tarefas', icon: Eye, category: 'secondary' },
         { id: 'Calendário Público', label: 'Calendário', icon: Calendar, category: 'secondary' },

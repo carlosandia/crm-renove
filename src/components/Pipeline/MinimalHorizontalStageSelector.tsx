@@ -7,9 +7,16 @@
 import React, { useState, useEffect } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { registerStageMove } from '../../utils/historyUtils';
 import { toast } from 'sonner';
+// CORREÇÃO 3: Componentes para hover effects melhorados
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '../ui/tooltip';
 
 interface Stage {
   id: string;
@@ -249,68 +256,115 @@ export const MinimalHorizontalStageSelector: React.FC<MinimalHorizontalStageSele
   }
 
   return (
-    <div className="flex items-center space-x-1 py-1">
-      {stages.map((stage, index) => {
-        const status = getStageStatus(stage);
-        const isChanging = changingStageId === stage.id;
-        const clickable = canClickStage(stage);
-        
-        return (
-          <React.Fragment key={stage.id}>
-            {/* Círculo da Stage */}
-            <div className="flex flex-col items-center">
-              <button
-                onClick={() => clickable ? handleStageChange(stage.id) : undefined}
-                disabled={!clickable}
-                className={`relative w-5 h-5 rounded-full transition-all duration-200 flex items-center justify-center text-xs font-medium ${
-                  status === 'completed'
-                    ? 'bg-green-500 text-white hover:bg-green-600' // Verde para completado
-                    : status === 'current'
-                    ? 'bg-blue-500 text-white ring-2 ring-blue-200' // Azul para atual
-                    : 'bg-gray-200 text-gray-500 hover:bg-gray-300' // Cinza para futuro
-                } ${
-                  clickable ? 'cursor-pointer hover:scale-110' : 'cursor-default'
-                } ${
-                  isChanging ? 'animate-pulse' : ''
-                }`}
-                title={`${stage.name}${status === 'current' ? ' (Atual)' : ''}`}
-              >
-                {isChanging ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : status === 'completed' ? (
-                  <Check className="w-3 h-3" />
-                ) : status === 'current' ? (
-                  <div className="w-2 h-2 bg-white rounded-full" />
-                ) : (
-                  <div className="w-2 h-2 bg-gray-400 rounded-full" />
-                )}
-              </button>
-              
-              {/* Label da Stage - Apenas para stage atual em telas maiores */}
-              {status === 'current' && (
-                <span className="hidden sm:block text-xs text-gray-600 mt-1 font-medium max-w-16 truncate">
-                  {stage.name}
-                </span>
+    <TooltipProvider>
+      <div className="flex items-center space-x-1 py-1">
+        {stages.map((stage, index) => {
+          const status = getStageStatus(stage);
+          const isChanging = changingStageId === stage.id;
+          const clickable = canClickStage(stage);
+          
+          return (
+            <React.Fragment key={stage.id}>
+              {/* CORREÇÃO 3: Círculo da Stage com Tooltip melhorado */}
+              <div className="flex flex-col items-center">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => clickable ? handleStageChange(stage.id) : undefined}
+                      disabled={!clickable}
+                      className={`relative w-5 h-5 rounded-full transition-all duration-300 flex items-center justify-center text-xs font-medium transform group ${
+                        status === 'completed'
+                          ? 'bg-green-500 text-white hover:bg-green-600 hover:shadow-lg hover:shadow-green-200' 
+                          : status === 'current'
+                          ? 'bg-blue-500 text-white ring-2 ring-blue-200 shadow-md hover:ring-4 hover:ring-blue-100' 
+                          : 'bg-gray-200 text-gray-500 hover:bg-blue-100 hover:text-blue-600 hover:shadow-md hover:shadow-blue-100' 
+                      } ${
+                        clickable ? 'cursor-pointer hover:scale-110 hover:z-10 active:scale-95' : 'cursor-default'
+                      } ${
+                        isChanging ? 'animate-pulse' : ''
+                      }`}
+                    >
+                      {isChanging ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : status === 'completed' ? (
+                        <Check className="w-3 h-3" />
+                      ) : status === 'current' ? (
+                        <div className="w-2 h-2 bg-white rounded-full" />
+                      ) : (
+                        <div className="w-2 h-2 bg-gray-400 rounded-full" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  {/* CORREÇÃO 3: Tooltip com informações melhoradas */}
+                  <TooltipContent side="top" className="bg-gray-900 text-white px-3 py-2 rounded-lg shadow-lg">
+                    <div className="text-center">
+                      <div className="font-semibold text-sm">{stage.name}</div>
+                      <div className="text-xs text-gray-300 mt-1">
+                        {status === 'current' && '✓ Etapa atual'}
+                        {status === 'completed' && '✅ Etapa concluída'}
+                        {status === 'future' && clickable && '👆 Clique para mover para esta etapa'}
+                        {status === 'future' && !clickable && '⏸️ Etapa futura'}
+                      </div>
+                      {/* CORREÇÃO 3: Mostrar posição na pipeline */}
+                      <div className="text-xs text-gray-400 mt-1">
+                        Posição {stage.order} de {stages.length}
+                      </div>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+                
+                {/* Label da Stage - CORREÇÃO 3: Melhorado com Magic UI styling sempre visível */}
+                <div className="text-center mt-1">
+                  <span className={`text-xs font-medium max-w-20 block truncate transition-all duration-300 transform ${
+                    status === 'current' 
+                      ? 'text-blue-600 scale-105 font-semibold' 
+                      : status === 'completed' 
+                      ? 'text-green-600 scale-100' 
+                      : clickable
+                      ? 'text-gray-500 hover:text-gray-700 hover:scale-105 cursor-pointer'
+                      : 'text-gray-400'
+                  }`}>
+                    {stage.name}
+                  </span>
+                  
+                  {/* CORREÇÃO 3: Mini indicador de progresso abaixo do nome */}
+                  <div className={`w-full h-0.5 mt-1 rounded-full transition-all duration-300 ${
+                    status === 'current' 
+                      ? 'bg-blue-500 shadow-sm' 
+                      : status === 'completed' 
+                      ? 'bg-green-500 shadow-sm' 
+                      : 'bg-transparent'
+                  }`} />
+                </div>
+              </div>
+
+              {/* CORREÇÃO 3: Linha de Conexão com animação Magic UI melhorada */}
+              {index < stages.length - 1 && (
+                <div className="relative flex-1 flex items-center px-2">
+                  <div className={`w-full h-px transition-all duration-500 ${
+                    status === 'completed' 
+                      ? 'bg-gradient-to-r from-green-400 to-green-300 shadow-sm' 
+                      : 'bg-gray-200 hover:bg-gradient-to-r hover:from-blue-200 hover:to-blue-100'
+                  }`} style={{ minWidth: '16px', maxWidth: '32px' }}>
+                    {/* Mini pulse indicator para stage progress */}
+                    {status === 'completed' && (
+                      <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1 h-1 bg-green-400 rounded-full animate-pulse" />
+                    )}
+                  </div>
+                </div>
               )}
-            </div>
+            </React.Fragment>
+          );
+        })}
 
-            {/* Linha de Conexão */}
-            {index < stages.length - 1 && (
-              <div className={`flex-1 h-px transition-colors duration-200 ${
-                status === 'completed' ? 'bg-green-300' : 'bg-gray-200'
-              }`} style={{ minWidth: '16px', maxWidth: '32px' }} />
-            )}
-          </React.Fragment>
-        );
-      })}
-
-      {/* Indicador de loading global */}
-      {loading && (
-        <div className="ml-2 flex items-center space-x-1">
-          <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
-          <span className="text-xs text-blue-600">Atualizando...</span>
-        </div>
-      )}
-    </div>
+        {/* Indicador de loading global melhorado */}
+        {loading && (
+          <div className="ml-2 flex items-center space-x-1">
+            <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
+            <span className="text-xs text-blue-600 font-medium">Atualizando...</span>
+          </div>
+        )}
+      </div>
+    </TooltipProvider>
   );
 };

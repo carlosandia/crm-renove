@@ -563,7 +563,8 @@ const PublicFormRenderer: React.FC<PublicFormRendererProps> = ({
 
       console.log(`🚀 Enviando para: ${submitEndpoint}`);
 
-      const API_BASE_URL = 'http://127.0.0.1:3001';
+      const { environmentConfig } = await import('../../config/environment');
+      const API_BASE_URL = environmentConfig.urls.api.replace('/api', '');
       const response = await fetch(`${API_BASE_URL}${submitEndpoint}`, {
         method: 'POST',
         headers: {

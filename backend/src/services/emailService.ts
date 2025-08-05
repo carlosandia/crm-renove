@@ -26,7 +26,9 @@ export class EmailService {
   private readonly companyName: string;
 
   constructor() {
-    this.appUrl = process.env.APP_URL || 'http://127.0.0.1:8080';
+    // Usar configuração centralizada do backend
+    const { backendConfig } = require('../config/environment');
+    this.appUrl = process.env.APP_URL || backendConfig.urls.app;
     this.companyName = process.env.COMPANY_NAME || 'CRM Marketing';
     this.transporter = this.createTransporter();
   }

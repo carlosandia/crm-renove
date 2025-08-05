@@ -1,7 +1,7 @@
 import * as React from "react"
 import { motion } from "framer-motion"
 import { Button } from "./button"
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 import { Loader2, CheckCircle } from "lucide-react"
 
 interface AnimatedLoginButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -50,7 +50,7 @@ const AnimatedLoginButton = React.forwardRef<HTMLButtonElement, AnimatedLoginBut
           damping: 30
         }
       }
-    }
+    } as any
 
     const iconVariants = {
       loading: {
@@ -58,17 +58,17 @@ const AnimatedLoginButton = React.forwardRef<HTMLButtonElement, AnimatedLoginBut
         transition: {
           duration: 1,
           repeat: Infinity,
-          ease: "linear"
+          ease: "linear" as any
         }
       },
       success: {
         scale: [0, 1.2, 1],
         transition: {
           duration: 0.5,
-          ease: "easeOut"
+          ease: "easeOut" as any
         }
       }
-    }
+    } as any
 
     const textVariants = {
       initial: { opacity: 1, y: 0 },
@@ -81,7 +81,7 @@ const AnimatedLoginButton = React.forwardRef<HTMLButtonElement, AnimatedLoginBut
         y: [-2, 0],
         transition: { duration: 0.3 }
       }
-    }
+    } as any
 
     const getCurrentState = () => {
       if (isSuccess) return "success"

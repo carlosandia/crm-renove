@@ -4,6 +4,30 @@
    ============================================ */
 
 /* ============================================
+   DRAG & DROP OPTIMIZATIONS
+   ============================================ */
+
+/* ✅ OVERFLOW ANCHOR: Evita problemas de posicionamento durante drop */
+.stage-content,
+.kanban-stage,
+.kanban-container {
+  overflow-anchor: none;
+}
+
+/* ✅ DROP ZONE DETECTION: Melhora detecção de zonas intermediárias */
+.stage-content {
+  /* Facilita detecção de drop zones entre cards */
+  position: relative;
+  z-index: 1;
+}
+
+/* ✅ UNIFORM SPACING: Espaçamento consistente para todos os cards */
+.stage-content > div[data-rfd-draggable-context-id] {
+  /* Garante espaçamento uniforme controlado pelo space-y-2 do container pai */
+  margin-bottom: 0 !important;
+}
+
+/* ============================================
    LAYOUT PRINCIPAL
    ============================================ */
 
@@ -125,6 +149,16 @@
   animation: fadeInUp 0.3s ease-out;
 }
 
+/* ✅ CURSOR STATES - Suporte completo para drag feedback */
+.lead-card:active {
+  cursor: grabbing !important;
+}
+
+.lead-card[data-dragging="true"] {
+  cursor: grabbing !important;
+  pointer-events: none;
+}
+
 .lead-card:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   transform: translateY(-2px);
@@ -136,6 +170,17 @@
   transform: rotate(3deg) scale(1.02);
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
   z-index: 1000;
+  cursor: grabbing !important;
+  pointer-events: none;
+}
+
+/* ✅ GLOBAL DRAG STATE - Cursor global durante drag ativo */
+body.dragging-active {
+  cursor: grabbing !important;
+}
+
+body.dragging-active * {
+  cursor: grabbing !important;
 }
 
 .lead-card::before {

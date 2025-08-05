@@ -127,12 +127,34 @@ export class LeadTasksService {
   }
 
   /**
-   * Criar nova tarefa
+   * Criar nova tarefa na tabela cadence_task_instances
    */
   static async createTask(data: CreateLeadTaskData): Promise<LeadTask> {
+    // ✅ CORREÇÃO CRÍTICA: Mapear dados para cadence_task_instances
+    const taskInstanceData = {
+      tenant_id: data.tenant_id,
+      lead_id: data.lead_id,
+      pipeline_id: data.pipeline_id,
+      stage_id: data.etapa_id, // etapa_id -> stage_id
+      cadence_step_id: data.cadence_task_id || null,
+      day_offset: data.day_offset || 0,
+      task_order: data.task_order || 1,
+      title: data.descricao, // descricao -> title
+      description: data.descricao,
+      activity_type: data.tipo, // tipo -> activity_type
+      channel: data.canal, // canal -> channel
+      template_content: data.template_content,
+      status: 'pending',
+      scheduled_at: data.data_programada, // data_programada -> scheduled_at
+      is_manual_activity: false,
+      auto_generated: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
     const { data: task, error } = await supabase
-      .from('lead_tasks')
-      .insert(data)
+      .from('cadence_task_instances')
+      .insert(taskInstanceData)
       .select()
       .single();
 
@@ -140,7 +162,27 @@ export class LeadTasksService {
       throw new Error(`Erro ao criar tarefa: ${error.message}`);
     }
 
-    return task;
+    // ✅ CORREÇÃO: Mapear resposta de volta para compatibilidade
+    const mappedTask: LeadTask = {
+      id: task.id,
+      lead_id: task.lead_id,
+      pipeline_id: task.pipeline_id,
+      etapa_id: task.stage_id,
+      descricao: task.title,
+      canal: task.channel as any,
+      tipo: task.activity_type as any,
+      status: task.status as any,
+      data_programada: task.scheduled_at,
+      executed_at: task.completed_at,
+      execution_notes: task.execution_notes,
+      template_content: task.template_content,
+      day_offset: task.day_offset,
+      stage_name: undefined, // Será preenchido pela view
+      created_at: task.created_at,
+      updated_at: task.updated_at
+    };
+
+    return mappedTask;
   }
 
   /**
@@ -209,11 +251,22 @@ export class LeadTasksService {
     tenantId?: string
   ): Promise<number> {
     try {
+      console.log('🔄 [LeadTasksService] Iniciando geração de tarefas:', {
+        leadId: leadId.substring(0, 8),
+        pipelineId: pipelineId.substring(0, 8),
+        stageId: stageId.substring(0, 8),
+        stageName,
+        assignedTo: assignedTo?.substring(0, 8),
+        tenantId: tenantId?.substring(0, 8)
+      });
+
       if (!tenantId) {
-        console.warn('Tenant ID não fornecido para geração de tarefas');
+        console.warn('❌ [LeadTasksService] Tenant ID não fornecido para geração de tarefas');
         return 0;
       }
 
+      console.log('🔍 [LeadTasksService] Buscando configuração de cadência...');
+      
       // Buscar configuração de cadência para esta etapa
       const cadenceResult = await CadenceService.getCadenceConfigForStage(
         pipelineId,
@@ -221,8 +274,15 @@ export class LeadTasksService {
         tenantId
       );
 
+      console.log('📋 [LeadTasksService] Resultado da busca de cadência:', {
+        success: cadenceResult.success,
+        hasTasks: !!cadenceResult.tasks,
+        tasksLength: cadenceResult.tasks?.length || 0,
+        stage: stageName
+      });
+
       if (!cadenceResult.success || !cadenceResult.tasks || cadenceResult.tasks.length === 0) {
-        console.log(`Nenhuma configuração de cadência encontrada para etapa "${stageName}"`);
+        console.log(`⚠️ [LeadTasksService] Nenhuma configuração de cadência encontrada para etapa "${stageName}"`);
         return 0;
       }
 
@@ -230,9 +290,18 @@ export class LeadTasksService {
       const entryDate = new Date();
       let tasksCreated = 0;
 
+      console.log(`🔨 [LeadTasksService] Criando ${tasks.length} tarefas...`);
+      
       // Criar cada tarefa da configuração
       for (const cadenceTask of tasks) {
         try {
+          console.log(`🔨 [LeadTasksService] Processando tarefa:`, {
+            order: cadenceTask.task_order,
+            dayOffset: cadenceTask.day_offset,
+            title: cadenceTask.task_title,
+            channel: cadenceTask.channel
+          });
+
           // Calcular data programada baseada no day_offset
           const scheduledDate = new Date(entryDate);
           scheduledDate.setDate(scheduledDate.getDate() + cadenceTask.day_offset);
@@ -255,20 +324,44 @@ export class LeadTasksService {
             created_by: 'system'
           };
 
-          await this.createTask(taskData);
+          console.log(`💾 [LeadTasksService] Criando tarefa no banco:`, {
+            lead_id: leadId.substring(0, 8),
+            canal: taskData.canal,
+            day_offset: taskData.day_offset,
+            scheduled: scheduledDate.toISOString().substring(0, 10)
+          });
+
+          const createdTask = await this.createTask(taskData);
           tasksCreated++;
 
-          console.log(`✅ Tarefa criada: D+${cadenceTask.day_offset} - ${cadenceTask.task_title}`);
+          console.log(`✅ [LeadTasksService] Tarefa criada: D+${cadenceTask.day_offset} - ${cadenceTask.task_title}`, {
+            taskId: createdTask.id.substring(0, 8)
+          });
         } catch (taskError: any) {
-          console.warn(`Erro ao criar tarefa individual:`, taskError.message);
+          console.error(`❌ [LeadTasksService] Erro ao criar tarefa individual:`, {
+            error: taskError.message,
+            task: cadenceTask.task_title,
+            dayOffset: cadenceTask.day_offset
+          });
         }
       }
 
-      console.log(`✅ ${tasksCreated} tarefas de cadência geradas para lead ${leadId} na etapa "${stageName}"`);
+      console.log(`🎉 [LeadTasksService] Geração concluída:`, {
+        tasksCreated,
+        leadId: leadId.substring(0, 8),
+        stageName,
+        message: `${tasksCreated} tarefas de cadência geradas com sucesso`
+      });
+      
       return tasksCreated;
 
     } catch (error: any) {
-      console.warn('Erro ao gerar tarefas automáticas:', error.message);
+      console.error('❌ [LeadTasksService] Erro ao gerar tarefas automáticas:', {
+        error: error.message,
+        stack: error.stack,
+        leadId: leadId?.substring(0, 8),
+        stageName
+      });
       return 0;
     }
   }

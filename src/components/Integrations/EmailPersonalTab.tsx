@@ -11,7 +11,7 @@ import {
   Loader2,
   TestTube
 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { showSuccessToast, showErrorToast, showWarningToast } from '../../lib/toast';
 import { ShimmerButton } from '../ui/shimmer-button';
 import { Button } from '../ui/button';

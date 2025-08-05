@@ -35,7 +35,7 @@ export const outcomeReasonsApi = {
   },
 
   // ✅ Atualizar motivo existente
-  updateReason: async (data: UpdateOutcomeReasonRequest): Promise<OutcomeReason> => {
+  updateReason: async (data: UpdateOutcomeReasonRequest & { id: string }): Promise<OutcomeReason> => {
     const { id, ...updateData } = data;
     const response = await api.put(`/outcome-reasons/${id}`, updateData);
     return response.data;
@@ -66,6 +66,12 @@ export const outcomeReasonsApi = {
 
   // ✅ Buscar histórico de um lead
   getLeadHistory: async (leadId: string): Promise<LeadOutcomeHistory[]> => {
+    // ✅ CORREÇÃO CRÍTICA: Validar leadId antes de fazer chamada
+    if (!leadId || leadId.trim().length === 0 || leadId === 'undefined' || leadId === 'null') {
+      console.warn('⚠️ [outcomeReasonsApi] leadId inválido, retornando array vazio:', leadId);
+      return [];
+    }
+
     const response = await api.get(`/outcome-reasons/history/${leadId}`);
     return response.data;
   },

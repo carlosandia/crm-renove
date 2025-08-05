@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAdminDashboard } from '../hooks/useAdminDashboard';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { 
   Target, 
   TrendingUp, 

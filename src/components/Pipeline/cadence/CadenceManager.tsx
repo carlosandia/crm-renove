@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../ui/card';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
 import { Textarea } from '../../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select';
-// ✅ CORREÇÃO: Removido imports de Dialog - substituído por expansão inline
+// ✅ NOVO: Imports do Dialog para modal unificado
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogOverlay, DialogPortal } from '../../ui/dialog';
 import { Badge } from '../../ui/badge';
 import { Switch } from '../../ui/switch';
 import { AnimatedCard } from '../../ui/animated-card';
@@ -30,8 +32,7 @@ import {
   Play,
   Pause,
   Copy,
-  Eye,
-  EyeOff
+  // ✅ CORREÇÃO: Removidos Eye, EyeOff - ícones desnecessários conforme solicitação
 } from 'lucide-react';
 
 // Shared components
@@ -64,6 +65,10 @@ export interface UseCadenceManagerProps {
   initialCadences?: CadenceConfig[];
   availableStages?: Array<{ name: string; order_index: number }>;
   onCadencesChange?: (cadences: CadenceConfig[]) => void;
+  // ✅ NOVO: Props para integração com API
+  pipelineId?: string;
+  tenantId?: string;
+  enableApiIntegration?: boolean;
 }
 
 export interface UseCadenceManagerReturn {
@@ -83,7 +88,6 @@ export interface UseCadenceManagerReturn {
   setShowCadenceModal: React.Dispatch<React.SetStateAction<boolean>>;
   showTaskModal: boolean;
   setShowTaskModal: React.Dispatch<React.SetStateAction<boolean>>;
-  handleAddCadence: () => void;
   handleEditCadence: (index: number) => void;
   handleSaveCadence: () => void;
   handleDeleteCadence: (index: number) => void;
@@ -95,6 +99,21 @@ export interface UseCadenceManagerReturn {
   handleToggleTaskActive: (cadenceIndex: number, taskIndex: number) => void;
   getChannelIcon: (channel: string) => JSX.Element;
   getActionIcon: (actionType: string) => JSX.Element;
+  // ✅ NOVA FUNÇÃO: Adicionar atividade diretamente para uma etapa
+  handleAddActivityForStage: (stageName: string) => void;
+  // ✅ NOVAS FUNÇÕES: Modal unificado
+  showUnifiedModal: boolean;
+  setShowUnifiedModal: React.Dispatch<React.SetStateAction<boolean>>;
+  selectedStage: string;
+  newActivity: CadenceTask;
+  setNewActivity: React.Dispatch<React.SetStateAction<CadenceTask>>;
+  handleSaveUnifiedActivity: () => void;
+  handleCancelUnified: () => void;
+  // ✅ NOVA FUNÇÃO: Salvar todas as configurações no banco de dados
+  handleSaveAllChanges: () => Promise<void>;
+  // ✅ NOVO: Estados para feedback visual
+  isSaving: boolean;
+  savingMessage: string;
 }
 
 // Constantes
@@ -116,45 +135,29 @@ const ACTION_TYPE_OPTIONS = [
   { value: 'proposta', label: 'Enviar Proposta', icon: FileCheck },
 ];
 
-const DEFAULT_TASKS: CadenceTask[] = [
-  {
-    day_offset: 0,
-    task_order: 1,
-    channel: 'email',
-    action_type: 'mensagem',
-    task_title: 'Primeiro contato',
-    task_description: 'Enviar e-mail de boas-vindas e apresentação',
-    template_content: 'Olá [NOME], bem-vindo(a)! Gostaríamos de apresentar nossos serviços...',
-    is_active: true
-  },
-  {
-    day_offset: 1,
-    task_order: 2,
-    channel: 'whatsapp',
-    action_type: 'mensagem',
-    task_title: 'Follow-up WhatsApp',
-    task_description: 'Mensagem de acompanhamento via WhatsApp',
-    template_content: 'Oi [NOME]! Espero que tenha recebido nosso e-mail. Tem alguma dúvida?',
-    is_active: true
-  },
-  {
-    day_offset: 3,
-    task_order: 3,
-    channel: 'ligacao',
-    action_type: 'ligacao',
-    task_title: 'Ligação de qualificação',
-    task_description: 'Realizar ligação para qualificar o lead',
-    template_content: 'Roteiro: apresentar empresa, entender necessidades, agendar demonstração',
-    is_active: true
-  }
-];
+// ✅ CORREÇÃO: Removido DEFAULT_TASKS - usuário deve criar atividades do zero
+// Template pré-pronto removido conforme solicitação do usuário
+
+// ✅ CORREÇÃO: Importar hooks de API
+import { useCadenceData } from '../../../hooks/useCadenceData';
+import { cadenceQueryKeys } from '../../../services/cadenceApiService';
 
 // Hook customizado para gerenciar cadências
 export function useCadenceManager({ 
   initialCadences = [], 
   availableStages = [],
-  onCadencesChange 
+  onCadencesChange,
+  // ✅ NOVO: Props para integração com API
+  pipelineId,
+  tenantId,
+  enableApiIntegration = false
 }: UseCadenceManagerProps = {}): UseCadenceManagerReturn {
+  // ✅ NOVO: QueryClient para invalidação de cache
+  const queryClient = useQueryClient();
+  
+  // ✅ NOVO: Hook para carregar dados da API (se habilitado)
+  const apiData = useCadenceData(enableApiIntegration ? pipelineId : undefined);
+  
   const [cadenceConfigs, setCadenceConfigs] = useState<CadenceConfig[]>([]);
   const [editingCadence, setEditingCadence] = useState<CadenceConfig | null>(null);
   const [editingTask, setEditingTask] = useState<CadenceTask | null>(null);
@@ -163,19 +166,129 @@ export function useCadenceManager({
   const [showCadenceModal, setShowCadenceModal] = useState(false);
   const [showTaskModal, setShowTaskModal] = useState(false);
 
-  // Inicializar com dados fornecidos
+  // ✅ CORREÇÃO: Usar useRef para evitar comparações custosas durante render
+  const initialCadencesRef = useRef<CadenceConfig[]>([]);
+  
+  // ✅ NOVO: Estado para controlar origem dos dados
+  const [isLoadingFromApi, setIsLoadingFromApi] = useState(false);
+  
+  // ✅ NOVO: Estado para controlar se está editando (pausar sincronização API)
+  const [isEditing, setIsEditing] = useState(false);
+  
+  // ✅ NOVO: Estados para modal unificado
+  const [showUnifiedModal, setShowUnifiedModal] = useState(false);
+  const [selectedStage, setSelectedStage] = useState<string>('');
+  const [newActivity, setNewActivity] = useState<CadenceTask>({
+    day_offset: 0,
+    task_order: 1,
+    channel: 'email',
+    action_type: 'mensagem',
+    task_title: '',
+    task_description: '',
+    template_content: '',
+    is_active: true
+  });
+  
+  // ✅ CORREÇÃO: Estado para controlar se acabou de fazer uma exclusão
+  const [isPostDeletion, setIsPostDeletion] = React.useState(false);
+  
+  // ✅ NOVO: Estado para feedback visual de salvamento
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [savingMessage, setSavingMessage] = React.useState('');
+  
+  // ✅ OTIMIZADO: Throttling para logs de sincronização
+  const syncLogThrottleRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSyncLogTimeRef = useRef<number>(0);
+  
+  // ✅ NOVO: Priorizar dados da API se disponível
   useEffect(() => {
-    if (initialCadences.length > 0) {
-      setCadenceConfigs(initialCadences);
+    const now = Date.now();
+    const timeSinceLastLog = now - lastSyncLogTimeRef.current;
+    const MIN_LOG_INTERVAL = 3000; // 3 segundos entre logs de sincronização
+    
+    // ✅ CORREÇÃO: Não sincronizar se estiver editando OU logo após exclusão
+    if (enableApiIntegration && apiData.data && !apiData.isLoading && !isEditing && !isPostDeletion) {
+      // Log throttleado de sincronização
+      if (timeSinceLastLog > MIN_LOG_INTERVAL) {
+        if (syncLogThrottleRef.current) {
+          clearTimeout(syncLogThrottleRef.current);
+        }
+        
+        syncLogThrottleRef.current = setTimeout(() => {
+          console.log('🔄 [CadenceManager] Sincronização:', {
+            pipelineId: pipelineId?.substring(0, 8),
+            configs: apiData.data.length
+          });
+          lastSyncLogTimeRef.current = Date.now();
+        }, 500);
+      }
+      
+      // ✅ MELHORIA: Forçar atualização apenas se realmente necessário
+      const hasValidConfigs = apiData.data.length > 0;
+      const shouldForceUpdate = hasValidConfigs && cadenceConfigs.length === 0;
+      
+      setCadenceConfigs(apiData.data);
+      initialCadencesRef.current = [...apiData.data];
+      setIsLoadingFromApi(false);
+      return;
     }
-  }, [initialCadences]);
+    
+    // Fallback para dados iniciais se API não estiver habilitada ou disponível
+    const hasInitialData = initialCadences && initialCadences.length > 0;
+    const currentIsEmpty = !cadenceConfigs || cadenceConfigs.length === 0;
+    const isFirstLoad = initialCadencesRef.current.length === 0 && hasInitialData;
+    
+    if (isFirstLoad || (hasInitialData && currentIsEmpty && !enableApiIntegration)) {
+      console.log('🔄 [useCadenceManager] Carregando dados iniciais (props):', {
+        configsCount: initialCadences?.length || 0
+      });
+      setCadenceConfigs(initialCadences || []);
+      initialCadencesRef.current = initialCadences || [];
+    }
+  }, [initialCadences, apiData.data, apiData.isLoading, enableApiIntegration, pipelineId, cadenceConfigs, isEditing, isPostDeletion]);
 
-  // Notificar mudanças nas cadências
+  // ✅ SUPER OTIMIZADO: Debug com throttling agressivo
+  const prevConfigsLengthRef = useRef(0);
+  const configChangeLogThrottleRef = useRef<NodeJS.Timeout | null>(null);
+  
   useEffect(() => {
-    if (onCadencesChange) {
-      onCadencesChange(cadenceConfigs);
+    if (cadenceConfigs.length !== prevConfigsLengthRef.current) {
+      // Throttling agressivo de 4 segundos para logs de mudança
+      if (configChangeLogThrottleRef.current) {
+        clearTimeout(configChangeLogThrottleRef.current);
+      }
+      
+      configChangeLogThrottleRef.current = setTimeout(() => {
+        // Log apenas em modo verbose ou quando há mudanças significativas
+        if (import.meta.env.VITE_VERBOSE_LOGS === 'true' || Math.abs(cadenceConfigs.length - prevConfigsLengthRef.current) > 1) {
+          console.log('🔄 [CadenceManager] Configs:', {
+            count: cadenceConfigs.length,
+            trend: cadenceConfigs.length > prevConfigsLengthRef.current ? '+' : '-'
+          });
+        }
+      }, 4000);
+      
+      prevConfigsLengthRef.current = cadenceConfigs.length;
     }
-  }, [cadenceConfigs, onCadencesChange]);
+  }, [cadenceConfigs]);
+
+  // ✅ CORREÇÃO: Notificar mudanças usando ref pattern para evitar loops
+  const prevCadenceConfigsRef = React.useRef<CadenceConfig[]>([]);
+  const onCadencesChangeRef = React.useRef(onCadencesChange);
+  onCadencesChangeRef.current = onCadencesChange;
+  
+  useEffect(() => {
+    if (onCadencesChangeRef.current) {
+      // ✅ CORREÇÃO: Verificação simples por length ao invés de JSON.stringify
+      const prevLength = prevCadenceConfigsRef.current.length;
+      const currentLength = cadenceConfigs.length;
+      
+      if (prevLength !== currentLength || prevCadenceConfigsRef.current !== cadenceConfigs) {
+        onCadencesChangeRef.current(cadenceConfigs);
+        prevCadenceConfigsRef.current = [...cadenceConfigs]; // Clone shallow para evitar referência
+      }
+    }
+  }, [cadenceConfigs]); // ✅ CORREÇÃO: Remover onCadencesChange da dependency array
 
   const getChannelIcon = (channel: string) => {
     const channelOption = CHANNEL_OPTIONS.find(c => c.value === channel);
@@ -191,15 +304,450 @@ export function useCadenceManager({
     return <IconComponent className="h-4 w-4" />;
   };
 
-  const handleAddCadence = () => {
-    setEditingCadence({
-      stage_name: '',
-      stage_order: 0,
-      tasks: [...DEFAULT_TASKS],
+  // ✅ REMOVIDO: handleAddCadence - não mais necessário com workflow unificado
+
+  // ✅ NOVA FUNÇÃO: Adicionar atividade usando modal unificado
+  const handleAddActivityForStage = (stageName: string) => {
+    const existingConfig = cadenceConfigs.find(c => c.stage_name === stageName);
+    const nextOrder = existingConfig 
+      ? Math.max(...existingConfig.tasks.map(t => t.task_order), 0) + 1
+      : 1;
+    const nextDayOffset = existingConfig 
+      ? Math.max(...existingConfig.tasks.map(t => t.day_offset), 0) + 1
+      : 0;
+    
+    setSelectedStage(stageName);
+    setNewActivity({
+      day_offset: nextDayOffset,
+      task_order: nextOrder,
+      channel: 'email',
+      action_type: 'mensagem',
+      task_title: '',
+      task_description: '',
+      template_content: '',
       is_active: true
     });
-    setEditCadenceIndex(null);
-    setShowCadenceModal(true);
+    setShowUnifiedModal(true);
+  };
+
+  // ✅ NOVA FUNÇÃO: Salvar atividade via modal unificado (criação e edição)
+  const handleSaveUnifiedActivity = () => {
+    if (!newActivity.task_title || !selectedStage) return;
+
+    // ✅ NOVO: Ativar flag de edição para pausar sincronização API
+    setIsEditing(true);
+
+    const updatedCadences = [...cadenceConfigs];
+    
+    // ✅ NOVO: Verificar se está editando tarefa existente
+    if (editCadenceIndex !== null && editTaskIndex !== null) {
+      // Editando tarefa existente
+      updatedCadences[editCadenceIndex].tasks[editTaskIndex] = { ...newActivity };
+    } else if (editCadenceIndex !== null) {
+      // Adicionando nova tarefa à configuração existente
+      updatedCadences[editCadenceIndex].tasks.push(newActivity);
+    } else {
+      // ✅ CORREÇÃO REFORÇADA: Verificação ultra-robusta para evitar duplicação de etapas
+      // Normalizar nome da etapa para comparação
+      const normalizeStage = (stageName: string) => stageName.toLowerCase().trim().replace(/\s+/g, ' ');
+      const normalizedSelectedStage = normalizeStage(selectedStage);
+      
+      // Buscar configuração existente com múltiplos critérios
+      const existingConfigIndex = cadenceConfigs.findIndex(c => {
+        const normalizedExistingStage = normalizeStage(c.stage_name);
+        return normalizedExistingStage === normalizedSelectedStage;
+      });
+      
+      if (existingConfigIndex !== -1) {
+        // Etapa já existe - apenas adicionar atividade (REGRA DE NEGÓCIO CRÍTICA)
+        console.log('🔄 [CadenceManager] REGRA APLICADA: Adicionando atividade à etapa existente:', {
+          stageName: selectedStage,
+          existingConfigId: updatedCadences[existingConfigIndex].id?.substring(0, 8) || 'novo',
+          existingTasks: updatedCadences[existingConfigIndex].tasks.length,
+          businessRule: 'multiplas_tarefas_uma_etapa'
+        });
+        
+        // ✅ NOVA VALIDAÇÃO: Verificar se não estamos criando tarefa duplicada também
+        const existingTask = updatedCadences[existingConfigIndex].tasks.find(task => 
+          task.task_title.toLowerCase().trim() === newActivity.task_title.toLowerCase().trim() &&
+          task.day_offset === newActivity.day_offset
+        );
+        
+        if (existingTask) {
+          console.warn('⚠️ [CadenceManager] Tarefa similar já existe nesta etapa:', {
+            existingTitle: existingTask.task_title,
+            newTitle: newActivity.task_title,
+            dayOffset: newActivity.day_offset
+          });
+          // Continuar mesmo assim - usuário pode querer tarefas similares
+        }
+        
+        updatedCadences[existingConfigIndex].tasks.push(newActivity);
+      } else {
+        // ✅ CORREÇÃO: Criar nova configuração para etapa (etapas já são validadas na UI)
+        // Etapas só aparecem nos botões se já foram criadas na aba "Etapas"
+        const stage = availableStages.find(s => normalizeStage(s.name) === normalizedSelectedStage);
+        const stageOrder = stage?.order_index || 0;
+        
+        console.log('✅ [CadenceManager] Criando configuração para nova etapa:', {
+          stageName: selectedStage,
+          stageOrder: stageOrder,
+          businessRule: 'primeira_tarefa_da_etapa'
+        });
+        
+        const newConfig: CadenceConfig = {
+          stage_name: selectedStage,
+          stage_order: stageOrder,
+          tasks: [newActivity],
+          is_active: true
+        };
+        updatedCadences.push(newConfig);
+      }
+    }
+    
+    // Reorganizar ordem das tarefas na configuração afetada
+    const configIndex = editCadenceIndex !== null ? editCadenceIndex : updatedCadences.findIndex(c => c.stage_name === selectedStage);
+    if (configIndex !== -1) {
+      updatedCadences[configIndex].tasks.sort((a, b) => a.day_offset - b.day_offset || a.task_order - b.task_order);
+      updatedCadences[configIndex].tasks = updatedCadences[configIndex].tasks.map((task, index) => ({
+        ...task,
+        task_order: index + 1
+      }));
+    }
+    
+    setCadenceConfigs(updatedCadences);
+    
+    // Reset e fechar modal
+    setShowUnifiedModal(false);
+    setSelectedStage('');
+    setEditCadenceIndex(null); // ✅ NOVO: Reset índices de edição
+    setEditTaskIndex(null);
+    setNewActivity({
+      day_offset: 0,
+      task_order: 1,
+      channel: 'email',
+      action_type: 'mensagem',
+      task_title: '',
+      task_description: '',
+      template_content: '',
+      is_active: true
+    });
+  };
+
+  // ✅ NOVA FUNÇÃO: Cancelar modal unificado
+  const handleCancelUnified = () => {
+    setShowUnifiedModal(false);
+    setSelectedStage('');
+    setNewActivity({
+      day_offset: 0,
+      task_order: 1,
+      channel: 'email',
+      action_type: 'mensagem',
+      task_title: '',
+      task_description: '',
+      template_content: '',
+      is_active: true
+    });
+  };
+
+  // ✅ NOVA FUNÇÃO: Salvar todas as configurações no banco de dados
+  const handleSaveAllChanges = useCallback(async () => {
+    if (!pipelineId || !tenantId) {
+      console.warn('⚠️ [handleSaveAllChanges] pipelineId ou tenantId não disponível');
+      return;
+    }
+
+    if (cadenceConfigs.length === 0) {
+      console.log('ℹ️ [handleSaveAllChanges] Nenhuma configuração para salvar');
+      return;
+    }
+
+    try {  
+      setIsSaving(true);
+      setSavingMessage('Preparando salvamento...');
+      
+      console.log('💾 [handleSaveAllChanges] Salvando configurações de cadência:', {
+        pipelineId: pipelineId.substring(0, 8),
+        configsCount: cadenceConfigs.length,
+        configs: cadenceConfigs.map(c => ({ stage: c.stage_name, tasks: c.tasks.length }))
+      });
+
+      // Importar API diretamente para fazer as chamadas
+      const { api } = await import('../../../lib/api');
+
+      // ✅ NOVO: Detectar exclusões comparando estado inicial vs atual
+      const initialConfigs = initialCadencesRef.current || [];
+      const currentConfigs = cadenceConfigs;
+      
+      // Encontrar configurações que existiam inicialmente mas não estão no estado atual
+      const deletedConfigs = initialConfigs.filter(initialConfig => 
+        initialConfig.id && !currentConfigs.find(currentConfig => currentConfig.id === initialConfig.id)
+      );
+
+      // ✅ NOVO: Primeiro deletar configurações removidas
+      if (deletedConfigs.length > 0) {
+        setSavingMessage(`Excluindo ${deletedConfigs.length} configuração(ões)...`);
+        console.log(`🗑️ [handleSaveAllChanges] Detectadas ${deletedConfigs.length} configuração(ões) para exclusão`);
+        
+        for (let i = 0; i < deletedConfigs.length; i++) {
+          const configToDelete = deletedConfigs[i];
+          setSavingMessage(`Excluindo "${configToDelete.stage_name}" (${i + 1}/${deletedConfigs.length})...`);
+          try {
+            console.log(`🔄 [handleSaveAllChanges] Deletando configuração:`, {
+              configIdFull: configToDelete.id,
+              configIdTruncated: configToDelete.id!.substring(0, 8),
+              stageName: configToDelete.stage_name,
+              tenantId: tenantId,
+              requestUrl: `/cadence/config/${configToDelete.id}?tenant_id=${tenantId}`
+            });
+            
+            const deleteResponse = await api.delete(`/cadence/config/${configToDelete.id}`, {
+              params: { tenant_id: tenantId }
+            });
+            
+            console.log(`✅ [handleSaveAllChanges] Configuração deletada com sucesso:`, {
+              configId: configToDelete.id!.substring(0, 8),
+              response: deleteResponse.data
+            });
+            
+            // ✅ NOVA CORREÇÃO: Invalidar cache e forçar refetch após delete bem-sucedido
+            const queryKey = cadenceQueryKeys.pipeline(pipelineId);
+            console.log(`🔄 [handleSaveAllChanges] Invalidando cache para pipeline:`, {
+              pipelineId: pipelineId?.substring(0, 8),
+              queryKey: queryKey,
+              cacheKeyString: JSON.stringify(queryKey)
+            });
+            
+            await Promise.all([
+              queryClient.invalidateQueries({
+                queryKey: queryKey,
+                exact: true
+              }),
+              queryClient.refetchQueries({
+                queryKey: queryKey,
+                exact: true
+              }),
+              // ✅ FALLBACK: Remover completamente da cache
+              queryClient.removeQueries({
+                queryKey: queryKey,
+                exact: true
+              })
+            ]);
+          } catch (deleteError: any) {
+            console.error(`❌ [handleSaveAllChanges] Erro detalhado ao deletar configuração:`, {
+              configId: configToDelete.id!.substring(0, 8),
+              configIdFull: configToDelete.id,
+              stageName: configToDelete.stage_name,
+              error: deleteError.message,
+              status: deleteError.response?.status,
+              statusText: deleteError.response?.statusText,
+              responseData: deleteError.response?.data,
+              requestUrl: `/cadence/config/${configToDelete.id}?tenant_id=${tenantId}`
+            });
+            // Continuar com outras exclusões mesmo se uma falhar
+          }
+        }
+        
+        // ✅ NOVA CORREÇÃO: Verificar estado da API após todas as exclusões
+        if (deletedConfigs.length > 0) {
+          console.log(`🔍 [handleSaveAllChanges] Verificando estado final da API após ${deletedConfigs.length} exclusões`);
+          
+          try {
+            // Forçar refetch dos dados para verificar se exclusões persistiram
+            const { api } = await import('../../../lib/api');
+            const verificationResponse = await api.get(`/cadence/load/${pipelineId}`);
+            
+            const currentDbConfigs = verificationResponse.data?.configs || [];
+            const deletedIds = deletedConfigs.map(c => c.id).filter(Boolean);
+            const stillExistInDb = currentDbConfigs.filter((config: any) => 
+              deletedIds.includes(config.id)
+            );
+            
+            console.log(`📊 [handleSaveAllChanges] Verificação pós-delete:`, {
+              deletedConfigIds: deletedIds.map(id => id!.substring(0, 8)),
+              currentDbConfigsCount: currentDbConfigs.length,
+              stillExistInDbCount: stillExistInDb.length,
+              deletionsPersisted: stillExistInDb.length === 0 ? '✅ Sim' : '❌ Não',
+              remainingConfigs: currentDbConfigs.map((c: any) => ({
+                id: c.id?.substring(0, 8),
+                stage: c.stage_name
+              }))
+            });
+            
+            if (stillExistInDb.length > 0) {
+              console.warn(`⚠️ [handleSaveAllChanges] ATENÇÃO: ${stillExistInDb.length} configurações ainda existem no banco após exclusão!`);
+            }
+            
+          } catch (verificationError: any) {
+            console.warn(`⚠️ [handleSaveAllChanges] Erro na verificação pós-delete (não crítico):`, {
+              error: verificationError.message
+            });
+          }
+        }
+      }
+
+      // ✅ EXISTENTE: Salvar configurações restantes
+      setSavingMessage('Salvando configurações...');
+      
+      for (let i = 0; i < cadenceConfigs.length; i++) {
+        const config = cadenceConfigs[i];
+        
+        if (config.tasks.length === 0) {
+          console.log(`⏭️ [handleSaveAllChanges] Pulando etapa "${config.stage_name}" - sem tarefas`);
+          continue;
+        }
+
+        setSavingMessage(`Salvando "${config.stage_name}" (${i + 1}/${cadenceConfigs.length})...`);
+        console.log(`🔄 [handleSaveAllChanges] Salvando etapa "${config.stage_name}" com ${config.tasks.length} tarefa(s)`);
+
+        // Usar endpoint seguro que não afeta outras configurações
+        const response = await api.post('/cadence/save-stage', {
+          pipeline_id: pipelineId,
+          stage_name: config.stage_name,
+          stage_order: config.stage_order,
+          tasks: config.tasks,
+          is_active: config.is_active,
+          tenant_id: tenantId,
+          created_by: 'cadence_manager'
+        });
+
+        console.log(`✅ [handleSaveAllChanges] Etapa "${config.stage_name}" salva com sucesso`);
+      }
+
+      setSavingMessage('Finalizando...');
+      console.log('🎉 [handleSaveAllChanges] Todas as configurações de cadência foram salvas com sucesso');
+      
+      // ✅ NOVA CORREÇÃO: Invalidar cache final e forçar refetch completo
+      if (deletedConfigs.length > 0) {
+        setSavingMessage('Atualizando dados...');
+        console.log(`🔄 [handleSaveAllChanges] Invalidação final de cache após ${deletedConfigs.length} exclusões`);
+        
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: cadenceQueryKeys.pipeline(pipelineId),
+            exact: true
+          }),
+          queryClient.refetchQueries({
+            queryKey: cadenceQueryKeys.pipeline(pipelineId),
+            exact: true,
+            type: 'active'
+          })
+        ]);
+        
+        // ✅ NOVA CORREÇÃO: Aguardar propagação do cache antes de reativar sincronização
+        console.log(`⏳ [handleSaveAllChanges] Aguardando propagação (800ms) antes de reativar sincronização`);
+        await new Promise(resolve => setTimeout(resolve, 800));
+      }
+      
+      // ✅ NOVA CORREÇÃO: Verificação pós-save com retry automático
+      await verifyAndRetrySync(deletedConfigs.length > 0);
+
+    } catch (error: any) {
+      console.error('❌ [handleSaveAllChanges] Erro ao salvar configurações:', error);
+      
+      // ✅ NOVO: Limpar estado de salvamento em caso de erro
+      setIsSaving(false);
+      setSavingMessage('');
+      // ✅ NOVO: Manter flag de edição ativa em caso de erro para permitir retry
+      // setIsEditing(false); // Não desativar para permitir retry
+      throw error; // Re-throw para que o componente pai possa tratar
+    }
+  }, [cadenceConfigs, pipelineId, tenantId]);
+
+  // ✅ NOVA FUNÇÃO: Verificar e fazer retry da sincronização
+  const verifyAndRetrySync = async (hasDeletes: boolean) => {
+    const maxRetries = 3;
+    const baseDelay = hasDeletes ? 2000 : 1500; // Delay maior para exclusões
+    
+    console.log(`🔍 [verifyAndRetrySync] Iniciando verificação pós-save:`, {
+      pipelineId: pipelineId?.substring(0, 8),
+      expectedConfigs: cadenceConfigs.length,
+      hasDeletes,
+      baseDelay
+    });
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        setSavingMessage(`Verificando sincronização... (${attempt}/${maxRetries})`);
+        
+        // Aguardar propagação
+        await new Promise(resolve => setTimeout(resolve, baseDelay * attempt));
+        
+        // Forçar refetch direto da API para verificar estado atual
+        const { api } = await import('../../../lib/api');
+        const verificationResponse = await api.get(`/cadence/load/${pipelineId}`);
+        const currentApiConfigs = verificationResponse.data?.configs || [];
+        
+        console.log(`📊 [verifyAndRetrySync] Tentativa ${attempt}:`, {
+          pipelineId: pipelineId?.substring(0, 8),
+          expectedCount: cadenceConfigs.length,
+          apiReturnedCount: currentApiConfigs.length,
+          apiConfigs: currentApiConfigs.map((c: any) => ({ 
+            id: c.id?.substring(0, 8), 
+            stage: c.stage_name,
+            tasks: c.tasks?.length 
+          })),
+          isInSync: currentApiConfigs.length === cadenceConfigs.length
+        });
+        
+        if (currentApiConfigs.length === cadenceConfigs.length) {
+          console.log(`✅ [verifyAndRetrySync] Sincronização confirmada na tentativa ${attempt}`);
+          
+          // Forçar invalidação para garantir dados frescos
+          const queryKey = cadenceQueryKeys.pipeline(pipelineId);
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey, exact: true }),
+            queryClient.refetchQueries({ queryKey, exact: true })
+          ]);
+          
+          // Aguardar um pouco mais antes de reativar sincronização
+          await new Promise(resolve => setTimeout(resolve, 500));
+          break;
+        }
+        
+        if (attempt === maxRetries) {
+          console.warn(`⚠️ [verifyAndRetrySync] Sincronização não confirmada após ${maxRetries} tentativas`);
+          // Não reativar sincronização automática - manter dados locais
+          setSavingMessage('Dados salvos, mas pode haver atraso na sincronização');
+          
+          setTimeout(() => {
+            console.log(`🔄 [verifyAndRetrySync] Reativando sincronização após timeout de emergência`);
+            setIsPostDeletion(false);
+            setIsEditing(false);
+            setIsSaving(false);
+            setSavingMessage('');
+          }, 5000); // Timeout longo para dar tempo de propagação
+          return;
+        }
+        
+      } catch (verifyError: any) {
+        console.warn(`⚠️ [verifyAndRetrySync] Erro na tentativa ${attempt}:`, verifyError.message);
+        if (attempt === maxRetries) {
+          console.error(`❌ [verifyAndRetrySync] Falha completa na verificação`);
+        }
+      }
+    }
+    
+    // ✅ CORREÇÃO: Delay maior na reativação da sincronização
+    if (hasDeletes) {
+      setIsPostDeletion(true);
+      console.log(`⏸️ [verifyAndRetrySync] Pausando sincronização por exclusões`);
+      
+      setTimeout(() => {
+        console.log(`🔄 [verifyAndRetrySync] Reativando sincronização API após delay pós-exclusão`);
+        setIsPostDeletion(false);
+        setIsEditing(false);
+        setIsSaving(false);
+        setSavingMessage('');
+      }, 3000); // Delay muito maior para exclusões
+    } else {
+      setTimeout(() => {
+        console.log(`🔄 [verifyAndRetrySync] Reativando sincronização API após delay padrão aumentado`);
+        setIsEditing(false);
+        setIsSaving(false);
+        setSavingMessage('');
+      }, 2000); // Delay aumentado de 300ms para 2000ms
+    }
   };
 
   const handleEditCadence = (index: number) => {
@@ -227,11 +775,26 @@ export function useCadenceManager({
   };
 
   const handleDeleteCadence = (index: number) => {
+    const configToDelete = cadenceConfigs[index];
+    
+    console.log('🗑️ [handleDeleteCadence] Removendo da UI:', {
+      configId: configToDelete.id?.substring(0, 8) || 'novo',
+      stageName: configToDelete.stage_name,
+      tasksCount: configToDelete.tasks.length
+    });
+    
+    // ✅ NOVO: Ativar flag de edição para pausar sincronização API
+    setIsEditing(true);
+    
+    // ✅ SIMPLIFICADO: Apenas remover da UI (visual)
     const updatedCadences = cadenceConfigs.filter((_, i) => i !== index);
     setCadenceConfigs(updatedCadences);
   };
 
   const handleToggleCadenceActive = (index: number) => {
+    // ✅ NOVO: Ativar flag de edição para pausar sincronização API
+    setIsEditing(true);
+    
     const updatedCadences = [...cadenceConfigs];
     updatedCadences[index].is_active = !updatedCadences[index].is_active;
     setCadenceConfigs(updatedCadences);
@@ -242,7 +805,9 @@ export function useCadenceManager({
     const nextOrder = Math.max(...cadence.tasks.map(t => t.task_order), 0) + 1;
     const nextDayOffset = Math.max(...cadence.tasks.map(t => t.day_offset), 0) + 1;
 
-    setEditingTask({
+    // ✅ NOVO: Usar modal unificado em vez de inline
+    setSelectedStage(cadence.stage_name);
+    setNewActivity({
       day_offset: nextDayOffset,
       task_order: nextOrder,
       channel: 'email',
@@ -254,19 +819,26 @@ export function useCadenceManager({
     });
     setEditCadenceIndex(cadenceIndex);
     setEditTaskIndex(null);
-    setShowTaskModal(true);
+    setShowUnifiedModal(true); // ✅ Modal unificado
   };
 
   const handleEditTask = (cadenceIndex: number, taskIndex: number) => {
     const task = cadenceConfigs[cadenceIndex].tasks[taskIndex];
-    setEditingTask({ ...task });
+    const cadence = cadenceConfigs[cadenceIndex];
+    
+    // ✅ NOVO: Usar modal unificado para edição
+    setSelectedStage(cadence.stage_name);
+    setNewActivity({ ...task }); // Preencher com dados existentes
     setEditCadenceIndex(cadenceIndex);
     setEditTaskIndex(taskIndex);
-    setShowTaskModal(true);
+    setShowUnifiedModal(true); // ✅ Modal unificado
   };
 
   const handleSaveTask = () => {
     if (!editingTask || editCadenceIndex === null) return;
+
+    // ✅ NOVO: Ativar flag de edição para pausar sincronização API
+    setIsEditing(true);
 
     const updatedCadences = [...cadenceConfigs];
     const cadence = updatedCadences[editCadenceIndex];
@@ -294,12 +866,18 @@ export function useCadenceManager({
   };
 
   const handleDeleteTask = (cadenceIndex: number, taskIndex: number) => {
+    // ✅ NOVO: Ativar flag de edição para pausar sincronização API
+    setIsEditing(true);
+    
     const updatedCadences = [...cadenceConfigs];
     updatedCadences[cadenceIndex].tasks = updatedCadences[cadenceIndex].tasks.filter((_, i) => i !== taskIndex);
     setCadenceConfigs(updatedCadences);
   };
 
   const handleToggleTaskActive = (cadenceIndex: number, taskIndex: number) => {
+    // ✅ NOVO: Ativar flag de edição para pausar sincronização API
+    setIsEditing(true);
+    
     const updatedCadences = [...cadenceConfigs];
     const task = updatedCadences[cadenceIndex].tasks[taskIndex];
     task.is_active = !task.is_active;
@@ -323,7 +901,6 @@ export function useCadenceManager({
     setShowCadenceModal,
     showTaskModal,
     setShowTaskModal,
-    handleAddCadence,
     handleEditCadence,
     handleSaveCadence,
     handleDeleteCadence,
@@ -334,7 +911,22 @@ export function useCadenceManager({
     handleDeleteTask,
     handleToggleTaskActive,
     getChannelIcon,
-    getActionIcon
+    getActionIcon,
+    // ✅ NOVA FUNÇÃO: Adicionar atividade diretamente para uma etapa
+    handleAddActivityForStage,
+    // ✅ NOVAS FUNÇÕES: Modal unificado
+    showUnifiedModal,
+    setShowUnifiedModal,
+    selectedStage,
+    newActivity,
+    setNewActivity,
+    handleSaveUnifiedActivity,
+    handleCancelUnified,
+    // ✅ NOVA FUNÇÃO: Salvar todas as configurações no banco
+    handleSaveAllChanges,
+    // ✅ NOVO: Estados para feedback visual
+    isSaving,
+    savingMessage
   };
 }
 
@@ -342,9 +934,16 @@ export function useCadenceManager({
 export interface CadenceManagerRenderProps {
   cadenceManager: UseCadenceManagerReturn;
   availableStages?: Array<{ name: string; order_index: number }>;
+  isLoading?: boolean;
+  isApiEnabled?: boolean;
 }
 
-export function CadenceManagerRender({ cadenceManager, availableStages = [] }: CadenceManagerRenderProps) {
+export function CadenceManagerRender({ 
+  cadenceManager, 
+  availableStages = [], 
+  isLoading = false,
+  isApiEnabled = false 
+}: CadenceManagerRenderProps) {
   const {
     cadenceConfigs,
     editingCadence,
@@ -355,7 +954,6 @@ export function CadenceManagerRender({ cadenceManager, availableStages = [] }: C
     setShowCadenceModal,
     showTaskModal,
     setShowTaskModal,
-    handleAddCadence,
     handleEditCadence,
     handleSaveCadence,
     handleDeleteCadence,
@@ -366,23 +964,127 @@ export function CadenceManagerRender({ cadenceManager, availableStages = [] }: C
     handleDeleteTask,
     handleToggleTaskActive,
     getChannelIcon,
-    getActionIcon
+    getActionIcon,
+    handleAddActivityForStage,
+    showUnifiedModal,
+    setShowUnifiedModal,
+    selectedStage,
+    newActivity,
+    setNewActivity,
+    handleSaveUnifiedActivity,
+    handleCancelUnified,
+    isSaving,
+    savingMessage
   } = cadenceManager;
+
+  // ✅ NOVO: Exibir loading se estiver carregando dados da API
+  if (isLoading && isApiEnabled) {
+    return (
+      <div className={PIPELINE_UI_CONSTANTS.spacing.section}>
+        <SectionHeader
+          icon={Zap}
+          title="Automação de Atividades"
+        />
+        <div className="flex items-center justify-center py-8">
+          <div className="flex flex-col items-center gap-3">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p className="text-sm text-muted-foreground">
+              Carregando atividades existentes...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={PIPELINE_UI_CONSTANTS.spacing.section}>
       <SectionHeader
         icon={Zap}
-        title="Automação de Cadência"
-        action={
-          <Button type="button" onClick={handleAddCadence} size="sm">
-            <Plus className="h-4 w-4 mr-2" />
-            Adicionar Cadência
-          </Button>
-        }
+        title="Automação de Atividades"
       />
 
+      {/* ✅ NOVO: Indicador de salvamento */}
+      {isSaving && (
+        <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 border-2 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
+            <div>
+              <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                Salvando alterações...
+              </p>
+              {savingMessage && (
+                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                  {savingMessage}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-4">
+        {/* ✅ NOVA SEÇÃO: Atalhos rápidos por etapa OU mensagem explicativa */}
+        {availableStages.length > 0 ? (
+          <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+            <h4 className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-3">
+              🚀 Criar Atividades por Etapa
+            </h4>
+            <div className="flex flex-wrap gap-2">
+              {availableStages
+                // ✅ CORREÇÃO: Filtrar etapas finais - nunca devem ter atividades de cadência
+                .filter(stage => stage.order_index < 998) // Excluir "Ganho" (998) e "Perdido" (999)
+                .map(stage => {
+                  const hasActivities = cadenceConfigs.some(c => c.stage_name === stage.name);
+                  const activitiesCount = cadenceConfigs.find(c => c.stage_name === stage.name)?.tasks?.length || 0;
+                  
+                  return (
+                    <Button
+                      key={stage.name}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleAddActivityForStage(stage.name)}
+                      disabled={isSaving}
+                      className="flex items-center gap-2"
+                    >
+                      <Plus className="h-3 w-3" />
+                      <span>{stage.name}</span>
+                      {hasActivities && (
+                        <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
+                          {activitiesCount}
+                        </Badge>
+                      )}
+                    </Button>
+                  );
+                })}
+            </div>
+          </div>
+        ) : (
+          <div className="bg-amber-50 dark:bg-amber-950/20 p-4 rounded-lg border border-amber-200 dark:border-amber-800">
+            <h4 className="text-sm font-medium text-amber-900 dark:text-amber-100 mb-2">
+              ⚠️ Nenhuma etapa disponível para atividades
+            </h4>
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              As etapas finais (Ganho/Perdido) não podem ter atividades de follow-up automáticas. 
+              Crie etapas intermediárias na aba "Etapas" para configurar automações de cadência.
+            </p>
+          </div>
+        )}
+
+        {/* ✅ REMOVIDO: Debug de renderização desnecessário */}
+        
+        {isApiEnabled && cadenceConfigs.length === 0 && (
+          <div className="text-center py-6 bg-muted/50 rounded-lg">
+            <p className="text-sm text-muted-foreground">
+              Nenhuma atividade configurada para esta pipeline.
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Use os atalhos acima ou clique em "Adicionar Atividades" para começar.
+            </p>
+          </div>
+        )}
+        
         {cadenceConfigs.map((cadence, cadenceIndex) => (
           <BlurFade key={cadenceIndex} delay={0.03 * cadenceIndex} inView>
             <AnimatedCard>
@@ -412,15 +1114,8 @@ export function CadenceManagerRender({ cadenceManager, availableStages = [] }: C
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={() => handleEditCadence(cadenceIndex)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
                       onClick={() => handleDeleteCadence(cadenceIndex)}
+                      disabled={isSaving}
                       className="text-destructive hover:text-destructive"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -453,27 +1148,16 @@ export function CadenceManagerRender({ cadenceManager, availableStages = [] }: C
                         </div>
                       </div>
 
+                      {/* ✅ CORREÇÃO: Interface simplificada - apenas editar e excluir */}
                       <div className="flex items-center gap-2">
-                        {task.is_active ? (
-                          <Eye className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <EyeOff className="h-4 w-4 text-gray-400" />
-                        )}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleToggleTaskActive(cadenceIndex, taskIndex)}
-                        >
-                          {task.is_active ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-                        </Button>
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
                           onClick={() => handleEditTask(cadenceIndex, taskIndex)}
+                          title="Editar atividade"
                         >
-                          <Edit className="h-3 w-3" />
+                          <Edit className="h-4 w-4" />
                         </Button>
                         <Button
                           type="button"
@@ -481,8 +1165,9 @@ export function CadenceManagerRender({ cadenceManager, availableStages = [] }: C
                           size="sm"
                           onClick={() => handleDeleteTask(cadenceIndex, taskIndex)}
                           className="text-destructive hover:text-destructive"
+                          title="Excluir atividade"
                         >
-                          <Trash2 className="h-3 w-3" />
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
@@ -505,94 +1190,145 @@ export function CadenceManagerRender({ cadenceManager, availableStages = [] }: C
         ))}
       </div>
 
-      {/* ✅ FORMULÁRIO INLINE EXPANSÍVEL DE CADÊNCIA - Substitui modal sobreposto */}
-      {showCadenceModal && (
-        <BlurFade>
-          <div className="mt-6 p-6 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg space-y-4">
-            {/* Header do Formulário Inline */}
-            <div className="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-gray-700">
-              <div className="flex items-center gap-2">
-                <h4 className="text-lg font-semibold">
-                  {editingCadence?.stage_name ? `Editar Cadência: ${editingCadence.stage_name}` : 'Nova Cadência'}
-                </h4>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowCadenceModal(false)}
-                className="text-gray-500 hover:text-gray-700"
+      {/* ✅ REMOVIDO: Modal de cadência inline - substituído por workflow unificado */}
+
+      {/* ✅ MODAL UNIFICADO: Dialog responsivo para criar atividades */}
+      <Dialog open={showUnifiedModal} onOpenChange={setShowUnifiedModal}>
+        <DialogPortal>
+          <DialogOverlay className="!z-[99998]" />
+          <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto !z-[99999]">
+          <DialogHeader>
+            <DialogTitle>Criar Atividade - {selectedStage}</DialogTitle>
+            <DialogDescription>
+              Configure uma nova atividade para a etapa selecionada
+            </DialogDescription>
+          </DialogHeader>
+          
+          {/* ✅ FORMULÁRIO COMPACTO: Grid layout otimizado */}
+          <div className="grid grid-cols-2 gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="dayOffset">Dia</Label>
+              <Input
+                id="dayOffset"
+                type="number"
+                min="0"
+                className="h-9"
+                value={newActivity.day_offset}
+                onChange={(e) => setNewActivity({
+                  ...newActivity,
+                  day_offset: parseInt(e.target.value) || 0
+                })}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="channel">Canal</Label>
+              <Select
+                value={newActivity.channel}
+                onValueChange={(value: CadenceTask['channel']) => 
+                  setNewActivity({
+                    ...newActivity,
+                    channel: value
+                  })
+                }
               >
-                ✕
-              </Button>
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CHANNEL_OPTIONS.map(channel => {
+                    const IconComponent = channel.icon;
+                    return (
+                      <SelectItem key={channel.value} value={channel.value}>
+                        <div className="flex items-center gap-2">
+                          <IconComponent className="h-4 w-4" />
+                          {channel.label}
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
             </div>
 
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Configure a cadência de automação para uma etapa.
-            </p>
-
-            {editingCadence && (
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="stageName">Etapa</Label>
-                  <Select
-                    value={editingCadence.stage_name}
-                    onValueChange={(value) => {
-                      const stage = availableStages.find(s => s.name === value);
-                      setEditingCadence({
-                        ...editingCadence,
-                        stage_name: value,
-                        stage_order: stage?.order_index || 0
-                      });
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione uma etapa" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableStages.map(stage => (
-                        <SelectItem key={stage.name} value={stage.name}>
-                          {stage.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="cadenceActive"
-                    checked={editingCadence.is_active}
-                    onCheckedChange={(checked) => setEditingCadence({
-                      ...editingCadence,
-                      is_active: checked
-                    })}
-                  />
-                  <Label htmlFor="cadenceActive">Cadência ativa</Label>
-                </div>
-
-                {/* Botões de Ação Inline */}
-                <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowCadenceModal(false)}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button 
-                    onClick={handleSaveCadence}
-                    disabled={!editingCadence?.stage_name}
-                  >
-                    <Save className="h-4 w-4 mr-2" />
-                    Salvar
-                  </Button>
-                </div>
-              </div>
-            )}
+            <div className="col-span-2 space-y-2">
+              <Label htmlFor="actionType">Tipo de Ação</Label>
+              <Select
+                value={newActivity.action_type}
+                onValueChange={(value: CadenceTask['action_type']) => 
+                  setNewActivity({
+                    ...newActivity,
+                    action_type: value
+                  })
+                }
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACTION_TYPE_OPTIONS.map(action => {
+                    const IconComponent = action.icon;
+                    return (
+                      <SelectItem key={action.value} value={action.value}>
+                        <div className="flex items-center gap-2">
+                          <IconComponent className="h-4 w-4" />
+                          {action.label}
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="col-span-2 space-y-2">
+              <Label htmlFor="taskTitle">Título</Label>
+              <Input
+                id="taskTitle"
+                className="h-9"
+                value={newActivity.task_title}
+                onChange={(e) => setNewActivity({
+                  ...newActivity,
+                  task_title: e.target.value
+                })}
+                placeholder="Ex: Primeiro contato"
+              />
+            </div>
+            
+            <div className="col-span-2 space-y-2">
+              <Label htmlFor="taskDescription">Descrição</Label>
+              <Textarea
+                id="taskDescription"
+                rows={2}
+                className="resize-none"
+                value={newActivity.task_description}
+                onChange={(e) => setNewActivity({
+                  ...newActivity,
+                  task_description: e.target.value
+                })}
+                placeholder="Descreva o que deve ser feito nesta atividade..."
+              />
+            </div>
+            
+            {/* ✅ REMOVIDO: Campo Template/Conteúdo conforme solicitado */}
           </div>
-        </BlurFade>
-      )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCancelUnified}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleSaveUnifiedActivity}
+              disabled={!newActivity.task_title}
+            >
+              Salvar Atividade
+            </Button>
+          </DialogFooter>
+          </DialogContent>
+        </DialogPortal>
+      </Dialog>
 
-      {/* ✅ FORMULÁRIO INLINE EXPANSÍVEL DE TAREFA - Substitui modal sobreposto */}
+      {/* ✅ MODAL DE EDIÇÃO: Manter modal inline para editar tarefas existentes */}
       {showTaskModal && (
         <BlurFade>
           <div className="mt-6 p-6 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg space-y-4">

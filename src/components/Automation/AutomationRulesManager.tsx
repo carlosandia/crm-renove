@@ -96,7 +96,8 @@ const AutomationRulesManager: React.FC = () => {
 
   const loadRules = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:3001/api/automation/rules', {
+      const { environmentConfig } = await import('../../config/environment');
+      const response = await fetch(`${environmentConfig.urls.api}/automation/rules`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -116,7 +117,8 @@ const AutomationRulesManager: React.FC = () => {
 
   const loadMetrics = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:3001/api/automation/metrics', {
+      const { environmentConfig } = await import('../../config/environment');
+      const response = await fetch(`${environmentConfig.urls.api}/automation/metrics`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'

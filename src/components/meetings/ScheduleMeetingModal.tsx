@@ -7,7 +7,7 @@
 import React, { useState } from 'react';
 import { X, Calendar, Clock, User, FileText } from 'lucide-react';
 import { useCreateMeeting } from '../../hooks/useMeetings';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import type { CreateMeeting } from '../../shared/schemas/meetings';
 
 interface ScheduleMeetingModalProps {
@@ -30,10 +30,10 @@ export const ScheduleMeetingModal: React.FC<ScheduleMeetingModalProps> = ({
   const { user } = useAuth();
   const createMeetingMutation = useCreateMeeting();
 
-  // AIDEV-NOTE: Estado do formulário
+  // AIDEV-NOTE: Estado do formulário - UX aprimorado
   const [formData, setFormData] = useState({
-    date: '',
-    time: '',
+    title: '',
+    datetime: '',
     notes: ''
   });
 
@@ -42,31 +42,40 @@ export const ScheduleMeetingModal: React.FC<ScheduleMeetingModalProps> = ({
   // AIDEV-NOTE: Resetar formulário quando modal abre/fecha
   React.useEffect(() => {
     if (isOpen) {
-      setFormData({ date: '', time: '', notes: '' });
+      // Pré-preencher com data/hora padrão (próxima hora)
+      const defaultDateTime = new Date();
+      defaultDateTime.setHours(defaultDateTime.getHours() + 1, 0, 0, 0);
+      
+      setFormData({ 
+        title: `Reunião com ${leadName}${companyName ? ` - ${companyName}` : ''}`,
+        datetime: defaultDateTime.toISOString().slice(0, 16),
+        notes: '' 
+      });
       setErrors({});
     }
-  }, [isOpen]);
+  }, [isOpen, leadName, companyName]);
 
-  // AIDEV-NOTE: Validação do formulário
+  // AIDEV-NOTE: Validação do formulário - UX aprimorado
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.date) {
-      newErrors.date = 'Data é obrigatória';
+    // Validar título obrigatório
+    if (!formData.title.trim()) {
+      newErrors.title = 'Título da reunião é obrigatório';
     }
 
-    if (!formData.time) {
-      newErrors.time = 'Horário é obrigatório';
-    }
-
-    // AIDEV-NOTE: Validar se data/hora não está no passado
-    if (formData.date && formData.time) {
-      const scheduledDateTime = new Date(`${formData.date}T${formData.time}`);
+    // Validar data/hora obrigatória
+    if (!formData.datetime) {
+      newErrors.datetime = 'Data e horário são obrigatórios';
+    } else {
+      // AIDEV-NOTE: Validar se data/hora não está no passado
+      const scheduledDateTime = new Date(formData.datetime);
       if (scheduledDateTime <= new Date()) {
         newErrors.datetime = 'Data e horário devem ser no futuro';
       }
     }
 
+    // Validar tamanho das observações
     if (formData.notes && formData.notes.length > 500) {
       newErrors.notes = 'Observações devem ter no máximo 500 caracteres';
     }
@@ -87,7 +96,8 @@ export const ScheduleMeetingModal: React.FC<ScheduleMeetingModalProps> = ({
       const meetingData: CreateMeeting = {
         pipeline_lead_id: pipelineLeadId,
         lead_master_id: leadMasterId,
-        planned_at: new Date(`${formData.date}T${formData.time}`).toISOString(),
+        title: formData.title, // NOVO: Incluir título no payload
+        planned_at: new Date(formData.datetime).toISOString(),
         notes: formData.notes || undefined
       };
 
@@ -98,17 +108,7 @@ export const ScheduleMeetingModal: React.FC<ScheduleMeetingModalProps> = ({
     }
   };
 
-  // AIDEV-NOTE: Gerar horários sugeridos (próximas 2 semanas, horário comercial)
-  const getSuggestedTimes = () => {
-    const times = [];
-    for (let hour = 9; hour <= 17; hour++) {
-      times.push(`${hour.toString().padStart(2, '0')}:00`);
-      if (hour < 17) {
-        times.push(`${hour.toString().padStart(2, '0')}:30`);
-      }
-    }
-    return times;
-  };
+  // AIDEV-NOTE: Função getSuggestedTimes removida - agora usa datetime-local para flexibilidade total
 
   if (!isOpen) return null;
 
@@ -141,57 +141,45 @@ export const ScheduleMeetingModal: React.FC<ScheduleMeetingModalProps> = ({
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6">
           <div className="space-y-4">
-            {/* Data */}
+            {/* Título da Reunião */}
+            <div>
+              <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
+                <FileText className="w-4 h-4 mr-2" />
+                Título da Reunião *
+              </label>
+              <input
+                type="text"
+                value={formData.title}
+                onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                placeholder="Ex: Reunião comercial - Apresentação de proposta"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                  errors.title ? 'border-red-300' : 'border-gray-300'
+                }`}
+              />
+              {errors.title && (
+                <p className="mt-1 text-sm text-red-600">{errors.title}</p>
+              )}
+            </div>
+
+            {/* Data e Horário Combinados */}
             <div>
               <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
                 <Calendar className="w-4 h-4 mr-2" />
-                Data da Reunião
+                Data e Horário *
               </label>
               <input
-                type="date"
-                value={formData.date}
-                min={new Date().toISOString().split('T')[0]}
-                onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                type="datetime-local"
+                value={formData.datetime}
+                min={new Date().toISOString().slice(0, 16)}
+                onChange={(e) => setFormData(prev => ({ ...prev, datetime: e.target.value }))}
                 className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                  errors.date ? 'border-red-300' : 'border-gray-300'
+                  errors.datetime ? 'border-red-300' : 'border-gray-300'
                 }`}
               />
-              {errors.date && (
-                <p className="mt-1 text-sm text-red-600">{errors.date}</p>
+              {errors.datetime && (
+                <p className="mt-1 text-sm text-red-600">{errors.datetime}</p>
               )}
             </div>
-
-            {/* Horário */}
-            <div>
-              <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
-                <Clock className="w-4 h-4 mr-2" />
-                Horário
-              </label>
-              <select
-                value={formData.time}
-                onChange={(e) => setFormData(prev => ({ ...prev, time: e.target.value }))}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                  errors.time ? 'border-red-300' : 'border-gray-300'
-                }`}
-              >
-                <option value="">Selecione um horário</option>
-                {getSuggestedTimes().map(time => (
-                  <option key={time} value={time}>
-                    {time}
-                  </option>
-                ))}
-              </select>
-              {errors.time && (
-                <p className="mt-1 text-sm text-red-600">{errors.time}</p>
-              )}
-            </div>
-
-            {/* Erro de data/hora */}
-            {errors.datetime && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-sm text-red-600">{errors.datetime}</p>
-              </div>
-            )}
 
             {/* Responsável */}
             <div>

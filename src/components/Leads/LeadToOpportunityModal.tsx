@@ -5,7 +5,7 @@ import {
   Loader2, Settings, GitBranch
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { showErrorToast } from '../../hooks/useToast';
 import {
   Dialog,

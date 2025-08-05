@@ -57,7 +57,7 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
     const baseClasses = "h-full";
     
     if (isFullWidth) {
-      return `${baseClasses} overflow-x-auto overflow-y-hidden`;
+      return `${baseClasses} overflow-visible`;
     }
     return `${baseClasses} overflow-y-auto overflow-x-hidden`;
   }, [isFullWidth]);
@@ -100,7 +100,7 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
       <div className={mainContentClasses}>
         <main className="flex-1 relative overflow-hidden" style={{ backgroundColor: '#F1F1FA' }}>
           {isFullWidth ? (
-            <div className="h-full w-full overflow-x-auto overflow-y-auto" style={{ backgroundColor: '#F1F1FA' }}>
+            <div className="h-full w-full overflow-visible" style={{ backgroundColor: '#F1F1FA' }}>
               {children}
             </div>
           ) : (

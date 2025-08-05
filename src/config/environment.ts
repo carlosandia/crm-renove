@@ -128,9 +128,9 @@ const environmentConfigs: Record<Environment, Partial<EnvironmentConfig>> = {
       environment: 'production',
     },
     urls: {
-      api: 'https://api.seu-dominio.com/api',
-      frontend: 'https://app.seu-dominio.com',
-      backend: 'https://api.seu-dominio.com',
+      api: 'https://crm.renovedigital.com.br/api',
+      frontend: 'https://crm.renovedigital.com.br',
+      backend: 'https://crm.renovedigital.com.br/api',
     },
     debug: {
       enabled: false,
@@ -144,13 +144,13 @@ const environmentConfigs: Record<Environment, Partial<EnvironmentConfig>> = {
     },
     integrations: {
       google: {
-        redirectUri: 'https://app.seu-dominio.com/auth/google/callback',
+        redirectUri: 'https://crm.renovedigital.com.br/auth/google/callback',
       },
     },
     security: {
       cspEnabled: true,
       rateLimitEnabled: true,
-      corsOrigins: ['https://app.seu-dominio.com', 'https://admin.seu-dominio.com'],
+      corsOrigins: ['https://crm.renovedigital.com.br'],
     },
   },
   
@@ -161,9 +161,9 @@ const environmentConfigs: Record<Environment, Partial<EnvironmentConfig>> = {
       environment: 'staging',
     },
     urls: {
-      api: 'https://staging-api.seu-dominio.com/api',
-      frontend: 'https://staging-app.seu-dominio.com',
-      backend: 'https://staging-api.seu-dominio.com',
+      api: 'https://staging.crm.renovedigital.com.br/api',
+      frontend: 'https://staging.crm.renovedigital.com.br',
+      backend: 'https://staging.crm.renovedigital.com.br/api',
     },
     debug: {
       enabled: true,
@@ -177,13 +177,13 @@ const environmentConfigs: Record<Environment, Partial<EnvironmentConfig>> = {
     },
     integrations: {
       google: {
-        redirectUri: 'https://staging-app.seu-dominio.com/auth/google/callback',
+        redirectUri: 'https://staging.crm.renovedigital.com.br/auth/google/callback',
       },
     },
     security: {
       cspEnabled: true,
       rateLimitEnabled: true,
-      corsOrigins: ['https://staging-app.seu-dominio.com'],
+      corsOrigins: ['https://staging.crm.renovedigital.com.br'],
     },
   },
   
@@ -233,9 +233,19 @@ function mergeWithEnvVars(config: Partial<EnvironmentConfig>): EnvironmentConfig
     },
     
     urls: {
-      api: import.meta.env.VITE_API_URL || config.urls?.api || 'http://127.0.0.1:3001/api',
-      frontend: import.meta.env.VITE_FRONTEND_URL || config.urls?.frontend || 'http://127.0.0.1:8080',
-      backend: import.meta.env.VITE_BACKEND_URL || config.urls?.backend || 'http://127.0.0.1:3001',
+      // AIDEV-NOTE: Fallback inteligente - produção primeiro, depois desenvolvimento
+      api: import.meta.env.VITE_API_URL || config.urls?.api || 
+           (import.meta.env.VITE_ENVIRONMENT === 'production' 
+             ? 'https://crm.renovedigital.com.br/api' 
+             : 'http://127.0.0.1:3001/api'),
+      frontend: import.meta.env.VITE_FRONTEND_URL || config.urls?.frontend || 
+               (import.meta.env.VITE_ENVIRONMENT === 'production' 
+                 ? 'https://crm.renovedigital.com.br' 
+                 : 'http://127.0.0.1:8080'),
+      backend: import.meta.env.VITE_BACKEND_URL || config.urls?.backend || 
+              (import.meta.env.VITE_ENVIRONMENT === 'production' 
+                ? 'https://crm.renovedigital.com.br' 
+                : 'http://127.0.0.1:3001'),
     },
     
     supabase: {

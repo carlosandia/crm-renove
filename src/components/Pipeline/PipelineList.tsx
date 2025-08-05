@@ -9,6 +9,7 @@ interface PipelineListProps {
   onEdit: (pipelineId: string) => void;
   onDelete: (pipelineId: string) => void;
   onCreateNew: () => void;
+  userRole?: 'admin' | 'member' | 'super_admin'; // ✅ NOVA: Prop para controle de permissões
 }
 
 const PipelineList: React.FC<PipelineListProps> = ({
@@ -16,7 +17,10 @@ const PipelineList: React.FC<PipelineListProps> = ({
   onEdit,
   onDelete,
   onCreateNew,
+  userRole = 'member', // ✅ SEGURANÇA: Default mais restritivo
 }) => {
+  // ✅ CONTROLE DE PERMISSÕES: Apenas admin e super_admin podem criar pipelines
+  const canCreate = userRole === 'admin' || userRole === 'super_admin';
   if (pipelines.length === 0) {
     return (
       <div className="space-y-6">
@@ -33,13 +37,15 @@ const PipelineList: React.FC<PipelineListProps> = ({
                   <p className="text-sm text-muted-foreground">Gerencie suas pipelines de vendas</p>
                 </div>
               </div>
-              <button 
-                onClick={onCreateNew} 
-                className="btn-primary"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Nova Pipeline</span>
-              </button>
+              {canCreate && (
+                <button 
+                  onClick={onCreateNew} 
+                  className="btn-primary"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Nova Pipeline</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -53,13 +59,15 @@ const PipelineList: React.FC<PipelineListProps> = ({
           <p className="text-muted-foreground mb-6 max-w-md mx-auto">
             Você ainda não criou nenhuma pipeline de vendas. Crie sua primeira pipeline para começar a organizar seu processo de vendas.
           </p>
-          <button 
-            onClick={onCreateNew} 
-            className="btn-primary"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Criar Primeira Pipeline</span>
-          </button>
+          {canCreate && (
+            <button 
+              onClick={onCreateNew} 
+              className="btn-primary"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Criar Primeira Pipeline</span>
+            </button>
+          )}
         </div>
       </div>
     );
@@ -80,13 +88,15 @@ const PipelineList: React.FC<PipelineListProps> = ({
                 <p className="text-sm text-muted-foreground">Gerencie suas pipelines de vendas ({pipelines.length} pipeline{pipelines.length !== 1 ? 's' : ''})</p>
               </div>
             </div>
-            <button 
-              onClick={onCreateNew} 
-              className="btn-primary"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Nova Pipeline</span>
-            </button>
+            {canCreate && (
+              <button 
+                onClick={onCreateNew} 
+                className="btn-primary"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Nova Pipeline</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -99,6 +109,7 @@ const PipelineList: React.FC<PipelineListProps> = ({
             pipeline={pipeline}
             onEdit={onEdit}
             onDelete={onDelete}
+            userRole={userRole}
           />
         ))}
       </div>

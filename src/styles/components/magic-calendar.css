@@ -1,0 +1,160 @@
+/* ============================================ */
+/* MAGIC UI CALENDAR - ESTILOS ESPECÍFICOS */
+/* ============================================ */
+
+/* Container principal do calendário */
+.magic-ui-calendar {
+  background: white !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+  border: 1px solid #e5e7eb !important;
+  padding: 16px !important;
+  backdrop-filter: blur(4px) !important;
+  position: relative !important;
+  z-index: 10 !important;
+}
+
+/* Header do calendário */
+.magic-ui-calendar h2 {
+  font-size: 1.125rem !important;
+  font-weight: 600 !important;
+  background: linear-gradient(to right, #1f2937, #4b5563) !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  color: transparent !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  justify-content: center !important;
+}
+
+/* Botões de navegação */
+.magic-ui-calendar button[data-nav] {
+  padding: 8px !important;
+  border-radius: 8px !important;
+  transition: all 0.2s ease !important;
+  cursor: pointer !important;
+}
+
+.magic-ui-calendar button[data-nav]:hover {
+  background: linear-gradient(to right, #f9fafb, #f3f4f6) !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1) !important;
+  transform: scale(1.05) !important;
+}
+
+.magic-ui-calendar button[data-nav]:active {
+  transform: scale(0.95) !important;
+}
+
+/* Dias da semana */
+.magic-ui-calendar .weekdays {
+  display: grid !important;
+  grid-template-columns: repeat(7, 1fr) !important;
+  margin-bottom: 12px !important;
+}
+
+.magic-ui-calendar .weekday {
+  width: 36px !important;
+  height: 32px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  background: linear-gradient(to right, #6b7280, #4b5563) !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  color: transparent !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-bottom: 1px solid #f3f4f6 !important;
+  padding-bottom: 8px !important;
+}
+
+/* Grid de dias */
+.magic-ui-calendar .days-grid {
+  display: grid !important;
+  grid-template-columns: repeat(7, 1fr) !important;
+  gap: 6px !important;
+}
+
+/* Botões dos dias */
+.magic-ui-calendar .day-button {
+  position: relative !important;
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 8px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  transition: all 0.2s ease !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  color: #111827 !important;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  overflow: hidden !important;
+}
+
+/* Estado padrão */
+.magic-ui-calendar .day-button:hover {
+  background: linear-gradient(to right, #dbeafe, #e0e7ff) !important;
+  color: #1d4ed8 !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1) !important;
+  transform: scale(1.05) !important;
+}
+
+/* Dia de hoje */
+.magic-ui-calendar .day-button.today {
+  background: linear-gradient(to right, #dbeafe, #e0e7ff) !important;
+  color: #1d4ed8 !important;
+  font-weight: 600 !important;
+  box-shadow: 0 0 0 1px #93c5fd !important;
+}
+
+/* Dia selecionado */
+.magic-ui-calendar .day-button.selected {
+  background: linear-gradient(to right, #2563eb, #4f46e5) !important;
+  color: white !important;
+  box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.25), 0 0 0 2px #93c5fd !important;
+  transform: scale(1.05) !important;
+}
+
+/* Dia desabilitado */
+.magic-ui-calendar .day-button:disabled {
+  color: #d1d5db !important;
+  cursor: not-allowed !important;
+}
+
+.magic-ui-calendar .day-button:disabled:hover {
+  background: transparent !important;
+  color: #d1d5db !important;
+  transform: scale(1) !important;
+  box-shadow: none !important;
+}
+
+/* Efeito shine para Magic UI */
+.magic-ui-calendar .day-button:not(.selected):not(:disabled)::before {
+  content: '';
+  position: absolute !important;
+  inset: 0 !important;
+  border-radius: 8px !important;
+  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.1), transparent) !important;
+  transform: translateX(-100%) !important;
+  transition: transform 1s ease !important;
+}
+
+.magic-ui-calendar .day-button:not(.selected):not(:disabled):hover::before {
+  transform: translateX(100%) !important;
+}
+
+/* Estado ativo (clique) */
+.magic-ui-calendar .day-button:active {
+  transform: scale(0.95) !important;
+}
+
+/* Foco keyboard */
+.magic-ui-calendar .day-button:focus {
+  outline: none !important;
+  box-shadow: 0 0 0 2px #2563eb, 0 0 0 4px rgba(37, 99, 235, 0.1) !important;
+}

@@ -22,7 +22,7 @@ import {
   Info,
   Settings
 } from 'lucide-react';
-import { useAuth } from '../../../contexts/AuthContext';
+import { useAuth } from '../../../providers/AuthProvider';
 import { supabase } from '../../../lib/supabase';
 
 interface CadenceStep {
@@ -291,7 +291,7 @@ export const CadenceIntegration: React.FC<CadenceIntegrationProps> = ({
               <Repeat className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold">Cadência Automática</h3>
+              <h3 className="text-lg font-semibold">Atividades Automáticas</h3>
               <p className="text-sm text-muted-foreground">
                 Configure follow-ups automáticos após preenchimento do formulário
               </p>
@@ -317,10 +317,10 @@ export const CadenceIntegration: React.FC<CadenceIntegrationProps> = ({
               />
               <div>
                 <Label htmlFor="auto-start-cadence" className="cursor-pointer">
-                  Iniciar cadência automaticamente
+                  Iniciar atividades automaticamente
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Cadência iniciará automaticamente após preenchimento do formulário
+                  Atividades iniciarão automaticamente após preenchimento do formulário
                 </p>
               </div>
             </div>
@@ -332,8 +332,8 @@ export const CadenceIntegration: React.FC<CadenceIntegrationProps> = ({
                   <div>
                     <p className="text-sm font-medium">Fluxo automático:</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Lead preenche formulário → Delay configurado → Primeira ação da cadência → 
-                      Sequência de follow-ups baseada na cadência selecionada
+                      Lead preenche formulário → Delay configurado → Primeira ação das atividades → 
+                      Sequência de follow-ups baseada nas atividades selecionadas
                     </p>
                   </div>
                 </div>
@@ -349,19 +349,19 @@ export const CadenceIntegration: React.FC<CadenceIntegrationProps> = ({
           <Card className="p-6">
             <div className="flex items-center gap-2 mb-4">
               <Target className="w-5 h-5 text-primary" />
-              <h4 className="font-semibold">Seleção de Cadência</h4>
+              <h4 className="font-semibold">Seleção de Atividades</h4>
             </div>
 
             <div className="space-y-4">
               <div>
-                <Label htmlFor="cadence-select">Cadência de Follow-up</Label>
+                <Label htmlFor="cadence-select">Atividades de Follow-up</Label>
                 <Select 
                   value={config.cadence_id} 
                   onValueChange={(value) => updateConfig({ cadence_id: value })}
                   disabled={disabled}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecione uma cadência" />
+                    <SelectValue placeholder="Selecione atividades" />
                   </SelectTrigger>
                   <SelectContent>
                     {availableCadences.map(cadence => (

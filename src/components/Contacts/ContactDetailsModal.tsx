@@ -3,7 +3,7 @@ import { X, Edit, Mail, Phone, Building, Calendar, User } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import { Contact } from '../../integrations/supabase/types';
+import { Contact } from '../../shared/types/Domain';
 
 interface ContactDetailsModalProps {
   contact: Contact;
@@ -115,17 +115,17 @@ export function ContactDetailsModal({
           </div>
 
           {/* Address Information */}
-          {(contact.mailing_street || contact.mailing_city || contact.mailing_state) && (
+          {((contact as any).address || (contact as any).city || (contact as any).state) && (
             <div>
               <h3 className="font-medium text-slate-900 mb-3">Endereço</h3>
               <div className="text-slate-600">
-                {contact.mailing_street && <p>{contact.mailing_street}</p>}
+                {(contact as any).address && <p>{(contact as any).address}</p>}
                 <p>
                   {[
-                    contact.mailing_city,
-                    contact.mailing_state,
-                    contact.mailing_postal_code,
-                    contact.mailing_country
+                    (contact as any).city,
+                    (contact as any).state,
+                    (contact as any).zip_code,
+                    (contact as any).country
                   ].filter(Boolean).join(', ')}
                 </p>
               </div>

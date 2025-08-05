@@ -54,7 +54,7 @@ export const useLeadOutcomeStatus = (leadId: string, enabled = true) => {
         return { hasOutcome: false };
       }
     },
-    enabled: enabled && !!leadId,
+    enabled: Boolean(enabled && !!leadId),
     staleTime: 5 * 60 * 1000, // 5 minutos
     retry: false, // Não retry em caso de erro - é normal não ter motivos
   });

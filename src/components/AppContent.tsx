@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { ModernLoginForm as LoginForm } from './auth/ModernLoginForm';
 import AppDashboard from './AppDashboard';
 

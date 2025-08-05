@@ -31,7 +31,7 @@ import { OutcomeReason } from '../../../modules/outcome-reasons/types';
 // TYPES E INTERFACES
 // ============================================
 
-// ✅ CORREÇÃO: Usar versão local simplificada para formulário
+// ✅ CORREÇÃO: Usar tipo Zod como fonte da verdade com campos opcionais para formulário
 interface LocalOutcomeReason {
   id?: string;
   reason_text: string;
@@ -45,20 +45,43 @@ interface LocalOutcomeReason {
   updated_at?: string;
 }
 
-interface OutcomeReasonsData {
-  ganho_reasons: LocalOutcomeReason[];
-  perdido_reasons: LocalOutcomeReason[];
+// ✅ CORREÇÃO: Usar OutcomeReason do Zod como base, mas com campos opcionais para compatibilidade de formulário
+type FormOutcomeReason = Partial<OutcomeReason> & {
+  reason_text: string; // Este campo sempre é obrigatório no formulário
+  display_order: number; // Este campo sempre é obrigatório no formulário
+  is_active: boolean; // Este campo sempre é obrigatório no formulário
+};
+
+interface FormOutcomeReasonsData {
+  ganho_reasons: FormOutcomeReason[];
+  perdido_reasons: FormOutcomeReason[];
   // ✅ COMPATIBILIDADE: Manter campos antigos durante transição
-  won_reasons: LocalOutcomeReason[];
-  lost_reasons: LocalOutcomeReason[];
+  won_reasons: FormOutcomeReason[];
+  lost_reasons: FormOutcomeReason[];
 }
 
 interface OutcomeReasonsConfigurationProps {
-  value?: OutcomeReasonsData;
-  onChange?: (data: OutcomeReasonsData) => void;
+  value?: FormOutcomeReasonsData;
+  onChange?: (data: FormOutcomeReasonsData) => void;
   pipelineId: string;
   isEditMode?: boolean;
 }
+
+// ============================================
+// UTILITY FUNCTIONS
+// ============================================
+
+// ✅ CORREÇÃO: Converter dados da API para formato do formulário
+const convertApiDataToFormData = (apiData: any): FormOutcomeReasonsData | undefined => {
+  if (!apiData) return undefined;
+  
+  return {
+    ganho_reasons: apiData.ganho_reasons || [],
+    perdido_reasons: apiData.perdido_reasons || [],
+    won_reasons: apiData.won_reasons || [],
+    lost_reasons: apiData.lost_reasons || []
+  };
+};
 
 // ============================================
 // COMPONENTE PRINCIPAL
@@ -109,12 +132,12 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
   // ✅ Dados para sincronização (apenas em modo edição)
   const formValues = React.useMemo(() => {
     if (isEditMode && apiData && !isLoadingReasons) {
-      return apiData;
+      return convertApiDataToFormData(apiData);
     }
     return undefined;
   }, [isEditMode, apiData, isLoadingReasons]);
 
-  const { control, watch, setValue, getValues, reset } = useForm<OutcomeReasonsData>({
+  const { control, watch, setValue, getValues, reset } = useForm<FormOutcomeReasonsData>({
     defaultValues: defaultFormData,
     values: formValues // ✅ Sincronização automática sem useEffect
   });
@@ -273,7 +296,7 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
 
   // ✅ CORREÇÃO CRÍTICA: Criar funções específicas fora do useCallback para evitar hooks condicionais
   const addGanhoReason = React.useCallback(async () => {
-    const newReason: LocalOutcomeReason = {
+    const newReason: FormOutcomeReason = {
       reason_text: '',
       display_order: ganhoFields.length,
       is_active: true
@@ -288,7 +311,7 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
   }, [ganhoFields.length, appendGanho, isEditMode, debouncedSave]);
 
   const addPerdidoReason = React.useCallback(async () => {
-    const newReason: LocalOutcomeReason = {
+    const newReason: FormOutcomeReason = {
       reason_text: '',
       display_order: perdidoFields.length,
       is_active: true
@@ -307,7 +330,7 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
 
     // Adicionar motivos padrão de ganho
     defaultReasons.ganho.forEach((reasonText, index) => {
-      const newReason: LocalOutcomeReason = {
+      const newReason: FormOutcomeReason = {
         reason_text: reasonText,
         display_order: ganhoFields.length + index,
         is_active: true
@@ -317,7 +340,7 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
 
     // Adicionar motivos padrão de perda
     defaultReasons.perdido.forEach((reasonText, index) => {
-      const newReason: LocalOutcomeReason = {
+      const newReason: FormOutcomeReason = {
         reason_text: reasonText,
         display_order: perdidoFields.length + index,
         is_active: true

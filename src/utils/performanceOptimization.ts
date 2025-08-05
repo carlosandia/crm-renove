@@ -8,9 +8,7 @@
  */
 
 import { useCallback, useRef, useMemo } from 'react';
-import { createLogger } from './optimizedLogger';
-
-const perfLogger = createLogger('Performance');
+import { logPerformance } from './optimizedLogger';
 
 /**
  * ✅ DEBOUNCE HOOK PARA REDUZIR CALLS EXCESSIVAS
@@ -108,7 +106,7 @@ export const useDeepMemo = <T>(
   if (depsChanged) {
     dependenciesRef.current = deps;
     valueRef.current = factory();
-    perfLogger.debug('useDeepMemo: Valor recalculado');
+    logPerformance('useDeepMemo: Valor recalculado');
   }
 
   return valueRef.current!;
@@ -135,7 +133,7 @@ export const useWhyDidYouUpdate = (name: string, props: Record<string, any>) => 
       });
 
       if (Object.keys(changedProps).length) {
-        perfLogger.debug(`[${name}] Props que mudaram:`, changedProps);
+        logPerformance(`[${name}] Props que mudaram`, changedProps);
       }
     }
 
@@ -158,7 +156,7 @@ export const useCachedCallback = <T extends (...args: any[]) => any>(
     
     if (!functionCache.has(key)) {
       functionCache.set(key, callback);
-      perfLogger.debug(`Função cached: ${cacheKey}`);
+      logPerformance(`Função cached`, { cacheKey });
     }
     
     return functionCache.get(key);
@@ -215,7 +213,7 @@ export const useRenderPerformance = (componentName: string) => {
     const renderTime = performance.now() - startTimeRef.current;
     
     if (renderTime > 16) { // Mais de 16ms pode causar janks
-      perfLogger.warn(`${componentName} render lento:`, {
+      logPerformance(`${componentName} render lento`, {
         renderCount: renderCountRef.current,
         renderTime: `${renderTime.toFixed(2)}ms`
       });

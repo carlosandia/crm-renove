@@ -3,7 +3,7 @@ import { Pipeline } from '../../../types/Pipeline';
 import { User } from '../../../types/User';
 import { BlurFade } from '../../ui/blur-fade';
 import { Button } from '../../ui/button';
-import ModernPipelineList from '../ModernPipelineList';
+import PipelineList from '../PipelineList';
 import { Plus, Archive } from 'lucide-react';
 
 export interface PipelineListViewProps {
@@ -39,15 +39,16 @@ export const PipelineListView: React.FC<PipelineListViewProps> = ({
       {/* SubHeader removido - agora é gerenciado pelo CRMLayout */}
       
       <BlurFade delay={0.1} className="flex-1 flex flex-col">
-        <ModernPipelineList
+        <PipelineList
           pipelines={adminPipelines}
-          members={availableMembers}
-          loading={loading}
-          onEditPipeline={onEditPipeline}
-          onViewPipeline={onViewPipeline}
-          onArchivePipeline={handleArchivePipeline}
-          searchTerm={searchTerm}
-          selectedFilter={selectedFilter}
+          onEdit={(pipelineId) => {
+            const pipeline = adminPipelines.find(p => p.id === pipelineId);
+            if (pipeline) onEditPipeline(pipeline);
+          }}
+          onDelete={(pipelineId) => {
+            if (onArchivePipeline) onArchivePipeline(pipelineId, true);
+          }}
+          onCreateNew={() => {}} // Implementar se necessário
         />
       </BlurFade>
     </div>

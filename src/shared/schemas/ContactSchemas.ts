@@ -12,11 +12,16 @@ import { z } from 'zod';
 /**
  * 🔧 Contact Schema - Esquema completo do contato
  */
-export const ContactSchema = z.object({
-  id: z.string().uuid(),
-  first_name: z.string().min(1), // ✅ NOT NULL no banco
-  last_name: z.string().optional().nullable(), // ✅ NULLABLE no banco
-  email: z.string().email(), // ✅ NOT NULL no banco
+// ✅ CORREÇÃO CRÍTICA: Schema base com campos obrigatórios - id pode ser opcional para criação
+const BaseContactSchema = z.object({
+  id: z.string().uuid().optional(), // ✅ CORREÇÃO: id opcional para compatibilidade com useSupabaseCrud
+  first_name: z.string().min(1),
+  email: z.string().email(),
+});
+
+// ✅ Schema completo com campos opcionais
+export const ContactSchema = BaseContactSchema.extend({
+  last_name: z.string().optional().nullable(),
   phone: z.string().optional(),
   company: z.string().optional(),
   job_title: z.string().optional(),
@@ -29,10 +34,17 @@ export const ContactSchema = z.object({
   country: z.string().optional(),
   
   // Informações adicionais
-  company_id: z.string().uuid().optional().nullable(), // ✅ NULLABLE no banco
+  company_id: z.string().uuid().optional().nullable(),
   notes: z.string().optional(),
   tags: z.array(z.string()).default([]).optional(),
   lead_source: z.string().optional(),
+  
+  // ✅ CORREÇÃO: Propriedades adicionais para compatibilidade com ContactsList
+  title: z.string().optional(),
+  mobile_phone: z.string().optional(),
+  account_name: z.string().optional(),
+  contact_status: z.string().optional(),
+  lifecycle_stage: z.string().optional(),
   
   // Redes sociais
   social_linkedin: z.string().url().optional(),
@@ -41,12 +53,10 @@ export const ContactSchema = z.object({
   
   // Sistema
   tenant_id: z.string().uuid().optional(),
-  created_at: z.string().optional(), // Formato Supabase: "2025-06-30 01:14:13.34407"
-  updated_at: z.string().optional(), // Formato Supabase: "2025-06-30 01:14:13.34407"
+  created_at: z.string().optional(),
+  updated_at: z.string().optional(),
   created_by: z.string().uuid().optional(),
-  
-  // AIDEV-NOTE: Index signature para compatibilidade
-}).passthrough();
+}); // ✅ Schema bem estruturado com campos obrigatórios definidos
 
 /**
  * 🔧 Contact Create Schema - Para criação
@@ -107,10 +117,6 @@ export const LeadImportResultSchema = z.object({
   }))
 });
 
-// Tipos inferidos dos schemas
-export type Contact = z.infer<typeof ContactSchema>;
-export type ContactCreate = z.infer<typeof ContactCreateSchema>;
-export type ContactUpdate = z.infer<typeof ContactUpdateSchema>;
-export type ContactListItem = z.infer<typeof ContactListItemSchema>;
-export type LeadImport = z.infer<typeof LeadImportSchema>;
-export type LeadImportResult = z.infer<typeof LeadImportResultSchema>;
+// ✅ CORREÇÃO: Tipos removidos daqui - use Domain.ts para evitar duplicação
+// Tipos inferidos estão em ../types/Domain.ts
+// AIDEV-NOTE: Type derived from Zod — use Domain.ts como única fonte

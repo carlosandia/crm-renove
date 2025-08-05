@@ -4,11 +4,11 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { Contact } from '../../integrations/supabase/types';
+import { Contact } from '../../shared/types/Domain';
 import { CrudModalProps } from '../../types/CommonProps';
 
 interface ContactFormModalProps extends Omit<CrudModalProps<Contact>, 'isOpen'> {
-  contact?: Contact | null; // Mantido para compatibilidade
+  contact?: Contact | Partial<Contact> | null; // ✅ CORREÇÃO: Aceitar Contact completo ou Partial
   open: boolean; // Usando 'open' em vez de 'isOpen' para compatibilidade com este componente
   onSave: (contactData: Partial<Contact>) => Promise<void>; // Mantido para compatibilidade
 }
@@ -26,15 +26,12 @@ export function ContactFormModal({
     phone: '',
     mobile_phone: '',
     title: '',
-    department: '',
     account_name: '',
-    website: '',
-    mailing_street: '',
-    mailing_city: '',
-    mailing_state: '',
-    mailing_postal_code: '',
-    mailing_country: '',
-    linkedin_url: '',
+    address: '',
+    city: '',
+    state: '',
+    zip_code: '',
+    country: '',
     lead_source: '',
     contact_status: 'active',
     lifecycle_stage: 'lead'
@@ -54,16 +51,13 @@ export function ContactFormModal({
         phone: '',
         mobile_phone: '',
         title: '',
-        department: '',
-        account_name: '',
-        website: '',
-        mailing_street: '',
-        mailing_city: '',
-        mailing_state: '',
-        mailing_postal_code: '',
-        mailing_country: '',
-        linkedin_url: '',
-        lead_source: '',
+            account_name: '',
+        address: '',
+        city: '',
+        state: '',
+        zip_code: '',
+        country: '',
+            lead_source: '',
         contact_status: 'active',
         lifecycle_stage: 'lead'
       });
@@ -84,7 +78,7 @@ export function ContactFormModal({
     }
   };
 
-  const handleInputChange = (field: keyof Contact, value: string) => {
+  const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -175,14 +169,6 @@ export function ContactFormModal({
               />
             </div>
             
-            <div className="space-y-2">
-              <Label htmlFor="department">Departamento</Label>
-              <Input
-                id="department"
-                value={formData.department || ''}
-                onChange={(e) => handleInputChange('department', e.target.value)}
-              />
-            </div>
           </div>
 
           {/* Status and Stage */}
@@ -252,37 +238,37 @@ export function ContactFormModal({
             <div className="space-y-2">
               <Label htmlFor="mailing_street">Rua</Label>
               <Input
-                id="mailing_street"
-                value={formData.mailing_street || ''}
-                onChange={(e) => handleInputChange('mailing_street', e.target.value)}
+                id="address"
+                value={(formData as any).address || ''}
+                onChange={(e) => handleInputChange('address', e.target.value)}
               />
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="mailing_city">Cidade</Label>
+                <Label htmlFor="city">Cidade</Label>
                 <Input
-                  id="mailing_city"
-                  value={formData.mailing_city || ''}
-                  onChange={(e) => handleInputChange('mailing_city', e.target.value)}
+                  id="city"
+                  value={(formData as any).city || ''}
+                  onChange={(e) => handleInputChange('city', e.target.value)}
                 />
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="mailing_state">Estado</Label>
+                <Label htmlFor="state">Estado</Label>
                 <Input
-                  id="mailing_state"
-                  value={formData.mailing_state || ''}
-                  onChange={(e) => handleInputChange('mailing_state', e.target.value)}
+                  id="state"
+                  value={(formData as any).state || ''}
+                  onChange={(e) => handleInputChange('state', e.target.value)}
                 />
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="mailing_postal_code">CEP</Label>
+                <Label htmlFor="zip_code">CEP</Label>
                 <Input
-                  id="mailing_postal_code"
-                  value={formData.mailing_postal_code || ''}
-                  onChange={(e) => handleInputChange('mailing_postal_code', e.target.value)}
+                  id="zip_code"
+                  value={(formData as any).zip_code || ''}
+                  onChange={(e) => handleInputChange('zip_code', e.target.value)}
                 />
               </div>
             </div>
@@ -295,7 +281,7 @@ export function ContactFormModal({
               <Input
                 id="website"
                 type="url"
-                value={formData.website || ''}
+                value={(formData as any).website || ''}
                 onChange={(e) => handleInputChange('website', e.target.value)}
               />
             </div>
@@ -305,7 +291,7 @@ export function ContactFormModal({
               <Input
                 id="linkedin_url"
                 type="url"
-                value={formData.linkedin_url || ''}
+                value={(formData as any).linkedin_url || ''}
                 onChange={(e) => handleInputChange('linkedin_url', e.target.value)}
               />
             </div>

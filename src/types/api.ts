@@ -393,7 +393,8 @@ export interface LoginRequest {
 }
 
 /**
- * ✅ LOGIN_RESPONSE - Response de login melhorado
+ * ✅ LOGIN_RESPONSE - Response simplificado para Supabase Auth
+ * AIDEV-NOTE: Tokens JWT customizados removidos, sistema usa Session do Supabase
  */
 export interface LoginResponse {
   user: {
@@ -412,22 +413,11 @@ export interface LoginResponse {
     avatar_url?: string;
   };
   
-  tokens: {
-    accessToken: string;
-    refreshToken: string;
-    expiresIn: number;
-    tokenType: 'Bearer';
-    
-    // Informações do token
-    scope?: string;
-    issuedAt: string;
-  };
-  
-  // Configurações da sessão
+  // Supabase Session (gerenciada automaticamente)
   session: {
     id: string;
     expires_at: string;
-    device_info: LoginRequest['device_info'];
+    device_info?: LoginRequest['device_info'];
   };
 }
 

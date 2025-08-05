@@ -1,7 +1,7 @@
 // =====================================================================================
-// SERVICES: API de Reuniões  
+// SERVICES: API de Reuniões (Refatorado - Autenticação Supabase Básica)
 // Autor: Claude (Arquiteto Sênior)
-// Descrição: Serviços para consumir API de reuniões com type safety
+// Descrição: Serviços para consumir API de reuniões - SEM JWT, usando padrão das atividades
 // =====================================================================================
 
 import { api } from '../lib/api';
@@ -9,6 +9,7 @@ import type {
   Meeting,
   CreateMeeting,
   UpdateMeetingOutcome,
+  UpdateMeetingData,
   ListMeetingsQuery,
   MeetingMetricsQuery,
   MeetingWithRelations,
@@ -22,6 +23,11 @@ interface CreateMeetingResponse {
 }
 
 interface UpdateMeetingResponse {
+  success: boolean;
+  data: MeetingWithRelations;
+}
+
+interface UpdateMeetingDataResponse {
   success: boolean;
   data: MeetingWithRelations;
 }
@@ -59,6 +65,7 @@ export class MeetingsAPI {
   static async createMeeting(meetingData: CreateMeeting): Promise<MeetingWithRelations> {
     try {
       console.log('🔍 [MeetingsAPI] Criando reunião:', { meetingData });
+      
       const response = await api.post<CreateMeetingResponse>('/meetings', meetingData);
       
       console.log('✅ [MeetingsAPI] Response de criação recebida:', { 
@@ -76,42 +83,6 @@ export class MeetingsAPI {
       console.error('❌ [MeetingsAPI] Erro ao criar reunião:', error);
       console.error('❌ [MeetingsAPI] Status:', error.response?.status);
       console.error('❌ [MeetingsAPI] Response data:', error.response?.data);
-      
-      // AIDEV-NOTE: Fallback robusto para QUALQUER erro de conexão
-      if (!error.response || error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-        console.warn('⚠️ [MeetingsAPI] Backend offline - simulando criação de reunião');
-        return {
-          id: `offline-meeting-${Date.now()}`,
-          tenant_id: 'offline-mode',
-          pipeline_lead_id: meetingData.pipeline_lead_id,
-          lead_master_id: meetingData.lead_master_id,
-          owner_id: 'offline-user',
-          planned_at: meetingData.planned_at,
-          outcome: 'agendada',
-          notes: meetingData.notes || '',
-          google_event_id: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        } as any;
-      }
-
-      // AIDEV-NOTE: Fallback para erros de autenticação/servidor específicos
-      if (error.response?.status === 401 || error.response?.status === 500) {
-        console.warn('⚠️ [MeetingsAPI] Simulando criação de reunião devido ao erro de servidor');
-        return {
-          id: `simulated-meeting-${Date.now()}`,
-          tenant_id: 'simulated',
-          pipeline_lead_id: meetingData.pipeline_lead_id,
-          lead_master_id: meetingData.lead_master_id,
-          owner_id: 'simulated-user',
-          planned_at: meetingData.planned_at,
-          outcome: 'agendada',
-          notes: meetingData.notes || '',
-          google_event_id: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        } as any;
-      }
       
       throw new Error(error.response?.data?.error || 'Erro ao criar reunião');
     }
@@ -136,8 +107,42 @@ export class MeetingsAPI {
       
       return response.data.data;
     } catch (error: any) {
-      console.error('Erro ao atualizar reunião:', error);
+      console.error('❌ [MeetingsAPI] Erro ao atualizar outcome:', error);
       throw new Error(error.response?.data?.error || 'Erro ao atualizar reunião');
+    }
+  }
+
+  /**
+   * Atualizar dados básicos da reunião (título e observações)
+   */
+  static async updateMeeting(
+    meetingId: string, 
+    updateData: UpdateMeetingData
+  ): Promise<MeetingWithRelations> {
+    try {
+      console.log('🔍 [MeetingsAPI] Atualizando dados da reunião:', { meetingId, updateData });
+      
+      const response = await api.put<UpdateMeetingDataResponse>(
+        `/meetings/${meetingId}`, 
+        updateData
+      );
+      
+      console.log('✅ [MeetingsAPI] Reunião atualizada:', { 
+        status: response.status, 
+        success: response.data?.success 
+      });
+      
+      if (!response.data.success) {
+        throw new Error('Falha ao atualizar dados da reunião');
+      }
+      
+      return response.data.data;
+    } catch (error: any) {
+      console.error('❌ [MeetingsAPI] Erro ao atualizar dados da reunião:', error);
+      console.error('❌ [MeetingsAPI] Status:', error.response?.status);
+      console.error('❌ [MeetingsAPI] Response data:', error.response?.data);
+      
+      throw new Error(error.response?.data?.error || 'Erro ao atualizar dados da reunião');
     }
   }
 
@@ -150,8 +155,8 @@ export class MeetingsAPI {
   ): Promise<{ meetings: MeetingWithRelations[]; pagination: any }> {
     try {
       console.log('🔍 [MeetingsAPI] Buscando reuniões para lead:', { leadId, query });
-      const params = new URLSearchParams();
       
+      const params = new URLSearchParams();
       if (query?.outcome) params.append('outcome', query.outcome);
       if (query?.date_from) params.append('date_from', query.date_from);
       if (query?.date_to) params.append('date_to', query.date_to);
@@ -171,7 +176,6 @@ export class MeetingsAPI {
         hasPagination: !!response.data?.pagination
       });
       
-      // AIDEV-NOTE: Verificar se response tem estrutura esperada
       if (!response.data.success) {
         throw new Error('Falha ao buscar reuniões');
       }
@@ -184,24 +188,6 @@ export class MeetingsAPI {
       console.error('❌ [MeetingsAPI] Erro ao buscar reuniões:', error);
       console.error('❌ [MeetingsAPI] Status:', error.response?.status);
       console.error('❌ [MeetingsAPI] Response data:', error.response?.data);
-      
-      // AIDEV-NOTE: Fallback robusto para QUALQUER erro de conexão
-      if (!error.response || error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-        console.warn('⚠️ [MeetingsAPI] Backend offline - retornando histórico vazio');
-        return {
-          meetings: [],
-          pagination: { page: 1, limit: 20, total: 0, pages: 0 }
-        };
-      }
-
-      // AIDEV-NOTE: Fallback para erros de autenticação/servidor específicos
-      if (error.response?.status === 401 || error.response?.status === 500) {
-        console.warn('⚠️ [MeetingsAPI] Retornando dados vazios devido ao erro de autenticação/servidor');
-        return {
-          meetings: [],
-          pagination: { page: 1, limit: 20, total: 0, pages: 0 }
-        };
-      }
       
       throw new Error(error.response?.data?.error || 'Erro ao buscar reuniões');
     }
@@ -216,8 +202,8 @@ export class MeetingsAPI {
   }> {
     try {
       console.log('🔍 [MeetingsAPI] Buscando métricas:', { query });
-      const params = new URLSearchParams();
       
+      const params = new URLSearchParams();
       if (query?.pipeline_id) params.append('pipeline_id', query.pipeline_id);
       if (query?.date_from) params.append('date_from', query.date_from);
       if (query?.date_to) params.append('date_to', query.date_to);
@@ -237,7 +223,6 @@ export class MeetingsAPI {
         hasAggregated: !!response.data?.data?.aggregated
       });
       
-      // AIDEV-NOTE: Verificar se response tem estrutura esperada
       if (!response.data.success) {
         throw new Error('Falha ao buscar métricas');
       }
@@ -250,42 +235,6 @@ export class MeetingsAPI {
       console.error('❌ [MeetingsAPI] Erro ao buscar métricas:', error);
       console.error('❌ [MeetingsAPI] Status:', error.response?.status);
       console.error('❌ [MeetingsAPI] Response data:', error.response?.data);
-      
-      // AIDEV-NOTE: Fallback robusto para QUALQUER erro de conexão
-      if (!error.response || error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-        console.warn('⚠️ [MeetingsAPI] Backend offline - usando dados mock para métricas');
-        return {
-          individualPipelines: [],
-          aggregated: {
-            total_meetings: 0,
-            scheduled_count: 0,
-            attended_count: 0,
-            no_show_count: 0,
-            rescheduled_count: 0,
-            canceled_count: 0,
-            no_show_rate: 0,
-            attend_rate: 0
-          }
-        };
-      }
-
-      // AIDEV-NOTE: Fallback para erros de autenticação/servidor específicos
-      if (error.response?.status === 401 || error.response?.status === 500) {
-        console.warn('⚠️ [MeetingsAPI] Retornando métricas vazias devido ao erro de autenticação/servidor');
-        return {
-          individualPipelines: [],
-          aggregated: {
-            total_meetings: 0,
-            scheduled_count: 0,
-            attended_count: 0,
-            no_show_count: 0,
-            rescheduled_count: 0,
-            canceled_count: 0,
-            no_show_rate: 0,
-            attend_rate: 0
-          }
-        };
-      }
       
       throw new Error(error.response?.data?.error || 'Erro ao buscar métricas');
     }
@@ -302,73 +251,27 @@ export class MeetingsAPI {
         throw new Error('Falha ao excluir reunião');
       }
     } catch (error: any) {
-      console.error('Erro ao excluir reunião:', error);
+      console.error('❌ [MeetingsAPI] Erro ao excluir reunião:', error);
       throw new Error(error.response?.data?.error || 'Erro ao excluir reunião');
     }
   }
 
   /**
-   * Reagendar reunião (cria nova reunião vinculada)
+   * Registrar no-show da reunião
    */
-  static async rescheduleMeeting(
-    meetingId: string, 
-    rescheduleData: {
-      new_planned_at: string;
-      reschedule_reason: string;
-      notes?: string;
-    }
-  ): Promise<{
-    original_meeting: MeetingWithRelations;
-    new_meeting: MeetingWithRelations;
-  }> {
+  static async registerNoShow(meetingId: string, noShowData: any): Promise<MeetingWithRelations> {
     try {
-      console.log('🔄 [MeetingsAPI] Reagendando reunião:', { meetingId, rescheduleData });
+      console.log('🔍 [MeetingsAPI] Registrando no-show:', { meetingId, noShowData });
       
-      const response = await api.post<{
-        success: boolean;
-        data: {
-          original_meeting: MeetingWithRelations;
-          new_meeting: MeetingWithRelations;
-        };
-      }>(`/meetings/${meetingId}/reschedule`, rescheduleData);
-      
-      if (!response.data.success) {
-        throw new Error('Falha ao reagendar reunião');
-      }
-      
-      console.log('✅ [MeetingsAPI] Reunião reagendada com sucesso');
-      return response.data.data;
-    } catch (error: any) {
-      console.error('❌ [MeetingsAPI] Erro ao reagendar reunião:', error);
-      throw new Error(error.response?.data?.error || 'Erro ao reagendar reunião');
-    }
-  }
-
-  /**
-   * Registrar no-show com workflow inteligente
-   */
-  static async registerNoShow(
-    meetingId: string,
-    noShowData: {
-      no_show_reason: string;
-      notes?: string;
-      next_action: string;
-      follow_up_type?: string;
-    }
-  ): Promise<MeetingWithRelations> {
-    try {
-      console.log('🚫 [MeetingsAPI] Registrando no-show:', { meetingId, noShowData });
-      
-      const response = await api.patch<{
-        success: boolean;
-        data: MeetingWithRelations;
-      }>(`/meetings/${meetingId}/no-show`, noShowData);
+      const response = await api.patch<UpdateMeetingResponse>(
+        `/meetings/${meetingId}/no-show`, 
+        noShowData
+      );
       
       if (!response.data.success) {
         throw new Error('Falha ao registrar no-show');
       }
       
-      console.log('✅ [MeetingsAPI] No-show registrado com sucesso');
       return response.data.data;
     } catch (error: any) {
       console.error('❌ [MeetingsAPI] Erro ao registrar no-show:', error);
@@ -377,51 +280,28 @@ export class MeetingsAPI {
   }
 
   /**
-   * Buscar histórico de reagendamentos
+   * Reagendar reunião
    */
-  static async getMeetingHistory(meetingId: string): Promise<{
-    chain: Array<{
-      meeting_id: string;
-      parent_meeting_id: string | null;
-      planned_at: string;
-      outcome: string;
-      reschedule_reason: string | null;
-      no_show_reason: string | null;
-      notes: string | null;
-      created_at: string;
-      updated_at: string;
-      is_original: boolean;
-      chain_position: number;
-    }>;
-    statistics: {
-      total_meetings: number;
-      reschedule_count: number;
-      original_meeting: any;
-      latest_meeting: any;
-    };
-  }> {
+  static async rescheduleMeeting(meetingId: string, rescheduleData: any): Promise<{ original_meeting: MeetingWithRelations; new_meeting: MeetingWithRelations }> {
     try {
-      console.log('📋 [MeetingsAPI] Buscando histórico:', { meetingId });
+      console.log('🔍 [MeetingsAPI] Reagendando reunião:', { meetingId, rescheduleData });
       
-      const response = await api.get<{
-        success: boolean;
-        data: {
-          chain: any[];
-          statistics: any;
-        };
-      }>(`/meetings/${meetingId}/history`);
+      const response = await api.post<{ success: boolean; data: { original_meeting: MeetingWithRelations; new_meeting: MeetingWithRelations } }>(
+        `/meetings/${meetingId}/reschedule`, 
+        rescheduleData
+      );
       
       if (!response.data.success) {
-        throw new Error('Falha ao buscar histórico');
+        throw new Error('Falha ao reagendar reunião');
       }
       
-      console.log('✅ [MeetingsAPI] Histórico carregado com sucesso');
       return response.data.data;
     } catch (error: any) {
-      console.error('❌ [MeetingsAPI] Erro ao buscar histórico:', error);
-      throw new Error(error.response?.data?.error || 'Erro ao buscar histórico');
+      console.error('❌ [MeetingsAPI] Erro ao reagendar reunião:', error);
+      throw new Error(error.response?.data?.error || 'Erro ao reagendar reunião');
     }
   }
+
 }
 
 // AIDEV-NOTE: Funções utilitárias para formatação

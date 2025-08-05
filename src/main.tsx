@@ -1,18 +1,34 @@
 import React, { Suspense, lazy } from 'react'
 import ReactDOM from 'react-dom/client'
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
 import App from './App'
-import { useAuth } from './contexts/AuthContext'
+import { useAuth } from './providers/AuthProvider'
 import './index.css'
+
+// ✅ OTIMIZAÇÃO: Importar controles de log para desenvolvimento
+if (import.meta.env.DEV) {
+  import('./utils/logger-controls');
+}
 
 console.log('🚀 Main.tsx carregado - renderizando App completo com React Router v7 Future Flags')
 
-// 🚀 OTIMIZAÇÃO: Lazy loading de componentes pesados
-const AppDashboard = lazy(() => import('./components/AppDashboard'))
-const PublicFormRoute = lazy(() => import('./components/FormBuilder/PublicFormRoute'))
-const GoogleCalendarCallback = lazy(() => import('./components/GoogleCalendarCallback'))
-const AccountActivation = lazy(() => import('./components/AccountActivation'))
-const ModernLoginForm = lazy(() => import('./components/auth/ModernLoginForm').then(module => ({ default: module.ModernLoginForm })))
+// 🔧 CORREÇÃO: Tratamento de erros de dynamic imports (baseado na documentação do Vite)
+window.addEventListener('vite:preloadError', (event) => {
+  console.error('🚨 Vite preload error:', event.payload);
+  // Prevenir que o erro seja lançado e tentar recarregar a página
+  event.preventDefault();
+  console.log('🔄 Recarregando página devido a erro de preload...');
+  window.location.reload();
+})
+
+// 🚀 OTIMIZAÇÃO: Lazy loading com tratamento de erro
+const AppDashboard = lazy(() => import('./components/AppDashboard').catch(() => ({ default: () => <div>Erro ao carregar Dashboard</div> })))
+const PublicFormRoute = lazy(() => import('./components/FormBuilder/PublicFormRoute').catch(() => ({ default: () => <div>Erro ao carregar Formulário</div> })))
+const GoogleCalendarCallback = lazy(() => import('./components/GoogleCalendarCallback').catch(() => ({ default: () => <div>Erro ao carregar Google Calendar</div> })))
+const AccountActivation = lazy(() => import('./components/AccountActivation').catch(() => ({ default: () => <div>Erro ao carregar Ativação</div> })))
+const ModernLoginForm = lazy(() => import('./components/auth/ModernLoginForm')
+  .then(module => ({ default: module.ModernLoginForm }))
+  .catch(() => ({ default: () => <div>Erro ao carregar Login</div> })))
 
 // ✅ CORREÇÃO: Loading mais rápido e menos intrusivo
 const LoadingFallback = React.memo(() => (
@@ -24,23 +40,19 @@ const LoadingFallback = React.memo(() => (
   </div>
 ))
 
-// 🔧 CORREÇÃO: Componente wrapper para rotas protegidas (sem Navigate)
+// 🔧 CORREÇÃO: Componente wrapper para rotas protegidas (simplificado)
 const ProtectedDashboard = React.memo(() => {
   const { user, loading } = useAuth()
   
-  React.useEffect(() => {
-    if (!loading && !user) {
-      // Usar window.location para redirecionamento sem warnings
-      window.location.replace('/login')
-    }
-  }, [user, loading])
+  console.log('🔍 [ProtectedDashboard] Estado:', { loading, user: user?.email || 'null' })
   
   if (loading) {
     return <LoadingFallback />
   }
   
   if (!user) {
-    return <LoadingFallback />
+    // Redirecionar para login usando React Router
+    return <Navigate to="/login" replace />
   }
   
   return (
@@ -50,19 +62,17 @@ const ProtectedDashboard = React.memo(() => {
   )
 })
 
-// 🔧 CORREÇÃO: Componente wrapper para login com redirecionamento (sem Navigate)
+// 🔧 CORREÇÃO: Componente wrapper para login (simplificado)
 const LoginWrapper = React.memo(() => {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
   
-  React.useEffect(() => {
-    if (user) {
-      // Usar window.location para redirecionamento sem warnings
-      window.location.replace('/')
-    }
-  }, [user])
+  if (loading) {
+    return <LoadingFallback />
+  }
   
   if (user) {
-    return <LoadingFallback />
+    // Redirecionar para dashboard usando React Router
+    return <Navigate to="/" replace />
   }
   
   return (
@@ -72,7 +82,7 @@ const LoginWrapper = React.memo(() => {
   )
 })
 
-// 🔧 CORREÇÃO: Configurar React Router com Future Flags para v7 e rotas completas
+// 🔧 CORREÇÃO: React Router v6 com Future Flag para v7 preparação
 const router = createBrowserRouter([
   {
     path: "/",
@@ -121,14 +131,12 @@ const router = createBrowserRouter([
     ]
   }
 ], {
+  // ✅ CORREÇÃO: Future flags compatíveis com React Router v6.30.1
   future: {
-    // 🚀 OTIMIZAÇÃO: Future flags para React Router v7
-    v7_startTransition: true,           // Wrapping state updates em React.startTransition
-    v7_relativeSplatPath: true,         // Resolução aprimorada de paths relativos
-    v7_fetcherPersist: true,            // Persistência de estado do fetcher
-    v7_normalizeFormMethod: true,       // Normalização de métodos de formulário
-    v7_partialHydration: true,          // Hidratação parcial em SSR
-    v7_skipActionErrorRevalidation: true // Evitar revalidação em erros de ação
+    v7_relativeSplatPath: true,         // Novo comportamento de splat paths relativos
+    v7_fetcherPersist: true,            // Persiste fetchers através de navegação
+    v7_normalizeFormMethod: true,       // Normaliza form methods (GET/POST)
+    v7_skipActionErrorRevalidation: true  // Skip revalidation em action errors (4xx/5xx)
   }
 })
 
@@ -138,10 +146,7 @@ if (root) {
   console.log('✅ Elemento root encontrado')
   ReactDOM.createRoot(root).render(
     <RouterProvider 
-      router={router} 
-      future={{
-        v7_startTransition: true
-      }}
+      router={router}
     />
   )
 } else {

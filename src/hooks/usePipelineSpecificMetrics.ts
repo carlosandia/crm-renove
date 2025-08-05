@@ -6,7 +6,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { api } from '../lib/api';
 import { logger, LogContext } from '../utils/loggerOptimized';
 
@@ -32,6 +32,11 @@ export interface PipelineMetrics {
   active_opportunities: number;
   pending_follow_ups: number;
   overdue_tasks: number;
+  // ✅ CORREÇÃO CRÍTICA: Adicionar métricas de reuniões
+  meetings_scheduled: number;
+  meetings_attended: number;
+  meetings_noshow: number;
+  meetings_noshow_rate: number;
   updated_at: string;
 }
 
@@ -123,6 +128,11 @@ export const usePipelineSpecificMetrics = ({
           active_opportunities: response.data.data.active_opportunities || 0,
           pending_follow_ups: response.data.data.pending_follow_ups || 0,
           overdue_tasks: response.data.data.overdue_tasks || 0,
+          // ✅ CORREÇÃO CRÍTICA: Campos de reuniões do backend
+          meetings_scheduled: response.data.data.meetings_scheduled || 0,
+          meetings_attended: response.data.data.meetings_attended || 0,
+          meetings_noshow: response.data.data.meetings_noshow || 0,
+          meetings_noshow_rate: response.data.data.meetings_noshow_rate || 0,
           updated_at: new Date().toISOString()
         };
 
@@ -156,6 +166,11 @@ export const usePipelineSpecificMetrics = ({
           active_opportunities: 0,
           pending_follow_ups: 0,
           overdue_tasks: 0,
+          // ✅ FALLBACK: Reuniões vazias
+          meetings_scheduled: 0,
+          meetings_attended: 0,
+          meetings_noshow: 0,
+          meetings_noshow_rate: 0,
           updated_at: new Date().toISOString()
         };
       }

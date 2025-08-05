@@ -113,4 +113,62 @@ router.post('/proxy', async (req: Request, res: Response) => {
   }
 });
 
+// ✅ ENDPOINT ESPECÍFICO PARA PIPELINE_MEMBERS (CORS FALLBACK)
+router.get('/pipeline-members/:pipelineId', async (req: Request, res: Response) => {
+  try {
+    const { pipelineId } = req.params;
+    const { tenant_id } = req.query;
+
+    if (!pipelineId) {
+      return res.status(400).json({
+        success: false,
+        error: 'pipeline_id é obrigatório'
+      });
+    }
+
+    if (!tenant_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'tenant_id é obrigatório via query string'
+      });
+    }
+
+    console.log('🔍 [PIPELINE_MEMBERS] Buscando membros via service role:', {
+      pipelineId: pipelineId.substring(0, 8),
+      tenant_id: tenant_id.toString().substring(0, 8)
+    });
+
+    // Usar service role para bypass RLS
+    const { data: members, error } = await supabase
+      .from('pipeline_members')
+      .select('*')
+      .eq('pipeline_id', pipelineId);
+
+    if (error) {
+      console.error('❌ [PIPELINE_MEMBERS] Erro Supabase:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao buscar membros da pipeline',
+        details: error.message
+      });
+    }
+
+    console.log('✅ [PIPELINE_MEMBERS] Membros encontrados:', members?.length || 0);
+
+    res.json({
+      success: true,
+      data: members || [],
+      count: members?.length || 0
+    });
+
+  } catch (error) {
+    console.error('❌ [PIPELINE_MEMBERS] Erro geral:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      details: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
+  }
+});
+
 export default router; 

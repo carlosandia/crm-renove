@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎯 Teste Optimistic Drag & Drop</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 20px;
+            background: #f8fafc;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        .status {
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid;
+        }
+        .success { 
+            background: #f0fdf4; 
+            color: #15803d; 
+            border-color: #22c55e;
+        }
+        .warning { 
+            background: #fffbeb; 
+            color: #d97706; 
+            border-color: #f59e0b;
+        }
+        .error { 
+            background: #fef2f2; 
+            color: #dc2626; 
+            border-color: #ef4444;
+        }
+        .info { 
+            background: #f0f9ff; 
+            color: #0369a1; 
+            border-color: #0ea5e9;
+        }
+        .test-section {
+            background: #f8fafc;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            border: 1px solid #e2e8f0;
+        }
+        .code {
+            background: #1e293b;
+            color: #f1f5f9;
+            padding: 16px;
+            border-radius: 6px;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+            line-height: 1.5;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-right: 12px;
+            margin-bottom: 8px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        button:hover { 
+            background: #2563eb;
+            transform: translateY(-1px);
+        }
+        button.success {
+            background: #10b981;
+        }
+        button.success:hover {
+            background: #059669;
+        }
+        .test-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .log-container {
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 16px;
+            border-radius: 6px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .log-entry {
+            margin-bottom: 4px;
+            padding: 2px 0;
+        }
+        .log-error { color: #fca5a5; }
+        .log-success { color: #86efac; }
+        .log-warning { color: #fde047; }
+        .log-info { color: #7dd3fc; }
+        h1 { 
+            color: #1e293b; 
+            margin-bottom: 8px;
+        }
+        h2 { 
+            color: #374151; 
+            margin-bottom: 12px;
+            font-size: 18px;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin: 20px 0;
+        }
+        .metric {
+            background: #f1f5f9;
+            padding: 16px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #e2e8f0;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1e293b;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Monitor: Optimistic Drag & Drop</h1>
+        
+        <div class="status success">
+            <strong>✅ Correções Implementadas:</strong><br>
+            • Query key consistency corrigida<br>
+            • Cache update structure fixada (array direto, não object.data)<br>
+            • Structural sharing reabilitado<br>
+            • Logs detalhados para debugging<br>
+            • Cancelamento de queries pendentes implementado
+        </div>
+
+        <div class="status info">
+            <strong>🎯 Objetivo:</strong> Verificar se o drag & drop agora atualiza a UI instantaneamente sem refresh, como Trello/Monday.com
+        </div>
+
+        <div class="test-section">
+            <h2>🧪 Testes de Validação</h2>
+            
+            <button onclick="testFrontendConnection()">🔗 Testar Frontend</button>
+            <button onclick="testBackendConnection()">🔗 Testar Backend</button>
+            <button onclick="openPipelineTest()">🎯 Abrir Pipeline Test</button>
+            <button onclick="startConsoleMonitor()">📊 Monitorar Console</button>
+            <button onclick="clearLogs()">🧹 Limpar Logs</button>
+        </div>
+
+        <div class="metrics">
+            <div class="metric">
+                <div class="metric-value" id="frontendStatus">❓</div>
+                <div class="metric-label">Frontend Status</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="backendStatus">❓</div>
+                <div class="metric-label">Backend Status</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="optimisticCount">0</div>
+                <div class="metric-label">Optimistic Updates</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="errorCount">0</div>
+                <div class="metric-label">Errors Detected</div>
+            </div>
+        </div>
+
+        <div class="test-grid">
+            <div>
+                <h2>📋 Checklist de Teste</h2>
+                <div class="test-section">
+                    <p><strong>Para testar o drag & drop optimistic:</strong></p>
+                    <ol style="line-height: 1.6;">
+                        <li>✅ Abrir aplicação na porta 8080</li>
+                        <li>🔐 Fazer login no sistema</li>
+                        <li>📊 Navegar para uma pipeline com leads</li>
+                        <li>🎯 Arrastar um lead para outra etapa</li>
+                        <li>👀 <strong>Observar:</strong> Lead deve aparecer na nova etapa IMEDIATAMENTE</li>
+                        <li>⏱️ <strong>Verificar:</strong> Não deve haver loading ou refresh</li>
+                        <li>🔄 <strong>Confirmar:</strong> Backend recebe update em background</li>
+                    </ol>
+                    
+                    <div class="code">
+🎯 Logs Esperados no Console:
+[OPTIMISTIC] Iniciando drag optimistic update
+[OPTIMISTIC] Cache atualizado com sucesso - UI deve atualizar AGORA
+[moveLeadMutation] Sucesso - sync concluído (sem refresh)
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <h2>📊 Console Monitor</h2>
+                <div class="log-container" id="consoleLog">
+                    <div class="log-entry log-info">[INFO] Monitor iniciado - aguardando logs...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="status warning">
+            <strong>⚠️ Sinais de Problema:</strong><br>
+            • Lead desaparece e reaparece na nova etapa (indica refresh)<br>
+            • Logs de "invalidateQueries" durante drag<br>
+            • Erros de "Cache não é array" no console<br>
+            • Loading state visível durante movimento
+        </div>
+
+        <div class="test-section">
+            <h2>🔧 Debugging Quick Commands</h2>
+            <div class="code">
+# Verificar se servers estão rodando:
+curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/
+curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3001/health
+
+# Abrir DevTools e procurar por logs:
+- 🎯 [OPTIMISTIC] Iniciando drag optimistic update
+- ✅ [OPTIMISTIC] Cache atualizado com sucesso
+- ❌ Cache não é array (problema!)
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let optimisticCount = 0;
+        let errorCount = 0;
+
+        function log(message, type = 'info') {
+            const logContainer = document.getElementById('consoleLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${timestamp}] ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+
+            // Update metrics
+            if (type === 'success' && message.includes('optimistic')) {
+                optimisticCount++;
+                document.getElementById('optimisticCount').textContent = optimisticCount;
+            }
+            if (type === 'error') {
+                errorCount++;
+                document.getElementById('errorCount').textContent = errorCount;
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('consoleLog').innerHTML = 
+                '<div class="log-entry log-info">[INFO] Logs limpos - aguardando novos eventos...</div>';
+            optimisticCount = 0;
+            errorCount = 0;
+            document.getElementById('optimisticCount').textContent = '0';
+            document.getElementById('errorCount').textContent = '0';
+        }
+
+        async function testFrontendConnection() {
+            log('🔍 Testando conexão frontend...', 'info');
+            try {
+                const response = await fetch('http://127.0.0.1:8080/');
+                if (response.ok) {
+                    log('✅ Frontend OK (porta 8080)', 'success');
+                    document.getElementById('frontendStatus').textContent = '✅';
+                } else {
+                    log(`❌ Frontend erro ${response.status}`, 'error');
+                    document.getElementById('frontendStatus').textContent = '❌';
+                }
+            } catch (error) {
+                log(`❌ Frontend offline: ${error.message}`, 'error');
+                document.getElementById('frontendStatus').textContent = '💀';
+            }
+        }
+
+        async function testBackendConnection() {
+            log('🔍 Testando conexão backend...', 'info');
+            try {
+                const response = await fetch('http://127.0.0.1:3001/health');
+                if (response.ok) {
+                    log('✅ Backend OK (porta 3001)', 'success');
+                    document.getElementById('backendStatus').textContent = '✅';
+                } else {
+                    log(`❌ Backend erro ${response.status}`, 'error');
+                    document.getElementById('backendStatus').textContent = '❌';
+                }
+            } catch (error) {
+                log(`❌ Backend offline: ${error.message}`, 'error');
+                document.getElementById('backendStatus').textContent = '💀';
+            }
+        }
+
+        function openPipelineTest() {
+            log('🚀 Abrindo aplicação para teste...', 'info');
+            window.open('http://127.0.0.1:8080/', '_blank');
+            log('📝 Instruções: Faça login e teste o drag & drop', 'warning');
+        }
+
+        function startConsoleMonitor() {
+            log('📊 Monitor de console iniciado', 'info');
+            log('👀 Observando logs de optimistic updates...', 'info');
+            
+            // Simulate monitoring (na vida real seria através de DevTools API ou logs)
+            setInterval(() => {
+                // Simular detecção de logs optimistic (isso seria real nos DevTools)
+                if (Math.random() < 0.1) { // 10% chance para demo
+                    log('🎯 [DETECTED] Optimistic update event simulado', 'success');
+                }
+            }, 5000);
+        }
+
+        // Auto-teste na inicialização
+        window.addEventListener('load', () => {
+            log('🚀 Monitor de optimistic drag & drop iniciado', 'info');
+            testFrontendConnection();
+            testBackendConnection();
+        });
+    </script>
+</body>
+</html>

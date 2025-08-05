@@ -174,7 +174,7 @@ const OutcomeHistoryList: React.FC<OutcomeHistoryProps> = ({
             {/* USUÁRIO QUE APLICOU */}
             <div className="flex items-center space-x-1 text-xs text-gray-500">
               <User className="w-3 h-3" />
-              <span>Aplicado por {item.applied_by_name || 'Usuário desconhecido'}</span>
+              <span>Aplicado por {(item as any).applied_by_name || 'Usuário desconhecido'}</span>
             </div>
           </div>
         ))}

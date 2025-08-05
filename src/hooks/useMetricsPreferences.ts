@@ -7,7 +7,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
-import { useAuth } from '../contexts/AuthContext'; // ✅ CORREÇÃO: Usar AuthContext ao invés de parsing manual
+import { useAuth } from '../providers/AuthProvider'; // ✅ CORREÇÃO: Usar AuthContext ao invés de parsing manual
 import { 
   MetricsPreferences, 
   UpdateMetricsPreferences,

@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { logger } from '../../utils/logger';
 import { 
   ThumbsUp, 

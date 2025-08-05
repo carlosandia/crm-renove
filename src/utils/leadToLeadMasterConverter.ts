@@ -49,7 +49,7 @@ export const convertLeadToLeadMaster = (lead: Lead): LeadMaster => {
     company: leadData.empresa || leadData.company || undefined,
     job_title: leadData.cargo || leadData.job_title || undefined,
     lead_temperature: lead.temperature_level || leadData.temperatura || leadData.lead_temperature || 'warm',
-    status: lead.status === 'won' ? 'converted' : lead.status === 'lost' ? 'lost' : 'active',
+    status: lead.status === 'ganho' ? 'converted' : lead.status === 'perdido' ? 'lost' : 'active',
     lead_source: leadData.origem || leadData.source || leadData.traffic_source || leadData.lead_source || undefined,
     created_at: lead.created_at,
     updated_at: lead.updated_at,

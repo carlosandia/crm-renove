@@ -31,6 +31,7 @@ export const MeetingSchema = z.object({
   pipeline_lead_id: z.string().uuid(),
   lead_master_id: z.string().uuid(),
   owner_id: z.string().uuid(),
+  title: z.string().min(1).max(500), // NOVO: Título da reunião obrigatório
   planned_at: z.string(), // Formato Supabase timestamp
   outcome: MeetingOutcomeSchema.default('agendada'),
   no_show_reason: NoShowReasonSchema.optional(),
@@ -44,6 +45,7 @@ export const MeetingSchema = z.object({
 export const CreateMeetingSchema = z.object({
   pipeline_lead_id: z.string().uuid(),
   lead_master_id: z.string().uuid(),
+  title: z.string().min(1).max(500), // NOVO: Título obrigatório na criação
   planned_at: z.string(), // Formato Supabase timestamp
   notes: z.string().max(500).optional()
 });
@@ -62,6 +64,18 @@ export const UpdateMeetingOutcomeSchema = z.object({
 }, {
   message: "no_show_reason é obrigatório quando outcome é 'no_show'",
   path: ['no_show_reason']
+});
+
+// AIDEV-NOTE: Schema para atualização de dados básicos (título e observações)
+export const UpdateMeetingDataSchema = z.object({
+  title: z.string().min(1).max(500).optional(),
+  notes: z.string().max(500).optional()
+}).refine(data => {
+  // AIDEV-NOTE: Pelo menos um campo deve ser fornecido
+  return data.title !== undefined || data.notes !== undefined;
+}, {
+  message: "Pelo menos título ou observações devem ser fornecidos",
+  path: ['title']
 });
 
 // AIDEV-NOTE: Schema para listagem com filtros
@@ -120,6 +134,7 @@ export const MeetingWithRelationsSchema = MeetingSchema.extend({
 export type Meeting = z.infer<typeof MeetingSchema>;
 export type CreateMeeting = z.infer<typeof CreateMeetingSchema>;
 export type UpdateMeetingOutcome = z.infer<typeof UpdateMeetingOutcomeSchema>;
+export type UpdateMeetingData = z.infer<typeof UpdateMeetingDataSchema>; // NOVO: Para edição de dados básicos
 export type ListMeetingsQuery = z.infer<typeof ListMeetingsQuerySchema>;
 export type MeetingMetricsQuery = z.infer<typeof MeetingMetricsQuerySchema>;
 export type MeetingMetrics = z.infer<typeof MeetingMetricsSchema>;

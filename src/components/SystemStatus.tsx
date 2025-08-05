@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { Card, CardContent, CardHeader } from './ui/card';
 import { Button } from './ui/button';
 import { MotionWrapper } from './ui/motion-wrapper';

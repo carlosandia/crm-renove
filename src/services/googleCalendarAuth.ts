@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 
 export interface GoogleCalendarCredentials {
   access_token: string;
@@ -77,7 +77,7 @@ export class GoogleCalendarAuth {
       return this.authenticatedFetch(endpoint, options);
     } else {
       // Fallback para desenvolvimento
-      return fetch(`http://127.0.0.1:3001${endpoint}`, options);
+      return fetch(`import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'${endpoint}`, options);
     }
   }
 

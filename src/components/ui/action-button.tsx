@@ -1,6 +1,6 @@
 import * as React from "react"
 import { Button } from "./button"
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 import { LucideIcon } from "lucide-react"
 
 export interface ActionButtonProps extends React.ComponentProps<typeof Button> {

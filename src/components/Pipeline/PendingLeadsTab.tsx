@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { supabase } from '../../lib/supabase';
 import { Clock, User, Mail, Phone, Building, Calendar, UserPlus, Eye, AlertCircle, FileText } from 'lucide-react';
 import { toast } from 'sonner';

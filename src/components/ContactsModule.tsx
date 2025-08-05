@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { 
   Users, 
   Plus, 
@@ -33,11 +33,21 @@ import ContactStatsCards from './Contacts/ContactStatsCards';
 import ContactFilters from './Contacts/ContactFilters';
 
 // Types - AIDEV-NOTE: Use Zod inference — schema is the source of truth
-import { Contact, ContactStats } from '../shared/types/Domain';
+import { Contact, ContactListItem } from '../shared/types/Domain';
 import { ContactFilters as ContactFiltersType } from '../integrations/supabase/types';
 
-// AIDEV-NOTE: Força o uso do tipo derivado do Zod para evitar conflitos
-type ContactZod = Contact;
+// AIDEV-NOTE: Type guard para garantir que Contact tem ID válido
+const isValidContact = (contact: Contact): contact is ContactListItem => {
+  return !!contact.id;
+};
+
+// ✅ CORREÇÃO: Interface para ContactStats baseada nos dados reais
+interface ContactStats {
+  totalContacts: number;
+  activeContacts: number;
+  newThisMonth: number;
+  conversionRate: number;
+}
 
 // Hooks
 import { useContacts } from '../hooks/useContacts';
@@ -60,6 +70,13 @@ interface ContactsModuleProps {
   className?: string;
 }
 
+// ✅ CORREÇÃO: Remoção da função de conversão - useContacts já retorna Contact[] tipado
+
+// Type guard para verificar se um contato é completo
+const isCompleteContact = (contact: Partial<Contact> | null | undefined): contact is Contact => {
+  return contact != null && contact.id != null && contact.first_name != null && contact.email != null;
+};
+
 export function ContactsModule({ className }: ContactsModuleProps) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -69,7 +86,7 @@ export function ContactsModule({ className }: ContactsModuleProps) {
     MODULE_PERSISTENCE_CONFIGS.CONTACTS_MODULE
   );
   
-  const [selectedContact, setSelectedContact] = useState<ContactZod | null>(null);
+  const [selectedContact, setSelectedContact] = useState<Partial<Contact> | null>(null);
   const [showContactForm, setShowContactForm] = useState(false);
   const [showContactDetails, setShowContactDetails] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'cards'>(persistedState.viewMode || 'table');
@@ -101,12 +118,12 @@ export function ContactsModule({ className }: ContactsModuleProps) {
     setShowContactForm(true);
   };
 
-  const handleEditContact = (contact: ContactZod) => {
+  const handleEditContact = (contact: Contact) => {
     setSelectedContact(contact);
     setShowContactForm(true);
   };
 
-  const handleViewContact = (contact: ContactZod) => {
+  const handleViewContact = (contact: Contact) => {
     setSelectedContact(contact);
     setShowContactDetails(true);
   };
@@ -298,7 +315,7 @@ export function ContactsModule({ className }: ContactsModuleProps) {
       {/* Contacts List */}
       <BlurFade delay={0.4}>
         <ContactsList
-          contacts={contacts}
+          contacts={(contacts || []).filter(isValidContact)}
           loading={isLoading}
           viewMode={viewMode}
           onEditContact={handleEditContact}
@@ -318,7 +335,7 @@ export function ContactsModule({ className }: ContactsModuleProps) {
           open={showContactForm}
           onClose={() => setShowContactForm(false)}
           onSave={async (contactData) => {
-            if (selectedContact) {
+            if (selectedContact && selectedContact.id) {
               await updateContact(selectedContact.id, contactData);
             } else {
               await createContact(contactData);
@@ -329,7 +346,7 @@ export function ContactsModule({ className }: ContactsModuleProps) {
         />
       )}
 
-      {showContactDetails && selectedContact && (
+      {showContactDetails && isCompleteContact(selectedContact) && (
         <ContactDetailsModal
           contact={selectedContact}
           open={showContactDetails}
@@ -339,7 +356,9 @@ export function ContactsModule({ className }: ContactsModuleProps) {
             setShowContactForm(true);
           }}
           onDelete={() => {
-            handleDeleteClick(selectedContact.id);
+            if (selectedContact?.id) {
+              handleDeleteClick(selectedContact.id);
+            }
             setShowContactDetails(false);
           }}
         />

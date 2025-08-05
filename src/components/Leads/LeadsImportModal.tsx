@@ -9,7 +9,7 @@ import {
 } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Progress } from '../ui/progress';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { showSuccessToast, showErrorToast } from '../../hooks/useToast';
 import * as Papa from 'papaparse';
 import * as XLSX from 'xlsx';
@@ -279,8 +279,8 @@ const LeadsImportModal: React.FC<LeadsImportModalProps> = ({
 
       setUploadProgress(50);
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
-      const response = await fetch(`${apiUrl}/api/leads/bulk`, {
+      const { environmentConfig } = await import('../../config/environment');
+      const response = await fetch(`${environmentConfig.urls.api}/leads/bulk`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,

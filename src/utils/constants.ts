@@ -3,6 +3,8 @@
  * Centraliza todas as constantes usadas no CRM
  */
 
+import { environmentConfig } from '../config/environment';
+
 // ============================================
 // CONFIGURAÇÕES DE PAGINAÇÃO
 // ============================================
@@ -361,9 +363,9 @@ export const ENVIRONMENT = {
   IS_DEVELOPMENT: isDevelopment,
   IS_PRODUCTION: isProduction,
   IS_TEST: isTest,
-  API_URL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001',
-  SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
-  SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY
+  API_URL: environmentConfig.urls.api,
+  SUPABASE_URL: environmentConfig.supabase.url,
+  SUPABASE_ANON_KEY: environmentConfig.supabase.anonKey
 } as const;
 
 // ============================================

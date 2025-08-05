@@ -12,7 +12,7 @@
         "SUPABASE_URL": "https://marajvabdwkpgopytvhh.supabase.co",
         "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hcmFqdmFiZHdrcGdvcHl0dmhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjQwMDksImV4cCI6MjA2NTM0MDAwOX0.C_2W2u8JyApjbhqPJm1q1dFX82KoRSm3auBfE7IpmDU",
         "SUPABASE_SERVICE_ROLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hcmFqdmFiZHdrcGdvcHl0dmhoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0OTc2NDAwOSwiZXhwIjoyMDY1MzQwMDA5fQ.mkQBVPvhM3OJndsyinoONRUHSDJMh1nFBbPPNH_6cYY",
-        "SUPABASE_ACCESS_TOKEN": "sbp_4afe289dae6beaa37654e065028fa395d604b6eb"
+        "SUPABASE_ACCESS_TOKEN": "sbp_ef28597305ef06c9a79c20cff174d7f46dc28e53"
       },
       "description": "Servidor MCP OFICIAL Supabase - Super Admin Access com DDL/DML completo"
     }

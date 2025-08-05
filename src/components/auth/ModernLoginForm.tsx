@@ -11,7 +11,7 @@ import { Separator } from "../ui/separator"
 import { loginSchema, type LoginInput, testCredentials } from "../../schemas/auth"
 import { Shield, User, Crown, LogIn } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useAuth } from "../../contexts/AuthContext"
+import { useAuth } from "../../providers/AuthProvider"
 
 interface ModernLoginFormProps {
   className?: string
@@ -42,21 +42,17 @@ const ModernLoginForm: React.FC<ModernLoginFormProps> = ({
       console.log('🔐 ModernLoginForm - Iniciando login:', data.email)
       
       // Usar AuthProvider para login real
-      const loginSuccess = await login(data.email, data.password)
+      const loginResult = await login(data.email, data.password)
       
-      if (loginSuccess) {
+      if (loginResult.success) {
         console.log('✅ ModernLoginForm - Login bem-sucedido!')
         setIsSuccess(true)
         
-        // Aguardar animação de sucesso
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        
-        // Redirecionar para dashboard
-        console.log('🔄 ModernLoginForm - Redirecionando para dashboard')
-        window.location.href = '/'
+        // O AuthProvider vai gerenciar o redirecionamento automaticamente
+        // através do onAuthStateChange listener
       } else {
-        console.log('❌ ModernLoginForm - Login falhou')
-        setLoginError("Credenciais inválidas. Verifique email e senha.")
+        console.log('❌ ModernLoginForm - Login falhou:', loginResult.message)
+        setLoginError(loginResult.message || "Credenciais inválidas. Verifique email e senha.")
       }
     } catch (error) {
       console.error('❌ ModernLoginForm - Erro no login:', error)
@@ -87,21 +83,16 @@ const ModernLoginForm: React.FC<ModernLoginFormProps> = ({
       }
       
       // Usar AuthProvider para login real
-      const loginSuccess = await login(credentials.email, credentials.password)
+      const loginResult = await login(credentials.email, credentials.password)
       
-      if (loginSuccess) {
+      if (loginResult.success) {
         console.log('✅ ModernLoginForm - Login rápido bem-sucedido!')
         setIsSuccess(true)
         
-        // Aguardar animação de sucesso
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        
-        // Redirecionar para dashboard
-        console.log('🔄 ModernLoginForm - Redirecionando para dashboard')
-        window.location.href = '/'
+        // O AuthProvider vai gerenciar o redirecionamento automaticamente
       } else {
-        console.log('❌ ModernLoginForm - Login rápido falhou')
-        setLoginError("Erro no login rápido. Tente novamente.")
+        console.log('❌ ModernLoginForm - Login rápido falhou:', loginResult.message)
+        setLoginError(loginResult.message || "Erro no login rápido. Tente novamente.")
       }
     } catch (error) {
       console.error('❌ ModernLoginForm - Erro no login rápido:', error)

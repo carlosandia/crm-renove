@@ -7,7 +7,7 @@ import CreateOpportunityModal from './CreateOpportunityModal';
 import CreateOpportunityModalSimple from './CreateOpportunityModalSimple';
 import LeadViewModal from './LeadViewModal';
 import { supabase } from '../../integrations/supabase/client';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { showSuccessToast, showErrorToast } from '../../lib/toast';
 
 interface LeadMaster {

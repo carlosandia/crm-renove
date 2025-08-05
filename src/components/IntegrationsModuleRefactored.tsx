@@ -8,7 +8,7 @@ import {
   Mail,
   Building
 } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { BlurFade } from './ui/blur-fade';
 import { useStatePersistence, MODULE_PERSISTENCE_CONFIGS } from '../lib/statePersistence';
 
@@ -119,7 +119,7 @@ const IntegrationsModuleRefactored: React.FC = () => {
       case 'config':
         return (
           <div className="space-y-8">
-            <MetaAdsIntegrationRender metaAdsManager={metaAdsManager} />
+            <MetaAdsIntegrationRender />
             <GoogleAdsIntegrationRender googleAdsManager={googleAdsManager} />
             <WebhookConfigurationRender webhookManager={webhookManager} />
           </div>

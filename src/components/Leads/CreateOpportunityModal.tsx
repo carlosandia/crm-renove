@@ -6,7 +6,7 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Target, DollarSign, Loader2, User } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { showSuccessToast, showErrorToast } from '../../lib/toast';
 import { BaseModalProps } from '../../types/CommonProps';
 import { useArrayState } from '../../hooks/useArrayState';

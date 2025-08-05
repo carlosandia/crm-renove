@@ -31,7 +31,6 @@ import {
   UploadResponseSchema,
   LoginRequestSchema,
   UserAuthSchema,
-  TokenSchema,
   SessionSchema,
   LoginResponseSchema,
   createWebhookPayloadSchema,
@@ -210,9 +209,9 @@ export type LoginRequest = z.infer<typeof LoginRequestSchema>;
 export type UserAuth = z.infer<typeof UserAuthSchema>;
 
 /**
- * ✅ Token - Informações de token
+ * ✅ Token - Informações de token (DEPRECATED: usando Session do Supabase)
  */
-export type Token = z.infer<typeof TokenSchema>;
+// export type Token = z.infer<typeof TokenSchema>;
 
 /**
  * ✅ Session - Informações de sessão

@@ -665,6 +665,60 @@ router.post('/', authMiddleware, async (req: Request, res: Response) => {
 
     console.log('✅ [POST /api/leads] Oportunidade criada com sucesso:', newOpportunity.id);
 
+    // ================================================================================
+    // GERAR ATIVIDADES AUTOMATICAMENTE (NOVA IMPLEMENTAÇÃO)
+    // ================================================================================
+    
+    console.log('🔄 [POST /api/leads] Iniciando geração automática de atividades:', {
+      opportunity_id: newOpportunity.id.substring(0, 8),
+      stage_id: stage_id.substring(0, 8),
+      assigned_to: (responsavel || userId).substring(0, 8)
+    });
+
+    // Gerar atividades de forma assíncrona (não bloquear resposta)
+    setImmediate(async () => {
+      try {
+        // Importar LeadService para usar a função de geração
+        const { LeadService } = await import('../services/leadService');
+        
+        // Simular lead object para compatibilidade com generateCadenceTasksForLeadAsync
+        const leadObject = {
+          id: newOpportunity.id,
+          pipeline_id: pipeline_id,
+          stage_id: stage_id,
+          assigned_to: responsavel || userId,
+          lead_master_id: leadMasterId,
+          tenant_id: tenantId,
+          created_by: userId,
+          updated_at: new Date().toISOString(),
+          moved_at: new Date().toISOString()
+        };
+
+        const tasksGenerated = await LeadService.generateCadenceTasksForLeadAsync(
+          leadObject,
+          stage_id
+        );
+
+        if (tasksGenerated > 0) {
+          console.log('✅ [POST /api/leads] Atividades geradas automaticamente:', {
+            opportunity_id: newOpportunity.id.substring(0, 8),
+            tasks_generated: tasksGenerated
+          });
+        } else {
+          console.log('ℹ️ [POST /api/leads] Nenhuma atividade configurada para esta etapa:', {
+            opportunity_id: newOpportunity.id.substring(0, 8),
+            stage_id: stage_id.substring(0, 8)
+          });
+        }
+
+      } catch (activityError: any) {
+        console.warn('⚠️ [POST /api/leads] Erro na geração assíncrona de atividades (não crítico):', {
+          opportunity_id: newOpportunity.id.substring(0, 8),
+          error: activityError.message
+        });
+      }
+    });
+
     res.status(201).json({
       success: true,
       message: 'Lead/Oportunidade criada com sucesso',
@@ -682,6 +736,294 @@ router.post('/', authMiddleware, async (req: Request, res: Response) => {
       success: false,
       error: 'Erro interno do servidor',
       details: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
+  }
+});
+
+// ================================================================================
+// NOVOS ENDPOINTS PARA STEPleadmodal
+// ================================================================================
+
+/**
+ * GET /api/leads/existing/:pipelineId
+ * Carregar leads únicos (leads_master) com filtro role-based
+ */
+router.get('/existing/:pipelineId', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { pipelineId } = req.params;
+    const { tenant_id, id: userId, role } = req.user!;
+    
+    console.log('🔍 [LeadsRoutes] GET /existing - Carregando leads únicos:', {
+      pipeline: pipelineId.substring(0, 8),
+      tenant: tenant_id.substring(0, 8),
+      role,
+      user: userId.substring(0, 8)
+    });
+
+    // ✅ CORREÇÃO: Query direta em leads_master para evitar duplicatas
+    let query = supabase
+      .from('leads_master')
+      .select(`
+        id,
+        first_name,
+        last_name,
+        email,
+        phone,
+        company,
+        job_title,
+        lead_temperature,
+        status,
+        estimated_value,
+        created_at,
+        created_by
+      `)
+      .eq('tenant_id', tenant_id);
+
+    // ✅ FILTRO ROLE-BASED: Members só veem leads_master de suas próprias oportunidades
+    if (role === 'member') {
+      // Para members, precisamos filtrar por leads que tenham oportunidades criadas/atribuídas a eles
+      const { data: memberLeadIds, error: memberError } = await supabase
+        .from('pipeline_leads')
+        .select('lead_master_id')
+        .eq('tenant_id', tenant_id)
+        .or(`created_by.eq.${userId},assigned_to.eq.${userId}`);
+
+      if (memberError) {
+        console.error('❌ [LeadsRoutes] Erro ao buscar leads do member:', memberError);
+        return res.status(500).json({
+          success: false,
+          message: 'Erro ao filtrar leads do usuário',
+          data: []
+        });
+      }
+
+      const uniqueLeadMasterIds = [...new Set((memberLeadIds || []).map(item => item.lead_master_id))];
+      
+      if (uniqueLeadMasterIds.length > 0) {
+        query = query.in('id', uniqueLeadMasterIds);
+        console.log('👤 [LeadsRoutes] Aplicando filtro MEMBER - leads de oportunidades próprias');
+      } else {
+        // Member sem oportunidades, retornar array vazio
+        console.log('👤 [LeadsRoutes] Member sem oportunidades - retornando vazio');
+        return res.json({
+          success: true,
+          message: 'Leads únicos carregados com sucesso',
+          data: []
+        });
+      }
+    } else {
+      console.log('👑 [LeadsRoutes] Aplicando filtro ADMIN - todos os leads únicos do tenant');
+    }
+
+    // Executar query com filtros aplicados
+    const { data: uniqueLeads, error } = await query
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.error('❌ [LeadsRoutes] Erro ao buscar leads únicos:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao carregar leads únicos',
+        data: []
+      });
+    }
+
+    // ✅ TRANSFORMAR: Adaptar formato para compatibilidade com frontend
+    const transformedLeads = (uniqueLeads || []).map(leadMaster => {
+      return {
+        id: leadMaster.id, // ✅ CORREÇÃO: Usar leads_master.id diretamente
+        pipeline_id: null, // Não aplicável para leads únicos
+        stage_id: null, // Não aplicável para leads únicos
+        lead_master_id: leadMaster.id, // Mesmo ID para compatibilidade
+        created_at: leadMaster.created_at,
+        custom_data: {
+          nome: `${leadMaster?.first_name || ''} ${leadMaster?.last_name || ''}`.trim() || 'Lead sem nome',
+          nome_lead: `${leadMaster?.first_name || ''} ${leadMaster?.last_name || ''}`.trim() || 'Lead sem nome',
+          email: leadMaster?.email || '',
+          telefone: leadMaster?.phone || '',
+          empresa: leadMaster?.company || '',
+          cargo: leadMaster?.job_title || '',
+          temperatura: leadMaster?.lead_temperature || 'warm',
+          status: leadMaster?.status || 'active',
+          valor: leadMaster?.estimated_value || 0,
+          lead_master_id: leadMaster.id
+        }
+      };
+    });
+
+    console.log('✅ [LeadsRoutes] Leads únicos carregados:', {
+      total_found: transformedLeads.length,
+      role: role,
+      tenant: tenant_id.substring(0, 8),
+      unique_emails: [...new Set(transformedLeads.map(l => l.custom_data.email))].length,
+      sample_leads: transformedLeads.slice(0, 3).map(l => ({
+        id: l.id.substring(0, 8),
+        nome: l.custom_data.nome,
+        email: l.custom_data.email
+      }))
+    });
+
+    res.json({
+      success: true,
+      message: 'Leads únicos carregados com sucesso',
+      data: transformedLeads
+    });
+
+  } catch (error) {
+    console.error('❌ [LeadsRoutes] Erro geral:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor',
+      data: []
+    });
+  }
+});
+
+/**
+ * GET /api/leads/existing/:pipelineId/search
+ * Buscar leads únicos (leads_master) com filtro role-based
+ */
+router.get('/existing/:pipelineId/search', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { pipelineId } = req.params;
+    const { q: searchTerm } = req.query;
+    const { tenant_id, id: userId, role } = req.user!;
+    
+    if (!searchTerm || typeof searchTerm !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Termo de busca é obrigatório',
+        data: []
+      });
+    }
+
+    console.log('🔍 [LeadsRoutes] GET /search - Buscando leads únicos:', {
+      pipeline: pipelineId.substring(0, 8),
+      term: searchTerm,
+      tenant: tenant_id.substring(0, 8),
+      role,
+      user: userId.substring(0, 8)
+    });
+
+    // ✅ CORREÇÃO: Query direta em leads_master com filtro textual
+    let query = supabase
+      .from('leads_master')
+      .select(`
+        id,
+        first_name,
+        last_name,
+        email,
+        phone,
+        company,
+        job_title,
+        lead_temperature,
+        status,
+        estimated_value,
+        created_at,
+        created_by
+      `)
+      .eq('tenant_id', tenant_id)
+      .or(`first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,company.ilike.%${searchTerm}%`);
+
+    // ✅ FILTRO ROLE-BASED: Members só veem leads_master de suas próprias oportunidades
+    if (role === 'member') {
+      // Para members, precisamos filtrar por leads que tenham oportunidades criadas/atribuídas a eles
+      const { data: memberLeadIds, error: memberError } = await supabase
+        .from('pipeline_leads')
+        .select('lead_master_id')
+        .eq('tenant_id', tenant_id)
+        .or(`created_by.eq.${userId},assigned_to.eq.${userId}`);
+
+      if (memberError) {
+        console.error('❌ [LeadsRoutes] Erro ao buscar leads do member na busca:', memberError);
+        return res.status(500).json({
+          success: false,
+          message: 'Erro ao filtrar leads do usuário',
+          data: []
+        });
+      }
+
+      const uniqueLeadMasterIds = [...new Set((memberLeadIds || []).map(item => item.lead_master_id))];
+      
+      if (uniqueLeadMasterIds.length > 0) {
+        query = query.in('id', uniqueLeadMasterIds);
+        console.log('👤 [LeadsRoutes] Busca MEMBER - leads de oportunidades próprias');
+      } else {
+        // Member sem oportunidades, retornar array vazio
+        console.log('👤 [LeadsRoutes] Member sem oportunidades na busca - retornando vazio');
+        return res.json({
+          success: true,
+          message: 'Busca concluída com sucesso',
+          data: []
+        });
+      }
+    } else {
+      console.log('👑 [LeadsRoutes] Busca ADMIN - todos os leads únicos do tenant');
+    }
+
+    // Executar busca com filtros aplicados
+    const { data: uniqueLeads, error } = await query
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.error('❌ [LeadsRoutes] Erro na busca de leads únicos:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro na busca de leads únicos',
+        data: []
+      });
+    }
+
+    // ✅ TRANSFORMAR: Adaptar formato para compatibilidade com frontend
+    const transformedLeads = (uniqueLeads || []).map(leadMaster => {
+      return {
+        id: leadMaster.id, // ✅ CORREÇÃO: Usar leads_master.id diretamente
+        pipeline_id: null, // Não aplicável para leads únicos
+        stage_id: null, // Não aplicável para leads únicos
+        lead_master_id: leadMaster.id, // Mesmo ID para compatibilidade
+        created_at: leadMaster.created_at,
+        custom_data: {
+          nome: `${leadMaster?.first_name || ''} ${leadMaster?.last_name || ''}`.trim() || 'Lead sem nome',
+          nome_lead: `${leadMaster?.first_name || ''} ${leadMaster?.last_name || ''}`.trim() || 'Lead sem nome',
+          email: leadMaster?.email || '',
+          telefone: leadMaster?.phone || '',
+          empresa: leadMaster?.company || '',
+          cargo: leadMaster?.job_title || '',
+          temperatura: leadMaster?.lead_temperature || 'warm',
+          status: leadMaster?.status || 'active',
+          valor: leadMaster?.estimated_value || 0,
+          lead_master_id: leadMaster.id
+        }
+      };
+    });
+
+    console.log('✅ [LeadsRoutes] Busca de leads únicos concluída:', {
+      total_found: transformedLeads.length,
+      search_term: searchTerm,
+      role: role,
+      tenant: tenant_id.substring(0, 8),
+      unique_emails: [...new Set(transformedLeads.map(l => l.custom_data.email))].length,
+      sample_results: transformedLeads.slice(0, 2).map(l => ({
+        id: l.id.substring(0, 8),
+        nome: l.custom_data.nome,
+        email: l.custom_data.email
+      }))
+    });
+
+    res.json({
+      success: true,
+      message: 'Busca concluída com sucesso',
+      data: transformedLeads
+    });
+
+  } catch (error) {
+    console.error('❌ [LeadsRoutes] Erro na busca:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor',
+      data: []
     });
   }
 });

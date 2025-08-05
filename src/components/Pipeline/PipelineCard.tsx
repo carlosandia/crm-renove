@@ -6,12 +6,14 @@ interface PipelineCardProps {
   pipeline: Pipeline;
   onEdit: (pipelineId: string) => void;
   onDelete: (pipelineId: string) => void;
+  userRole?: 'admin' | 'member' | 'super_admin'; // ✅ NOVA: Prop para controle de permissões
 }
 
 const PipelineCard: React.FC<PipelineCardProps> = ({
   pipeline,
   onEdit,
   onDelete,
+  userRole = 'member', // ✅ SEGURANÇA: Default mais restritivo
 }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -35,6 +37,9 @@ const PipelineCard: React.FC<PipelineCardProps> = ({
 
   // Verificar se é uma pipeline mock (ID numérico simples)
   const isMockPipeline = pipeline.id.length <= 2 && /^\d+$/.test(pipeline.id);
+  
+  // ✅ CONTROLE DE PERMISSÕES: Apenas admin e super_admin podem editar/excluir
+  const canEdit = userRole === 'admin' || userRole === 'super_admin';
 
   return (
     <div className={`card-modern border p-6 hover:shadow-lg transition-all duration-200 ${
@@ -66,23 +71,25 @@ const PipelineCard: React.FC<PipelineCardProps> = ({
           </div>
         </div>
 
-        {/* Botões de Ação */}
-        <div className="flex items-center space-x-1 ml-4">
-          <button 
-            onClick={handleEditPipeline}
-            className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-all duration-200"
-            title="Editar pipeline"
-          >
-            <Edit className="w-4 h-4" />
-          </button>
-          <button 
-            onClick={() => setShowDeleteConfirm(true)}
-            className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all duration-200"
-            title="Excluir pipeline"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
+        {/* Botões de Ação - Controle por Role */}
+        {canEdit && (
+          <div className="flex items-center space-x-1 ml-4">
+            <button 
+              onClick={handleEditPipeline}
+              className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-all duration-200"
+              title="Editar pipeline"
+            >
+              <Edit className="w-4 h-4" />
+            </button>
+            <button 
+              onClick={() => setShowDeleteConfirm(true)}
+              className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all duration-200"
+              title="Excluir pipeline"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Modal de Confirmação de Exclusão */}
@@ -151,14 +158,14 @@ const PipelineCard: React.FC<PipelineCardProps> = ({
       </div>
 
 
-      {/* Botão de Ação Principal */}
+      {/* Botão de Ação Principal - Controle por Role */}
       <div className="pt-4 border-t border-border">
         <button 
           onClick={handleEditPipeline}
           className="btn-primary w-full"
         >
           <GitBranch className="w-4 h-4" />
-          <span>Gerenciar Pipeline</span>
+          <span>{canEdit ? 'Gerenciar Pipeline' : 'Visualizar Pipeline'}</span>
         </button>
       </div>
     </div>

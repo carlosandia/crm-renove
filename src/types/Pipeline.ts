@@ -36,6 +36,7 @@ export interface Lead {
   assigned_to?: string;
   created_by?: string;
   source?: 'meta' | 'google' | 'linkedin' | 'webhook' | 'manual' | 'form';
+  position?: number; // ✅ ADICIONADO: Posição para drag and drop
   
   // ✅ ETAPA 3: CAMPO PARA SINCRONIZAÇÃO COM LEADS_MASTER
   lead_master_id?: string;
@@ -48,6 +49,18 @@ export interface Lead {
   company?: string;
   estimated_value?: number;
   lead_temperature?: 'cold' | 'warm' | 'hot' | 'Frio'; // ✅ Baseado nos valores reais do Supabase
+  
+  // ✅ SISTEMA DE VALORES FLEXÍVEIS
+  valor?: string; // Campo legado para compatibilidade
+  valor_unico?: number;
+  valor_unico_moeda?: string;
+  valor_recorrente?: number;
+  valor_recorrente_moeda?: string;
+  recorrencia_periodo?: number;
+  recorrencia_unidade?: 'mes' | 'ano';
+  valor_total_calculado?: number;
+  tipo_venda?: 'unico' | 'recorrente' | 'hibrido';
+  valor_observacoes?: string;
   lead_master_data?: any; // Referência completa ao leads_master para compatibilidade
   
   // 🌡️ SISTEMA DE TEMPERATURA AUTOMÁTICO
@@ -98,4 +111,51 @@ export interface Pipeline {
   
   // 🎯 SISTEMA DE QUALIFICAÇÃO DE LEADS
   qualification_rules?: any; // JSON das regras de qualificação
+}
+
+// ===================================================================
+// TIPOS ESPECÍFICOS PARA DRAG & DROP (@hello-pangea/dnd)
+// ===================================================================
+
+/**
+ * Tipos de ID utilizados pelo @hello-pangea/dnd
+ */
+export type DraggableId = string;
+export type DroppableId = string;
+
+/**
+ * Localização de um item draggable (posição dentro de um droppable)
+ */
+export interface DraggableLocation {
+  droppableId: DroppableId;
+  index: number;
+}
+
+/**
+ * Resultado de uma operação de drag & drop
+ */
+export interface DropResult {
+  draggableId: DraggableId;
+  source: DraggableLocation;
+  destination: DraggableLocation | null;
+  reason: 'DROP' | 'CANCEL';
+  type: string;
+}
+
+/**
+ * Interface para dados do kanban (compatível com estrutura existente)
+ */
+export interface KanbanData {
+  stages: PipelineStage[];
+  leads: Lead[];
+  leadsByStage: Record<string, Lead[]>;
+}
+
+/**
+ * Tipo para mapeamento de posições de leads (para API de atualização em batch)
+ */
+export interface LeadPosition {
+  leadId: string;
+  position: number;
+  stageId?: string;
 }

@@ -69,14 +69,8 @@ export interface ApiError {
   timestamp: string;
 }
 
-export interface JWTPayload {
-  userId: string;
-  email: string;
-  role: string;
-  tenantId: string;
-  iat: number;
-  exp: number;
-}
+// AIDEV-NOTE: Interface JWTPayload removida
+// Sistema usa apenas User interface com Supabase Auth nativo
 
 export interface AuthTokens {
   accessToken: string;

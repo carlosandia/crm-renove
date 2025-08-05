@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { registerStageMove } from '../../utils/historyUtils';
 import { WindowWithGlobals, UserWithProfile } from '../../types/Forms';
 import { toast } from 'sonner';

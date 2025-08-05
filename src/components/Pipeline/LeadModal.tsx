@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, User, Mail, Phone, DollarSign, Calendar, FileText, List, File, AlertTriangle, Briefcase, Search, UserPlus, Users, Building2, MapPin, Hash, Globe, ChevronDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import {
   Dialog,
   DialogContent,

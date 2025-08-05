@@ -42,11 +42,10 @@ const HistoryBlock: React.FC<HistoryBlockProps> = ({
   loadHistory
 }) => {
   return (
-    <div className="space-y-4 h-full flex flex-col">
+    <div className="space-y-4 flex flex-col">
       {/* Header do Bloco */}
       <div className="border-b border-gray-200 pb-2">
         <h3 className="text-lg font-semibold text-gray-900">Histórico</h3>
-        <p className="text-sm text-gray-500">Timeline completa de ações</p>
       </div>
 
       {/* Outcome Reasons History */}

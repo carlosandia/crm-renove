@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useAuth } from '../providers/AuthProvider';
 
 export interface SalesTarget {
   id: string;
@@ -119,13 +119,18 @@ interface UseAdminDashboardResult {
   clearCache: () => Promise<boolean>;
 }
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
+const API_BASE = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
 
 export function useAdminDashboard(): UseAdminDashboardResult {
   const { user } = useAuth();
   
   // 🔒 VALIDAÇÃO DE ROLE: Só executar se for admin ou super_admin
   const isAuthorized = user?.role === 'admin' || user?.role === 'super_admin';
+  
+  // ✅ CORREÇÃO: Throttling para evitar chamadas excessivas
+  const lastFetchRef = useRef<number>(0);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout>();
+  const THROTTLE_DELAY = 5000; // 5 segundos entre requests
   
   // States
   const [dashboardMetrics, setDashboardMetrics] = useState<DashboardMetrics | null>(null);
@@ -151,6 +156,14 @@ export function useAdminDashboard(): UseAdminDashboardResult {
     if (!isAuthorized) {
       return;
     }
+
+    // ✅ CORREÇÃO: Throttling - evitar chamadas excessivas
+    const now = Date.now();
+    if (now - lastFetchRef.current < THROTTLE_DELAY) {
+      console.log('⚡ [AdminDashboard] Throttled - aguardando', Math.ceil((THROTTLE_DELAY - (now - lastFetchRef.current)) / 1000), 'segundos');
+      return;
+    }
+    lastFetchRef.current = now;
 
     try {
       setIsLoading(true);

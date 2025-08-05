@@ -35,6 +35,7 @@ interface SimpleSortableStageItemProps {
   canMoveUp: boolean;
   canMoveDown: boolean;
   isSystemStage?: boolean;
+  isDragging?: boolean; // ✅ CORREÇÃO: Adicionar prop isDragging opcional
 }
 
 // ✅ COMPONENTE SIMPLIFICADO: Sem drag and drop

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { useSupabaseCrud } from './useSupabaseCrud';
 import { DealSchema } from '../shared/schemas/DomainSchemas';
 import type { Deal } from '../shared/types/Domain';

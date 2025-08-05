@@ -523,19 +523,26 @@ class SupabaseAdminService {
   }
 
   /**
-   * Status da conexão
+   * Status da conexão - Simplificado para evitar erro SQL
    */
   async getConnectionStatus(): Promise<any> {
     try {
-      const query = 'SELECT version(), current_database(), current_user, now();';
-      const result = await this.selectQuery(query);
+      // Teste simples de conexão usando uma tabela que sempre existe
+      const { data, error } = await this.supabase
+        .from('information_schema.tables')
+        .select('table_name')
+        .limit(1);
+      
+      if (error) {
+        throw error;
+      }
       
       return {
         connected: true,
-        database: result[0]?.current_database,
-        user: result[0]?.current_user,
-        version: result[0]?.version,
-        timestamp: result[0]?.now,
+        database: this.config.projectId,
+        user: 'service_role',
+        version: 'PostgreSQL (Supabase)',
+        timestamp: new Date().toISOString(),
         config: {
           url: this.config.url,
           projectId: this.config.projectId

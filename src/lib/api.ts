@@ -12,9 +12,12 @@ import type {
   McpTool,
   HealthCheckResponse
 } from '../types/api'
+import { environmentConfig } from '../config/environment'
 
-// Configuração base da API
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'
+// ✅ CORREÇÃO: Usar configuração centralizada
+// Em desenvolvimento: usa proxy Vite (/api → 127.0.0.1:3001)
+// Em produção: usa URL configurada do ambiente
+const API_BASE_URL = import.meta.env.DEV ? '' : environmentConfig.urls.backend
 
 // ✅ SISTEMA DE LOG LEVELS GLOBAL
 const logLevel = import.meta.env.VITE_LOG_LEVEL || 'warn';
@@ -49,85 +52,28 @@ export const api = axios.create({
   },
 })
 
-// 🔧 CORREÇÃO: Interceptor unificado para tokens (sessionStorage principal)
+// ✅ INTERCEPTOR SIMPLIFICADO - 100% Supabase Auth nativo
 api.interceptors.request.use(
-  (config) => {
-    // PRIORIDADE 1: sessionStorage (AuthProvider managed)
-    const sessionToken = sessionStorage.getItem('crm_access_token');
-    if (sessionToken) {
-      config.headers.Authorization = `Bearer ${sessionToken}`;
-      if (!window.__apiTokenLogged) {
-        apiLogger.debug('Token: sessionStorage (AuthProvider)');
-        window.__apiTokenLogged = true;
-      }
-      return config;
-    }
-    
-    // PRIORIDADE 2: localStorage access_token (JWT fallback)
-    const accessToken = localStorage.getItem('access_token');
-    if (accessToken) {
-      // 🔧 CORREÇÃO: Sincronizar com sessionStorage
-      sessionStorage.setItem('crm_access_token', accessToken);
-      config.headers.Authorization = `Bearer ${accessToken}`;
-      if (!window.__apiTokenLogged) {
-        apiLogger.debug('Token: localStorage → sessionStorage (sync)');
-        window.__apiTokenLogged = true;
-      }
-      return config;
-    }
-    
-    // PRIORIDADE 3: crm_user legacy (compatibilidade)
-    const user = localStorage.getItem('crm_user');
-    if (user) {
-      try {
-        const userData = JSON.parse(user);
-        let token = userData.token || userData.id;
-        
-        if (token) {
-          // 🔧 CORREÇÃO: Para tokens demo, adicionar headers apropriados
-          if (token.startsWith('demo_') || !userData.token) {
-            token = userData.id.startsWith('demo_') ? userData.id : `demo_fallback_${userData.id}`;
-            
-            // Adicionar headers para tokens demo
-            config.headers['x-user-id'] = userData.id;
-            config.headers['x-user-role'] = userData.role;
-            config.headers['x-tenant-id'] = userData.tenant_id || '';
-            
-            apiLogger.debug('Token: demo mode com headers');
-          }
-          
-          // Sincronizar com sessionStorage
-          sessionStorage.setItem('crm_access_token', token);
-          config.headers.Authorization = `Bearer ${token}`;
-          
-          if (!window.__apiTokenLogged) {
-            apiLogger.debug('Token: crm_user → sessionStorage (legacy sync)');
-            window.__apiTokenLogged = true;
-          }
-          return config;
-        }
-      } catch (parseError) {
-        apiLogger.warn('Erro ao parsear crm_user:', parseError);
-      }
-    }
-    
-    // 🔧 CORREÇÃO TEMPORÁRIA: Para outcome-reasons, usar token demo se não houver autenticação
-    if (config.url?.includes('outcome-reasons')) {
-      console.log('🚨 [API] Sem token para outcome-reasons, usando modo demo');
-      const demoToken = 'demo_' + Date.now();
-      config.headers.Authorization = `Bearer ${demoToken}`;
+  async (config) => {
+    try {
+      // Obter token atual do Supabase
+      const { supabase } = await import('../lib/supabase');
+      const { data: { session } } = await supabase.auth.getSession();
       
-      // Adicionar headers de usuário demo (seraquevai)
-      config.headers['x-user-id'] = 'bbaf8441-23c9-44dc-9a4c-a4da787f829c';
-      config.headers['x-user-role'] = 'admin';
-      config.headers['x-tenant-id'] = 'd7caffc1-c923-47c8-9301-ca9eeff1a243';
+      if (session?.access_token) {
+        config.headers.Authorization = `Bearer ${session.access_token}`;
+        apiLogger.debug('✅ Token Supabase nativo adicionado');
+        return config;
+      }
       
+      // Sem token - request sem autenticação
+      apiLogger.debug('⚠️ Request sem token (public endpoint)');
+      return config;
+    } catch (error) {
+      // Em caso de erro, continuar sem token
+      apiLogger.warn('❌ Erro ao obter token Supabase:', error);
       return config;
     }
-    
-    // ÚLTIMO RECURSO: Nenhum token encontrado
-    apiLogger.warn('Nenhum token encontrado em nenhum storage');
-    return config;
   },
   (error) => {
     return Promise.reject(error)
@@ -156,14 +102,31 @@ api.interceptors.response.use(
     return response
   },
   async (error) => {
-    // ✅ CORREÇÃO: Log silencioso para erros de rede
+    // ✅ MELHORADO: Identificação expandida de erros de rede 
     const isNetworkError = !error.response || 
                           error.code === 'ERR_NETWORK' || 
+                          error.code === 'ERR_CONNECTION_CLOSED' ||
+                          error.code === 'ERR_CONNECTION_REFUSED' ||
+                          error.code === 'ERR_CONNECTION_RESET' ||
                           error.message === 'Network Error' ||
-                          error.code === 'ECONNREFUSED';
+                          error.code === 'ECONNREFUSED' ||
+                          error.code === 'ENOTFOUND' ||
+                          error.code === 'ETIMEDOUT' ||
+                          (error.message && error.message.includes('fetch failed'));
     
-    if (isNetworkError) {
-      // Log apenas em debug para erros de rede
+    // ✅ NOVO: Identificar operações pós-salvamento (cache sync)
+    const isCacheOperation = error.config?.url?.includes('invalidate') ||
+                           error.config?.url?.includes('refetch') ||
+                           error.config?.headers?.['X-Cache-Operation'];
+    
+    if (isNetworkError && isCacheOperation) {
+      // ✅ MELHORADO: Log mínimo para cache sync failures
+      apiLogger.debug('Cache sync offline (ignorado):', {
+        url: error.config?.url,
+        operation: 'cache-sync'
+      });
+    } else if (isNetworkError) {
+      // Log padrão para erros de rede em operações críticas
       apiLogger.debug('Backend offline:', {
         url: error.config?.url,
         method: error.config?.method?.toUpperCase(),
@@ -185,103 +148,12 @@ api.interceptors.response.use(
     }
     
     if (error.response?.status === 401) {
-      // 🔧 CORREÇÃO: Sistema de retry antes de forçar logout
-      const retryAttempts = error.config?._retryCount || 0;
-      const maxRetries = 2; // Máximo 2 tentativas de retry
-      
-      const shouldTryRefresh = !error.config?.url?.includes('/auth/refresh') && 
-                              !error.config?.url?.includes('/auth/login') &&
-                              retryAttempts < maxRetries;
-      
-      if (shouldTryRefresh) {
-        apiLogger.warn(`Token inválido - tentativa ${retryAttempts + 1}/${maxRetries + 1} de renovação...`);
-        
-        try {
-          // Tentar renovar o token usando AuthProvider se disponível
-          const refreshToken = sessionStorage.getItem('crm_refresh_token') || 
-                             localStorage.getItem('refresh_token');
-          
-          if (!refreshToken) {
-            throw new Error('Nenhum refresh token disponível');
-          }
-          
-          const refreshResponse = await api.post('/auth/refresh', {}, {
-            headers: {
-              'Authorization': `Bearer ${refreshToken}`
-            }
-          });
-          
-          if (refreshResponse.data?.success && refreshResponse.data?.data?.tokens) {
-            // Tokens JWT do backend
-            const tokens = refreshResponse.data.data.tokens;
-            sessionStorage.setItem('crm_access_token', tokens.accessToken);
-            if (tokens.refreshToken) {
-              sessionStorage.setItem('crm_refresh_token', tokens.refreshToken);
-            }
-            localStorage.setItem('access_token', tokens.accessToken);
-            
-            apiLogger.info('Token renovado com sucesso, repetindo requisição...');
-            
-            // Marcar tentativa de retry e repetir requisição
-            if (error.config) {
-              error.config._retryCount = retryAttempts + 1;
-              error.config.headers.Authorization = `Bearer ${tokens.accessToken}`;
-              return api.request(error.config);
-            }
-          } else if (refreshResponse.data?.token) {
-            // Formato antigo de resposta (fallback)
-            const newToken = refreshResponse.data.token;
-            sessionStorage.setItem('crm_access_token', newToken);
-            localStorage.setItem('access_token', newToken);
-            
-            if (error.config) {
-              error.config._retryCount = retryAttempts + 1;
-              error.config.headers.Authorization = `Bearer ${newToken}`;
-              return api.request(error.config);
-            }
-          } else {
-            throw new Error('Resposta de refresh inválida');
-          }
-        } catch (refreshError) {
-          apiLogger.error(`Falha ao renovar token (tentativa ${retryAttempts + 1}):`, refreshError);
-          
-          // Se ainda há tentativas restantes, tentar novamente com delay
-          if (retryAttempts < maxRetries - 1) {
-            apiLogger.warn('Aguardando 1s antes de nova tentativa...');
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            if (error.config) {
-              error.config._retryCount = retryAttempts + 1;
-              return api.request(error.config);
-            }
-          }
-          
-          // Todas as tentativas falharam, seguir com logout
-        }
-      }
-      
-      // 🔧 CORREÇÃO: Só forçar logout após esgotar todas as tentativas
-      if (retryAttempts >= maxRetries) {
-        apiLogger.error(`Todas as tentativas de renovação falharam (${retryAttempts + 1}/${maxRetries + 1}) - forçando logout`);
-      } else {
-        apiLogger.error('Token inválido e sem possibilidade de renovação - forçando logout');
-      }
-      
-      // Limpar tokens
-      localStorage.removeItem('crm_user');
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      sessionStorage.removeItem('crm_access_token');
-      sessionStorage.removeItem('crm_refresh_token');
-      
-      // Verificar se há força de logout no response
-      if (error.response?.data?.forceLogout) {
-        apiLogger.info('Força logout detectada, redirecionando...');
-      }
+      // ✅ SIMPLES: Apenas logar e redirecionar para login
+      apiLogger.warn('❌ Erro 401 - Token Supabase inválido ou expirado');
       
       // Evitar loop infinito de redirecionamento
-      if (window.location.pathname !== '/login') {
-        apiLogger.info('Redirecionando para login...');
+      if (window.location.pathname !== '/login' && window.location.pathname !== '/') {
+        apiLogger.info('🔄 Redirecionando para login...');
         window.location.href = '/login';
       }
     }
@@ -338,6 +210,17 @@ export const apiService = {
   getMcpTools: () => api.get<ApiResponse<McpTool[]>>('/mcp/tools'),
   executeMcpTool: (toolName: string, params: McpToolParams) =>
     api.post<ApiResponse<unknown>>('/mcp/execute', { toolName, params }),
+
+  // Lead Tasks - Geração de task instances
+  generateLeadTasks: (leadId: string, pipelineId: string, stageId: string, stageName: string, assignedTo: string, tenantId: string) =>
+    api.post<ApiResponse<{ message: string; tasks_created: number }>>('/lead-tasks/generate', {
+      lead_id: leadId,
+      pipeline_id: pipelineId,
+      stage_id: stageId,
+      stage_name: stageName,
+      assigned_to: assignedTo,
+      tenant_id: tenantId
+    }),
 }
 
 export default api 

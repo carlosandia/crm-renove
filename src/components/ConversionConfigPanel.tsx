@@ -17,7 +17,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { showSuccessToast, showErrorToast, showWarningToast } from '../lib/toast';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { ShimmerButton } from './ui/shimmer-button';
 
 // =========================================================================

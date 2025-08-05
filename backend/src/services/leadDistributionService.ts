@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase';
+import { CadenceService } from './cadenceService';
 
 export interface CreateLeadPayload {
   first_name: string;
@@ -91,7 +92,35 @@ export class LeadDistributionService {
         assigned_to: assignedTo
       });
 
-      // 7. Retornar lead com informações de atribuição
+      // 7. ✅ AUTOMAÇÃO: Gerar atividades de cadência automaticamente
+      try {
+        console.log('🎯 [AUTO-CADENCE] Gerando atividades automáticas para lead:', lead.id.substring(0, 8));
+        
+        const cadenceResult = await CadenceService.generateTaskInstancesForLead(
+          lead.id,
+          firstStage.id,
+          pipeline.tenant_id,
+          assignedTo || payload.created_by || 'system'
+        );
+
+        console.log('✅ [AUTO-CADENCE] Atividades geradas automaticamente:', {
+          leadId: lead.id.substring(0, 8),
+          stageId: firstStage.id.substring(0, 8),
+          success: cadenceResult.success,
+          tasksCreated: cadenceResult.tasks_created || 0,
+          message: cadenceResult.message
+        });
+
+      } catch (cadenceError: any) {
+        console.warn('⚠️ [AUTO-CADENCE] Erro ao gerar atividades automáticas (não crítico):', {
+          leadId: lead.id.substring(0, 8),
+          error: cadenceError.message,
+          note: 'Lead foi criado com sucesso, apenas as atividades falharam'
+        });
+        // Não interromper criação do lead se atividades falharem
+      }
+
+      // 8. Retornar lead com informações de atribuição
       const finalLead = {
         ...lead,
         assigned_to: assignedTo,

@@ -47,7 +47,8 @@ import {
 import {
   ContactSchema,
   ContactCreateSchema,
-  ContactUpdateSchema
+  ContactUpdateSchema,
+  ContactListItemSchema
 } from '../schemas/ContactSchemas';
 
 // ============================================
@@ -222,6 +223,12 @@ export type ContactCreate = z.infer<typeof ContactCreateSchema>;
  * ✅ Contact Update - Para atualização
  */
 export type ContactUpdate = z.infer<typeof ContactUpdateSchema>;
+
+/**
+ * ✅ Contact List Item - Para listagens com ID obrigatório
+ * AIDEV-NOTE: Type derived from Zod — usado para componentes que precisam de ID
+ */
+export type ContactListItem = z.infer<typeof ContactListItemSchema>;
 
 // ============================================
 // NOTIFICATION DOMAIN TYPES

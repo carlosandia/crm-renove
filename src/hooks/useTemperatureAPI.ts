@@ -121,7 +121,7 @@ export function useTemperatureAPI({ pipelineId, autoLoad = true }: UseTemperatur
       
       return result;
     },
-    enabled: !!pipelineId && autoLoad,
+    enabled: Boolean(!!pipelineId && autoLoad),
     staleTime: 10 * 60 * 1000, // 10 minutos - configs de temperatura mudam raramente
     gcTime: 15 * 60 * 1000,    // 15 minutos - cache longo
     retry: 2,

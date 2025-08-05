@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { CompanyFormData } from '../types/Company';
 import { useToast } from './useToast';
 import { hashPasswordEnterprise } from '../lib/utils';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 
 // ENTERPRISE ARCHITECTURE - SEGUINDO PADRÕES DOS GRANDES CRMs
 // Company First → Admin Creation → Email Invitation → Professional Flow
@@ -81,7 +81,7 @@ const sendAdminInvitationWithAuth = async (
       });
     } else {
       // Fallback para desenvolvimento sem autenticação
-      response = await fetch('http://127.0.0.1:3001/api/admin-invitations/send', {
+      response = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/admin-invitations/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -180,7 +180,7 @@ export const useCompanyForm = () => {
         });
       } else {
         // Fallback para desenvolvimento sem autenticação
-        response = await fetch('http://127.0.0.1:3001/api/companies', {
+        response = await fetch('import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001'/api/companies', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(apiData)

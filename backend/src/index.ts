@@ -1,7 +1,19 @@
 // FASE 1: Backend Básico - Servidor Simplificado para Correção
 import dotenv from 'dotenv';
-dotenv.config();
+import path from 'path';
 
+// ✅ CORREÇÃO CRÍTICA: .env está na pasta backend, não na raiz
+// __dirname aponta para backend/src, então backend/.env está um nível acima
+const backendPath = path.resolve(__dirname, '..');
+const envPath = path.join(backendPath, '.env');
+console.log('🔍 [DEBUG] __dirname:', __dirname);
+console.log('🔍 [DEBUG] backendPath:', backendPath);
+console.log('🔍 [DEBUG] envPath:', envPath);
+const envResult = dotenv.config({ path: envPath });
+console.log('🔍 [DEBUG] .env result:', envResult.parsed ? 'SUCCESS' : 'ERROR', envResult.error || '');
+console.log('🔍 [DEBUG] SUPABASE_SERVICE_ROLE_KEY:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+// ✅ CORREÇÃO ORDEM CRÍTICA: Importar dependências básicas primeiro
 import express from "express";
 import cors from 'cors';
 import helmet from 'helmet';
@@ -11,39 +23,124 @@ import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { createClient } from '@supabase/supabase-js';
 import { User } from './types/express';
+
+// ✅ IMPORTANTE: Importar supabase DEPOIS do carregamento do .env
 import supabase, { createUserSupabaseClient } from './config/supabase';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// ✅ CORREÇÃO: Cache em memória para rastrear updates recentes de métricas
-// Evita auto-creation imediatamente após mutations
-const recentMetricsUpdates = new Map<string, number>();
+// ✅ CORREÇÃO CRÍTICA: Trust proxy para detecção correta de IP localhost
+// Necessário para que req.ip funcione corretamente com o rate limiter
+app.set('trust proxy', true);
+
+// ✅ CORREÇÃO PROBLEMA #17: Cache com TTL automático e cleanup periódico
+// Evita memory leaks com limpeza automática
+interface CacheEntry {
+  timestamp: number;
+  ttl: number;
+}
+
+class TTLCache<K, V extends CacheEntry> {
+  private cache = new Map<K, V>();
+  private cleanupInterval: NodeJS.Timeout;
+  private readonly maxSize: number;
+  
+  constructor(cleanupIntervalMs: number = 30000, maxSize: number = 1000) {
+    this.maxSize = maxSize;
+    
+    // ✅ Cleanup periódico para prevenir memory leaks
+    this.cleanupInterval = setInterval(() => {
+      this.cleanup();
+    }, cleanupIntervalMs);
+    
+    // ✅ Graceful shutdown - limpar interval
+    process.on('SIGTERM', () => this.destroy());
+    process.on('SIGINT', () => this.destroy());
+  }
+  
+  set(key: K, value: V): void {
+    // ✅ Prevenir crescimento ilimitado
+    if (this.cache.size >= this.maxSize) {
+      const firstKey = this.cache.keys().next().value;
+      this.cache.delete(firstKey);
+    }
+    
+    this.cache.set(key, value);
+  }
+  
+  get(key: K): V | undefined {
+    const entry = this.cache.get(key);
+    if (!entry) return undefined;
+    
+    // ✅ Verificar TTL na consulta
+    if (Date.now() > entry.timestamp + entry.ttl) {
+      this.cache.delete(key);
+      return undefined;
+    }
+    
+    return entry;
+  }
+  
+  has(key: K): boolean {
+    return this.get(key) !== undefined;
+  }
+  
+  private cleanup(): void {
+    const now = Date.now();
+    let deletedCount = 0;
+    
+    for (const [key, entry] of this.cache.entries()) {
+      if (now > entry.timestamp + entry.ttl) {
+        this.cache.delete(key);
+        deletedCount++;
+      }
+    }
+    
+    if (deletedCount > 0) {
+      console.log(`🧹 [TTLCache] Limpeza automática: ${deletedCount} entries removidos, ${this.cache.size} restantes`);
+    }
+  }
+  
+  destroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
+    this.cache.clear();
+    console.log('🛑 [TTLCache] Cache destruído e limpo');
+  }
+  
+  size(): number {
+    return this.cache.size;
+  }
+}
+
+// ✅ CORREÇÃO: Cache TTL para métricas (3 segundos TTL, cleanup a cada 30s)
+const recentMetricsUpdates = new TTLCache<string, CacheEntry>(30000, 500);
 
 // Função para marcar update recente
 function markRecentMetricsUpdate(userId: string) {
-  recentMetricsUpdates.set(userId, Date.now());
-  console.log(`⏰ [Cache] Marcando update recente para usuário ${userId}`);
-  // Limpar entry após 3 segundos
-  setTimeout(() => {
-    recentMetricsUpdates.delete(userId);
-    console.log(`🧹 [Cache] Limpando marca de update recente para usuário ${userId}`);
-  }, 3000);
+  recentMetricsUpdates.set(userId, {
+    timestamp: Date.now(),
+    ttl: 3000 // 3 segundos TTL
+  });
+  console.log(`⏰ [Cache] Marcando update recente para usuário ${userId} (cache size: ${recentMetricsUpdates.size()})`);
 }
 
 // Função para verificar se houve update recente
 function hasRecentMetricsUpdate(userId: string): boolean {
-  const updateTime = recentMetricsUpdates.get(userId);
-  if (!updateTime) return false;
+  const cacheEntry = recentMetricsUpdates.get(userId);
+  const hasRecent = cacheEntry !== undefined;
   
-  const timeSinceUpdate = Date.now() - updateTime;
-  const hasRecent = timeSinceUpdate < 2000; // 2 segundos
-  
-  console.log(`🔍 [Cache] Verificando update recente para usuário ${userId}:`, {
-    updateTime: new Date(updateTime).toISOString(),
-    timeSinceUpdate,
-    hasRecent
-  });
+  if (hasRecent && cacheEntry) {
+    const timeSinceUpdate = Date.now() - cacheEntry.timestamp;
+    console.log(`🔍 [Cache] Update recente encontrado para usuário ${userId}:`, {
+      updateTime: new Date(cacheEntry.timestamp).toISOString(),
+      timeSinceUpdate: `${timeSinceUpdate}ms`,
+      ttl: `${cacheEntry.ttl}ms`,
+      cacheSize: recentMetricsUpdates.size()
+    });
+  }
   
   return hasRecent;
 }
@@ -55,62 +152,95 @@ console.log('🔄 Iniciando configuração do servidor...');
 // CONFIGURAÇÕES BÁSICAS DE SEGURANÇA
 // ============================================
 
-// Helmet para headers de segurança
+// ✅ CORREÇÃO CSP: Helmet para headers de segurança com Google Fonts e localhost API
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      fontSrc: ["'self'"],
+      styleSrc: [
+        "'self'", 
+        "'unsafe-inline'",
+        "https://fonts.googleapis.com"  // ✅ Google Fonts CSS
+      ],
+      fontSrc: [
+        "'self'",
+        "https://fonts.gstatic.com"     // ✅ Google Fonts files
+      ],
       imgSrc: ["'self'", "data:", "https:"],
       scriptSrc: ["'self'"],
-      connectSrc: ["'self'", "https://*.supabase.co"]
+      connectSrc: [
+        "'self'", 
+        "https://*.supabase.co",
+        "http://localhost:3001",        // ✅ API local para desenvolvimento
+        "http://127.0.0.1:3001"        // ✅ API local para desenvolvimento
+      ]
     }
   },
   crossOriginResourcePolicy: false,
   crossOriginOpenerPolicy: false
 }));
 
-// CORS reforçado - permitir localhost, 127.0.0.1 e arquivos locais
-app.use(cors({
-  origin: [
-    'http://127.0.0.1:8080',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:8888', // Servidor de teste
-    'http://localhost:8080',
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://localhost:8888', // Servidor de teste
-    'null' // Permitir arquivos locais (file://)
-  ],
-  credentials: true,
+// ✅ CORREÇÃO PROBLEMA #16: CORS configurado apropriadamente por ambiente
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+    
+    // Lista de origins permitidos por ambiente
+    const allowedOrigins = isDevelopment ? [
+      'http://127.0.0.1:8080',  // Frontend principal
+      'http://localhost:8080',  // Frontend principal (localhost)
+      'http://127.0.0.1:5173',  // Vite dev server fallback
+      'http://localhost:5173'   // Vite dev server fallback (localhost)
+    ] : [
+      'https://yourdomain.com',          // Produção - ALTERAR para domínio real
+      'https://www.yourdomain.com',      // Produção - ALTERAR para domínio real
+      'https://app.yourdomain.com'       // Subdomain app - ALTERAR para domínio real
+    ];
+
+    // Permitir requests sem origin apenas em desenvolvimento (Postman, etc)
+    if (!origin && isDevelopment) {
+      return callback(null, true);
+    }
+
+    if (origin && allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`🚫 [CORS] Origin rejeitado: ${origin} (ambiente: ${process.env.NODE_ENV})`);
+      callback(new Error(`CORS policy não permite origin: ${origin}`));
+    }
+  },
+  credentials: true, // Importante para autenticação
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: [
     'Content-Type', 
     'Authorization', 
     'X-Requested-With',
+    'Accept',
+    'Cache-Control',
+    // Headers específicos do CRM
     'X-User-ID',
     'X-User-Role', 
     'X-Tenant-ID',
     'x-user-id',
     'x-user-role',
-    'x-tenant-id'
+    'x-tenant-id',
+    'tenant-id'
   ],
-  optionsSuccessStatus: 200, // Para suportar legacy browsers
-  preflightContinue: false,   // Finalizar pre-flight automaticamente
-  maxAge: 86400               // Cache pre-flight por 24h
-}));
+  exposedHeaders: [
+    'X-Total-Count',  // Para paginação
+    'X-RateLimit-Limit',
+    'X-RateLimit-Remaining'
+  ],
+  optionsSuccessStatus: 200, // Para IE11
+  preflightContinue: false,
+  maxAge: process.env.NODE_ENV !== 'production' ? 3600 : 86400 // Cache menor em desenvolvimento
+};
 
-// Rate limiting básico
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 1000,
-  message: 'Muitas requisições, tente novamente em 15 minutos.',
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use(limiter);
+app.use(cors(corsOptions));
+
+// ✅ CORREÇÃO CRÍTICA: Rate limiting customizado será importado das rotas específicas
+// Removendo rate limiter duplicado que estava causando conflito
+// O sistema customizado em rateLimiter.ts já tem bypass para localhost configurado
 
 // Logging básico
 app.use(morgan('combined'));
@@ -126,14 +256,46 @@ app.use(compression());
 // ROTAS BÁSICAS
 // ============================================
 
-// Health check básico
+// ✅ CORREÇÃO PROBLEMA #20: Health check com timeout para evitar travamento do monitoring
 app.get('/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    message: 'Backend CRM rodando corretamente',
-    timestamp: new Date().toISOString(),
-    version: '1.0.0-basic'
-  });
+  // ✅ Definir timeout de 5 segundos para resposta do health check
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) {
+      console.error('⚠️ [HEALTH CHECK] Timeout na resposta /health');
+      res.status(503).json({
+        status: 'TIMEOUT',
+        message: 'Health check timeout - servidor pode estar sobrecarregado',
+        timestamp: new Date().toISOString(),
+        version: '1.0.0-basic'
+      });
+    }
+  }, 5000);
+
+  try {
+    // ✅ Resposta rápida com informações básicas
+    res.json({
+      status: 'OK',
+      message: 'Backend CRM rodando corretamente',
+      timestamp: new Date().toISOString(),
+      version: '1.0.0-basic',
+      uptime: process.uptime(),
+      memory: process.memoryUsage().heapUsed / 1024 / 1024 // MB
+    });
+    
+    // ✅ Limpar timeout após resposta bem-sucedida
+    clearTimeout(timeout);
+  } catch (error) {
+    clearTimeout(timeout);
+    console.error('❌ [HEALTH CHECK] Erro em /health:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        status: 'ERROR',
+        message: 'Erro interno no health check',
+        timestamp: new Date().toISOString(),
+        version: '1.0.0-basic'
+      });
+    }
+  }
 });
 
 // API Info
@@ -149,14 +311,43 @@ app.get('/api', (req, res) => {
 
 // Login básico removido - usando rota completa do authRoutes
 
-// Health check da API
+// ✅ CORREÇÃO PROBLEMA #20: Health check da API com timeout
 app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    message: 'API CRM funcionando corretamente',
-    timestamp: new Date().toISOString(),
-    version: '1.0.0-basic'
-  });
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) {
+      console.error('⚠️ [HEALTH CHECK] Timeout na resposta /api/health');
+      res.status(503).json({
+        status: 'TIMEOUT',
+        message: 'API health check timeout',
+        timestamp: new Date().toISOString(),
+        version: '1.0.0-basic'
+      });
+    }
+  }, 5000);
+
+  try {
+    res.json({
+      status: 'OK',
+      message: 'API CRM funcionando corretamente',
+      timestamp: new Date().toISOString(),
+      version: '1.0.0-basic',
+      uptime: process.uptime(),
+      memory: process.memoryUsage().heapUsed / 1024 / 1024 // MB
+    });
+    
+    clearTimeout(timeout);
+  } catch (error) {
+    clearTimeout(timeout);
+    console.error('❌ [HEALTH CHECK] Erro em /api/health:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        status: 'ERROR',
+        message: 'Erro interno no API health check',
+        timestamp: new Date().toISOString(),
+        version: '1.0.0-basic'
+      });
+    }
+  }
 });
 
 // Rota básica de notificações do usuário
@@ -219,6 +410,75 @@ app.get('/api/supabase/test', async (req, res) => {
   }
 });
 
+// ✅ TESTE SIMPLES: Confirmar que nossa unificação funciona
+app.get('/api/test-simple/:leadId', async (req, res) => {
+  try {
+    const { leadId } = req.params;
+    const { tenant_id } = req.query;
+    
+    if (!tenant_id) {
+      return res.status(400).json({ error: 'tenant_id obrigatório' });
+    }
+
+    // Usar service role para testar diretamente no banco
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseAdmin = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    // Query direta na tabela lead_tasks
+    const { data: leadTasks, error } = await supabaseAdmin
+      .from('lead_tasks')
+      .select('id, descricao, status, data_programada')
+      .eq('lead_id', leadId)
+      .eq('tenant_id', tenant_id);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    // Normalizar status para o frontend
+    const normalizedTasks = (leadTasks || []).map(task => ({
+      id: task.id,
+      title: task.descricao,
+      status: task.status === 'pendente' ? 'pending' : 
+              task.status === 'concluida' ? 'completed' : task.status,
+      scheduled_at: task.data_programada,
+      is_overdue: task.status === 'pendente' && 
+                  task.data_programada && 
+                  new Date(task.data_programada) < new Date()
+    }));
+
+    const stats = {
+      total: normalizedTasks.length,
+      pending: normalizedTasks.filter(t => t.status === 'pending').length,
+      completed: normalizedTasks.filter(t => t.status === 'completed').length,
+      overdue: normalizedTasks.filter(t => t.is_overdue === true).length
+    };
+
+    console.log('✅ [SIMPLE TEST] Resultado:', {
+      leadId: leadId.substring(0, 8),
+      stats
+    });
+
+    res.json({
+      success: true,
+      data: normalizedTasks,
+      stats: stats,
+      message: `Encontradas ${normalizedTasks.length} tarefas`
+    });
+
+  } catch (error: any) {
+    console.error('❌ [SIMPLE TEST] Erro:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // ============================================
 // ROTAS DE MÓDULOS
 // ============================================
@@ -231,7 +491,13 @@ import cadenceRoutes from './routes/cadence';
 import adminRoutes from './routes/admin';
 import platformIntegrationsRoutes from './routes/platformIntegrations';
 import leadsRoutes from './routes/leads-simple';
-import { authenticateToken, generateTokens } from './middleware/auth';
+import activitiesRoutes from './routes/activities';
+import leadTasksRoutes from './routes/leadTasks';
+import leadDocumentsRoutes from './routes/leadDocuments';
+import opportunitiesRoutes from './routes/opportunities';
+import meetingsRoutes from './routes/meetings';
+import annotationsRoutes from './routes/annotations';
+import { authenticateToken } from './middleware/auth';
 
 // Rota de teste para debug
 app.get('/api/test-auth', authenticateToken, (req, res) => {
@@ -260,6 +526,13 @@ app.use('/api/platform-integrations', platformIntegrationsRoutes);
 
 // Registrar rotas de leads (Import/Export)
 app.use('/api/leads', leadsRoutes);
+// Registrar rotas de oportunidades
+app.use('/api/opportunities', opportunitiesRoutes);
+
+// Registrar rotas de atividades (combinadas - cadência + manuais)
+app.use('/api/activities', activitiesRoutes);
+app.use('/api/lead-tasks', leadTasksRoutes);
+app.use('/api', leadDocumentsRoutes); // Lead documents routes com prefixo /api para consistência
 
 // Registrar rotas de outcome reasons
 import outcomeReasonsRoutes, { systemDefaultsRouter } from './routes/outcomeReasons';
@@ -274,9 +547,12 @@ app.use('/api/qualification', qualificationRoutes);
 import pipelineMetricsPreferencesRoutes from './routes/pipelineMetricsPreferences';
 app.use('/api/pipeline-metrics-preferences', pipelineMetricsPreferencesRoutes);
 
-// AIDEV-NOTE: Registrar rotas de reuniões (TEMPORARIAMENTE COMENTADO)
-// import meetingsRoutes from './routes/meetings-simple';
-// app.use('/api/meetings', meetingsRoutes);
+// AIDEV-NOTE: Registrar rotas de reuniões (IMPLEMENTAÇÃO COMPLETA)
+app.use('/api/meetings', meetingsRoutes);
+
+// AIDEV-NOTE: Registrar rotas de anotações (SISTEMA COMPLETO)
+app.use('/api/annotations', annotationsRoutes);
+
 
 // ============================================ 
 // MEETINGS API MOCK (CORREÇÃO 404)

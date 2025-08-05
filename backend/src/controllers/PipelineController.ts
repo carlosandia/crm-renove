@@ -202,6 +202,20 @@ export class PipelineController {
   static async createPipeline(req: Request, res: Response) {
     try {
       const { name, description, tenant_id, created_by, member_ids = [] } = req.body;
+      const user = (req as any).user;
+      
+      // ✅ CONTROLE DE PERMISSÕES: Apenas admin pode criar pipelines
+      if (!user?.tenant_id) {
+        return res.status(400).json({ 
+          error: 'Usuário deve pertencer a uma empresa' 
+        });
+      }
+      
+      if (user.role !== 'admin' && user.role !== 'super_admin') {
+        return res.status(403).json({ 
+          error: 'Apenas administradores podem criar pipelines' 
+        });
+      }
 
       if (!name || !tenant_id || !created_by) {
         return res.status(400).json({ 
@@ -251,6 +265,20 @@ export class PipelineController {
         custom_fields = [],
         cadence_configs = [] // ✅ BUGFIX: Adicionar suporte a cadências
       } = req.body;
+      const user = (req as any).user;
+      
+      // ✅ CONTROLE DE PERMISSÕES: Apenas admin pode criar pipelines
+      if (!user?.tenant_id) {
+        return res.status(400).json({ 
+          error: 'Usuário deve pertencer a uma empresa' 
+        });
+      }
+      
+      if (user.role !== 'admin' && user.role !== 'super_admin') {
+        return res.status(403).json({ 
+          error: 'Apenas administradores podem criar pipelines' 
+        });
+      }
 
       if (!name || !tenant_id || !created_by) {
         return res.status(400).json({ 
@@ -425,7 +453,7 @@ export class PipelineController {
   static async updatePipeline(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { name, description } = req.body;
+      const { name, description, qualification_rules, cadence_configs, outcome_reasons, member_ids, stages } = req.body;
       const user = (req as any).user;
 
       // ✅ VALIDAÇÃO: Verificar autenticação
@@ -453,7 +481,15 @@ export class PipelineController {
         tenant_id: user.tenant_id,
         user_id: user.id,
         user_email: user.email,
-        updates: { name, description }
+        updates: { 
+          name, 
+          description,
+          hasQualificationRules: !!qualification_rules,
+          hasCadenceConfigs: !!cadence_configs?.length,
+          hasOutcomeReasons: !!outcome_reasons?.length,
+          hasStages: !!stages?.length,
+          stagesCount: stages?.length || 0
+        }
       });
 
       // ✅ VALIDAÇÃO: Verificar se pipeline existe e pertence ao tenant
@@ -509,12 +545,73 @@ export class PipelineController {
 
       console.log('🔄 [updatePipeline] Atualizando pipeline...');
 
-      const pipeline = await PipelineService.updatePipeline(id, { name, description });
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = name;
+      if (description !== undefined) updateData.description = description;
+      if (qualification_rules !== undefined) updateData.qualification_rules = qualification_rules;
+      if (cadence_configs !== undefined) updateData.cadence_configs = cadence_configs;
+      if (outcome_reasons !== undefined) updateData.outcome_reasons = outcome_reasons;
+      if (stages !== undefined) updateData.stages = stages;
+
+      const pipeline = await PipelineService.updatePipeline(id, updateData);
+
+      // ✅ CORREÇÃO: Processar member_ids se fornecido
+      if (member_ids !== undefined) {
+        console.log('🔄 [updatePipeline] Processando member_ids:', {
+          pipeline_id: id,
+          member_ids,
+          member_ids_count: member_ids?.length || 0
+        });
+
+        try {
+          // Remover associações existentes
+          const { error: deleteError } = await supabaseAdmin
+            .from('pipeline_members')
+            .delete()
+            .eq('pipeline_id', id);
+
+          if (deleteError) {
+            console.warn('⚠️ [updatePipeline] Aviso ao remover membros existentes:', deleteError);
+          } else {
+            console.log('✅ [updatePipeline] Membros existentes removidos');
+          }
+
+          // Adicionar novas associações se houver member_ids
+          if (member_ids && member_ids.length > 0) {
+            const memberInserts = member_ids.map((member_id: string) => ({
+              pipeline_id: id,
+              member_id,
+              assigned_at: new Date().toISOString()
+            }));
+
+            const { error: insertError } = await supabaseAdmin
+              .from('pipeline_members')
+              .insert(memberInserts);
+
+            if (insertError) {
+              console.error('❌ [updatePipeline] Erro ao inserir novos membros:', insertError);
+              throw new Error(`Erro ao vincular vendedores: ${insertError.message}`);
+            } else {
+              console.log('✅ [updatePipeline] Novos membros vinculados:', member_ids.length);
+            }
+          }
+        } catch (memberError) {
+          console.error('❌ [updatePipeline] Erro no processamento de membros:', memberError);
+          // Não falhar completamente - pipeline foi atualizada, mas membros podem ter falhado
+          return res.json({
+            success: true,
+            message: 'Pipeline atualizada, mas houve erro ao vincular vendedores',
+            pipeline,
+            warning: 'Vendedores não foram vinculados devido a erro no processamento'
+          });
+        }
+      }
 
       console.log('✅ [updatePipeline] Pipeline atualizada com sucesso:', {
         id: pipeline.id,
         name: pipeline.name,
-        tenant_id: user.tenant_id
+        tenant_id: user.tenant_id,
+        members_processed: member_ids !== undefined
       });
 
       res.json({ 
@@ -543,6 +640,21 @@ export class PipelineController {
   static async deletePipeline(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const user = (req as any).user;
+      
+      // ✅ CONTROLE DE PERMISSÕES: Apenas admin pode deletar pipelines
+      if (!user?.tenant_id) {
+        return res.status(400).json({ 
+          error: 'Usuário deve pertencer a uma empresa' 
+        });
+      }
+      
+      if (user.role !== 'admin' && user.role !== 'super_admin') {
+        return res.status(403).json({ 
+          error: 'Apenas administradores podem excluir pipelines' 
+        });
+      }
+      
       await PipelineService.deletePipeline(id);
 
       res.json({ message: 'Pipeline excluída com sucesso' });
@@ -625,6 +737,13 @@ export class PipelineController {
           error: 'Usuário deve pertencer a uma empresa' 
         });
       }
+      
+      // ✅ CONTROLE DE PERMISSÕES: Apenas admin pode arquivar pipelines
+      if (user.role !== 'admin' && user.role !== 'super_admin') {
+        return res.status(403).json({ 
+          error: 'Apenas administradores podem arquivar pipelines' 
+        });
+      }
 
       console.log('📁 [PipelineController] Arquivando pipeline:', {
         pipeline_id: id,
@@ -668,6 +787,13 @@ export class PipelineController {
         console.error('❌ [PipelineController] Usuário sem tenant_id:', { user_email: user?.email });
         return res.status(400).json({ 
           error: 'Usuário deve pertencer a uma empresa' 
+        });
+      }
+      
+      // ✅ CONTROLE DE PERMISSÕES: Apenas admin pode desarquivar pipelines
+      if (user.role !== 'admin' && user.role !== 'super_admin') {
+        return res.status(403).json({ 
+          error: 'Apenas administradores podem desarquivar pipelines' 
         });
       }
 

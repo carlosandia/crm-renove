@@ -5,6 +5,7 @@ import AuthProvider from './providers/AuthProvider'
 import { ModalProvider } from './contexts/ModalContext'
 import { Toaster } from './components/ui/toaster'
 import SafeErrorBoundary from './components/SafeErrorBoundary'
+import { ModernNotificationSystem } from './components/modern-ui/ModernNotificationSystem'
 import { logger } from './utils/logger'
 import './App.css'
 
@@ -36,6 +37,7 @@ function App() {
             <div className="min-h-screen bg-gray-50">
               <Outlet />
               <Toaster />
+              <ModernNotificationSystem position="top-right" />
             </div>
           </ModalProvider>
         </AuthProvider>

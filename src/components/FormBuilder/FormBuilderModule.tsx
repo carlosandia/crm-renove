@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../providers/AuthProvider';
 import { supabase } from '../../lib/supabase';
 import FormBuilderList from './FormBuilderList';
 import { Plus, FileText, Eye, Settings, TrendingUp, ArrowLeft, Zap, Edit3, Trash2, ExternalLink, Copy, MoreVertical } from 'lucide-react';
-import ModernFormBuilder from './ModernFormBuilder';
+// ModernFormBuilder removido - arquivo não utilizado
 import PublicFormRenderer from './PublicFormRenderer';
 import { CustomForm } from '../../types/Forms';
 // FormTypeSelector removido - não relacionado ao CRM
@@ -235,14 +235,20 @@ const FormBuilderModule: React.FC = () => {
 
   // Renderização condicional baseada na view atual
   if (currentView === 'builder') {
+    // ModernFormBuilder removido - funcionalidade temporariamente indisponível
     return (
-      <ModernFormBuilder
-        form={selectedForm}
-        onSave={handleSaveForm}
-        onCancel={handleCancelEdit}
-        tenantId={user.tenant_id}
-
-      />
+      <div className="p-8 text-center">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+          <h3 className="text-lg font-medium text-yellow-800 mb-2">Form Builder Temporariamente Indisponível</h3>
+          <p className="text-yellow-700 mb-4">O componente ModernFormBuilder foi removido durante limpeza de código não utilizado.</p>
+          <button
+            onClick={handleCancelEdit}
+            className="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700"
+          >
+            Voltar para Lista
+          </button>
+        </div>
+      </div>
     );
   }
 

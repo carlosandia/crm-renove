@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Auth Simples</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, createContext, useContext } = React;
+        const { createClient } = supabase;
+
+        // Configurar Supabase
+        const supabaseClient = createClient(
+            'https://marajvabdwkpgopytvhh.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hcmFqdmFiZHdrcGdvcHl0dmhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3NjQwMDksImV4cCI6MjA2NTM0MDAwOX0.C_2W2u8JyApjbhqPJm1q1dFX82KoRSm3auBfE7IpmDU'
+        );
+
+        // Context
+        const AuthContext = createContext();
+
+        // AuthProvider simplificado para debug
+        const DebugAuthProvider = ({ children }) => {
+            const [user, setUser] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [logs, setLogs] = useState([]);
+
+            const addLog = (message) => {
+                console.log(message);
+                setLogs(prev => [...prev, `${new Date().toLocaleTimeString()}: ${message}`]);
+            };
+
+            const login = async (email, password) => {
+                try {
+                    addLog('🔑 Iniciando login...');
+                    setLoading(true);
+
+                    const { data, error } = await supabaseClient.auth.signInWithPassword({
+                        email,
+                        password
+                    });
+
+                    if (error) {
+                        addLog(`❌ Erro no login: ${error.message}`);
+                        return { success: false, message: error.message };
+                    }
+
+                    addLog('✅ Login Supabase OK, buscando usuário...');
+
+                    // Buscar dados do usuário
+                    const { data: userData, error: userError } = await supabaseClient
+                        .from('users')
+                        .select('*')
+                        .eq('id', data.user.id)
+                        .eq('is_active', true)
+                        .single();
+
+                    if (userError || !userData) {
+                        addLog(`❌ Usuário não encontrado: ${userError?.message || 'Não encontrado'}`);
+                        return { success: false, message: 'Usuário não encontrado' };
+                    }
+
+                    addLog(`✅ Usuário encontrado: ${userData.email} (${userData.role})`);
+                    setUser(userData);
+                    setLoading(false);
+
+                    return { success: true, message: 'Login bem-sucedido' };
+
+                } catch (error) {
+                    addLog(`❌ Erro crítico: ${error.message}`);
+                    setLoading(false);
+                    return { success: false, message: error.message };
+                }
+            };
+
+            // Verificar sessão existente
+            useEffect(() => {
+                let mounted = true;
+
+                const checkSession = async () => {
+                    try {
+                        addLog('🔄 Verificando sessão existente...');
+
+                        const { data: { session }, error } = await supabaseClient.auth.getSession();
+
+                        if (error) {
+                            addLog(`❌ Erro na sessão: ${error.message}`);
+                            if (mounted) setLoading(false);
+                            return;
+                        }
+
+                        if (session && session.user && mounted) {
+                            addLog(`🔍 Sessão encontrada para: ${session.user.email}`);
+
+                            // Buscar dados do usuário
+                            const { data: userData, error: userError } = await supabaseClient
+                                .from('users')
+                                .select('*')
+                                .eq('id', session.user.id)
+                                .eq('is_active', true)
+                                .single();
+
+                            if (userError || !userData) {
+                                addLog(`⚠️ Usuário da sessão não encontrado: ${userError?.message || 'Não encontrado'}`);
+                                await supabaseClient.auth.signOut();
+                                setUser(null);
+                            } else {
+                                addLog(`✅ Sessão restaurada: ${userData.email} (${userData.role})`);
+                                setUser(userData);
+                            }
+                        } else {
+                            addLog('ℹ️ Nenhuma sessão encontrada');
+                        }
+
+                    } catch (error) {
+                        addLog(`❌ Erro na verificação: ${error.message}`);
+                    } finally {
+                        if (mounted) {
+                            addLog('🏁 Finalizando verificação, setando loading = false');
+                            setLoading(false);
+                        }
+                    }
+                };
+
+                checkSession();
+
+                return () => {
+                    mounted = false;
+                };
+            }, []);
+
+            return (
+                <AuthContext.Provider value={{ user, loading, login, logs }}>
+                    {children}
+                </AuthContext.Provider>
+            );
+        };
+
+        // Hook
+        const useAuth = () => useContext(AuthContext);
+
+        // Componente principal
+        const App = () => {
+            const { user, loading, login, logs } = useAuth();
+            const [email, setEmail] = useState('seraquevai@seraquevai.com');
+            const [password, setPassword] = useState('abc12345!');
+
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                await login(email, password);
+            };
+
+            return (
+                <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
+                    <h1>Debug Auth Simples</h1>
+                    
+                    <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: loading ? '#fff3cd' : user ? '#d4edda' : '#f8d7da', border: '1px solid', borderRadius: '5px' }}>
+                        <strong>Estado:</strong> 
+                        <br />Loading: {loading ? 'true' : 'false'}
+                        <br />User: {user ? `${user.email} (${user.role})` : 'null'}
+                    </div>
+
+                    {!user && !loading && (
+                        <form onSubmit={handleLogin} style={{ marginBottom: '20px' }}>
+                            <div>
+                                <input 
+                                    type="email" 
+                                    value={email} 
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    placeholder="Email"
+                                    style={{ padding: '8px', marginRight: '10px', width: '200px' }}
+                                />
+                                <input 
+                                    type="password" 
+                                    value={password} 
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="Password"
+                                    style={{ padding: '8px', marginRight: '10px', width: '150px' }}
+                                />
+                                <button type="submit" style={{ padding: '8px 16px' }}>
+                                    Login
+                                </button>
+                            </div>
+                        </form>
+                    )}
+
+                    {loading && (
+                        <div style={{ textAlign: 'center', padding: '40px' }}>
+                            <div style={{ fontSize: '18px', color: '#666' }}>Iniciando...</div>
+                        </div>
+                    )}
+
+                    {user && !loading && (
+                        <div style={{ padding: '20px', backgroundColor: '#d4edda', border: '1px solid #c3e6cb', borderRadius: '5px' }}>
+                            <h2>✅ Usuário Logado!</h2>
+                            <p><strong>Email:</strong> {user.email}</p>
+                            <p><strong>Role:</strong> {user.role}</p>
+                            <p><strong>Tenant ID:</strong> {user.tenant_id}</p>
+                        </div>
+                    )}
+
+                    <div style={{ marginTop: '20px' }}>
+                        <h3>Logs:</h3>
+                        <div style={{ backgroundColor: '#f8f9fa', padding: '10px', border: '1px solid #dee2e6', borderRadius: '5px', maxHeight: '300px', overflow: 'auto' }}>
+                            {logs.map((log, index) => (
+                                <div key={index} style={{ fontSize: '12px', fontFamily: 'monospace', marginBottom: '2px' }}>
+                                    {log}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Renderizar
+        ReactDOM.render(
+            <DebugAuthProvider>
+                <App />
+            </DebugAuthProvider>,
+            document.getElementById('root')
+        );
+    </script>
+</body>
+</html>

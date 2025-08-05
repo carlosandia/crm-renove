@@ -127,6 +127,18 @@ class OptimizedLogger {
     return { ...this.config };
   }
 
+  // ✅ CORREÇÃO: Adicionar métodos para compatibilidade com optimizePipelineLogs.ts
+  isLoggingEnabled(): boolean {
+    return this.config.enabled;
+  }
+
+  setEnabled(enabled: boolean): void {
+    this.config.enabled = enabled;
+    if (this.shouldLog('debug')) {
+      console.debug(`🔧 [LOGGER] Logging ${enabled ? 'habilitado' : 'desabilitado'}`);
+    }
+  }
+
   // ============================================
   // MÉTODOS DE LOGGING OTIMIZADOS COM THROTTLING
   // ============================================
@@ -434,7 +446,7 @@ export const debug = (...args: Parameters<typeof logger.debug>) => logger.debug(
 export const info = (...args: Parameters<typeof logger.info>) => logger.info(...args);
 export const warn = (...args: Parameters<typeof logger.warn>) => logger.warn(...args);
 export const error = (...args: Parameters<typeof logger.error>) => logger.error(...args);
-export const performance = (...args: Parameters<typeof logger.performance>) => logger.performance(...args);
+export const logPerformance = (...args: Parameters<typeof logger.performance>) => logger.performance(...args);
 export const startTimer = (...args: Parameters<typeof logger.startTimer>) => logger.startTimer(...args);
 export const endTimer = (...args: Parameters<typeof logger.endTimer>) => logger.endTimer(...args);
 export const clearTimer = (...args: Parameters<typeof logger.clearTimer>) => logger.clearTimer(...args);
@@ -488,7 +500,8 @@ export const LogContext = {
   VALIDATION: 'VALIDATION',
   CACHE: 'CACHE',
   EVENT_MANAGER: 'EVENT_MANAGER',
-  METRICS_STORAGE: 'METRICS_STORAGE'
+  METRICS_STORAGE: 'METRICS_STORAGE',
+  FILTERS: 'FILTERS'
 } as const;
 
 export type LogContextType = typeof LogContext[keyof typeof LogContext];

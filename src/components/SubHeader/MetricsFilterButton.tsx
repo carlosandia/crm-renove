@@ -39,7 +39,6 @@ import {
   type MetricCategory
 } from '../../shared/schemas/metrics-preferences';
 import { useMetricsPreferences } from '../../hooks/useMetricsPreferences';
-import { usePipelineSpecificMetrics } from '../../hooks/usePipelineSpecificMetrics';
 import { usePipelineMetricsPreferences } from '../../hooks/usePipelineMetricsPreferences';
 import { 
   MAX_SELECTED_METRICS, 
@@ -97,22 +96,6 @@ const MetricsFilterButton: React.FC<MetricsFilterButtonProps> = ({
     error: globalError
   } = useMetricsPreferences();
 
-  // ✅ MÉTRICAS POR PIPELINE: Hook para métricas específicas da pipeline
-  const {
-    metrics: pipelineMetrics,
-    derivedMetrics,
-    isLoading: isLoadingPipeline,
-    isRefetching,
-    isRealTimeActive,
-    toggleRealTime,
-    refetch,
-    error: pipelineError,
-    lastUpdate
-  } = usePipelineSpecificMetrics({
-    pipelineId: pipelineId || '',
-    enableRealTime: showPipelineMetrics,
-    refreshInterval: 30000
-  });
 
   // ✅ NOVO: Hook para preferências de métricas por pipeline
   const {
@@ -133,8 +116,8 @@ const MetricsFilterButton: React.FC<MetricsFilterButtonProps> = ({
   });
 
   // ✅ ESTADOS COMBINADOS: Unificar loading e error
-  const isLoading = isLoadingGlobal || (showPipelineMetrics && isLoadingPipeline) || (enableMetricsSelection && isLoadingPreferences);
-  const error = globalError || pipelineError;
+  const isLoading = isLoadingGlobal || (enableMetricsSelection && isLoadingPreferences);
+  const error = globalError;
   const isUpdatingCombined = isUpdatingGlobal || isUpdatingPreferences;
 
   // Debug logging - otimizado para evitar logs desnecessários
@@ -156,8 +139,6 @@ const MetricsFilterButton: React.FC<MetricsFilterButtonProps> = ({
             hasError: !!error,
             visibleCount: pipelineVisibleMetrics?.length || 0,
             pipelineId: pipelineId?.substring(0, 8) + '...' || 'none',
-            hasPipelineMetrics: !!pipelineMetrics,
-            isRealTime: isRealTimeActive,
             changeCount: debugLogRef.current.logCount
           });
         }
@@ -165,7 +146,7 @@ const MetricsFilterButton: React.FC<MetricsFilterButtonProps> = ({
         debugLogRef.current.lastState = currentState;
       }
     }
-  }, [isLoading, isUpdatingCombined, error, pipelineVisibleMetrics?.length, pipelineId, pipelineMetrics, isRealTimeActive]);
+  }, [isLoading, isUpdatingCombined, error, pipelineVisibleMetrics?.length, pipelineId]);
 
   // ============================================  
   // HOOKS - DEVEM ESTAR ANTES DE QUALQUER CONDICIONAL
@@ -224,20 +205,6 @@ const MetricsFilterButton: React.FC<MetricsFilterButtonProps> = ({
     }
   }, [resetGlobalToDefault]);
 
-  // ✅ NOVOS HANDLERS: Para métricas específicas da pipeline
-  const handleRefreshPipelineMetrics = useCallback(() => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🔄 [MetricsFilterButton] Atualizando métricas da pipeline');
-    }
-    refetch();
-  }, [refetch]);
-
-  const handleToggleRealTime = useCallback(() => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('⏱️ [MetricsFilterButton] Alternando real-time:', !isRealTimeActive);
-    }
-    toggleRealTime();
-  }, [toggleRealTime, isRealTimeActive]);
 
   // ============================================
   // COMPONENTES AUXILIARES
@@ -259,13 +226,9 @@ const MetricsFilterButton: React.FC<MetricsFilterButtonProps> = ({
       />
       <label
         htmlFor={metric.id}
-        className="flex-1 flex items-center space-x-2 cursor-pointer text-sm"
+        className="flex-1 cursor-pointer text-sm"
       >
-        {METRIC_ICONS[metric.id]}
-        <div className="flex-1">
-          <div className="font-medium text-gray-900">{metric.label}</div>
-          <div className="text-xs text-gray-500">{metric.description}</div>
-        </div>
+        <div className="font-medium text-gray-900">{metric.label}</div>
       </label>
     </div>
   );
@@ -328,28 +291,10 @@ const MetricsFilterButton: React.FC<MetricsFilterButtonProps> = ({
 
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between px-2">
-          <div>
-            <h4 className="text-sm font-semibold text-gray-800">
-              📊 Selecionar Métricas
-            </h4>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {selectedCount} de {maxSelectable} métricas selecionadas
-            </p>
-          </div>
-          
-          <div className="flex items-center space-x-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleResetMetricsToDefault}
-              disabled={isUpdatingPreferences}
-              className="h-6 px-2 text-xs"
-              title="Resetar para padrão"
-            >
-              <RotateCcw className="w-3 h-3" />
-            </Button>
-          </div>
+        <div className="px-2">
+          <h4 className="text-sm font-semibold text-gray-800">
+            Selecionar Métricas
+          </h4>
         </div>
 
         {/* Lista de todas as métricas disponíveis */}
@@ -371,20 +316,15 @@ const MetricsFilterButton: React.FC<MetricsFilterButtonProps> = ({
                   checked={isSelected}
                   disabled={!canToggle || isUpdatingPreferences}
                   className="flex-shrink-0"
-                  readOnly
                 />
                 
                 <label
                   htmlFor={`metric-${metric.id}`}
-                  className={`flex-1 flex items-center space-x-2 text-sm ${
+                  className={`flex-1 text-sm ${
                     canToggle ? 'cursor-pointer' : 'cursor-not-allowed'
                   }`}
                 >
-                  {METRIC_ICONS[metric.id]}
-                  <div className="flex-1">
-                    <div className="font-medium text-gray-900">{metric.label}</div>
-                    <div className="text-xs text-gray-500">{metric.description}</div>
-                  </div>
+                  <div className="font-medium text-gray-900">{metric.label}</div>
                 </label>
                 
                 {/* Indicator de categoria */}
@@ -403,134 +343,10 @@ const MetricsFilterButton: React.FC<MetricsFilterButtonProps> = ({
           })}
         </div>
 
-        {/* Status da seleção */}
-        <div className="px-2 py-2 bg-gray-50 rounded text-xs text-gray-600">
-          {selectedCount === maxSelectable && (
-            <span className="text-orange-600 font-medium">
-              ⚠️ Limite máximo atingido ({maxSelectable} métricas)
-            </span>
-          )}
-          {selectedCount === minSelectable && (
-            <span className="text-blue-600">
-              ℹ️ Mínimo de {minSelectable} métrica{minSelectable > 1 ? 's' : ''} requerida{minSelectable > 1 ? 's' : ''}
-            </span>
-          )}
-          {selectedCount > minSelectable && selectedCount < maxSelectable && (
-            <span className="text-green-600">
-              ✅ {maxSelectable - selectedCount} métrica{maxSelectable - selectedCount > 1 ? 's' : ''} disponível{maxSelectable - selectedCount > 1 ? 'eis' : ''}
-            </span>
-          )}
-        </div>
       </div>
     );
   };
 
-  // ✅ COMPONENTE: Seção de métricas da pipeline (simplificada)
-  const PipelineMetricsSection: React.FC = () => {
-    if (!showPipelineMetrics || !pipelineId) return null;
-
-    return (
-      <div className="space-y-3">
-        <div className="flex items-center justify-between px-2">
-          <h4 className="text-sm font-semibold text-gray-800">
-            🎯 Métricas da Pipeline
-          </h4>
-          <div className="flex items-center space-x-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleRefreshPipelineMetrics}
-              disabled={isRefetching}
-              className="h-6 px-2 text-xs"
-              title="Atualizar métricas"
-            >
-              <RefreshCw className={`w-3 h-3 ${isRefetching ? 'animate-spin' : ''}`} />
-            </Button>
-            
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleToggleRealTime}
-              className={`h-6 px-2 text-xs ${isRealTimeActive ? 'bg-green-50 text-green-700' : ''}`}
-              title={`${isRealTimeActive ? 'Desativar' : 'Ativar'} atualização em tempo real`}
-            >
-              <Activity className={`w-3 h-3 ${isRealTimeActive ? 'text-green-600' : 'text-gray-400'}`} />
-            </Button>
-          </div>
-        </div>
-
-        {pipelineMetrics && (
-          <div className="px-2 py-3 bg-blue-50 rounded-lg">
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div>
-                <span className="text-gray-600">Total Leads:</span>
-                <span className="ml-1 font-semibold text-gray-900">{pipelineMetrics.total_leads}</span>
-              </div>
-              <div>
-                <span className="text-gray-600">Conv. Rate:</span>
-                <span className="ml-1 font-semibold text-gray-900">{pipelineMetrics.conversion_rate.toFixed(1)}%</span>
-              </div>
-              <div>
-                <span className="text-gray-600">Receita:</span>
-                <span className="ml-1 font-semibold text-green-700">
-                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
-                    .format(pipelineMetrics.total_revenue)}
-                </span>
-              </div>
-              <div>
-                <span className="text-gray-600">Win Rate:</span>
-                <span className="ml-1 font-semibold text-gray-900">{pipelineMetrics.win_rate.toFixed(1)}%</span>
-              </div>
-            </div>
-            
-            {derivedMetrics.hasData && (
-              <div className="mt-2 pt-2 border-t border-blue-200">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-600">Status:</span>
-                  <Badge 
-                    variant="secondary" 
-                    className={`text-xs ${
-                      derivedMetrics.healthStatus === 'healthy' ? 'bg-green-100 text-green-800' :
-                      derivedMetrics.healthStatus === 'warning' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
-                    }`}
-                  >
-                    {derivedMetrics.healthStatus === 'healthy' ? '✅ Saudável' :
-                     derivedMetrics.healthStatus === 'warning' ? '⚠️ Atenção' : '🚨 Crítico'}
-                  </Badge>
-                </div>
-              </div>
-            )}
-
-            {lastUpdate && (
-              <div className="mt-2 pt-2 border-t border-blue-200">
-                <span className="text-xs text-gray-500">
-                  Última atualização: {new Date(lastUpdate).toLocaleTimeString('pt-BR')}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {isLoadingPipeline && !pipelineMetrics && (
-          <div className="px-2 py-3 bg-gray-50 rounded-lg">
-            <div className="flex items-center justify-center">
-              <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mr-2" />
-              <span className="text-xs text-gray-600">Carregando métricas...</span>
-            </div>
-          </div>
-        )}
-
-        {pipelineError && (
-          <div className="px-2 py-3 bg-red-50 rounded-lg">
-            <span className="text-xs text-red-600">
-              ⚠️ Erro ao carregar métricas da pipeline
-            </span>
-          </div>
-        )}
-      </div>
-    );
-  };
 
   // ============================================
   // RENDERIZAÇÃO
@@ -592,13 +408,13 @@ const MetricsFilterButton: React.FC<MetricsFilterButtonProps> = ({
           <Sliders className="w-4 h-4" />
           <span className="hidden sm:inline">Métricas</span>
           
-          {/* Badge com número de métricas personalizadas */}
-          {statistics.hasChanges && (
+          {/* Badge com número de métricas selecionadas */}
+          {(enableMetricsSelection && selectedCount > 0) || (!enableMetricsSelection && statistics.hasChanges) && (
             <Badge 
               variant="secondary" 
               className="ml-1 text-xs bg-blue-100 text-blue-700 border-blue-200"
             >
-              {statistics.totalVisible}
+              {enableMetricsSelection ? selectedCount : statistics.totalVisible}
             </Badge>
           )}
         </Button>
@@ -618,25 +434,10 @@ const MetricsFilterButton: React.FC<MetricsFilterButtonProps> = ({
                 Filtrar Métricas
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">
-                {statistics.totalVisible} de {statistics.totalAvailable} métricas visíveis
+                {enableMetricsSelection ? `${selectedCount} de ${maxSelectable} métricas selecionadas` : `${statistics.totalVisible} de ${statistics.totalAvailable} métricas visíveis`}
               </p>
             </div>
             
-            {/* Ações rápidas */}
-            <div className="flex items-center space-x-1">
-              {!statistics.isDefault && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleResetGlobal}
-                  disabled={isUpdatingGlobal}
-                  className="h-6 px-2 text-xs"
-                  title="Resetar para padrão"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                </Button>
-              )}
-            </div>
           </div>
         </div>
 
@@ -671,14 +472,6 @@ const MetricsFilterButton: React.FC<MetricsFilterButtonProps> = ({
 
             {/* ✅ SEÇÃO: Seleção de métricas individuais */}
             <MetricsSelectionSection />
-            
-            {/* ✅ SEÇÃO: Métricas da pipeline */}
-            <PipelineMetricsSection />
-
-            {/* Separador apenas se há métricas da pipeline */}
-            {showPipelineMetrics && pipelineId && (
-              <div className="border-t border-gray-100" />
-            )}
 
             {/* Métricas Globais (apenas se habilitado) */}
             {showGlobalMetrics && (
@@ -704,32 +497,6 @@ const MetricsFilterButton: React.FC<MetricsFilterButtonProps> = ({
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="p-3 border-t border-gray-100 bg-gray-50 rounded-b-lg">
-          <div className="flex items-center justify-between">
-            <div className="text-xs text-gray-500">
-              {isUpdatingCombined ? (
-                <span className="flex items-center">
-                  <div className="w-3 h-3 border border-blue-600 border-t-transparent rounded-full animate-spin mr-1" />
-                  Salvando...
-                </span>
-              ) : (
-                <span>
-                  Configuração {statistics.isDefault ? 'padrão' : 'personalizada'}
-                </span>
-              )}
-            </div>
-            
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsOpen(false)}
-              className="h-6 px-2 text-xs"
-            >
-              Fechar
-            </Button>
-          </div>
-        </div>
       </PopoverContent>
     </Popover>
     </>

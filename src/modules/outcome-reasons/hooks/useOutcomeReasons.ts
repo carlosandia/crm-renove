@@ -87,7 +87,7 @@ export const useOutcomeReasons = (params: UseOutcomeReasonsParams) => {
 
   // ✅ Mutation para atualizar motivo
   const updateMutation = useMutation({
-    mutationFn: (data: UpdateOutcomeReasonRequest) => outcomeReasonsApi.updateReason(data),
+    mutationFn: (data: UpdateOutcomeReasonRequest & { id: string }) => outcomeReasonsApi.updateReason(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: outcomeReasonsKeys.pipeline(params.pipelineId) });
       toast.success('Motivo atualizado com sucesso');

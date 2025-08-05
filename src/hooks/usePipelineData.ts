@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../integrations/supabase/client';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { Pipeline, PipelineStage, CustomField, PipelineMember } from '../types/Pipeline';
 import { Lead } from '../types/Pipeline';
+import { retrySupabaseQuery, retryFetchOperation, createRetryLogger } from '../utils/retryUtils';
 
 // ✅ INTERFACE COMPLETA
 interface UsePipelineDataReturn {
@@ -27,7 +28,7 @@ interface UsePipelineDataReturn {
 }
 
 export const usePipelineData = (): UsePipelineDataReturn => {
-  const { user, authenticatedFetch, refreshTokens } = useAuth();
+  const { user, authenticatedFetch } = useAuth();
   
   // Estados principais
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -35,6 +36,9 @@ export const usePipelineData = (): UsePipelineDataReturn => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // ✅ NOVO: Logger específico para retry
+  const retryLogger = useMemo(() => createRetryLogger(`PipelineData-${user?.tenant_id?.substring(0, 8) || 'unknown'}`), [user?.tenant_id]);
 
   // ✅ SISTEMA DE LOG LEVELS OTIMIZADO
   const logLevel = import.meta.env.VITE_LOG_LEVEL || 'warn';
@@ -157,22 +161,70 @@ export const usePipelineData = (): UsePipelineDataReturn => {
             logger.warn('Erro ao buscar stages:', stagesError);
           }
           
-          // Buscar members da pipeline
-          const { data: members, error: membersError } = await supabase
-            .from('pipeline_members')
-            .select('*')
-            .eq('pipeline_id', pipeline.id);
+          // ✅ NOVO: Buscar members com retry e fallback
+          let members: any[] = [];
           
-          if (membersError) {
-            logger.warn('Erro ao buscar members:', membersError);
+          // Tentativa 1: Supabase com retry
+          const membersResult = await retrySupabaseQuery(
+            () => supabase
+              .from('pipeline_members')
+              .select('*')
+              .eq('pipeline_id', pipeline.id),
+            {
+              maxAttempts: 2,
+              baseDelay: 1000,
+              onRetry: retryLogger.onRetry
+            }
+          );
+
+          if (membersResult.success && membersResult.data) {
+            members = (membersResult.data || []) as any[];
+            
+            if (membersResult.attempts > 1) {
+              retryLogger.onSuccess(membersResult.attempts, membersResult.totalTime);
+            }
+          } else {
+            // Tentativa 2: Backend API com retry
+            logger.warn('Supabase falhou para members, tentando backend:', membersResult.error?.message);
+            
+            const backendResult = await retryFetchOperation(
+              () => fetch(`${import.meta.env.VITE_API_URL}/api/database/pipeline-members/${pipeline.id}?tenant_id=${user.tenant_id}`, {
+                method: 'GET',
+                headers: {
+                  'Content-Type': 'application/json'
+                }
+              }),
+              (response) => response.json(),
+              {
+                maxAttempts: 2,
+                baseDelay: 500,
+                onRetry: retryLogger.onRetry
+              }
+            );
+            
+            if (backendResult.success && backendResult.data?.success) {
+              members = backendResult.data.data || [];
+              logger.info('Backend fallback para members: SUCESSO', members.length);
+            } else {
+              logger.warn('Ambos falharam para members, usando array vazio');
+              members = [];
+            }
           }
           
+          // Carregar campos customizados
+          const { data: customFields } = await supabase
+            .from('pipeline_custom_fields')
+            .select('*')
+            .eq('pipeline_id', pipeline.id)
+            .order('field_order', { ascending: true });
+
           // Combinar dados
           return {
             ...pipeline,
-            pipeline_stages: stages || [],
+            stages: stages || [], // ✅ CORREÇÃO: Campo esperado pelo ModernPipelineCreatorRefactored
+            pipeline_stages: stages || [], // ✅ COMPATIBILIDADE: Manter para outros componentes
             pipeline_members: members || [],
-            pipeline_custom_fields: [] // Manter vazio por enquanto para compatibilidade
+            pipeline_custom_fields: customFields || [] // ✅ CORREÇÃO: Carregar campos customizados reais
           };
         })
       );
@@ -186,6 +238,7 @@ export const usePipelineData = (): UsePipelineDataReturn => {
           tenantId: p.tenant_id,
           createdBy: p.created_by,
           stagesCount: p.pipeline_stages?.length || 0,
+          customFieldsCount: p.pipeline_custom_fields?.length || 0,
           membersCount: p.pipeline_members?.length || 0,
           hasAllFields: !!(p.id && p.name && p.tenant_id)
         }))
@@ -218,7 +271,7 @@ export const usePipelineData = (): UsePipelineDataReturn => {
   }, [user, authenticatedFetch, getCachedPipelines, setCachedPipelines]);
 
   /**
-   * ✅ BUSCAR LEADS DE UMA PIPELINE
+   * ✅ BUSCAR LEADS DE UMA PIPELINE VIA API REST (COM SUPABASE AUTH)
    */
   const fetchLeads = useCallback(async (pipelineId?: string): Promise<void> => {
     if (!pipelineId || !user) return;
@@ -226,18 +279,16 @@ export const usePipelineData = (): UsePipelineDataReturn => {
     logger.debug('fetchLeads chamado:', { pipelineId, userId: user.id });
 
     try {
-      const { data, error } = await supabase
-        .from('pipeline_leads')
-        .select('*')
-        .eq('pipeline_id', pipelineId)
-        .eq('tenant_id', user.tenant_id)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        throw error;
+      // ✅ Usar API REST para garantir autenticação Supabase
+      const response = await authenticatedFetch(`/api/pipelines/${pipelineId}/leads?tenant_id=${user.tenant_id}`);
+      
+      if (!response.ok) {
+        throw new Error(`Erro na API: ${response.status} ${response.statusText}`);
       }
+      
+      const data = await response.json();
 
-      logger.info('Leads buscados:', {
+      logger.info('Leads buscados via API:', {
         pipelineId,
         leadsCount: data?.length || 0
       });
@@ -247,7 +298,7 @@ export const usePipelineData = (): UsePipelineDataReturn => {
       logger.error('Erro ao buscar leads:', error);
       setLeads([]);
     }
-  }, [user]);
+  }, [user, authenticatedFetch]);
 
   /**
    * ✅ IMPLEMENTAR FUNÇÕES NECESSÁRIAS
@@ -453,9 +504,17 @@ export const usePipelineData = (): UsePipelineDataReturn => {
   }, [pipelines, user]);
 
   const getMemberLinkedPipelines = useCallback((): Pipeline[] => {
-    // Para members, retornar todas as pipelines da empresa
+    // ✅ CONTROLE DE PERMISSÕES: Members só veem pipelines onde estão atribuídos
+    if (user?.role === 'member') {
+      return pipelines.filter(pipeline => {
+        // Verificar se o member está na lista de members da pipeline
+        const pipelineMembers = pipeline.pipeline_members || [];
+        return pipelineMembers.some(member => member.member_id === user.id);
+      });
+    }
+    // Para outros roles, retornar todas as pipelines
     return pipelines;
-  }, [pipelines]);
+  }, [pipelines, user]);
 
   const linkMemberToPipeline = useCallback(async (memberId: string, pipelineId: string): Promise<boolean> => {
     logger.debug('linkMemberToPipeline chamado:', { memberId, pipelineId });

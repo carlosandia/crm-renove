@@ -1,7 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../providers/AuthProvider';
 import { showSuccessToast, showErrorToast } from '../lib/toast';
 import { Pipeline } from '../types/Pipeline';
+import { QueryKeys } from '../lib/queryKeys';
+import { api } from '../lib/api';
 
 interface ArchivePipelineVariables {
   pipelineId: string;
@@ -28,7 +30,7 @@ interface OptimisticPipelineUpdate {
  * Inspirado em: Salesforce Lightning, HubSpot, Linear
  */
 export const useArchivePipelineMutation = () => {
-  const { authenticatedFetch, user } = useAuth();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation<void, Error, ArchivePipelineVariables>({
@@ -44,11 +46,11 @@ export const useArchivePipelineMutation = () => {
       });
 
       // ✅ CANCELAR queries em andamento para evitar race conditions
-      const cacheKey = `pipelines_${user?.tenant_id}`;
-      await queryClient.cancelQueries({ queryKey: [cacheKey] });
+      const queryKey = QueryKeys.pipelines.byTenant(user?.tenant_id!);
+      await queryClient.cancelQueries({ queryKey });
 
       // ✅ SALVAR estado anterior para rollback
-      const previousPipelines = queryClient.getQueryData<Pipeline[]>([cacheKey]);
+      const previousPipelines = queryClient.getQueryData<Pipeline[]>(queryKey);
 
       // ✅ UPDATE OPTIMISTIC: Atualizar cache imediatamente
       if (previousPipelines) {
@@ -64,7 +66,7 @@ export const useArchivePipelineMutation = () => {
             : pipeline
         );
 
-        queryClient.setQueryData([cacheKey], updatedPipelines);
+        queryClient.setQueryData(queryKey, updatedPipelines);
 
         console.log(`✨ [OPTIMISTIC] Cache atualizado instantaneamente:`, {
           pipelineId: pipelineId.substring(0, 8),
@@ -86,7 +88,7 @@ export const useArchivePipelineMutation = () => {
       // ✅ RETORNAR contexto para rollback
       return {
         previousPipelines,
-        cacheKey,
+        queryKey,
         pipelineId,
         shouldArchive
       };
@@ -97,20 +99,10 @@ export const useArchivePipelineMutation = () => {
       const { pipelineId, shouldArchive } = variables;
       
       const endpoint = shouldArchive ? 'archive' : 'unarchive';
-      const response = await authenticatedFetch(`/pipelines/${pipelineId}/${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.details || errorData.error || 'Erro na operação');
-      }
-
-      const result = await response.json();
+      const response = await api.post(`/pipelines/${pipelineId}/${endpoint}`);
       
-      if (!result.success) {
-        throw new Error(result.error || 'Operação falhou no servidor');
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Operação falhou no servidor');
       }
 
       console.log(`✅ [API] ${shouldArchive ? 'Arquivamento' : 'Desarquivamento'} confirmado pelo backend:`, {
@@ -149,10 +141,10 @@ export const useArchivePipelineMutation = () => {
 
       // ✅ ROLLBACK: Restaurar estado anterior
       if (context) {
-        const { previousPipelines, cacheKey, pipelineId } = context;
+        const { previousPipelines, queryKey, pipelineId } = context as any;
         
         if (previousPipelines) {
-          queryClient.setQueryData([cacheKey], previousPipelines);
+          queryClient.setQueryData(queryKey, previousPipelines);
           
           // ✅ REVERTER evento customizado
           const originalPipeline = previousPipelines.find((p: any) => p.id === pipelineId);
@@ -186,12 +178,12 @@ export const useArchivePipelineMutation = () => {
       const { pipelineId } = variables;
       
       // ✅ INVALIDATE cache para garantir consistência futura
-      const cacheKey = `pipelines_${user?.tenant_id}`;
-      queryClient.invalidateQueries({ queryKey: [cacheKey] });
+      const queryKey = QueryKeys.pipelines.byTenant(user?.tenant_id!);
+      queryClient.invalidateQueries({ queryKey });
 
       console.log(`🔄 [SETTLED] Cache invalidated para sincronização futura:`, {
         pipelineId: pipelineId.substring(0, 8),
-        cacheKey
+        queryKey: queryKey.join('/')
       });
     }
   });
