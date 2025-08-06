@@ -143,7 +143,7 @@ export class LeadService {
       // Como UpdateLeadData não tem position, vamos usar o método direto
       console.log('🎯 [MOVE LEAD] Incluindo posição:', position);
       
-      const positionNum = typeof position === 'number' ? position : parseInt(position.toString());
+      const positionNum = typeof position === 'number' ? position : parseInt(String(position));
       const { data: lead, error } = await supabase
         .from('pipeline_leads')
         .update({

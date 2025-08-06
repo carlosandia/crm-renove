@@ -582,7 +582,7 @@ export class PipelineService {
     console.log('✅ [PipelineService] Pipeline atualizada com sucesso:', {
       id: updatedPipeline.id,
       name: updatedPipeline.name,
-      hasQualificationRules: !!updatedPipeline.qualification_rules,
+      hasQualificationRules: !!(updatedPipeline as any).qualification_rules,
       updatedCadences: data.cadence_configs !== undefined,
       updatedReasons: data.outcome_reasons !== undefined,
       updatedStages: data.stages !== undefined

@@ -54,10 +54,12 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const queryParams = ListAnnotationsQuerySchema.parse(req.query);
 
   // Buscar anotações via service
-  const result = await AnnotationsService.listAnnotations({
-    ...queryParams,
-    tenant_id: req.user!.tenant_id
-  });
+  const result = await AnnotationsService.getLeadAnnotations(
+    '', // leadId vazio para buscar todas as anotações
+    req.user!.tenant_id,
+    'pipeline_lead',
+    queryParams
+  );
 
   res.json({
     success: true,

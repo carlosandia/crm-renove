@@ -37,6 +37,9 @@ import {
 // Magic UI components
 import { AnimatedCard } from '../ui/animated-card';
 import { BlurFade } from '../ui/blur-fade';
+import { PulsatingButton } from '../magicui/pulsating-button';
+import { BorderBeam } from '../magicui/border-beam';
+import { NumberTicker } from '../magicui/number-ticker';
 
 // Subcomponentes especializados
 import { useStageManager, StageManagerRender } from './stages/ImprovedStageManager';
@@ -48,6 +51,12 @@ import { useTemperatureConfig, TemperatureConfigRender } from './temperature';
 // ✅ NOVAS ABAS: Importar os 2 novos componentes para as abas expandidas
 import QualificationManager, { QualificationRules } from './QualificationManager';
 import MotivesManager, { OutcomeReasons } from './MotivesManager';
+
+// ✅ NOVA ABA: Componente Email existente
+import EmailComposeModal from '../Leads/EmailComposeModal';
+
+// ✅ NOVA ABA: API de integração email
+import { emailIntegrationApi } from '../../services/emailIntegrationApi';
 
 // Icons
 import { 
@@ -67,6 +76,11 @@ import {
   TrendingUp,
   Users,
   Trophy,
+  Mail,
+  Send,
+  MessageCircle,
+  FileText,
+  Eye,
 } from 'lucide-react';
 
 // Shared components
@@ -270,6 +284,12 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
   
   // ✅ NOVO: Flag para detectar mudanças de motivos
   const [hasMotivesChanges, setHasMotivesChanges] = useState(false);
+
+  // ✅ NOVA ABA EMAIL: Estados para funcionalidade de email
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailHistory, setEmailHistory] = useState<any[]>([]);
+  const [loadingEmailHistory, setLoadingEmailHistory] = useState(false);
+  const [selectedEmailTemplate, setSelectedEmailTemplate] = useState<string>('');
 
   // ✅ NOVO: Função para marcar formulário como modificado (só após inicialização)
   const markFormDirty = useCallback(() => {
@@ -695,6 +715,9 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
         const qualificationRules = await loadQualificationRules(pipeline.id);
         const outcomeReasons = await loadOutcomeReasons(pipeline.id);
         const pipelineMembers = await loadPipelineMembers(pipeline.id);
+        
+        // ✅ NOVA ABA EMAIL: Carregar histórico de emails
+        await loadEmailHistory(pipeline.id);
 
         setFormData({
           name: pipeline.name || '',
@@ -756,6 +779,29 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
     } catch (error) {
       console.warn('⚠️ [loadCadenceConfigs] Erro ao carregar cadências:', error);
       return [];
+    }
+  };
+
+  // ✅ NOVA ABA EMAIL: Função para carregar histórico de emails
+  const loadEmailHistory = async (pipelineId?: string) => {
+    if (!pipelineId) return;
+    
+    setLoadingEmailHistory(true);
+    try {
+      console.log('📧 [loadEmailHistory] Carregando histórico...');
+      const response = await emailIntegrationApi.getEmailHistory({ 
+        pipeline_id: pipelineId, 
+        limit: 10 
+      });
+      
+      if (response.success && response.data) {
+        setEmailHistory(response.data);
+        console.log('✅ [loadEmailHistory] Histórico carregado:', response.data.length);
+      }
+    } catch (error) {
+      console.warn('⚠️ [loadEmailHistory] Erro ao carregar histórico:', error);
+    } finally {
+      setLoadingEmailHistory(false);
     }
   };
 
@@ -1026,6 +1072,192 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
     }
   };
 
+  // ✅ NOVA ABA EMAIL: Render da aba de email
+  const renderEmailTab = () => {
+    // Templates de email padrão do mercado
+    const emailTemplates = [
+      {
+        id: 'follow-up',
+        name: 'Follow-up',
+        icon: MessageCircle,
+        description: 'Dar seguimento ao contato',
+        subject: 'Seguimento da nossa conversa',
+        preview: 'Olá! Gostaria de dar seguimento...'
+      },
+      {
+        id: 'proposal',
+        name: 'Proposta Comercial',
+        icon: FileText,
+        description: 'Enviar proposta personalizada',
+        subject: 'Proposta Comercial - {{empresa}}',
+        preview: 'Prezado(a) {{nome}}, segue nossa proposta...'
+      },
+      {
+        id: 'thank-you',
+        name: 'Agradecimento',
+        icon: Send,
+        description: 'Agradecer pelo tempo dedicado',
+        subject: 'Obrigado pelo seu tempo',
+        preview: 'Obrigado pela atenção dedicada...'
+      }
+    ];
+
+    return (
+      <BlurFade delay={0.1} inView>
+        <div className="space-y-6">
+          <AnimatedCard>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="h-5 w-5 text-blue-600" />
+                Comunicação por Email
+              </CardTitle>
+              <CardDescription>
+                Configurações e templates para comunicação automatizada via email
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {/* Header da aba */}
+                <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <Mail className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Templates de Email</h3>
+                      <p className="text-sm text-gray-600">Escolha um template ou crie seu próprio email</p>
+                    </div>
+                  </div>
+                  <PulsatingButton
+                    onClick={() => setEmailModalOpen(true)}
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg"
+                    pulseColor="rgba(59, 130, 246, 0.5)"
+                  >
+                    <Mail className="h-4 w-4 mr-2" />
+                    Novo Email
+                  </PulsatingButton>
+                </div>
+
+                {/* Templates rápidos */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {emailTemplates.map((template) => {
+                    const IconComponent = template.icon;
+                    return (
+                      <div
+                        key={template.id}
+                        className="group relative overflow-hidden border border-gray-200 hover:border-blue-300 hover:shadow-lg transition-all duration-200 rounded-lg p-4 cursor-pointer"
+                        onClick={() => {
+                          setSelectedEmailTemplate(template.id);
+                          setEmailModalOpen(true);
+                        }}
+                      >
+                        <BorderBeam 
+                          size={60} 
+                          duration={12} 
+                          delay={template.id === 'follow-up' ? 0 : template.id === 'proposal' ? 4 : 8}
+                          colorFrom="rgba(59, 130, 246, 0.3)"
+                          colorTo="rgba(147, 51, 234, 0.3)"
+                        />
+                        <div className="flex items-start gap-3">
+                          <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                            <IconComponent className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-gray-900 group-hover:text-blue-700 transition-colors">
+                              {template.name}
+                            </h4>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {template.description}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-2 truncate">
+                              "{template.preview}"
+                            </p>
+                          </div>
+                        </div>
+                        
+                        {/* Shimmer effect on hover */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-20 transition-opacity duration-300 -skew-x-12 transform translate-x-full group-hover:translate-x-[-100%]" />
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Histórico de emails */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                      <Eye className="h-4 w-4" />
+                      Histórico de Emails
+                    </h4>
+                    {loadingEmailHistory && (
+                      <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                    )}
+                  </div>
+                  
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    {loadingEmailHistory ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                        <span className="ml-2 text-gray-500">Carregando histórico...</span>
+                      </div>
+                    ) : emailHistory.length > 0 ? (
+                      <div className="space-y-3">
+                        {emailHistory.map((email, index) => (
+                          <div key={index} className="flex items-center gap-3 p-3 bg-white rounded-lg">
+                            <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-medium text-gray-900">{email.subject}</p>
+                              <p className="text-sm text-gray-500">Para: {email.to}</p>
+                            </div>
+                            <span className="text-xs text-gray-400">
+                              {new Date(email.sent_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <Mail className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                        <p className="text-gray-500 mb-2">Nenhum email enviado ainda</p>
+                        <p className="text-sm text-gray-400">
+                          Os emails enviados através desta pipeline aparecerão aqui
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Estatísticas rápidas */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-blue-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2">
+                      <Send className="h-4 w-4 text-blue-600" />
+                      <span className="text-sm font-medium text-blue-900">Emails Enviados</span>
+                    </div>
+                    <p className="text-2xl font-bold text-blue-700 mt-1">
+                      <NumberTicker value={emailHistory.length} />
+                    </p>
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <span className="text-sm font-medium text-green-900">Taxa de Sucesso</span>
+                    </div>
+                    <p className="text-2xl font-bold text-green-700 mt-1">
+                      <NumberTicker value={emailHistory.length > 0 ? 100 : 0} />%
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </AnimatedCard>
+        </div>
+      </BlurFade>
+    );
+  };
+
   // Render da aba básico
   const renderBasicTab = () => (
     <BlurFade delay={0.1} inView>
@@ -1207,7 +1439,7 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
         <div className="p-6 pb-4">
           <form onSubmit={handleSubmit}>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="basic" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
               Básico
@@ -1238,6 +1470,10 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
             <TabsTrigger value="motives" className="flex items-center gap-2">
               <Trophy className="h-4 w-4" />
               Motivos
+            </TabsTrigger>
+            <TabsTrigger value="email" className="flex items-center gap-2">
+              <Mail className="h-4 w-4" />
+              E-mail
             </TabsTrigger>
           </TabsList>
 
@@ -1290,6 +1526,10 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
               isEditMode={!!pipeline?.id}
             />
           </TabsContent>
+          
+          <TabsContent value="email">
+            {renderEmailTab()}
+          </TabsContent>
         </Tabs>
 
         {/* ✅ REMOVIDO: Botão movido para footer fixo */}
@@ -1340,6 +1580,29 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ✅ NOVA ABA EMAIL: Modal de composição de email */}
+      {pipeline && (
+        <EmailComposeModal
+          isOpen={emailModalOpen}
+          onClose={() => {
+            setEmailModalOpen(false);
+            setSelectedEmailTemplate('');
+            // Recarregar histórico após envio
+            loadEmailHistory(pipeline.id);
+          }}
+          lead={{
+            id: pipeline.id,
+            custom_data: {
+              nome_lead: pipeline.name || 'Pipeline',
+              email_lead: 'contato@pipeline.com',
+              empresa: pipeline.name || 'Empresa',
+              nome_empresa: pipeline.name || 'Empresa'
+            }
+          } as any}
+          selectedTemplate={selectedEmailTemplate}
+        />
+      )}
       
     </>
   );

@@ -108,6 +108,19 @@ supabase/.temp/
 *.tsbuildinfo
 next-env.d.ts
 
-# Vite (legacy - pode ser removido após migração)
-vite.config.ts
-index.html 
+# Backups e arquivos temporários
+*.backup
+*.tar.gz
+backend-deploy.tar.gz.sh
+backend-source.tar.gz
+frontend-build.tar.gz
+deploy-package/
+
+# Arquivos de teste
+test-*.html
+
+# Build artifacts específicos do backend
+backend/src/index.js
+
+# Documentos temporários
+TESTE-*.md 

@@ -17,7 +17,7 @@ import { environmentConfig } from '../config/environment'
 // ✅ CORREÇÃO: Usar configuração centralizada
 // Em desenvolvimento: usa proxy Vite (/api → 127.0.0.1:3001)
 // Em produção: usa URL configurada do ambiente
-const API_BASE_URL = import.meta.env.DEV ? '' : environmentConfig.urls.backend
+const API_BASE_URL = import.meta.env.DEV ? '/api' : environmentConfig.urls.api
 
 // ✅ SISTEMA DE LOG LEVELS GLOBAL
 const logLevel = import.meta.env.VITE_LOG_LEVEL || 'warn';
@@ -45,7 +45,7 @@ const apiLogger = {
 };
 
 export const api = axios.create({
-  baseURL: `${API_BASE_URL}/api`,
+  baseURL: API_BASE_URL,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',

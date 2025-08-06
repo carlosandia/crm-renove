@@ -127,6 +127,7 @@ const environmentConfigs: Record<Environment, Partial<BackendConfig>> = {
       credentials: true,
     },
     security: {
+      jwtSecret: 'dev-jwt-secret-key',
       helmetEnabled: false,
       rateLimitEnabled: false,
       httpsOnly: false,
@@ -164,6 +165,7 @@ const environmentConfigs: Record<Environment, Partial<BackendConfig>> = {
       credentials: true,
     },
     security: {
+      jwtSecret: getEnvVar('JWT_SECRET'),
       helmetEnabled: true,
       rateLimitEnabled: true,
       httpsOnly: true,
@@ -201,6 +203,7 @@ const environmentConfigs: Record<Environment, Partial<BackendConfig>> = {
       credentials: true,
     },
     security: {
+      jwtSecret: getEnvVar('JWT_SECRET'),
       helmetEnabled: true,
       rateLimitEnabled: true,
       httpsOnly: true,
@@ -238,6 +241,7 @@ const environmentConfigs: Record<Environment, Partial<BackendConfig>> = {
       credentials: true,
     },
     security: {
+      jwtSecret: 'dev-jwt-secret-key',
       helmetEnabled: false,
       rateLimitEnabled: false,
       httpsOnly: false,

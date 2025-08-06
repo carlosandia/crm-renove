@@ -12,7 +12,7 @@ import { createOpportunityViaBackend } from '../services/adminApi';
  */
 const getCurrentBackendURL = () => {  
   // Usar variável de ambiente configurada ou fallback para desenvolvimento
-  return (await import('../config/environment')).environmentConfig.urls.api;
+  return import.meta.env.VITE_API_URL || (import.meta.env.VITE_ENVIRONMENT === 'production' ? 'https://crm.renovedigital.com.br/api' : 'http://127.0.0.1:3001/api');
 };
 
 /**

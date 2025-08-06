@@ -53,19 +53,38 @@ class ApiService {
   }
 
   /**
-   * Request base com retry e timeout
+   * Request base com retry e timeout + autenticação automática Supabase
    */
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseURL}${endpoint}`;
+    
+    // ✅ CORREÇÃO CRÍTICA: Incluir automaticamente token Supabase
+    const headers: Record<string, string> = {
+      ...this.defaultHeaders,
+      ...(options.headers as Record<string, string>),
+    };
+    
+    // Buscar token Supabase automaticamente
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+        console.log('🔑 [API] Token Supabase incluído automaticamente');
+      } else {
+        console.warn('⚠️ [API] Nenhum token Supabase encontrado - requisição sem autenticação');
+      }
+    } catch (authError) {
+      console.error('❌ [API] Erro ao obter token Supabase:', authError);
+    }
+    
     const config: RequestInit = {
       ...options,
-      headers: {
-        ...this.defaultHeaders,
-        ...options.headers,
-      },
+      headers,
     };
 
     const controller = new AbortController();

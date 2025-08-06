@@ -22,10 +22,11 @@ export async function authMiddleware(
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       console.log('❌ [AUTH] Token Authorization não encontrado');
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         error: 'Token de acesso requerido'
       });
+      return;
     }
 
     const token = authHeader.substring(7); // Remove "Bearer "
@@ -35,10 +36,11 @@ export async function authMiddleware(
 
     if (userError || !user) {
       console.error('❌ [AUTH] Usuário inválido:', userError?.message || 'Token inválido');
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         error: 'Token inválido ou expirado'
       });
+      return;
     }
 
     // ✅ EXTRAIR METADADOS DIRETAMENTE - sem fallbacks complexos
@@ -52,10 +54,11 @@ export async function authMiddleware(
         hasRole: !!userRole,
         userId: user.id.substring(0, 8)
       });
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         error: 'Metadados de usuário incompletos - contate o administrador'
       });
+      return;
     }
 
     // ✅ CONFIGURAR req.user com dados básicos do Supabase

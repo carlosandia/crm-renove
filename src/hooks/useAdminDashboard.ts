@@ -119,7 +119,8 @@ interface UseAdminDashboardResult {
   clearCache: () => Promise<boolean>;
 }
 
-const API_BASE = import.meta.env.VITE_API_URL || (await import('../config/environment')).environmentConfig.urls.api;
+// ✅ CORREÇÃO: Usar client Axios centralizado ao invés de fetch direto
+import { api } from '../lib/api';
 
 export function useAdminDashboard(): UseAdminDashboardResult {
   const { user } = useAuth();
@@ -141,14 +142,7 @@ export function useAdminDashboard(): UseAdminDashboardResult {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Helper function to get auth headers
-  const getAuthHeaders = useCallback(() => {
-    const token = localStorage.getItem('token');
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': token ? `Bearer ${token}` : '',
-    };
-  }, []);
+  // ✅ Removido getAuthHeaders - Axios centralizado já cuida da autenticação
 
   // Fetch dashboard metrics
   const fetchDashboardMetrics = useCallback(async (timeRange: string = '30d') => {
@@ -173,23 +167,17 @@ export function useAdminDashboard(): UseAdminDashboardResult {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 1000); // 1s timeout agressivo
 
-      const response = await fetch(`${API_BASE}/api/admin-dashboard?timeRange=${timeRange}`, {
-        signal: controller.signal,
-        headers: getAuthHeaders()
+      const response = await api.get(`/admin-dashboard?timeRange=${timeRange}`, {
+        signal: controller.signal
       });
 
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        throw new Error(`Erro ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      
-      if (result.success) {
-        setDashboardMetrics(result.data);
+      // ✅ Axios já retorna JSON automaticamente e trata status codes
+      if (response.data.success) {
+        setDashboardMetrics(response.data.data);
       } else {
-        throw new Error(result.error || 'Erro ao buscar métricas do dashboard');
+        throw new Error(response.data.error || 'Erro ao buscar métricas do dashboard');
       }
 
     } catch (err) {
@@ -199,7 +187,7 @@ export function useAdminDashboard(): UseAdminDashboardResult {
     } finally {
       setIsLoading(false);
     }
-  }, [getAuthHeaders, isAuthorized]);
+  }, [isAuthorized]);
 
   // Fetch sales targets
   const fetchSalesTargets = useCallback(async () => {
@@ -211,30 +199,24 @@ export function useAdminDashboard(): UseAdminDashboardResult {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 1000);
 
-      const response = await fetch(`${API_BASE}/api/admin-dashboard/sales-targets`, {
-        signal: controller.signal,
-        headers: getAuthHeaders()
+      const response = await api.get(`/admin-dashboard/sales-targets`, {
+        signal: controller.signal
       });
 
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        throw new Error(`Erro ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      
-      if (result.success) {
-        setSalesTargets(result.data.targets || []);
+      // ✅ Axios já retorna JSON automaticamente
+      if (response.data.success) {
+        setSalesTargets(response.data.data.targets || []);
       } else {
-        throw new Error(result.error || 'Erro ao buscar metas de vendas');
+        throw new Error(response.data.error || 'Erro ao buscar metas de vendas');
       }
 
     } catch (err) {
       // 🔧 FALLBACK SILENCIOSO: Sem logs
       setSalesTargets([]); // Fallback silencioso
     }
-  }, [getAuthHeaders, isAuthorized]);
+  }, [isAuthorized]);
 
   // Fetch admin alerts
   const fetchAdminAlerts = useCallback(async () => {
@@ -246,30 +228,24 @@ export function useAdminDashboard(): UseAdminDashboardResult {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 1000);
 
-      const response = await fetch(`${API_BASE}/api/admin-dashboard/alerts`, {
-        signal: controller.signal,
-        headers: getAuthHeaders()
+      const response = await api.get(`/admin-dashboard/alerts`, {
+        signal: controller.signal
       });
 
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        throw new Error(`Erro ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      
-      if (result.success) {
-        setAdminAlerts(result.data.alerts || []);
+      // ✅ Axios já retorna JSON automaticamente
+      if (response.data.success) {
+        setAdminAlerts(response.data.data.alerts || []);
       } else {
-        throw new Error(result.error || 'Erro ao buscar alertas');
+        throw new Error(response.data.error || 'Erro ao buscar alertas');
       }
 
     } catch (err) {
       // 🔧 FALLBACK SILENCIOSO: Sem logs
       setAdminAlerts([]); // Fallback silencioso
     }
-  }, [getAuthHeaders, isAuthorized]);
+  }, [isAuthorized]);
 
   // Fetch team performance
   const fetchTeamPerformance = useCallback(async (period: string = '30d') => {
@@ -281,30 +257,24 @@ export function useAdminDashboard(): UseAdminDashboardResult {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 1000);
 
-      const response = await fetch(`${API_BASE}/api/admin-dashboard/team-performance?period=${period}`, {
-        signal: controller.signal,
-        headers: getAuthHeaders()
+      const response = await api.get(`/admin-dashboard/team-performance?period=${period}`, {
+        signal: controller.signal
       });
 
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        throw new Error(`Erro ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      
-      if (result.success) {
-        setTeamPerformance(result.data.team_performance || []);
+      // ✅ Axios já retorna JSON automaticamente
+      if (response.data.success) {
+        setTeamPerformance(response.data.data.team_performance || []);
       } else {
-        throw new Error(result.error || 'Erro ao buscar performance da equipe');
+        throw new Error(response.data.error || 'Erro ao buscar performance da equipe');
       }
 
     } catch (err) {
       // 🔧 FALLBACK SILENCIOSO: Sem logs
       setTeamPerformance([]); // Fallback silencioso
     }
-  }, [getAuthHeaders, isAuthorized]);
+  }, [isAuthorized]);
 
   // Refresh all dashboard data
   const refreshDashboard = useCallback(async () => {
@@ -319,168 +289,116 @@ export function useAdminDashboard(): UseAdminDashboardResult {
   // Create sales target
   const createSalesTarget = useCallback(async (target: Omit<SalesTarget, 'id' | 'created_at' | 'updated_at'>): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/admin-dashboard/sales-targets`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(target),
-      });
+      const response = await api.post(`/admin-dashboard/sales-targets`, target);
 
-      if (!response.ok) {
-        throw new Error(`Erro ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      
-      if (result.success) {
+      // ✅ Axios já retorna JSON automaticamente
+      if (response.data.success) {
         await fetchSalesTargets(); // Refresh targets
         return true;
       } else {
-        throw new Error(result.error || 'Erro ao criar meta de vendas');
+        throw new Error(response.data.error || 'Erro ao criar meta de vendas');
       }
 
     } catch (err) {
       console.error('Erro ao criar meta:', err);
       return false;
     }
-  }, [getAuthHeaders, fetchSalesTargets]);
+  }, [fetchSalesTargets]);
 
   // Update sales target
   const updateSalesTarget = useCallback(async (targetId: string, updates: Partial<SalesTarget>): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/admin-dashboard/sales-targets/${targetId}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(updates),
-      });
+      const response = await api.put(`/admin-dashboard/sales-targets/${targetId}`, updates);
 
-      if (!response.ok) {
-        throw new Error(`Erro ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      
-      if (result.success) {
+      // ✅ Axios já retorna JSON automaticamente
+      if (response.data.success) {
         await fetchSalesTargets(); // Refresh targets
         return true;
       } else {
-        throw new Error(result.error || 'Erro ao atualizar meta de vendas');
+        throw new Error(response.data.error || 'Erro ao atualizar meta de vendas');
       }
 
     } catch (err) {
       console.error('Erro ao atualizar meta:', err);
       return false;
     }
-  }, [getAuthHeaders, fetchSalesTargets]);
+  }, [fetchSalesTargets]);
 
   // Mark alert as read
   const markAlertAsRead = useCallback(async (alertId: string): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/admin-dashboard/alerts/${alertId}/read`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-      });
+      const response = await api.put(`/admin-dashboard/alerts/${alertId}/read`);
 
-      if (!response.ok) {
-        throw new Error(`Erro ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      
-      if (result.success) {
+      // ✅ Axios já retorna JSON automaticamente
+      if (response.data.success) {
         await fetchAdminAlerts(); // Refresh alerts
         return true;
       } else {
-        throw new Error(result.error || 'Erro ao marcar alerta como lido');
+        throw new Error(response.data.error || 'Erro ao marcar alerta como lido');
       }
 
     } catch (err) {
       console.error('Erro ao marcar alerta:', err);
       return false;
     }
-  }, [getAuthHeaders, fetchAdminAlerts]);
+  }, [fetchAdminAlerts]);
 
   // Batch mark alerts as read
   const batchMarkAlertsAsRead = useCallback(async (alertIds: string[]): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/admin-dashboard/alerts/batch/read`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ alert_ids: alertIds }),
-      });
+      const response = await api.post(`/admin-dashboard/alerts/batch/read`, { alert_ids: alertIds });
 
-      if (!response.ok) {
-        throw new Error(`Erro ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      
-      if (result.success) {
+      // ✅ Axios já retorna JSON automaticamente
+      if (response.data.success) {
         await fetchAdminAlerts(); // Refresh alerts
         return true;
       } else {
-        throw new Error(result.error || 'Erro ao marcar alertas como lidos');
+        throw new Error(response.data.error || 'Erro ao marcar alertas como lidos');
       }
 
     } catch (err) {
       console.error('Erro ao marcar alertas:', err);
       return false;
     }
-  }, [getAuthHeaders, fetchAdminAlerts]);
+  }, [fetchAdminAlerts]);
 
   // Generate team snapshot
   const generateTeamSnapshot = useCallback(async (periodType: string): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/admin-dashboard/team-performance/snapshot`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ periodType }),
-      });
+      const response = await api.post(`/admin-dashboard/team-performance/snapshot`, { periodType });
 
-      if (!response.ok) {
-        throw new Error(`Erro ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      
-      if (result.success) {
+      // ✅ Axios já retorna JSON automaticamente
+      if (response.data.success) {
         await fetchTeamPerformance(); // Refresh performance data
         return true;
       } else {
-        throw new Error(result.error || 'Erro ao gerar snapshot da equipe');
+        throw new Error(response.data.error || 'Erro ao gerar snapshot da equipe');
       }
 
     } catch (err) {
       console.error('Erro ao gerar snapshot:', err);
       return false;
     }
-  }, [getAuthHeaders, fetchTeamPerformance]);
+  }, [fetchTeamPerformance]);
 
   // Clear cache
   const clearCache = useCallback(async (): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/admin-dashboard/cache/clear`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-      });
+      const response = await api.post(`/admin-dashboard/cache/clear`);
 
-      if (!response.ok) {
-        throw new Error(`Erro ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      
-      if (result.success) {
+      // ✅ Axios já retorna JSON automaticamente
+      if (response.data.success) {
         await refreshDashboard(); // Refresh all data
         return true;
       } else {
-        throw new Error(result.error || 'Erro ao limpar cache');
+        throw new Error(response.data.error || 'Erro ao limpar cache');
       }
 
     } catch (err) {
       console.error('Erro ao limpar cache:', err);
       return false;
     }
-  }, [getAuthHeaders, refreshDashboard]);
+  }, [refreshDashboard]);
 
   // Initial load
   useEffect(() => {

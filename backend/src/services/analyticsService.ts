@@ -760,7 +760,7 @@ class AnalyticsService {
 
     return Object.entries(grouped).map(([type, data]) => ({
       type,
-      count: data.total,
+      count: (data as any).total || 0,
       trend: 'stable' as const, // Simplificado
       change_percentage: 0, // Simplificado
     }));

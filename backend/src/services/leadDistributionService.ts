@@ -98,9 +98,10 @@ export class LeadDistributionService {
         
         const cadenceResult = await CadenceService.generateTaskInstancesForLead(
           lead.id,
+          payload.pipeline_id,
           firstStage.id,
-          pipeline.tenant_id,
-          assignedTo || payload.created_by || 'system'
+          assignedTo || payload.created_by || 'system',
+          pipeline.tenant_id
         );
 
         console.log('✅ [AUTO-CADENCE] Atividades geradas automaticamente:', {

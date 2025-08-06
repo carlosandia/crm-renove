@@ -245,6 +245,8 @@ router.post('/create', authMiddleware, async (req: Request, res: Response) => {
           lead_master_id: leadMasterId,
           tenant_id: tenant_id,
           created_by: user_id,
+          lead_data: {}, // Dados dos campos customizados obrigatórios
+          created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           moved_at: new Date().toISOString()
         };

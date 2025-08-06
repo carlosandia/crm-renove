@@ -64,7 +64,7 @@ async function syncUsersToAuth() {
             
             // Atualizar metadados do usuário existente
             const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-            const existingUser = existingUsers.users.find(u => u.email === user.email);
+            const existingUser = existingUsers.users.find((u: any) => u.email === user.email);
             
             if (existingUser) {
               await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
@@ -102,7 +102,7 @@ async function syncUsersToAuth() {
     console.log(`- Usuários em auth.users: ${authUsers.users.length}`);
     
     const criticalEmails = ['mais@mais.com', 'felipe@movment.com', 'admin@crm.com'];
-    const synced = authUsers.users.filter(u => criticalEmails.includes(u.email || ''));
+    const synced = authUsers.users.filter((u: any) => criticalEmails.includes(u.email || ''));
     console.log(`- Usuários críticos sincronizados: ${synced.length}/${criticalEmails.length}`);
     
     synced.forEach(u => {

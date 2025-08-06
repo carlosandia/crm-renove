@@ -175,6 +175,119 @@ router.get('/:id/details', async (req, res) => {
 // GET /api/pipelines/:id - Buscar pipeline específica
 router.get('/:id', authenticateToken, PipelineController.getPipelineById);
 
+// 🔥 ROTA CRÍTICA: GET /api/pipelines/:id/leads - Buscar leads de uma pipeline específica
+router.get('/:id/leads', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id: pipelineId } = req.params;
+    const { tenant_id, start_date, end_date } = req.query;
+    
+    console.log('🔍 [PIPELINE LEADS] Requisição recebida:', {
+      pipelineId: pipelineId?.substring(0, 8),
+      tenant_id: typeof tenant_id === 'string' ? tenant_id?.substring(0, 8) : tenant_id,
+      start_date,
+      end_date,
+      userAgent: req.headers['user-agent']?.substring(0, 50)
+    });
+    
+    if (!pipelineId || !tenant_id) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Pipeline ID e tenant_id são obrigatórios' 
+      });
+    }
+
+    // Construir query base
+    let query = supabase
+      .from('pipeline_leads')
+      .select(`
+        id,
+        pipeline_id,
+        stage_id,
+        lead_id,
+        lead_master_id,
+        assigned_to,
+        created_by,
+        created_at,
+        updated_at,
+        moved_at,
+        status,
+        position,
+        custom_data,
+        custom_fields,
+        lifecycle_stage,
+        temperature_level,
+        temperature_updated_at,
+        valor_unico,
+        valor_recorrente,
+        valor_total_calculado,
+        tipo_venda,
+        leads_master (
+          id,
+          first_name,
+          last_name,
+          email,
+          phone,
+          company,
+          estimated_value
+        )
+      `)
+      .eq('pipeline_id', pipelineId)
+      .eq('tenant_id', tenant_id)
+      .eq('status', 'active')
+      .order('position', { ascending: true })
+      .order('created_at', { ascending: false });
+    
+    // Aplicar filtros de data se fornecidos
+    if (start_date) {
+      query = query.gte('created_at', start_date);
+    }
+    if (end_date) {
+      query = query.lte('created_at', end_date + 'T23:59:59.999Z');
+    }
+    
+    const { data: leads, error } = await query;
+    
+    if (error) {
+      console.error('❌ [PIPELINE LEADS] Erro ao buscar leads:', {
+        error: error.message,
+        code: error.code,
+        details: error.details,
+        pipelineId: pipelineId?.substring(0, 8)
+      });
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Erro ao buscar leads da pipeline',
+        details: error.message
+      });
+    }
+    
+    console.log('✅ [PIPELINE LEADS] Leads encontrados:', {
+      count: leads?.length || 0,
+      pipelineId: pipelineId?.substring(0, 8),
+      firstLead: leads?.[0] ? {
+        id: leads[0].id?.substring(0, 8),
+        stage_id: leads[0].stage_id?.substring(0, 8),
+        hasLeadMaster: !!leads[0].leads_master,
+        hasCustomData: !!leads[0].custom_data
+      } : null
+    });
+    
+    // Retornar array diretamente (formato esperado pelo frontend)
+    return res.json(leads || []);
+    
+  } catch (error) {
+    console.error('❌ [PIPELINE LEADS] Erro interno:', {
+      error: error instanceof Error ? error.message : error,
+      stack: error instanceof Error ? error.stack?.split('\n').slice(0, 3) : undefined
+    });
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Erro interno do servidor',
+      details: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
+  }
+});
+
 // POST /api/pipelines - Criar nova pipeline
 router.post('/', PipelineController.createPipeline);
 

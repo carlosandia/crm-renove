@@ -177,7 +177,8 @@ export class LeadTasksService {
       execution_notes: task.execution_notes,
       template_content: task.template_content,
       day_offset: task.day_offset,
-      stage_name: undefined, // Será preenchido pela view
+      tenant_id: task.tenant_id,
+      // stage_name será preenchido pela view, se necessário
       created_at: task.created_at,
       updated_at: task.updated_at
     };

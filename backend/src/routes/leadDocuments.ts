@@ -210,7 +210,7 @@ router.post('/leads/:leadId/documents', authenticateToken, (req, res, next) => {
     console.log('🔍 [UPLOAD DEBUG] Verificando se lead existe usando RLS...', {
       leadId: leadId?.substring(0, 8) + '...',
       tenantId: tenantId?.substring(0, 8) + '...',
-      userSupabaseConfigured: !!req.userSupabase
+      userSupabaseConfigured: !!(req as any).userSupabase
     });
 
     const userSupabase = (req as any).userSupabase;

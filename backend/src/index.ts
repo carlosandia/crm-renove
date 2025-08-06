@@ -192,13 +192,14 @@ const corsOptions = {
       process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:5173',  // Vite dev server fallback
       process.env.VITE_DEV_SERVER_URL_LOCALHOST || 'http://localhost:5173'   // Vite dev server fallback (localhost)
     ] : [
-      'https://yourdomain.com',          // Produção - ALTERAR para domínio real
-      'https://www.yourdomain.com',      // Produção - ALTERAR para domínio real
-      'https://app.yourdomain.com'       // Subdomain app - ALTERAR para domínio real
+      'https://crm.renovedigital.com.br',    // ✅ PRODUÇÃO CORRETO
+      'https://www.crm.renovedigital.com.br', // ✅ PRODUÇÃO COM WWW
+      'http://168.231.99.133',               // ✅ IP SERVIDOR
+      'http://127.0.0.1'                     // ✅ LOCALHOST PRODUÇÃO
     ];
 
-    // Permitir requests sem origin apenas em desenvolvimento (Postman, etc)
-    if (!origin && isDevelopment) {
+    // Permitir requests sem origin (Postman, curl, health checks)
+    if (!origin) {
       return callback(null, true);
     }
 
@@ -206,6 +207,7 @@ const corsOptions = {
       callback(null, true);
     } else {
       console.warn(`🚫 [CORS] Origin rejeitado: ${origin} (ambiente: ${process.env.NODE_ENV})`);
+      console.warn(`🔍 [CORS] Origins permitidos: ${allowedOrigins.join(', ')}`);
       callback(new Error(`CORS policy não permite origin: ${origin}`));
     }
   },
@@ -497,6 +499,7 @@ import leadDocumentsRoutes from './routes/leadDocuments';
 import opportunitiesRoutes from './routes/opportunities';
 import meetingsRoutes from './routes/meetings';
 import annotationsRoutes from './routes/annotations';
+import emailRoutes from './routes/email';
 import { authenticateToken } from './middleware/auth';
 
 // Rota de teste para debug
@@ -533,6 +536,9 @@ app.use('/api/opportunities', opportunitiesRoutes);
 app.use('/api/activities', activitiesRoutes);
 app.use('/api/lead-tasks', leadTasksRoutes);
 app.use('/api', leadDocumentsRoutes); // Lead documents routes com prefixo /api para consistência
+
+// Registrar rotas de integração de e-mail
+app.use('/api/email', emailRoutes);
 
 // Registrar rotas de outcome reasons
 import outcomeReasonsRoutes, { systemDefaultsRouter } from './routes/outcomeReasons';
@@ -1432,25 +1438,82 @@ app.get('/api/admin-dashboard', async (req, res) => {
   try {
     const { timeRange = '30d' } = req.query;
     
-    // Mock data para development - substituir por queries reais
+    console.log('📊 Admin dashboard endpoint chamado:', req.originalUrl);
+    
+    // Buscar dados reais do Supabase
+    const { data: meetings } = await supabase
+      .from('meetings')
+      .select('outcome, created_at')
+      .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+    
+    const { data: pipelineLeads } = await supabase
+      .from('pipeline_leads')
+      .select('stage_name, created_at')
+      .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+    
+    const totalMeetings = meetings?.length || 0;
+    const scheduledMeetings = meetings?.filter(m => m.outcome === 'agendada').length || 0;
+    const completedMeetings = meetings?.filter(m => m.outcome === 'realizada').length || 0;
+    const noShowMeetings = meetings?.filter(m => m.outcome === 'no_show').length || 0;
+    
+    const noShowRate = totalMeetings > 0 ? (noShowMeetings / totalMeetings) * 100 : 0;
+    const showRate = totalMeetings > 0 ? (completedMeetings / totalMeetings) * 100 : 0;
+    
+    const totalLeads = pipelineLeads?.length || 0;
+    const closedWonLeads = pipelineLeads?.filter(l => l.stage_name === 'Ganho').length || 0;
+    const conversionRate = totalLeads > 0 ? (closedWonLeads / totalLeads) * 100 : 0;
+    
     const dashboardData = {
-      metrics: {
-        totalMeetings: 0,
-        scheduledMeetings: 0,
-        completedMeetings: 0,
-        noShowRate: 0.0,
-        showRate: 0.0,
-        benchmark: "15-25%"
+      overview: {
+        total_revenue: 0,
+        total_leads: totalLeads,
+        total_deals: closedWonLeads,
+        conversion_rate: parseFloat(conversionRate.toFixed(2)),
+        avg_deal_size: 0,
+        pipeline_velocity: 0
       },
-      conversionRates: {
-        byStage: {},
-        overall: 0.0
+      trends: {
+        revenue_trend: 0,
+        leads_trend: 0, 
+        deals_trend: 0,
+        conversion_trend: 0
+      },
+      team_summary: {
+        total_members: 0,
+        active_members: 0,
+        top_performer: null,
+        avg_performance_score: 0
+      },
+      targets_summary: {
+        total_targets: 0,
+        active_targets: 0,
+        completed_targets: 0,
+        on_track_targets: 0
+      },
+      alerts_summary: {
+        total_alerts: 0,
+        unread_alerts: 0,
+        critical_alerts: 0
+      },
+      noshow_metrics: {
+        total_meetings: totalMeetings,
+        scheduled_meetings: scheduledMeetings,
+        completed_meetings: completedMeetings,
+        noshow_meetings: noShowMeetings,
+        noshow_rate: parseFloat(noShowRate.toFixed(2)),
+        show_rate: parseFloat(showRate.toFixed(2)),
+        benchmark_comparison: noShowRate > 25 ? 'critical' : noShowRate > 15 ? 'warning' : 'good'
       },
       timeRange,
       lastUpdated: new Date().toISOString()
     };
     
-    console.log('✅ Admin dashboard endpoint chamado:', req.originalUrl);
+    console.log('✅ Admin dashboard dados calculados do Supabase:', {
+      totalMeetings,
+      totalLeads,
+      conversionRate,
+      noShowRate
+    });
     
     res.json({
       success: true,
@@ -1469,23 +1532,46 @@ app.get('/api/admin-dashboard', async (req, res) => {
 
 /**
  * GET /api/admin-dashboard/sales-targets
- * Metas de vendas
+ * Metas de vendas com dados reais
  */
 app.get('/api/admin-dashboard/sales-targets', async (req, res) => {
   try {
-    const salesTargets = {
-      current: [],
-      achieved: 0,
-      pending: 0,
-      percentage: 0,
+    console.log('🎯 Sales targets endpoint chamado:', req.originalUrl);
+    
+    // Buscar metas reais do Supabase se existir tabela
+    let salesTargetsData = {
+      targets: [],
+      summary: {
+        total_targets: 0,
+        active_targets: 0,
+        completed_targets: 0,
+        on_track_targets: 0
+      },
       lastUpdated: new Date().toISOString()
     };
     
-    console.log('✅ Sales targets endpoint chamado:', req.originalUrl);
+    try {
+      const { data: targets } = await supabase
+        .from('sales_targets')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (targets) {
+        salesTargetsData.targets = targets;
+        salesTargetsData.summary = {
+          total_targets: targets.length,
+          active_targets: targets.filter(t => t.status === 'active').length,
+          completed_targets: targets.filter(t => t.status === 'completed').length,
+          on_track_targets: targets.filter(t => t.progress_percentage >= 80).length
+        };
+      }
+    } catch (tableError) {
+      console.log('ℹ️ Tabela sales_targets não existe, usando dados mock');
+    }
     
     res.json({
       success: true,
-      data: salesTargets,
+      data: salesTargetsData,
       timestamp: new Date().toISOString()
     });
     
@@ -1500,23 +1586,44 @@ app.get('/api/admin-dashboard/sales-targets', async (req, res) => {
 
 /**
  * GET /api/admin-dashboard/alerts
- * Alertas do sistema
+ * Alertas do sistema com dados reais
  */
 app.get('/api/admin-dashboard/alerts', async (req, res) => {
   try {
-    const alerts = {
-      critical: [],
-      warning: [],
-      info: [],
-      total: 0,
+    console.log('🚨 Alerts endpoint chamado:', req.originalUrl);
+    
+    let alertsData = {
+      alerts: [],
+      summary: {
+        total_alerts: 0,
+        unread_alerts: 0,
+        critical_alerts: 0
+      },
       lastUpdated: new Date().toISOString()
     };
     
-    console.log('✅ Alerts endpoint chamado:', req.originalUrl);
+    try {
+      const { data: alerts } = await supabase
+        .from('admin_alerts')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      
+      if (alerts) {
+        alertsData.alerts = alerts;
+        alertsData.summary = {
+          total_alerts: alerts.length,
+          unread_alerts: alerts.filter(a => a.status === 'unread').length,
+          critical_alerts: alerts.filter(a => a.priority === 'critical').length
+        };
+      }
+    } catch (tableError) {
+      console.log('ℹ️ Tabela admin_alerts não existe, usando dados mock');
+    }
     
     res.json({
       success: true,
-      data: alerts,
+      data: alertsData,
       timestamp: new Date().toISOString()
     });
     
@@ -1531,27 +1638,98 @@ app.get('/api/admin-dashboard/alerts', async (req, res) => {
 
 /**
  * GET /api/admin-dashboard/team-performance
- * Performance da equipe
+ * Performance da equipe com dados reais
  */
 app.get('/api/admin-dashboard/team-performance', async (req, res) => {
   try {
     const { period = '30d' } = req.query;
     
-    const teamPerformance = {
-      totalMembers: 0,
-      activeMembers: 0,
-      topPerformer: null,
-      averageScore: 0.0,
-      performance: [],
+    console.log('👥 Team performance endpoint chamado:', req.originalUrl);
+    
+    // Calcular período
+    const daysAgo = period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 30;
+    const startDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
+    
+    // Buscar dados reais dos vendedores
+    const { data: users } = await supabase
+      .from('users')
+      .select('id, first_name, last_name, email, role')
+      .eq('role', 'member');
+    
+    const { data: pipelineLeads } = await supabase
+      .from('pipeline_leads')
+      .select('owner_id, stage_name, created_at')
+      .gte('created_at', startDate);
+    
+    const { data: meetings } = await supabase
+      .from('meetings')
+      .select('owner_id, outcome, created_at')
+      .gte('created_at', startDate);
+    
+    let teamPerformanceData = [];
+    
+    if (users) {
+      teamPerformanceData = users.map(user => {
+        const userLeads = pipelineLeads?.filter(l => l.owner_id === user.id) || [];
+        const userMeetings = meetings?.filter(m => m.owner_id === user.id) || [];
+        
+        const totalLeads = userLeads.length;
+        const qualifiedLeads = userLeads.filter(l => l.stage_name !== 'Lead').length;
+        const dealsClosed = userLeads.filter(l => l.stage_name === 'Ganho').length;
+        const conversionRate = totalLeads > 0 ? (dealsClosed / totalLeads) * 100 : 0;
+        const meetingsCount = userMeetings.length;
+        
+        const performanceScore = Math.min(100, (conversionRate * 0.4) + (qualifiedLeads * 2) + (meetingsCount * 1.5));
+        
+        return {
+          member_id: user.id,
+          member_name: `${user.first_name} ${user.last_name}`.trim(),
+          period_type: period,
+          period_start: startDate,
+          period_end: new Date().toISOString(),
+          total_leads: totalLeads,
+          qualified_leads: qualifiedLeads,
+          deals_closed: dealsClosed,
+          revenue_generated: dealsClosed * 1000, // Mock
+          conversion_rate: parseFloat(conversionRate.toFixed(2)),
+          avg_deal_size: 1000, // Mock
+          pipeline_velocity: 7, // Mock
+          activities_count: meetingsCount,
+          performance_score: parseFloat(performanceScore.toFixed(2)),
+          performance_grade: performanceScore >= 90 ? 'A+' : 
+                            performanceScore >= 80 ? 'A' :
+                            performanceScore >= 70 ? 'B+' :
+                            performanceScore >= 60 ? 'B' : 
+                            performanceScore >= 50 ? 'C+' : 'C'
+        };
+      });
+    }
+    
+    const result = {
+      team_performance: teamPerformanceData,
+      summary: {
+        total_members: teamPerformanceData.length,
+        active_members: teamPerformanceData.filter(t => t.total_leads > 0).length,
+        top_performer: teamPerformanceData.length > 0 ? 
+          teamPerformanceData.reduce((prev, current) => 
+            prev.performance_score > current.performance_score ? prev : current
+          ).member_name : null,
+        avg_performance_score: teamPerformanceData.length > 0 ?
+          parseFloat((teamPerformanceData.reduce((sum, t) => sum + t.performance_score, 0) / teamPerformanceData.length).toFixed(2)) : 0
+      },
       period,
       lastUpdated: new Date().toISOString()
     };
     
-    console.log('✅ Team performance endpoint chamado:', req.originalUrl);
+    console.log('✅ Team performance calculado do Supabase:', {
+      totalMembers: result.summary.total_members,
+      activeMembers: result.summary.active_members,
+      avgScore: result.summary.avg_performance_score
+    });
     
     res.json({
       success: true,
-      data: teamPerformance,
+      data: result,
       timestamp: new Date().toISOString()
     });
     

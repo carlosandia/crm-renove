@@ -18,6 +18,7 @@ import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import emailIntegrationApi, { EmailIntegration, EmailTestRequest, EmailIntegrationRequest } from '../../services/emailIntegrationApi';
 
 // Presets de provedores de e-mail
 const EMAIL_PROVIDERS = {
@@ -59,7 +60,8 @@ const EMAIL_PROVIDERS = {
   }
 };
 
-interface EmailIntegration {
+// Interface local para compatibilidade com o componente
+interface LocalEmailIntegration {
   id?: string;
   user_id: string;
   tenant_id: string;
@@ -77,13 +79,13 @@ interface EmailIntegration {
 const EmailPersonalTab: React.FC = () => {
   const { user } = useAuth();
   
-  // Estados do formulário
+  // Estados do formulário - ✅ CORREÇÃO: Campo único smtp_secure
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     smtp_host: '',
     smtp_port: 587,
-    smtp_secure: false
+    smtp_secure: false // ✅ Campo único padronizado (true=SSL/465, false=TLS/587)
   });
   
   // Estados de controle
@@ -94,7 +96,7 @@ const EmailPersonalTab: React.FC = () => {
   const [detectedProvider, setDetectedProvider] = useState<string | null>(null);
   const [isManualConfig, setIsManualConfig] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [existingIntegration, setExistingIntegration] = useState<EmailIntegration | null>(null);
+  const [existingIntegration, setExistingIntegration] = useState<LocalEmailIntegration | null>(null);
 
   // Detectar provedor automaticamente
   const detectProvider = useCallback((email: string) => {
@@ -128,33 +130,55 @@ const EmailPersonalTab: React.FC = () => {
 
       try {
         setLoading(true);
-        // Aqui será implementada a busca da integração existente
-        // Por enquanto, simular dados demo
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        const response = await emailIntegrationApi.getIntegrations();
         
-        // Dados demo para desenvolvimento
-        const mockIntegration: EmailIntegration = {
-          id: 'demo-email-1',
-          user_id: user.id,
-          tenant_id: user.tenant_id,
-          email: '',
-          provider: '',
-          smtp_host: '',
-          smtp_port: 587,
-          smtp_secure: false,
-          is_active: false
-        };
-        
-        setExistingIntegration(mockIntegration);
+        if (response.success && response.data && response.data.length > 0) {
+          // Pegar a primeira integração ativa
+          const activeIntegration = response.data.find(integration => integration.is_active) || response.data[0];
+          
+          // Mapear dados da API para interface local
+          const mappedIntegration = {
+            id: activeIntegration.id,
+            user_id: activeIntegration.user_id,
+            tenant_id: activeIntegration.tenant_id,
+            email: activeIntegration.email_address,
+            provider: activeIntegration.provider,
+            smtp_host: activeIntegration.smtp_host,
+            smtp_port: activeIntegration.smtp_port,
+            smtp_secure: activeIntegration.smtp_secure, // ✅ CORREÇÃO: Campo padronizado
+            is_active: activeIntegration.is_active,
+            last_tested: activeIntegration.last_test_at,
+            created_at: activeIntegration.created_at,
+            updated_at: activeIntegration.updated_at
+          };
+          
+          setExistingIntegration(mappedIntegration);
+          
+          // Preencher formulário com dados existentes
+          setFormData({
+            email: activeIntegration.email_address,
+            password: '', // Nunca preenchemos senha por segurança
+            smtp_host: activeIntegration.smtp_host,
+            smtp_port: activeIntegration.smtp_port,
+            smtp_secure: activeIntegration.smtp_secure // ✅ CORREÇÃO: Campo padronizado
+          });
+          
+          // Detectar provedor
+          detectProvider(activeIntegration.email_address);
+        } else {
+          setExistingIntegration(null);
+        }
       } catch (error) {
-        console.error('Erro ao carregar integração de e-mail:', error);
+        console.error('❌ Erro ao carregar integração de e-mail:', error);
+        showErrorToast('Erro', 'Não foi possível carregar configurações de e-mail');
+        setExistingIntegration(null);
       } finally {
         setLoading(false);
       }
     };
 
     loadExistingIntegration();
-  }, [user?.id, user?.tenant_id]);
+  }, [user?.id, detectProvider]);
 
   // Handler para mudança de e-mail
   const handleEmailChange = (email: string) => {
@@ -174,23 +198,31 @@ const EmailPersonalTab: React.FC = () => {
       setTesting(true);
       setTestResult(null);
 
-      // Simular teste de conexão
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // ✅ CORREÇÃO: Usar campo único smtp_secure padronizado
+      const testRequest: EmailTestRequest = {
+        email_address: formData.email,
+        smtp_host: formData.smtp_host,
+        smtp_port: formData.smtp_port,
+        smtp_username: formData.email, // Geralmente o username é o próprio e-mail
+        smtp_password: formData.password,
+        smtp_secure: formData.smtp_secure // ✅ Campo único (true=SSL/465, false=TLS/587)
+      };
 
-      // Por enquanto, simular sucesso
-      const success = Math.random() > 0.3; // 70% de chance de sucesso para demo
+      const response = await emailIntegrationApi.testConnection(testRequest);
       
-      if (success) {
-        setTestResult({ success: true, message: 'Conexão estabelecida com sucesso!' });
+      if (response.success && response.data?.status === 'success') {
+        setTestResult({ success: true, message: response.message || 'Conexão estabelecida com sucesso!' });
         showSuccessToast('Teste bem-sucedido', 'Configuração de e-mail válida');
       } else {
-        setTestResult({ success: false, message: 'Falha na autenticação. Verifique suas credenciais.' });
-        showErrorToast('Teste falhou', 'Não foi possível conectar com o servidor SMTP');
+        const errorMessage = response.data?.error_message || response.message || 'Falha na conexão SMTP';
+        setTestResult({ success: false, message: errorMessage });
+        showErrorToast('Teste falhou', errorMessage);
       }
-    } catch (error) {
-      console.error('Erro ao testar conexão:', error);
-      setTestResult({ success: false, message: 'Erro interno no teste de conexão' });
-      showErrorToast('Erro no teste', 'Erro interno no teste de conexão');
+    } catch (error: any) {
+      console.error('❌ Erro ao testar conexão:', error);
+      const errorMessage = error?.message || 'Erro interno no teste de conexão';
+      setTestResult({ success: false, message: errorMessage });
+      showErrorToast('Erro no teste', errorMessage);
     } finally {
       setTesting(false);
     }
@@ -205,29 +237,46 @@ const EmailPersonalTab: React.FC = () => {
 
     try {
       setSaving(true);
-
-      // Simular salvamento
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      const newIntegration: EmailIntegration = {
-        ...existingIntegration,
-        user_id: user?.id || '',
-        tenant_id: user?.tenant_id || '',
-        email: formData.email,
-        provider: detectedProvider || 'custom',
+      // ✅ CORREÇÃO: Usar campo único smtp_secure padronizado
+      const saveRequest: EmailIntegrationRequest = {
+        email_address: formData.email,
+        display_name: formData.email.split('@')[0], // Nome baseado no e-mail
         smtp_host: formData.smtp_host,
         smtp_port: formData.smtp_port,
-        smtp_secure: formData.smtp_secure,
-        is_active: true,
-        last_tested: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        smtp_username: formData.email, // Username geralmente é o e-mail
+        smtp_password: formData.password,
+        smtp_secure: formData.smtp_secure, // ✅ Campo único (true=SSL/465, false=TLS/587)
+        provider: detectedProvider || 'custom'
       };
 
-      setExistingIntegration(newIntegration);
-      showSuccessToast('Configuração salva', 'E-mail configurado com sucesso!');
-    } catch (error) {
-      console.error('Erro ao salvar configuração:', error);
-      showErrorToast('Erro ao salvar', 'Não foi possível salvar a configuração');
+      const response = await emailIntegrationApi.saveIntegration(saveRequest);
+      
+      if (response.success && response.data) {
+        // Mapear resposta da API para interface local
+        const savedIntegration = {
+          id: response.data.id,
+          user_id: response.data.user_id,
+          tenant_id: response.data.tenant_id,
+          email: response.data.email_address,
+          provider: response.data.provider,
+          smtp_host: response.data.smtp_host,
+          smtp_port: response.data.smtp_port,
+          smtp_secure: response.data.smtp_secure, // ✅ CORREÇÃO: Campo padronizado
+          is_active: response.data.is_active,
+          last_tested: response.data.last_test_at,
+          created_at: response.data.created_at,
+          updated_at: response.data.updated_at
+        };
+        
+        setExistingIntegration(savedIntegration);
+        showSuccessToast('Configuração salva', response.message || 'E-mail configurado com sucesso!');
+      } else {
+        throw new Error(response.message || 'Falha ao salvar configuração');
+      }
+    } catch (error: any) {
+      console.error('❌ Erro ao salvar configuração:', error);
+      const errorMessage = error?.message || 'Não foi possível salvar a configuração';
+      showErrorToast('Erro ao salvar', errorMessage);
     } finally {
       setSaving(false);
     }

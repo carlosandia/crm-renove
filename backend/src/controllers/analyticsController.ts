@@ -120,7 +120,12 @@ class AnalyticsController {
             errors: validation.error.errors,
           });
         }
-        timeRange = { ...validation.data, period_type: validation.data.period_type || "month" };
+        timeRange = { 
+          start_date: validation.data.start_date!,
+          end_date: validation.data.end_date!,
+          period_type: validation.data.period_type || "month",
+          comparison_period: validation.data.comparison_period
+        };
       } else {
         timeRange = getDefaultTimeRange();
       }
@@ -237,7 +242,12 @@ class AnalyticsController {
             errors: validation.error.errors,
           });
         }
-        timeRange = { ...validation.data, period_type: validation.data.period_type || "month" };
+        timeRange = { 
+          start_date: validation.data.start_date!,
+          end_date: validation.data.end_date!,
+          period_type: validation.data.period_type || "month",
+          comparison_period: validation.data.comparison_period
+        };
       } else {
         timeRange = getDefaultTimeRange();
       }
@@ -294,7 +304,12 @@ class AnalyticsController {
             errors: validation.error.errors,
           });
         }
-        timeRange = { ...validation.data, period_type: validation.data.period_type || "month" };
+        timeRange = { 
+          start_date: validation.data.start_date!,
+          end_date: validation.data.end_date!,
+          period_type: validation.data.period_type || "month",
+          comparison_period: validation.data.comparison_period
+        };
       } else {
         timeRange = getDefaultTimeRange();
       }

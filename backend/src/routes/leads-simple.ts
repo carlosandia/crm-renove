@@ -681,7 +681,16 @@ router.post('/', authMiddleware, async (req: Request, res: Response) => {
         // Importar LeadService para usar a função de geração
         const { LeadService } = await import('../services/leadService');
         
-        // Simular lead object para compatibilidade com generateCadenceTasksForLeadAsync
+        // Preparar dados do lead para compatibilidade com generateCadenceTasksForLeadAsync
+        const leadObjectData = {
+          first_name: nome_lead || nome_contato || '',
+          last_name: '',
+          email: email || email_contato || '',
+          phone: telefone || telefone_contato || '',
+          company: customFieldsData.empresa || '',
+          ...customFieldsData
+        };
+        
         const leadObject = {
           id: newOpportunity.id,
           pipeline_id: pipeline_id,
@@ -690,6 +699,8 @@ router.post('/', authMiddleware, async (req: Request, res: Response) => {
           lead_master_id: leadMasterId,
           tenant_id: tenantId,
           created_by: userId,
+          lead_data: leadObjectData, // Dados dos campos customizados obrigatórios
+          created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           moved_at: new Date().toISOString()
         };

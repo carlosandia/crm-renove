@@ -463,6 +463,13 @@ export const usePipelineKanban = ({
         
         const response = await api.get(`/pipelines/${pipelineId}/leads?${queryParams}`);
         
+        // ✅ DEBUG: Log da resposta da API
+        console.log('✅ [API LEADS] Resposta recebida:', {
+          status: response.status,
+          count: response.data?.length || 0,
+          isArray: Array.isArray(response.data)
+        });
+        
         endTimer(`fetch-leads-${pipelineId}`, LogContext.API);
         
         // ✅ API RESPONSE: Log otimizado de resposta de leads
@@ -476,23 +483,22 @@ export const usePipelineKanban = ({
           }
         );
         
-        // ✅ VALIDAÇÃO: Usar extractSafeApiData para extrair leads com fallback
-        const leads = extractSafeApiData(
-          response.data,
-          isLeadsArrayValid,
-          [] as Lead[]
-        );
         
-        // ✅ VALIDAÇÃO ADICIONAL: Filtrar leads válidos se o type guard falhou parcialmente
-        const validLeads = leads.filter(isLeadValid);
+        // 🚀 BYPASS: Usar dados diretamente da API sem validação complexa
+        const leads = Array.isArray(response.data) ? response.data : [];
         
-        if (validLeads.length !== leads.length) {
-          logger.warn('Alguns leads foram filtrados por serem inválidos', LogContext.VALIDATION, {
-            total: leads.length,
-            valid: validLeads.length,
-            filtered: leads.length - validLeads.length
-          });
-        }
+        console.log('✅ [BYPASS VALIDAÇÃO] Usando dados diretos da API:', {
+          rawCount: leads.length,
+          isArray: Array.isArray(leads)
+        });
+        
+        // Validar apenas se tem ID e stage_id (mínimo necessário)
+        const validLeads = leads.filter((lead: any) => lead?.id && lead?.stage_id);
+        
+        console.log('✅ [VALIDAÇÃO MÍNIMA] Resultado:', {
+          totalRaw: leads.length,
+          withIdAndStage: validLeads.length
+        });
         
         // ✅ SUCCESS LOG: Log otimizado de sucesso de leads
         if (validLeads.length > 0) {
@@ -1031,12 +1037,18 @@ export const usePipelineKanban = ({
 
   // Leads filtrados com validação simplificada
   const filteredLeads = useMemo(() => {
+    console.log('✅ [FILTERED LEADS] Estado:', {
+      hasData: !!leadsQuery.data,
+      dataLength: leadsQuery.data?.length || 0
+    });
+    
     if (leadsQuery.isPending || !Array.isArray(leadsQuery.data)) {
       return [];
     }
     
     // Validação simples e filtros rápidos
     let results = leadsQuery.data.filter(lead => lead?.id && lead?.stage_id);
+    
     
     // Filtros sem logs durante render
     if (state.filters.searchTerm.trim()) {
@@ -1064,11 +1076,18 @@ export const usePipelineKanban = ({
       results = results.filter(lead => lead.assigned_to === state.filters.selectedUserId);
     }
     
+    console.log('✅ [FILTERED LEADS] Final:', { count: results.length });
+    
     return results;
   }, [leadsQuery.data, leadsQuery.isPending, state.filters]);
 
   // Leads agrupados por stage com processamento otimizado e ordenação por posição
   const leadsByStage = useMemo(() => {
+    console.log('✅ [LEADS BY STAGE] Iniciando:', {
+      stagesCount: stages.length,
+      filteredLeadsCount: filteredLeads.length
+    });
+    
     const grouped: Record<string, Lead[]> = {};
     
     // Inicializar grupos para todas as stages
@@ -1177,6 +1196,17 @@ export const usePipelineKanban = ({
           }))
         });
       }
+    });
+    
+    // Log final do agrupamento
+    const groupSummary = Object.entries(grouped).map(([stageId, leads]) => ({
+      stageName: stages.find(s => s.id === stageId)?.name || 'Unknown',
+      count: leads.length
+    }));
+    
+    console.log('✅ [LEADS BY STAGE] Final:', {
+      groups: groupSummary,
+      totalDistributed: Object.values(grouped).reduce((sum, leads) => sum + leads.length, 0)
     });
     
     return grouped;

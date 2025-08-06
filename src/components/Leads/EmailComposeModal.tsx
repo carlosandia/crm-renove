@@ -4,15 +4,20 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
-import { Mail, Send, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+// ✅ Magic UI components para animações
+import { BorderBeam } from '../magicui/border-beam';
+import { PulsatingButton } from '../magicui/pulsating-button';
+import { Mail, Send, Loader2, AlertCircle, CheckCircle, MessageCircle, FileText, Users } from 'lucide-react';
 import { Lead } from '../../types/Pipeline';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 
 interface EmailComposeModalProps {
   isOpen: boolean;
   onClose: () => void;
   lead: Lead;
+  selectedTemplate?: string; // ✅ NOVA: Template pré-selecionado
 }
 
 interface EmailIntegration {
@@ -27,7 +32,65 @@ interface EmailIntegration {
   is_active: boolean;
 }
 
-const EmailComposeModal: React.FC<EmailComposeModalProps> = ({ isOpen, onClose, lead }) => {
+// ✅ TEMPLATES PADRÃO DO MERCADO (baseado em Pipedrive, HubSpot)
+const EMAIL_TEMPLATES = {
+  'follow-up': {
+    name: 'Follow-up',
+    icon: MessageCircle,
+    subject: 'Seguimento - {{nome_lead}}',
+    message: `Olá {{nome_lead}},
+
+Espero que esteja tudo bem!
+
+Gostaria de dar seguimento à nossa conversa sobre como podemos ajudar {{empresa}} a alcançar seus objetivos.
+
+Você tem alguns minutos para conversarmos ainda esta semana?
+
+Fico à disposição para qualquer esclarecimento.
+
+Atenciosamente,
+{{nome_usuario}}`
+  },
+  'proposal': {
+    name: 'Proposta Comercial',
+    icon: FileText,
+    subject: 'Proposta Comercial - {{empresa}}',
+    message: `Prezado(a) {{nome_lead}},
+
+Conforme nossa conversa, segue em anexo nossa proposta comercial personalizada para {{empresa}}.
+
+Nossa solução foi desenvolvida especificamente para atender às necessidades que identificamos:
+• Otimização de processos
+• Aumento de produtividade
+• Redução de custos operacionais
+
+Estou à disposição para esclarecer qualquer dúvida e para agendarmos uma apresentação detalhada.
+
+Aguardo seu retorno.
+
+Atenciosamente,
+{{nome_usuario}}`
+  },
+  'thank-you': {
+    name: 'Agradecimento',
+    icon: Users,
+    subject: 'Obrigado pelo seu tempo - {{nome_lead}}',
+    message: `{{nome_lead}},
+
+Obrigado pelo tempo dedicado à nossa reunião hoje.
+
+Foi um prazer conhecer mais sobre {{empresa}} e como podemos contribuir para o crescimento da empresa.
+
+Conforme conversamos, vou preparar uma proposta personalizada e envio até {{data_prometida}}.
+
+Qualquer dúvida, estarei à disposição.
+
+Atenciosamente,
+{{nome_usuario}}`
+  }
+};
+
+const EmailComposeModal: React.FC<EmailComposeModalProps> = ({ isOpen, onClose, lead, selectedTemplate }) => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -44,6 +107,48 @@ const EmailComposeModal: React.FC<EmailComposeModalProps> = ({ isOpen, onClose, 
   // Estados de feedback
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  
+  // ✅ NOVO: Estado para template selecionado
+  const [currentTemplate, setCurrentTemplate] = useState('');
+
+  // ✅ NOVO: Função para aplicar template com substituição de variáveis
+  const applyTemplate = (templateId: string) => {
+    const template = EMAIL_TEMPLATES[templateId as keyof typeof EMAIL_TEMPLATES];
+    if (!template) return;
+
+    const leadName = lead.custom_data?.nome_lead || lead.custom_data?.nome_oportunidade || 'Lead';
+    const empresa = lead.custom_data?.empresa || lead.custom_data?.nome_empresa || 'sua empresa';
+    const userName = user?.email?.split('@')[0] || 'Equipe de Vendas';
+    const dataPrometida = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR');
+
+    // Substituir variáveis no assunto e mensagem
+    const subject = template.subject
+      .replace(/{{nome_lead}}/g, leadName)
+      .replace(/{{empresa}}/g, empresa)
+      .replace(/{{nome_usuario}}/g, userName);
+
+    const message = template.message
+      .replace(/{{nome_lead}}/g, leadName)
+      .replace(/{{empresa}}/g, empresa)
+      .replace(/{{nome_usuario}}/g, userName)
+      .replace(/{{data_prometida}}/g, dataPrometida);
+
+    setFormData(prev => ({
+      ...prev,
+      subject,
+      message
+    }));
+    
+    setCurrentTemplate(templateId);
+    console.log('✅ Template aplicado:', template.name);
+  };
+
+  // ✅ NOVO: Aplicar template selecionado quando modal abrir
+  useEffect(() => {
+    if (isOpen && selectedTemplate && selectedTemplate !== currentTemplate) {
+      setTimeout(() => applyTemplate(selectedTemplate), 100); // Pequeno delay para UI suave
+    }
+  }, [isOpen, selectedTemplate, currentTemplate]);
 
   // Carregar integração de e-mail do usuário
   useEffect(() => {
@@ -136,6 +241,19 @@ const EmailComposeModal: React.FC<EmailComposeModalProps> = ({ isOpen, onClose, 
 
       setSuccess('E-mail enviado com sucesso!');
       
+      // ✅ NOVO: Registrar no histórico de emails
+      await supabase.from('email_history').insert({
+        subject: formData.subject,
+        to_email: formData.to,
+        from_email: emailIntegration?.from_email,
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+        lead_id: lead.id,
+        pipeline_id: lead.pipeline_id || lead.id, // Usar pipeline_id se disponível
+        user_id: user?.id,
+        tenant_id: user?.user_metadata?.tenant_id
+      });
+
       // Registrar atividade no lead
       await supabase.from('lead_activities').insert({
         lead_id: lead.id,
@@ -199,6 +317,39 @@ const EmailComposeModal: React.FC<EmailComposeModalProps> = ({ isOpen, onClose, 
               </p>
             </div>
 
+            {/* ✅ NOVO: Seletor de templates */}
+            <div className="relative flex items-center gap-3 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg overflow-hidden">
+              <BorderBeam 
+                size={40} 
+                duration={15} 
+                colorFrom="rgba(59, 130, 246, 0.2)" 
+                colorTo="rgba(147, 51, 234, 0.2)" 
+              />
+              <div className="flex items-center gap-2">
+                <Mail className="h-4 w-4 text-blue-600" />
+                <span className="text-sm font-medium text-gray-700">Template:</span>
+              </div>
+              <Select value={currentTemplate} onValueChange={applyTemplate}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Escolher template" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Criar do zero</SelectItem>
+                  {Object.entries(EMAIL_TEMPLATES).map(([id, template]) => {
+                    const IconComponent = template.icon;
+                    return (
+                      <SelectItem key={id} value={id}>
+                        <div className="flex items-center gap-2">
+                          <IconComponent className="h-4 w-4" />
+                          {template.name}
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Para */}
             <div>
               <Label htmlFor="to">Para</Label>
@@ -258,7 +409,12 @@ const EmailComposeModal: React.FC<EmailComposeModalProps> = ({ isOpen, onClose, 
               <Button variant="outline" onClick={onClose} disabled={sending}>
                 Cancelar
               </Button>
-              <Button onClick={handleSendEmail} disabled={sending || !formData.to || !formData.subject || !formData.message}>
+              <PulsatingButton 
+                onClick={handleSendEmail} 
+                disabled={sending || !formData.to || !formData.subject || !formData.message}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                pulseColor="rgba(59, 130, 246, 0.5)"
+              >
                 {sending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -270,7 +426,7 @@ const EmailComposeModal: React.FC<EmailComposeModalProps> = ({ isOpen, onClose, 
                     Enviar E-mail
                   </>
                 )}
-              </Button>
+              </PulsatingButton>
             </div>
           </div>
         )}

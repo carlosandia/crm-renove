@@ -199,7 +199,7 @@ class ConfigurationManager {
       },
       
       api: {
-        baseUrl: (await import('../config/environment')).environmentConfig.urls.api,
+        baseUrl: import.meta.env.VITE_API_URL || 'https://crm.renovedigital.com.br/api',
         timeout: parseInt(import.meta.env.VITE_API_TIMEOUT || '30000'),
         retries: parseInt(import.meta.env.VITE_API_RETRIES || '3'),
         retryDelay: parseInt(import.meta.env.VITE_API_RETRY_DELAY || '1000')

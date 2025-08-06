@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../providers/AuthProvider';
 
+const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.VITE_ENVIRONMENT === 'production' ? 'https://crm.renovedigital.com.br/api' : 'http://127.0.0.1:3001/api');
+
 export interface MemberTask {
   id: string;
   tenant_id: string;

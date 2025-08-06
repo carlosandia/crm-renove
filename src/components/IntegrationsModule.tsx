@@ -454,9 +454,12 @@ const IntegrationsModule: React.FC = React.memo(() => {
       // Buscar configurações reais da empresa
       const { data, error } = await supabase
         .from('tenant_integrations')
-        .select('*')
+        .select(`
+          *,
+          platform_integrations!inner(integration_type, provider_name)
+        `)
         .eq('tenant_id', user.tenant_id)
-        .eq('integration_type', 'google_calendar')
+        .eq('platform_integrations.integration_type', 'google_calendar')
         .single();
 
       if (error && error.code !== 'PGRST116') {
@@ -464,10 +467,16 @@ const IntegrationsModule: React.FC = React.memo(() => {
         return;
       }
 
-      setTenantIntegration(data || {
+      // Mapear dados da estrutura real para a interface esperada
+      const mappedData = data ? {
+        google_calendar_enabled: data.is_enabled,
+        google_calendar_settings: data.settings || {}
+      } : {
         google_calendar_enabled: false,
         google_calendar_settings: {}
-      });
+      };
+      
+      setTenantIntegration(mappedData);
     } catch (error) {
       console.error('Erro ao carregar configurações da empresa:', error);
     } finally {
@@ -493,13 +502,26 @@ const IntegrationsModule: React.FC = React.memo(() => {
         return;
       }
 
-      // Salvar configurações reais
+      // Primeiro, buscar o platform_integration_id para Google Calendar
+      const { data: platformIntegration } = await supabase
+        .from('platform_integrations')
+        .select('id')
+        .eq('integration_type', 'google_calendar')
+        .single();
+        
+      if (!platformIntegration) {
+        console.error('Platform integration para Google Calendar não encontrada');
+        showErrorToast('Configuração de plataforma não encontrada');
+        return;
+      }
+
+      // Salvar configurações reais com estrutura correta
       const { error } = await supabase
         .from('tenant_integrations')
         .upsert({
           tenant_id: user.tenant_id,
-          integration_type: 'google_calendar',
-          enabled: enabled,
+          platform_integration_id: platformIntegration.id,
+          is_enabled: enabled,
           settings: settings || {},
           updated_at: new Date().toISOString()
         });
