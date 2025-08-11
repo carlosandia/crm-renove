@@ -48,8 +48,8 @@ export const useOutcomeHistory = (params: UseOutcomeHistoryParams) => {
   });
 
   return {
-    // Data
-    history: query.data || [],
+    // Data - ✅ CORREÇÃO CRÍTICA: Garantir que history é sempre um array
+    history: Array.isArray(query.data) ? query.data : [],
     
     // States
     isLoading: query.isLoading,

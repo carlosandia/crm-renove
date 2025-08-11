@@ -212,9 +212,16 @@ export class LeadService {
    */
   static async generateCadenceTasksForLeadAsync(lead: Lead, newStageId: string): Promise<number> {
     try {
-      console.log('🔄 Iniciando geração assíncrona de tarefas para lead:', lead.id);
+      console.log('🔄 [LeadService] Iniciando geração assíncrona de tarefas:', {
+        leadId: lead.id.substring(0, 8),
+        newStageId: newStageId.substring(0, 8),
+        leadPipelineId: lead.pipeline_id.substring(0, 8),
+        assignedTo: lead.assigned_to?.substring(0, 8),
+        timestamp: new Date().toISOString()
+      });
 
       // Buscar informações da etapa e pipeline em paralelo
+      console.log('🔍 [LeadService] Buscando dados de stage e pipeline...');
       const [stageResult, pipelineResult] = await Promise.allSettled([
         supabase
           .from('pipeline_stages')
@@ -229,24 +236,57 @@ export class LeadService {
           .single()
       ]);
 
+      // ✅ DIAGNÓSTICO DETALHADO: Logs específicos para cada consulta
       if (stageResult.status === 'rejected') {
-        console.warn('⚠️ Etapa não encontrada:', newStageId);
+        console.error('❌ [LeadService] Falha ao buscar stage:', {
+          newStageId: newStageId.substring(0, 8),
+          error: stageResult.reason,
+          errorCode: (stageResult.reason as any)?.code,
+          errorMessage: (stageResult.reason as any)?.message
+        });
         return 0;
       }
 
       if (pipelineResult.status === 'rejected') {
-        console.warn('⚠️ Pipeline não encontrada:', lead.pipeline_id);
+        console.error('❌ [LeadService] Falha ao buscar pipeline:', {
+          pipelineId: lead.pipeline_id.substring(0, 8),
+          error: pipelineResult.reason,
+          errorCode: (pipelineResult.reason as any)?.code,
+          errorMessage: (pipelineResult.reason as any)?.message
+        });
         return 0;
       }
 
       const stage = stageResult.value.data;
       const pipeline = pipelineResult.value.data;
 
+      console.log('📋 [LeadService] Dados obtidos:', {
+        stage: stage ? { name: stage.name, pipeline_id: stage.pipeline_id.substring(0, 8) } : 'null',
+        pipeline: pipeline ? { tenant_id: pipeline.tenant_id.substring(0, 8) } : 'null'
+      });
+
       if (!stage || !pipeline) {
-        console.warn('⚠️ Dados insuficientes para geração de tarefas');
+        console.warn('⚠️ [LeadService] Dados insuficientes para geração de tarefas:', {
+          hasStage: !!stage,
+          hasPipeline: !!pipeline,
+          stageData: stage,
+          pipelineData: pipeline
+        });
         return 0;
       }
 
+      // ✅ VALIDAÇÃO ADICIONAL: Verificar se stage pertence à mesma pipeline
+      if (stage.pipeline_id !== lead.pipeline_id) {
+        console.error('❌ [LeadService] Stage não pertence à pipeline do lead:', {
+          leadPipelineId: lead.pipeline_id.substring(0, 8),
+          stagePipelineId: stage.pipeline_id.substring(0, 8),
+          stageName: stage.name
+        });
+        return 0;
+      }
+
+      console.log('🎯 [LeadService] Chamando LeadTasksService.generateTasksForLeadStageEntry...');
+      
       // Gerar tarefas usando o serviço
       const tasksGenerated = await LeadTasksService.generateTasksForLeadStageEntry(
         lead.id,
@@ -257,13 +297,28 @@ export class LeadService {
         pipeline.tenant_id
       );
 
+      console.log('📊 [LeadService] Resultado da geração de tarefas:', {
+        leadId: lead.id.substring(0, 8),
+        stageName: stage.name,
+        tasksGenerated,
+        success: tasksGenerated > 0
+      });
+
       if (tasksGenerated > 0) {
-        console.log(`✅ ${tasksGenerated} tarefas de cadência geradas assincronamente para lead ${lead.id}`);
+        console.log(`✅ [LeadService] ${tasksGenerated} tarefas de cadência geradas com sucesso para lead ${lead.id.substring(0, 8)}`);
+      } else {
+        console.warn(`⚠️ [LeadService] Nenhuma tarefa foi gerada para lead ${lead.id.substring(0, 8)} na etapa "${stage.name}"`);
       }
 
       return tasksGenerated;
     } catch (error: any) {
-      console.warn('⚠️ Erro na geração assíncrona de tarefas:', error.message);
+      console.error('❌ [LeadService] Erro crítico na geração assíncrona de tarefas:', {
+        leadId: lead.id?.substring(0, 8),
+        newStageId: newStageId?.substring(0, 8),
+        error: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
+      });
       return 0;
     }
   }

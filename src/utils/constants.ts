@@ -20,7 +20,8 @@ export const PAGINATION = {
 // ============================================
 
 export const API = {
-  TIMEOUT: 30000, // 30 segundos
+  TIMEOUT: 30000, // 30 segundos (padrão)
+  TIMEOUT_SMTP: 150000, // 150 segundos (2.5 min) para operações SMTP
   RETRY_ATTEMPTS: 3,
   RETRY_DELAY: 1000, // 1 segundo
   CACHE_DURATION: 5 * 60 * 1000, // 5 minutos

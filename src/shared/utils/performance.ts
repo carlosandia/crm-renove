@@ -244,7 +244,7 @@ class PerformanceTracker {
 
     // Log em desenvolvimento
     if (process.env.NODE_ENV === 'development') {
-      console.log(`📊 [Performance] ${metric.name}: ${metric.value}${metric.unit}`, metric.metadata);
+      console.log(`📊 [Performance] ${metric.name}: ${metric.value}${metric.unit}`);
     }
   }
 

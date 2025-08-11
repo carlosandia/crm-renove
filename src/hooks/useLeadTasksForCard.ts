@@ -97,7 +97,7 @@ export const useLeadTasksForCard = (leadId: string, isVisible: boolean = true) =
           
           // ✅ NOVO: Usar retry também para backend API
           const backendResult = await retryFetchOperation(
-            () => fetch(`${import.meta.env.VITE_API_URL}/api/activities/test/leads/${leadId}/for-card?tenant_id=${user.tenant_id}`, {
+            () => fetch(`${import.meta.env.VITE_API_URL}/activities/test/leads/${leadId}/for-card?tenant_id=${user.tenant_id}`, {
               method: 'GET',
               headers: {
                 'Content-Type': 'application/json'

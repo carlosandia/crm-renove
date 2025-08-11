@@ -1459,19 +1459,19 @@ const LeadViewModal: React.FC<LeadViewModalProps> = ({
   // Campos unificados para evitar duplicação (CORRIGIDO: useMemo para recálculo automático)
   const displayName = useMemo(() => {
     const name = `${localLeadData?.first_name || leadData?.first_name || ''} ${localLeadData?.last_name || leadData?.last_name || ''}`.trim();
-    console.log('🔄 [LeadViewModal] displayName recalculado:', name, 'first_name:', localLeadData?.first_name || leadData?.first_name, 'last_name:', localLeadData?.last_name || leadData?.last_name);
+    console.log('🔄 [LeadViewModal] displayName recalculado:', name);
     return name;
   }, [localLeadData?.first_name, localLeadData?.last_name, leadData?.first_name, leadData?.last_name]);
   
   const displayJobTitle = useMemo(() => {
     const jobTitle = localLeadData?.job_title || leadData?.job_title || localLeadData?.position || 'Não informado';
-    console.log('🔄 [LeadViewModal] displayJobTitle recalculado:', jobTitle, 'job_title:', localLeadData?.job_title || leadData?.job_title, 'position:', localLeadData?.position);
+    console.log('🔄 [LeadViewModal] displayJobTitle recalculado:', jobTitle);
     return jobTitle;
   }, [localLeadData?.job_title, leadData?.job_title, localLeadData?.position]);
   
   const displaySource = useMemo(() => {
     const source = localLeadData?.lead_source || leadData?.lead_source || localLeadData?.source || 'Não informado';
-    console.log('🔄 [LeadViewModal] displaySource recalculado:', source, 'lead_source:', localLeadData?.lead_source || leadData?.lead_source, 'source:', localLeadData?.source);
+    console.log('🔄 [LeadViewModal] displaySource recalculado:', source);
     return source;
   }, [localLeadData?.lead_source, leadData?.lead_source, localLeadData?.source]);
 

@@ -55,7 +55,7 @@ const LeadsExportModal: React.FC<LeadsExportModalProps> = ({
   };
 
   const buildExportUrl = () => {
-    const baseUrl = `${import.meta.env.VITE_API_URL}/api/leads/export`;
+    const baseUrl = `${import.meta.env.VITE_API_URL}/leads/export`;
     const params = new URLSearchParams();
     
     params.append('format', format);

@@ -1,5 +1,5 @@
+// ✅ MIGRADO: Usando autenticação básica Supabase conforme CLAUDE.md
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../providers/AuthProvider';
 
 export interface GoogleCalendarCredentials {
   access_token: string;
@@ -64,21 +64,30 @@ export class GoogleCalendarAuth {
   private static _platformCredentials: PlatformCredentials | null = null;
   private static _credentialsLoadPromise: Promise<PlatformCredentials | null> | null = null;
 
-  private authenticatedFetch: ((url: string, options?: RequestInit) => Promise<Response>) | null = null;
-
+  // ✅ MIGRAÇÃO CONCLUÍDA: Sistema usando autenticação básica Supabase
   constructor() {
-    // Inicializar authenticatedFetch se disponível
-    const authContext = useAuth();
-    this.authenticatedFetch = authContext?.authenticatedFetch || null;
+    // Constructor simplificado
   }
 
   private async makeRequest(endpoint: string, options: RequestInit = {}) {
-    if (this.authenticatedFetch) {
-      return this.authenticatedFetch(endpoint, options);
-    } else {
-      // Fallback para desenvolvimento
-      return fetch(`(await import('../config/environment')).environmentConfig.urls.api${endpoint}`, options);
+    // ✅ MIGRAÇÃO CONCLUÍDA: Verificar autenticação básica Supabase
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      throw new Error('Usuário não autenticado');
     }
+    
+    // Fazer requisição usando URL relativa (proxy Vite)
+    const response = await fetch(`/api${endpoint}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        ...options.headers
+      }
+    });
+    
+    return response;
   }
 
   /**
@@ -90,7 +99,7 @@ export class GoogleCalendarAuth {
       
       const response = await fetch('/api/platform-integrations/tenant/available', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('supabase_token')}`,
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
           'Content-Type': 'application/json'
         }
       });
@@ -103,7 +112,7 @@ export class GoogleCalendarAuth {
         
         const directCredentialsResponse = await fetch('/api/platform-integrations/credentials/google', {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('supabase_token')}`,
+            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
             'Content-Type': 'application/json'
           }
         });
@@ -142,7 +151,7 @@ export class GoogleCalendarAuth {
       // Buscar credenciais detalhadas
       const credentialsResponse = await fetch(`/api/platform-integrations/credentials/google`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('supabase_token')}`,
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
           'Content-Type': 'application/json'
         }
       });
@@ -372,7 +381,7 @@ export class GoogleCalendarAuth {
       const response = await fetch('/api/platform-integrations/connect', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('supabase_token')}`,
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({

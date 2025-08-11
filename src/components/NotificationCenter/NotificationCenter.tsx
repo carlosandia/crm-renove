@@ -39,7 +39,7 @@ interface NotificationCenterProps {
 }
 
 export const NotificationCenter: React.FC<NotificationCenterProps> = ({ className = '' }) => {
-  const { user, authenticatedFetch } = useAuth();
+  const { user } = useAuth();
   
   // Estados específicos do componente
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -89,39 +89,9 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
         backendAvailable = false;
       }
 
-      // 🔧 CORREÇÃO CRÍTICA: Só tentar API se backend estiver disponível
-      if (backendAvailable && authenticatedFetch) {
-        try {
-          const response = await authenticatedFetch('/notifications/user');
-          
-          if (response.ok) {
-            const data = await response.json();
-            const notificationsList = Array.isArray(data.notifications) ? data.notifications : 
-                                     Array.isArray(data) ? data : [];
-            
-            setNotifications(notificationsList);
-            
-            // Calcular não lidas - com validação de array
-            const unreadCount = Array.isArray(notificationsList) ? 
-                               notificationsList.filter((n: Notification) => !n.read).length : 0;
-            setUnreadCount(unreadCount);
-            
-            if (isDebugMode) {
-              logger.info('NotificationCenter carregado via API', `${notificationsList.length} notificações`);
-            }
-            return;
-          } else {
-            if (isDebugMode) {
-              logger.debug('NotificationCenter API retornou erro', `Status: ${response.status}`);
-            }
-          }
-        } catch (apiError: any) {
-          if (isDebugMode) {
-            logger.debug('NotificationCenter API error', apiError.message);
-          }
-        }
-      } else if (isDebugMode) {
-        logger.debug('NotificationCenter', 'Backend indisponível, usando Supabase direto');
+      // ✅ MIGRAÇÃO CONCLUÍDA: Sistema usando autenticação básica Supabase
+      if (isDebugMode) {
+        logger.debug('NotificationCenter', 'Usando autenticação básica Supabase');
       }
 
       // 🔄 FALLBACK: Buscar diretamente do Supabase
@@ -156,7 +126,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id, authenticatedFetch]);
+  }, [user?.id]);
 
   // Marcar como lida com fallback graceful
   const markAsRead = async (notificationId: string) => {
@@ -196,33 +166,18 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
     }
   };
 
-  // Rastrear clique com autenticação corrigida
+  // Rastrear clique - simplificado sem backend
   const trackClick = async (notification: Notification, actionType: string = 'click') => {
     try {
-      // 🔧 CORREÇÃO: Usar authenticatedFetch com timeout
-      if (authenticatedFetch) {
-        const response = await authenticatedFetch('/notifications/track-click', {
-          method: 'POST',
-          body: JSON.stringify({
-            notificationId: notification.id,
-            actionType
-          })
-        });
-
-        if (response.ok && isDebugMode) {
-          console.log('✅ NotificationCenter: Click tracking registrado');
-        } else if (isDebugMode) {
-          console.log('⚠️ NotificationCenter: API de tracking indisponível');
-        }
-      } else if (isDebugMode) {
-        console.log('⚠️ NotificationCenter: Sem autenticação para tracking');
+      // ✅ CORREÇÃO: Usar apenas Supabase para tracking (opcionalmente)
+      if (isDebugMode) {
+        console.log('📋 NotificationCenter: Click tracking (local only)', { notificationId: notification.id, actionType });
       }
-
+      // Tracking removido - pode ser implementado diretamente no Supabase se necessário
     } catch (error: any) {
       if (isDebugMode) {
         console.log('📋 NotificationCenter: Tracking offline (modo graceful)');
       }
-      // Não mostrar erro para o usuário - tracking é opcional
     }
   };
 

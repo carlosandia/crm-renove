@@ -538,12 +538,25 @@ app.use('/api/lead-tasks', leadTasksRoutes);
 app.use('/api', leadDocumentsRoutes); // Lead documents routes com prefixo /api para consistência
 
 // Registrar rotas de integração de e-mail
+import simpleEmailRoutes from './routes/simple-email';
+import suggestConfigRoutes from './routes/suggest-config';
+// import gmailOAuthRoutes from './routes/gmail-oauth';
 app.use('/api/email', emailRoutes);
+app.use('/api/email', suggestConfigRoutes); // Rotas de sugestão de configuração
+app.use('/api/simple-email', simpleEmailRoutes);
+// app.use('/api/gmail-oauth', gmailOAuthRoutes);
 
-// Registrar rotas de outcome reasons
-import outcomeReasonsRoutes, { systemDefaultsRouter } from './routes/outcomeReasons';
-app.use('/api/outcome-reasons', systemDefaultsRouter); // Rota pública primeiro
-app.use('/api/outcome-reasons', outcomeReasonsRoutes); // Rotas autenticadas
+// Registrar rotas de outcome reasons (USANDO SIMPLE AUTH)
+import outcomeReasonsRoutes from './routes/outcome-reasons';
+app.use('/api/outcome-reasons', outcomeReasonsRoutes);
+
+// ✅ NOVO: Registrar rotas de integrações e webhooks (sistema N8N)
+import integrationsRoutes from './routes/integrations';
+app.use('/api/integrations', integrationsRoutes);
+
+// ✅ NOVO: Registrar rotas de webhook universal (N8N, Zapier, Make.com, etc.)
+import webhooksUniversalRoutes from './routes/webhooks-universal';
+app.use('/api/webhook', webhooksUniversalRoutes);
 
 // Registrar rotas de qualificação
 import qualificationRoutes from './routes/qualification';
@@ -918,7 +931,7 @@ app.post('/api/meetings/test', (req, res) => {
   
   const mockMeeting = {
     id: `mock-meeting-${Date.now()}`,
-    tenant_id: 'test-tenant',
+    tenant_id: 'd7caffc1-c923-47c8-9301-ca9eeff1a243',
     pipeline_lead_id,
     lead_master_id,
     owner_id: 'test-owner',

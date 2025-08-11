@@ -846,10 +846,10 @@ router.post('/test', async (req, res) => {
             }
           ],
           is_active: true,
-          tenant_id: 'test-tenant-id'
+          tenant_id: 'd7caffc1-c923-47c8-9301-ca9eeff1a243'
         }
       ],
-      tenant_id: 'test-tenant-id',
+      tenant_id: 'd7caffc1-c923-47c8-9301-ca9eeff1a243',
       created_by: 'test-user'
     };
 

@@ -82,7 +82,7 @@ This document is a living guide. AI can:
 ### 🧑‍💼 Admin
 - **Pipeline**: wizard (Basic → Stages → Fields → Distribution → Cadence)
   - Fixed stages: `Lead`, `Ganho`, `Perdido` - Fixed fields: name, email, phone - Customizable fields
-- **Forms**: builder with drag & drop, lead scoring, UTMs, integrations, notifications
+- **Forms**: 
 - **Leads**: manual CRUD + CSV import and export
 - **Tracking**: task list for all member roles in their tenant
 - **Salespeople**: CRUD and pipeline association
@@ -447,10 +447,6 @@ During development or debugging, it's allowed to use **Supabase MCP** for:
 - Fixed stages: `Lead` → `Ganho` / `Perdido` - Customizable fields with validation
 - Distribution algorithms for assignment - Kanban drag-and-drop interface using @dnd-kit
 - **Header navigation**: Access via horizontal navigation bar
-
-#### Form Builder
-- Dynamic creation with field types - Lead scoring integration
-- UTM tracking and analytics - Webhook notifications for submissions
 
 #### Authentication & Authorization
 - **Basic Supabase Authentication** with automatic session management

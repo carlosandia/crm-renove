@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Pipeline, PipelineStage, CustomField } from '../../types/Pipeline';
 import { User } from '../../types/User';
 import { supabase } from '../../lib/supabase';
@@ -14,6 +14,34 @@ import { loggers } from '../../utils/logger';
 
 // ✅ CORREÇÃO: Importar CadenceApiService para uso consistente
 import { CadenceApiService } from '../../services/cadenceApiService';
+
+// ✅ PERFORMANCE: Sistema de debouncing para eliminar logs duplicados
+const createLogDebouncer = () => {
+  const logCache = new Map<string, { lastLog: number; count: number }>();
+  const DEBOUNCE_DELAY = 3000; // 3 segundos
+  
+  return (logKey: string, logFn: () => void) => {
+    const now = Date.now();
+    const cached = logCache.get(logKey);
+    
+    if (!cached || (now - cached.lastLog) > DEBOUNCE_DELAY) {
+      logFn();
+      logCache.set(logKey, { lastLog: now, count: 1 });
+    } else {
+      cached.count++;
+      // Log apenas se há mudanças significativas (mais de 3 eventos ignorados)
+      if (cached.count >= 3) {
+        logFn();
+        logCache.set(logKey, { lastLog: now, count: 1 });
+      }
+    }
+  };
+};
+
+const debouncedLog = createLogDebouncer();
+
+// ✅ PERFORMANCE: Import do performance monitoring
+import { usePerformanceMonitor } from '../../shared/utils/performance';
 
 // shadcn/ui components
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -37,6 +65,7 @@ import {
 // Magic UI components
 import { AnimatedCard } from '../ui/animated-card';
 import { BlurFade } from '../ui/blur-fade';
+import { HoverCard, MotionWrapper } from '../ui/motion-wrapper';
 import { PulsatingButton } from '../magicui/pulsating-button';
 import { BorderBeam } from '../magicui/border-beam';
 import { NumberTicker } from '../magicui/number-ticker';
@@ -52,11 +81,6 @@ import { useTemperatureConfig, TemperatureConfigRender } from './temperature';
 import QualificationManager, { QualificationRules } from './QualificationManager';
 import MotivesManager, { OutcomeReasons } from './MotivesManager';
 
-// ✅ NOVA ABA: Componente Email existente
-import EmailComposeModal from '../Leads/EmailComposeModal';
-
-// ✅ NOVA ABA: API de integração email
-import { emailIntegrationApi } from '../../services/emailIntegrationApi';
 
 // Icons
 import { 
@@ -65,6 +89,7 @@ import {
   Sliders, 
   Zap, 
   Save,
+  Plus,
   ArrowLeft,
   Database,
   RotateCcw,
@@ -76,11 +101,8 @@ import {
   TrendingUp,
   Users,
   Trophy,
-  Mail,
-  Send,
   MessageCircle,
   FileText,
-  Eye,
 } from 'lucide-react';
 
 // Shared components
@@ -221,9 +243,14 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
   onPipelineUpdated,
   onFooterRender,
 }) => {
+  // ✅ CORREÇÃO: Log removido para evitar spam no console durante re-renders frequentes
+  
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const cacheManager = useIntelligentCache(true); // Debug mode ativo
+  
+  // ✅ PERFORMANCE: Integração do performance monitoring
+  const performanceMonitor = usePerformanceMonitor('ModernPipelineCreatorRefactored');
   
   // ✅ NOVO: Estado simples para detectar mudanças não salvas
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -271,6 +298,20 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
   // ✅ NOVA: Referência para evitar re-inicialização desnecessária
   const lastInitializedPipelineId = useRef<string | null>(null);
   const [isIntentionalSubmit, setIsIntentionalSubmit] = useState(false);
+  
+  // ✅ OTIMIZAÇÃO: Sistema de debouncing para handlers frequentes
+  const debounceTimeouts = useRef<{[key: string]: NodeJS.Timeout}>({});
+  
+  const debounceHandler = useCallback((key: string, fn: () => void, delay: number = 500) => {
+    if (debounceTimeouts.current[key]) {
+      clearTimeout(debounceTimeouts.current[key]);
+    }
+    
+    debounceTimeouts.current[key] = setTimeout(() => {
+      fn();
+      delete debounceTimeouts.current[key];
+    }, delay);
+  }, []);
   const [isExplicitButtonClick, setIsExplicitButtonClick] = useState(false);
   const [savingActivities, setSavingActivities] = useState(false);
   const [isStageAction, setIsStageAction] = useState(false);
@@ -285,11 +326,6 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
   // ✅ NOVO: Flag para detectar mudanças de motivos
   const [hasMotivesChanges, setHasMotivesChanges] = useState(false);
 
-  // ✅ NOVA ABA EMAIL: Estados para funcionalidade de email
-  const [emailModalOpen, setEmailModalOpen] = useState(false);
-  const [emailHistory, setEmailHistory] = useState<any[]>([]);
-  const [loadingEmailHistory, setLoadingEmailHistory] = useState(false);
-  const [selectedEmailTemplate, setSelectedEmailTemplate] = useState<string>('');
 
   // ✅ NOVO: Função para marcar formulário como modificado (só após inicialização)
   const markFormDirty = useCallback(() => {
@@ -309,12 +345,18 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
 
   // ✅ NOVO: Referência para acessar estado do distributionManager
   const distributionManagerRef = useRef<{ isInitializing: boolean } | null>(null);
+  
+  // ✅ CORREÇÃO: Proteção contra duplo clique/salvamento
+  const isSavingRef = useRef<boolean>(false);
 
   // Callbacks para mudanças que marcam o formulário como dirty
   const handleStagesChange = useCallback((customStages: PipelineStage[]) => {
-    console.log('🔄 [handleStagesChange] Recebido:', {
-      customStagesCount: customStages.length,
-      isEditMode: !!pipeline?.id,
+    // ✅ PERFORMANCE: Debounced logging para eliminar duplicações
+    debouncedLog('handleStagesChange', () => {
+      console.log('🔄 [handleStagesChange] Stages atualizados:', {
+        customStagesCount: customStages.length,
+        isEditMode: !!pipeline?.id,
+      });
     });
     
     setFormData(prev => {
@@ -327,13 +369,18 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
       markFormDirty();
       // ✅ CRÍTICO: Flag para identificar mudanças de stage
       setIsStageAction(true);
-      console.log('🆕 [handleStagesChange] Marcando mudança como ação de stage');
+      debouncedLog('stageActionFlag', () => {
+        console.log('🆕 [handleStagesChange] Ação de stage detectada');
+      });
     }
   }, [pipeline?.id, markFormDirty]);
 
   const handleFieldsUpdate = useCallback((custom_fields: LocalCustomField[]) => {
-    console.log('🔄 [handleFieldsUpdate] Atualizando campos:', {
-      fieldsCount: custom_fields.length,
+    // ✅ PERFORMANCE: Debounced logging para campos
+    debouncedLog('handleFieldsUpdate', () => {
+      console.log('🔄 [handleFieldsUpdate] Campos atualizados:', {
+        fieldsCount: custom_fields.length,
+      });
     });
     
     setFormData(prev => ({ ...prev, custom_fields }));
@@ -358,14 +405,17 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
       }
       
       cadenceLogThrottleRef.current = setTimeout(() => {
-        // ✅ CORREÇÃO: Usar valores capturados para comparação precisa
-        const changeType = currentCount > previousCount ? 'adição' : 'exclusão';
-        console.log('🔄 [PipelineCreator] Cadências:', {
-          count: currentCount,
-          change: changeType,
-          diff: Math.abs(currentCount - previousCount)
-        });
-      }, 2000); // Aumentado de 1s para 2s
+        // ✅ OTIMIZADO: Log apenas mudanças significativas (±2 ou mais items)
+        const diff = Math.abs(currentCount - previousCount);
+        if (diff >= 2 || process.env.NODE_ENV === 'development') {
+          const changeType = currentCount > previousCount ? 'adição' : 'exclusão';
+          console.log('🔄 [PipelineCreator] Cadências:', {
+            count: currentCount,
+            change: changeType,
+            diff
+          });
+        }
+      }, 5000); // ✅ OTIMIZADO: Aumentado para 5s para reduzir ruído
       
       // ✅ CRÍTICO: Atualizar referência APÓS capturar os valores para comparação
       lastCadenceCountRef.current = currentCount;
@@ -376,57 +426,95 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
   }, [pipeline?.id, markFormDirty]);
 
   const handleDistributionRuleChange = useCallback((distribution_rule: DistributionRule, isNavChange = false) => {
-    console.log('🔄 [handleDistributionRuleChange] Atualizando distribuição', { isNavChange });
+    // ✅ OTIMIZADO: Log com throttling condicional apenas em desenvolvimento
+    debounceHandler('distribution-log', () => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔄 [handleDistributionRuleChange] Atualizando distribuição', { isNavChange });
+      }
+    }, 2000);
     
     // ✅ CRÍTICO: Definir flag de navegação antes de qualquer operação
     setIsNavigationChange(isNavChange);
     setFormData(prev => ({ ...prev, distribution_rule }));
     
-    // ✅ CORREÇÃO CRÍTICA: Só marcar como dirty se não for mudança de navegação e não estiver inicializando
+    // ✅ CORREÇÃO CRÍTICA: Marcar como dirty para TODAS as mudanças reais, incluindo navegação
     const isDistributionInitializing = distributionManagerRef.current?.isInitializing;
-    if (pipeline?.id && !isDistributionInitializing && !isNavChange) {
+    if (pipeline?.id && !isDistributionInitializing) {
       markFormDirty();
       // ✅ NOVO: Marcar que há mudanças de distribuição
       setHasDistributionChanges(true);
-      console.log('📝 [handleDistributionRuleChange] Formulário e distribuição marcados como modificados');
-    } else if (isDistributionInitializing) {
-      console.log('🔇 [handleDistributionRuleChange] Mudança durante inicialização do distributionManager (ignorada)');
-    } else if (isNavChange) {
-      console.log('🔇 [handleDistributionRuleChange] Mudança de navegação entre modos (ignorada)');
+      debounceHandler('distribution-dirty-log', () => {
+        if (process.env.NODE_ENV === 'development') {
+          const changeType = isNavChange ? 'navegação' : 'configuração';
+          console.log(`📝 [handleDistributionRuleChange] Mudança de ${changeType} - formulário marcado como modificado`);
+        }
+      }, 2000);
+    } else if (process.env.NODE_ENV === 'development') {
+      debounceHandler('distribution-ignore-log', () => {
+        if (isDistributionInitializing) {
+          console.log('🔇 [handleDistributionRuleChange] Mudança durante inicialização do distributionManager (ignorada)');
+        }
+      }, 2000);
     }
     
     // ✅ CRÍTICO: Reset da flag após um breve delay para evitar submits automáticos
     if (isNavChange) {
       setTimeout(() => {
         setIsNavigationChange(false);
-        console.log('🔄 [handleDistributionRuleChange] Flag de navegação resetada');
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🔄 [handleDistributionRuleChange] Flag de navegação resetada');
+        }
       }, 100);
     }
-  }, [pipeline?.id, markFormDirty]);
+  }, [pipeline?.id, markFormDirty, debounceHandler]);
 
   const handleTemperatureConfigChange = useCallback((temperature_config: TemperatureConfig) => {
-    console.log('🌡️ [handleTemperatureConfigChange] Recebido:', temperature_config);
+    debounceHandler('temperature-log', () => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🌡️ [handleTemperatureConfigChange] Recebido:', temperature_config);
+      }
+    }, 2000);
     setFormData(prev => ({ ...prev, temperature_config }));
     if (pipeline?.id) markFormDirty();
-  }, [pipeline?.id, markFormDirty]);
+  }, [pipeline?.id, markFormDirty, debounceHandler]);
 
   const handleQualificationChange = useCallback((qualification_rules: QualificationRules) => {
-    console.log('🔄 [handleQualificationChange] Atualizando qualificação');
+    debounceHandler('qualification-log', () => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔄 [handleQualificationChange] Atualizando qualificação');
+      }
+    }, 2000);
     setFormData(prev => ({ ...prev, qualification_rules }));
     
     // ✅ CORREÇÃO CRÍTICA: Usar flag específica ao invés de markFormDirty para evitar fechamento do modal
     if (pipeline?.id) {
       setHasQualificationChanges(true);
-      console.log('📝 [handleQualificationChange] Qualificação marcada como modificada (sem fechar modal)');
+      debounceHandler('qualification-dirty-log', () => {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('📝 [handleQualificationChange] Qualificação marcada como modificada (sem fechar modal)');
+        }
+      }, 2000);
     }
-  }, [pipeline?.id]);
+  }, [pipeline?.id, debounceHandler]);
 
   const handleMotivesChange = useCallback((outcome_reasons: OutcomeReasons) => {
-    console.log('🔄 [handleMotivesChange] Atualizando motivos');
+    // Atualizar estado imediatamente
     setFormData(prev => ({ ...prev, outcome_reasons }));
     setHasMotivesChanges(true); // ✅ NOVO: Flag específica para motivos
+    
+    // Logs com debouncing para evitar spam
+    debounceHandler('motives-change', () => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔄 [handleMotivesChange] Motivos atualizados (debounced):', {
+          wonCount: outcome_reasons.won.length,
+          lostCount: outcome_reasons.lost.length,
+          pipelineId: pipeline?.id?.substring(0, 8)
+        });
+      }
+    }, 2000);
+    
     if (pipeline?.id) markFormDirty();
-  }, [pipeline?.id, markFormDirty]);
+  }, [pipeline?.id, markFormDirty, debounceHandler]);
 
   // ✅ NOVO: Handlers para campos básicos com debounce
   const handleNameChange = useCallback((value: string) => {
@@ -489,6 +577,24 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
     distributionManagerRef.current = { isInitializing: distributionManager.isInitializing };
   }, [distributionManager.isInitializing]);
 
+  // ✅ AUTOSAVE: Salvar automaticamente mudanças de stages
+  useEffect(() => {
+    if (!isStageAction || !pipeline?.id) return;
+    
+    // Debounce para evitar salvamentos excessivos
+    const timeoutId = setTimeout(async () => {
+      try {
+        console.log('🔄 [AutoSave-Stages] Salvando mudanças de stages automaticamente...');
+        await handleSaveChanges();
+        console.log('✅ [AutoSave-Stages] Mudanças de stages salvas com sucesso');
+      } catch (error) {
+        console.error('❌ [AutoSave-Stages] Erro ao salvar stages:', error);
+      }
+    }, 1000); // Aguarda 1 segundo após a última mudança
+
+    return () => clearTimeout(timeoutId);
+  }, [isStageAction, pipeline?.id]); // Monitora mudanças de stages
+
   const temperatureManager = useTemperatureConfig({
     pipelineId: pipeline?.id,
     tenantId: user?.tenant_id,
@@ -523,9 +629,12 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
     
     try {
       setLoading(true);
-      console.log('💾 [handleSaveAndClose] Salvando mudanças antes de fechar');
+      // ✅ PERFORMANCE: Debounced logging para save operations
+      debouncedLog('handleSaveAndClose', () => {
+        console.log('💾 [handleSaveAndClose] Salvando mudanças antes de fechar');
+      });
       
-      await onSubmit(formData, false);
+      await onSubmit(formData, true); // ✅ CORREÇÃO: manter modal aberto após salvar
       markFormClean();
       setShowUnsavedDialog(false);
       onCancel();
@@ -541,10 +650,25 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
   const handleSaveChanges = useCallback(async () => {
     if (!pipeline?.id) return;
     
-    try {
-      setLoading(true);
-      setIsSaving(true);
-      console.log('💾 [handleSaveChanges] Salvando mudanças em modo edição - MODAL PERMANECE ABERTO');
+    // ✅ CORREÇÃO CRÍTICA: Proteção contra duplo clique/execução
+    if (isSavingRef.current) {
+      debouncedLog('saveBlocked', () => {
+        console.log('🚫 [handleSaveChanges] BLOQUEADO - Salvamento já em andamento');
+      });
+      return;
+    }
+    
+    // ✅ PERFORMANCE: Iniciar medição de performance
+    return await performanceMonitor.measureAsync('saveChanges', async () => {
+      try {
+        // Marcar início do salvamento
+        isSavingRef.current = true;
+        setLoading(true);
+        setIsSaving(true);
+        // ✅ PERFORMANCE: Debounced logging para save operations
+        debouncedLog('saveStart', () => {
+          console.log('💾 [handleSaveChanges] Iniciando salvamento');
+        });
       
       // ✅ NOVO: Salvar configurações de distribuição antes de salvar pipeline
       if (hasDistributionChanges && distributionManager.handleSave) {
@@ -563,15 +687,31 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
       }
 
       // ✅ NOVO: Salvar motivos de ganho/perda se houver mudanças
+      console.log('🔍 [handleSaveChanges] Verificando salvamento de motivos:', {
+        hasMotivesChanges,
+        hasOutcomeReasons: !!formData.outcome_reasons,
+        outcomeReasons: formData.outcome_reasons,
+        pipelineId: pipeline?.id
+      });
+      
       if (hasMotivesChanges && formData.outcome_reasons) {
-        console.log('🔄 [handleSaveChanges] Salvando motivos de ganho/perda...');
-        await saveOutcomeReasons(pipeline.id, formData.outcome_reasons);
-        setHasMotivesChanges(false); // ✅ CORREÇÃO: Limpar flag após salvar
-        console.log('✅ [handleSaveChanges] Motivos salvos');
+        console.log('🔄 [handleSaveChanges] INICIANDO salvamento de motivos de ganho/perda...');
+        try {
+          await saveOutcomeReasons(pipeline.id, formData.outcome_reasons);
+          setHasMotivesChanges(false); // ✅ CORREÇÃO: Limpar flag após salvar
+          console.log('✅ [handleSaveChanges] Motivos salvos COM SUCESSO');
+        } catch (error) {
+          console.error('❌ [handleSaveChanges] Erro ao salvar motivos:', error);
+          throw error;
+        }
+      } else if (hasMotivesChanges && !formData.outcome_reasons) {
+        console.warn('⚠️ [handleSaveChanges] hasMotivesChanges=true mas outcome_reasons está vazio');
+      } else if (!hasMotivesChanges && formData.outcome_reasons) {
+        console.log('ℹ️ [handleSaveChanges] Motivos existem mas hasMotivesChanges=false - sem salvamento');
       }
       
-      // ✅ CORREÇÃO: Receber pipeline atualizada do onSubmit 
-      const updatedPipeline = await onSubmit(formData, false);
+      // ✅ CORREÇÃO: Receber pipeline atualizada do onSubmit - manter modal aberto
+      const updatedPipeline = await onSubmit(formData, false); // false = não redirecionar, manter modal aberto
       
       // ✅ CRÍTICO: Limpar flag após uso
       if (isStageAction) {
@@ -649,20 +789,24 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
         console.log('✅ [handleSaveChanges] Configurações de cadência salvas');
       }
       setLastSavedAt(new Date()); // ✅ NOVA: Registrar timestamp do salvamento
-      showSuccessToast('Alterações salvas', 'Pipeline atualizada com sucesso. Modal permanece aberto para edições adicionais.');
+      // ✅ CORREÇÃO: Remover notificação duplicada - feedback visual no rodapé já é suficiente
       
       console.log('✅ [handleSaveChanges] Cache invalidado, dados atualizados e MODAL MANTIDO ABERTO');
       
       // ❌ CORREÇÃO PRINCIPAL: REMOVIDO onCancel() - modal permanece aberto
       // onCancel(); ← Esta linha causava o fechamento automático
       
-    } catch (error) {
-      console.error('❌ [handleSaveChanges] Erro ao salvar:', error);
-      showErrorToast('Erro ao salvar', 'Não foi possível salvar as mudanças');
-    } finally {
-      setLoading(false);
-      setIsSaving(false);
-    }
+      } catch (error) {
+        console.error('❌ [handleSaveChanges] Erro ao salvar:', error);
+        showErrorToast('Erro ao salvar', 'Não foi possível salvar as mudanças');
+      } finally {
+        // ✅ CORREÇÃO CRÍTICA: Liberar proteção contra duplo clique
+        isSavingRef.current = false;
+        setLoading(false);
+        setIsSaving(false);
+        console.log('🔓 [handleSaveChanges] Proteção contra duplo clique liberada');
+      }
+    });
   }, [pipeline?.id, formData, onSubmit, markFormClean, queryClient, user?.tenant_id, onPipelineUpdated]);
 
   // ✅ NOVO: Descartar mudanças e fechar
@@ -716,8 +860,6 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
         const outcomeReasons = await loadOutcomeReasons(pipeline.id);
         const pipelineMembers = await loadPipelineMembers(pipeline.id);
         
-        // ✅ NOVA ABA EMAIL: Carregar histórico de emails
-        await loadEmailHistory(pipeline.id);
 
         setFormData({
           name: pipeline.name || '',
@@ -782,28 +924,6 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
     }
   };
 
-  // ✅ NOVA ABA EMAIL: Função para carregar histórico de emails
-  const loadEmailHistory = async (pipelineId?: string) => {
-    if (!pipelineId) return;
-    
-    setLoadingEmailHistory(true);
-    try {
-      console.log('📧 [loadEmailHistory] Carregando histórico...');
-      const response = await emailIntegrationApi.getEmailHistory({ 
-        pipeline_id: pipelineId, 
-        limit: 10 
-      });
-      
-      if (response.success && response.data) {
-        setEmailHistory(response.data);
-        console.log('✅ [loadEmailHistory] Histórico carregado:', response.data.length);
-      }
-    } catch (error) {
-      console.warn('⚠️ [loadEmailHistory] Erro ao carregar histórico:', error);
-    } finally {
-      setLoadingEmailHistory(false);
-    }
-  };
 
   const loadDistributionRule = async (pipelineId: string): Promise<LocalDistributionRule> => {
     try {
@@ -950,7 +1070,8 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
       });
 
       // ✅ NOVO: Cache strategy específica para motivos
-      await cacheManager.handleMotivesSave(user?.tenant_id || '', pipelineId);
+      // TODO: Comentado temporariamente para debuggar problema de salvamento
+      // await cacheManager.handleMotivesSave(user?.tenant_id || '', pipelineId);
 
     } catch (error: any) {
       console.error('❌ [saveOutcomeReasons] Erro ao salvar motivos via Backend API:', error.message);
@@ -1072,341 +1193,316 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
     }
   };
 
-  // ✅ NOVA ABA EMAIL: Render da aba de email
-  const renderEmailTab = () => {
-    // Templates de email padrão do mercado
-    const emailTemplates = [
-      {
-        id: 'follow-up',
-        name: 'Follow-up',
-        icon: MessageCircle,
-        description: 'Dar seguimento ao contato',
-        subject: 'Seguimento da nossa conversa',
-        preview: 'Olá! Gostaria de dar seguimento...'
-      },
-      {
-        id: 'proposal',
-        name: 'Proposta Comercial',
-        icon: FileText,
-        description: 'Enviar proposta personalizada',
-        subject: 'Proposta Comercial - {{empresa}}',
-        preview: 'Prezado(a) {{nome}}, segue nossa proposta...'
-      },
-      {
-        id: 'thank-you',
-        name: 'Agradecimento',
-        icon: Send,
-        description: 'Agradecer pelo tempo dedicado',
-        subject: 'Obrigado pelo seu tempo',
-        preview: 'Obrigado pela atenção dedicada...'
-      }
-    ];
-
-    return (
-      <BlurFade delay={0.1} inView>
-        <div className="space-y-6">
-          <AnimatedCard>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Mail className="h-5 w-5 text-blue-600" />
-                Comunicação por Email
-              </CardTitle>
-              <CardDescription>
-                Configurações e templates para comunicação automatizada via email
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                {/* Header da aba */}
-                <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                      <Mail className="h-5 w-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">Templates de Email</h3>
-                      <p className="text-sm text-gray-600">Escolha um template ou crie seu próprio email</p>
-                    </div>
-                  </div>
-                  <PulsatingButton
-                    onClick={() => setEmailModalOpen(true)}
-                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg"
-                    pulseColor="rgba(59, 130, 246, 0.5)"
-                  >
-                    <Mail className="h-4 w-4 mr-2" />
-                    Novo Email
-                  </PulsatingButton>
-                </div>
-
-                {/* Templates rápidos */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {emailTemplates.map((template) => {
-                    const IconComponent = template.icon;
-                    return (
-                      <div
-                        key={template.id}
-                        className="group relative overflow-hidden border border-gray-200 hover:border-blue-300 hover:shadow-lg transition-all duration-200 rounded-lg p-4 cursor-pointer"
-                        onClick={() => {
-                          setSelectedEmailTemplate(template.id);
-                          setEmailModalOpen(true);
-                        }}
-                      >
-                        <BorderBeam 
-                          size={60} 
-                          duration={12} 
-                          delay={template.id === 'follow-up' ? 0 : template.id === 'proposal' ? 4 : 8}
-                          colorFrom="rgba(59, 130, 246, 0.3)"
-                          colorTo="rgba(147, 51, 234, 0.3)"
-                        />
-                        <div className="flex items-start gap-3">
-                          <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                            <IconComponent className="h-4 w-4 text-blue-600" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-gray-900 group-hover:text-blue-700 transition-colors">
-                              {template.name}
-                            </h4>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {template.description}
-                            </p>
-                            <p className="text-xs text-gray-400 mt-2 truncate">
-                              "{template.preview}"
-                            </p>
-                          </div>
-                        </div>
-                        
-                        {/* Shimmer effect on hover */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-20 transition-opacity duration-300 -skew-x-12 transform translate-x-full group-hover:translate-x-[-100%]" />
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Histórico de emails */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-semibold text-gray-900 flex items-center gap-2">
-                      <Eye className="h-4 w-4" />
-                      Histórico de Emails
-                    </h4>
-                    {loadingEmailHistory && (
-                      <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-                    )}
-                  </div>
-                  
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    {loadingEmailHistory ? (
-                      <div className="flex items-center justify-center py-8">
-                        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-                        <span className="ml-2 text-gray-500">Carregando histórico...</span>
-                      </div>
-                    ) : emailHistory.length > 0 ? (
-                      <div className="space-y-3">
-                        {emailHistory.map((email, index) => (
-                          <div key={index} className="flex items-center gap-3 p-3 bg-white rounded-lg">
-                            <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                              <CheckCircle className="h-4 w-4 text-green-600" />
-                            </div>
-                            <div className="flex-1">
-                              <p className="font-medium text-gray-900">{email.subject}</p>
-                              <p className="text-sm text-gray-500">Para: {email.to}</p>
-                            </div>
-                            <span className="text-xs text-gray-400">
-                              {new Date(email.sent_at).toLocaleDateString()}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-8">
-                        <Mail className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                        <p className="text-gray-500 mb-2">Nenhum email enviado ainda</p>
-                        <p className="text-sm text-gray-400">
-                          Os emails enviados através desta pipeline aparecerão aqui
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Estatísticas rápidas */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-blue-50 rounded-lg p-4">
-                    <div className="flex items-center gap-2">
-                      <Send className="h-4 w-4 text-blue-600" />
-                      <span className="text-sm font-medium text-blue-900">Emails Enviados</span>
-                    </div>
-                    <p className="text-2xl font-bold text-blue-700 mt-1">
-                      <NumberTicker value={emailHistory.length} />
-                    </p>
-                  </div>
-                  <div className="bg-green-50 rounded-lg p-4">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                      <span className="text-sm font-medium text-green-900">Taxa de Sucesso</span>
-                    </div>
-                    <p className="text-2xl font-bold text-green-700 mt-1">
-                      <NumberTicker value={emailHistory.length > 0 ? 100 : 0} />%
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </AnimatedCard>
-        </div>
-      </BlurFade>
-    );
-  };
-
   // Render da aba básico
   const renderBasicTab = () => (
-    <BlurFade delay={0.1} inView>
-      <div className="space-y-6">
-        <AnimatedCard>
-          <CardHeader>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="pipeline-name">Nome da Pipeline *</Label>
-              <Input
-                id="pipeline-name"
-                value={pipelineNameValidation.name}
-                onChange={(e) => {
-                  pipelineNameValidation.updateName(e.target.value);
-                  handleNameChange(e.target.value);
-                }}
-                onBlur={pipelineNameValidation.validateImmediately}
-                placeholder="Ex: Vendas B2B, Leads Qualificados..."
-                className={`mt-1 ${
-                  pipelineNameValidation.hasError ? 'border-red-500' : 
-                  pipelineNameValidation.isValid ? 'border-green-500' : ''
-                }`}
-              />
-              {pipelineNameValidation.hasError && (
-                <p className="text-sm text-red-600 mt-1">Nome inválido ou já existe</p>
-              )}
-              {pipelineNameValidation.isValid && (
-                <p className="text-sm text-green-600 mt-1">Nome disponível</p>
-              )}
+    <div className="space-y-6">
+      <Card className="bg-gradient-to-r from-slate-50 to-white border-slate-200/60">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-50 rounded-lg">
+              <Settings className="h-5 w-5 text-blue-600" />
             </div>
-
             <div>
-              <Label htmlFor="pipeline-description">Descrição</Label>
-              <Textarea
-                id="pipeline-description"
-                value={formData.description}
-                onChange={(e) => handleDescriptionChange(e.target.value)}
-                placeholder="Descreva o propósito e funcionamento do pipeline..."
-                rows={3}
-              />
+              <h3 className="text-lg font-semibold text-slate-900">Configurações Básicas</h3>
+              <p className="text-sm text-slate-500">Defina as informações fundamentais da pipeline</p>
             </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Campo Nome da Pipeline */}
+          <BlurFade delay={0.05} direction="up" blur="2px" className="space-y-2">
+            <Label htmlFor="pipeline-name" className="text-sm font-medium text-slate-700 flex items-center gap-2">
+              <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+              Nome da Pipeline *
+            </Label>
+            <Input
+              id="pipeline-name"
+              value={pipelineNameValidation.name}
+              onChange={(e) => {
+                pipelineNameValidation.updateName(e.target.value);
+                handleNameChange(e.target.value);
+              }}
+              onBlur={pipelineNameValidation.validateImmediately}
+              placeholder="Ex: Vendas B2B, Leads Qualificados..."
+              className={`transition-all duration-300 hover:border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 ${
+                pipelineNameValidation.hasError ? 'border-red-400 focus:border-red-500 focus:ring-red-100 bg-red-50/30' : 
+                pipelineNameValidation.isValid ? 'border-green-400 focus:border-green-500 focus:ring-green-100 bg-green-50/30' : ''
+              }`}
+            />
+            {pipelineNameValidation.showValidation && pipelineNameValidation.hasError && (
+              <MotionWrapper variant="slideDown" duration={0.2}>
+                <p className="text-sm text-red-600 flex items-center gap-1.5">
+                  <div className="w-1 h-1 bg-red-500 rounded-full"></div>
+                  {pipelineNameValidation.error}
+                </p>
+              </MotionWrapper>
+            )}
+            {pipelineNameValidation.showValidation && pipelineNameValidation.isValid && !pipelineNameValidation.isEditMode && (
+              <MotionWrapper variant="slideDown" duration={0.2}>
+                <p className="text-sm text-green-600 flex items-center gap-1.5">
+                  <div className="w-1 h-1 bg-green-500 rounded-full"></div>
+                  Nome disponível
+                </p>
+              </MotionWrapper>
+            )}
+          </BlurFade>
 
-            <div>
-              <Label>Vendedores Vinculados *</Label>
-              {members.length === 0 ? (
-                <div className="mt-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <div className="flex items-center gap-2 text-yellow-800">
-                    <Settings className="h-4 w-4" />
-                    <span className="text-sm font-medium">Nenhum vendedor encontrado</span>
+          {/* Separador visual sutil */}
+          <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
+
+          {/* Campo Descrição */}
+          <BlurFade delay={0.1} direction="up" blur="2px" className="space-y-2">
+            <Label htmlFor="pipeline-description" className="text-sm font-medium text-slate-700 flex items-center gap-2">
+              <div className="w-1.5 h-1.5 bg-slate-400 rounded-full"></div>
+              Descrição
+            </Label>
+            <Textarea
+              id="pipeline-description"
+              value={formData.description}
+              onChange={(e) => handleDescriptionChange(e.target.value)}
+              placeholder="Descreva o propósito e funcionamento do pipeline..."
+              rows={3}
+              className="transition-all duration-300 hover:border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none"
+            />
+          </BlurFade>
+
+          {/* Separador visual sutil */}
+          <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
+
+          {/* Campo Vendedores */}
+          <BlurFade delay={0.15} direction="up" blur="2px" className="space-y-3">
+            <Label className="text-sm font-medium text-slate-700 flex items-center gap-2">
+              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
+              Vendedores Vinculados *
+            </Label>
+            {members.length === 0 ? (
+              <div className="p-4 bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200/60 rounded-xl">
+                <div className="flex items-center gap-3 text-amber-800">
+                  <div className="p-1.5 bg-amber-100 rounded-lg">
+                    <Settings className="h-4 w-4 text-amber-600" />
                   </div>
-                  <p className="text-xs text-yellow-600 mt-1">
-                    Cadastre vendedores no módulo "Vendedores" para vinculá-los às pipelines.
-                  </p>
+                  <div>
+                    <span className="text-sm font-medium">Nenhum vendedor encontrado</span>
+                    <p className="text-xs text-amber-600 mt-0.5">
+                      Cadastre vendedores no módulo "Vendedores" para vinculá-los às pipelines.
+                    </p>
+                  </div>
                 </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3 mt-2">
-                  {members.map(member => (
-                    <div key={member.id} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`member-${member.id}`}
-                        checked={formData.member_ids.includes(member.id)}
-                        onCheckedChange={() => handleMemberToggle(member.id)}
-                      />
-                      <Label htmlFor={`member-${member.id}`} className="text-sm">
-                        {member.first_name} {member.last_name}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </AnimatedCard>
-      </div>
-    </BlurFade>
-  );
-
-  // ✅ NOVO: Footer unificado com status à esquerda e botão à direita
-  const renderFooter = () => {
-    // ✅ NOVO: Determinar se deve mostrar botão (criação OU edição com alterações)
-    const shouldShowButton = !pipeline || (pipeline && (hasUnsavedChanges || hasDistributionChanges || hasQualificationChanges || hasMotivesChanges));
-    
-    return (
-      <div className="p-6 bg-gray-50/50 border-t border-gray-200 rounded-b-lg">
-        <div className="flex items-center justify-between">
-          {/* LADO ESQUERDO: Status */}
-          <div className="flex items-center gap-2 text-sm">
-            {isSaving ? (
-              <div className="text-blue-600 dark:text-blue-400 flex items-center gap-2 animate-pulse">
-                <div className="w-4 h-4 border-2 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
-                <span>Salvando alterações...</span>
-              </div>
-            ) : (hasUnsavedChanges || hasDistributionChanges || hasQualificationChanges || hasMotivesChanges) ? (
-              <div className="text-amber-600 dark:text-amber-400 flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" />
-                <span>Você tem alterações não salvas</span>
-              </div>
-            ) : pipeline ? (
-              <div className="text-green-600 dark:text-green-400 flex items-center gap-2">
-                <CheckCircle className="h-4 w-4" />
-                <span>
-                  Todas as alterações foram salvas
-                  {lastSavedAt && (
-                    <span className="text-green-500/70 ml-2">
-                      • há {Math.floor((Date.now() - lastSavedAt.getTime()) / 1000)}s
-                    </span>
-                  )}
-                </span>
               </div>
             ) : (
-              <div className="text-gray-600 flex items-center gap-2">
-                <span>Preencha os campos para criar a pipeline</span>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-500 px-1">
+                  <span>{formData.member_ids.length} de {members.length} selecionados</span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, member_ids: members.map(m => m.id) }))}
+                      className="text-blue-600 hover:text-blue-700 transition-colors"
+                    >
+                      Selecionar todos
+                    </button>
+                    <span className="text-slate-300">•</span>
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, member_ids: [] }))}
+                      className="text-red-600 hover:text-red-700 transition-colors"
+                    >
+                      Limpar
+                    </button>
+                  </div>
+                </div>
+                <div className="max-h-32 overflow-y-auto border border-slate-200 rounded-lg bg-slate-50/30">
+                  <div className="p-2 space-y-1">
+                    {members.map((member, index) => (
+                      <BlurFade key={member.id} delay={0.2 + (index * 0.02)} direction="up" blur="1px">
+                        <div className="flex items-center p-2 rounded hover:bg-white/80 transition-colors cursor-pointer">
+                          <Checkbox
+                            id={`member-${member.id}`}
+                            checked={formData.member_ids.includes(member.id)}
+                            onCheckedChange={() => handleMemberToggle(member.id)}
+                            className="mr-3"
+                          />
+                          <Label 
+                            htmlFor={`member-${member.id}`} 
+                            className="text-sm text-slate-700 cursor-pointer flex-1"
+                          >
+                            {member.first_name} {member.last_name}
+                          </Label>
+                        </div>
+                      </BlurFade>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </BlurFade>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  // ✅ CORREÇÃO CRÍTICA: Mover useMemo para o nível do componente (não dentro de função)
+  const totalChanges = React.useMemo(() => {
+    const changes = new Set<string>();
+    
+    // Contar mudanças específicas primeiro
+    if (hasDistributionChanges) changes.add('distribution');
+    if (hasQualificationChanges) changes.add('qualification');  
+    if (hasMotivesChanges) changes.add('motives');
+    
+    // ✅ INTELIGENTE: Só contar hasUnsavedChanges se não há mudanças específicas
+    // Isso evita contagem dupla quando hasDistributionChanges já está ativo
+    if (hasUnsavedChanges && changes.size === 0) {
+      changes.add('general');
+    }
+    
+    return changes.size;
+  }, [hasUnsavedChanges, hasDistributionChanges, hasQualificationChanges, hasMotivesChanges]);
+
+  // ✅ NOVO: Footer unificado with status à esquerda e botão à direita
+  const renderFooter = () => {
+    // ✅ DETERMINAR ESTADO E VISÃO GERAL MELHORADA
+    const shouldShowButton = !pipeline || (pipeline && (hasUnsavedChanges || hasDistributionChanges || hasQualificationChanges || hasMotivesChanges));
+    const timeSinceLastSave = lastSavedAt ? Math.floor((Date.now() - lastSavedAt.getTime()) / 1000) : null;
+    
+    return (
+      <div className="p-6 bg-gradient-to-r from-gray-50/80 to-slate-50/80 border-t border-gray-200/60 rounded-b-lg backdrop-blur-sm">
+        <div className="flex items-center justify-between">
+          {/* LADO ESQUERDO: Status Melhorado com Animações */}
+          <div className="flex items-center gap-3 text-sm">
+            {isSaving ? (
+              <div className="text-blue-600 dark:text-blue-400 flex items-center gap-3 animate-pulse">
+                <div className="relative">
+                  <div className="w-5 h-5 border-2 border-blue-200 rounded-full" />
+                  <div className="absolute top-0 left-0 w-5 h-5 border-2 border-transparent border-t-blue-600 rounded-full animate-spin" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-medium">Salvando alterações...</span>
+                  <span className="text-xs text-blue-500/70">Processando dados da pipeline</span>
+                </div>
+              </div>
+            ) : (hasUnsavedChanges || hasDistributionChanges || hasQualificationChanges || hasMotivesChanges) ? (
+              <div className="text-amber-600 dark:text-amber-400 flex items-center gap-3">
+                <div className="relative">
+                  <AlertCircle className="h-5 w-5 animate-pulse" />
+                  {totalChanges > 1 && (
+                    <div className="absolute -top-2 -right-2 bg-amber-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                      {totalChanges}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-medium">Alterações pendentes</span>
+                  <span className="text-xs text-amber-500/70">
+                    {totalChanges === 1 ? '1 seção modificada' : `${totalChanges} seções modificadas`}
+                  </span>
+                </div>
+              </div>
+            ) : pipeline ? (
+              <div className="text-green-600 dark:text-green-400 flex items-center gap-3">
+                <div className="relative">
+                  <CheckCircle className="h-5 w-5" />
+                  <div className="absolute inset-0 bg-green-500/20 rounded-full animate-ping" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-medium">Tudo salvo</span>
+                  <span className="text-xs text-green-500/70">
+                    {timeSinceLastSave !== null && (
+                      timeSinceLastSave < 60 
+                        ? `Salvo há ${timeSinceLastSave}s`
+                        : `Salvo há ${Math.floor(timeSinceLastSave / 60)}min`
+                    )}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="text-gray-500 flex items-center gap-3">
+                <div className="w-5 h-5 border-2 border-gray-300 rounded-full flex items-center justify-center">
+                  <div className="w-2 h-2 bg-gray-300 rounded-full" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-medium text-gray-600">Pronto para criar</span>
+                  <span className="text-xs text-gray-400">Preencha os campos obrigatórios</span>
+                </div>
               </div>
             )}
           </div>
           
-          {/* LADO DIREITO: Botão de Ação */}
+          {/* LADO DIREITO: Botão Aprimorado com Estados Visuais */}
           {shouldShowButton && (
-            <Button
-              type={pipeline ? "button" : "submit"}
-              disabled={loading || isSaving || (!pipeline && !pipelineNameValidation.canSubmit)}
-              className="min-w-[120px]"
-              onClick={pipeline ? handleSaveChanges : () => {
-                console.log('🖱️ [Button] Clique explícito no botão Criar Pipeline');
-                setIsIntentionalSubmit(true);
-                setIsExplicitButtonClick(true);
-              }}
-            >
-              {(loading || isSaving) ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                  {pipeline ? 'Salvando...' : 'Criando...'}
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Save className="h-4 w-4" />
-                  {pipeline ? 'Salvar Alterações' : submitText}
+            <div className="flex items-center gap-3">
+              {/* ✅ CONTADOR DE MUDANÇAS (quando há múltiplas alterações) */}
+              {pipeline && totalChanges > 1 && (
+                <div className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-full flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {totalChanges} pendentes
                 </div>
               )}
-            </Button>
+              
+              {/* ✅ BOTÃO PRINCIPAL MELHORADO */}
+              <Button
+                type={pipeline ? "button" : "submit"}
+                disabled={loading || isSaving || (!pipeline && !pipelineNameValidation.canSubmit)}
+                className={`min-w-[140px] transition-all duration-200 ${
+                  isSaving 
+                    ? 'bg-blue-500 hover:bg-blue-600 scale-105' 
+                    : (totalChanges > 0) 
+                      ? 'bg-amber-600 hover:bg-amber-700 shadow-lg' 
+                      : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+                onClick={pipeline ? handleSaveChanges : () => {
+                  console.log('🖱️ [Button] Clique explícito no botão Criar Pipeline');
+                  setIsIntentionalSubmit(true);
+                  setIsExplicitButtonClick(true);
+                }}
+              >
+                {(loading || isSaving) ? (
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <div className="w-4 h-4 border-2 border-white/30 rounded-full" />
+                      <div className="absolute top-0 left-0 w-4 h-4 border-2 border-transparent border-t-white rounded-full animate-spin" />
+                    </div>
+                    <span className="font-medium">
+                      {pipeline ? 'Salvando...' : 'Criando...'}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    {pipeline ? (
+                      totalChanges > 0 ? (
+                        <>
+                          <Save className="h-4 w-4" />
+                          <span className="font-medium">Salvar Alterações</span>
+                          {totalChanges > 1 && (
+                            <div className="ml-1 bg-white/20 text-xs px-2 py-0.5 rounded-full">
+                              {totalChanges}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="h-4 w-4" />
+                          <span className="font-medium">Salvo</span>
+                        </>
+                      )
+                    ) : (
+                      <>
+                        <Plus className="h-4 w-4" />
+                        <span className="font-medium">{submitText}</span>
+                      </>
+                    )}
+                  </div>
+                )}
+              </Button>
+            </div>
           )}
         </div>
         
-        {/* ✅ DICA: Apenas para modo edição */}
-        {pipeline && !hasUnsavedChanges && lastSavedAt && (
-          <div className="flex items-center justify-center pt-2">
-            <div className="text-xs text-muted-foreground bg-muted/50 px-3 py-1 rounded-full">
-              💡 Modal permanece aberto para edições adicionais
+        {/* ✅ BARRA DE PROGRESSO VISUAL (quando salvando) */}
+        {isSaving && (
+          <div className="mt-3 w-full">
+            <div className="w-full bg-blue-100 rounded-full h-1">
+              <div className="bg-blue-600 h-1 rounded-full animate-pulse" style={{ width: '60%' }} />
             </div>
           </div>
         )}
@@ -1426,10 +1522,12 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
     hasDistributionChanges,
     hasQualificationChanges,
     hasMotivesChanges,
+    totalChanges, // ✅ CORREÇÃO: Incluir totalChanges nas dependências
     pipeline,
     loading,
     pipelineNameValidation.canSubmit,
-    submitText
+    submitText,
+    lastSavedAt // ✅ CORREÇÃO: Incluir lastSavedAt para atualizações de tempo
   ]);
 
   return (
@@ -1439,41 +1537,37 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
         <div className="p-6 pb-4">
           <form onSubmit={handleSubmit}>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-8">
-            <TabsTrigger value="basic" className="flex items-center gap-2">
+          <TabsList className="grid w-full grid-cols-7 h-auto p-1 bg-slate-100/60 rounded-xl">
+            <TabsTrigger value="basic" className="flex items-center justify-center gap-2 py-3 px-4 text-sm font-medium rounded-lg transition-all duration-200 data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <Settings className="h-4 w-4" />
               Básico
             </TabsTrigger>
-            <TabsTrigger value="stages" className="flex items-center gap-2">
+            <TabsTrigger value="stages" className="flex items-center justify-center gap-2 py-3 px-4 text-sm font-medium rounded-lg transition-all duration-200 data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <Target className="h-4 w-4" />
               Etapas
             </TabsTrigger>
-            <TabsTrigger value="fields" className="flex items-center gap-2">
+            <TabsTrigger value="fields" className="flex items-center justify-center gap-2 py-3 px-4 text-sm font-medium rounded-lg transition-all duration-200 data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <Database className="h-4 w-4" />
               Campos
             </TabsTrigger>
-            <TabsTrigger value="distribution" className="flex items-center gap-2">
+            <TabsTrigger value="distribution" className="flex items-center justify-center gap-2 py-3 px-4 text-sm font-medium rounded-lg transition-all duration-200 data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <RotateCcw className="h-4 w-4" />
               Distribuição
             </TabsTrigger>
-            <TabsTrigger value="cadence" className="flex items-center gap-2">
+            <TabsTrigger value="cadence" className="flex items-center justify-center gap-2 py-3 px-4 text-sm font-medium rounded-lg transition-all duration-200 data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <Zap className="h-4 w-4" />
               Cadência
               {savingActivities && (
                 <div className="w-3 h-3 border border-blue-600 border-t-transparent rounded-full animate-spin ml-1" />
               )}
             </TabsTrigger>
-            <TabsTrigger value="qualification" className="flex items-center gap-2">
+            <TabsTrigger value="qualification" className="flex items-center justify-center gap-2 py-3 px-4 text-sm font-medium rounded-lg transition-all duration-200 data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <Users className="h-4 w-4" />
               Qualificação
             </TabsTrigger>
-            <TabsTrigger value="motives" className="flex items-center gap-2">
+            <TabsTrigger value="motives" className="flex items-center justify-center gap-2 py-3 px-4 text-sm font-medium rounded-lg transition-all duration-200 data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <Trophy className="h-4 w-4" />
               Motivos
-            </TabsTrigger>
-            <TabsTrigger value="email" className="flex items-center gap-2">
-              <Mail className="h-4 w-4" />
-              E-mail
             </TabsTrigger>
           </TabsList>
 
@@ -1482,7 +1576,7 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
           </TabsContent>
 
           <TabsContent value="stages">
-            <StageManagerRender stageManager={stageManager} />
+            <StageManagerRender stageManager={stageManager} pipelineId={pipeline?.id} />
           </TabsContent>
 
           <TabsContent value="fields">
@@ -1527,9 +1621,6 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
             />
           </TabsContent>
           
-          <TabsContent value="email">
-            {renderEmailTab()}
-          </TabsContent>
         </Tabs>
 
         {/* ✅ REMOVIDO: Botão movido para footer fixo */}
@@ -1580,30 +1671,6 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* ✅ NOVA ABA EMAIL: Modal de composição de email */}
-      {pipeline && (
-        <EmailComposeModal
-          isOpen={emailModalOpen}
-          onClose={() => {
-            setEmailModalOpen(false);
-            setSelectedEmailTemplate('');
-            // Recarregar histórico após envio
-            loadEmailHistory(pipeline.id);
-          }}
-          lead={{
-            id: pipeline.id,
-            custom_data: {
-              nome_lead: pipeline.name || 'Pipeline',
-              email_lead: 'contato@pipeline.com',
-              empresa: pipeline.name || 'Empresa',
-              nome_empresa: pipeline.name || 'Empresa'
-            }
-          } as any}
-          selectedTemplate={selectedEmailTemplate}
-        />
-      )}
-      
     </>
   );
 };

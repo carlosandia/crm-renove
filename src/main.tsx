@@ -25,6 +25,7 @@ window.addEventListener('vite:preloadError', (event) => {
 const AppDashboard = lazy(() => import('./components/AppDashboard').catch(() => ({ default: () => <div>Erro ao carregar Dashboard</div> })))
 const PublicFormRoute = lazy(() => import('./components/FormBuilder/PublicFormRoute').catch(() => ({ default: () => <div>Erro ao carregar Formulário</div> })))
 const GoogleCalendarCallback = lazy(() => import('./components/GoogleCalendarCallback').catch(() => ({ default: () => <div>Erro ao carregar Google Calendar</div> })))
+const OAuthCallback = lazy(() => import('./components/auth/OAuthCallback').catch(() => ({ default: () => <div>Erro ao carregar OAuth</div> })))
 const AccountActivation = lazy(() => import('./components/AccountActivation').catch(() => ({ default: () => <div>Erro ao carregar Ativação</div> })))
 const ModernLoginForm = lazy(() => import('./components/auth/ModernLoginForm')
   .then(module => ({ default: module.ModernLoginForm }))
@@ -82,7 +83,7 @@ const LoginWrapper = React.memo(() => {
   )
 })
 
-// 🔧 CORREÇÃO: React Router v6 com Future Flag para v7 preparação
+// 🔧 CORREÇÃO: React Router v7 Future Flags para transição suave
 const router = createBrowserRouter([
   {
     path: "/",
@@ -105,6 +106,14 @@ const router = createBrowserRouter([
         )
       },
       {
+        path: "oauth/callback",
+        element: (
+          <Suspense fallback={<LoadingFallback />}>
+            <OAuthCallback />
+          </Suspense>
+        )
+      },
+      {
         path: "activate",
         element: (
           <Suspense fallback={<LoadingFallback />}>
@@ -122,23 +131,11 @@ const router = createBrowserRouter([
       },
       {
         path: "*",
-        loader: () => {
-          // Redirecionamento usando loader (sem Navigate)
-          return Response.redirect('/', 302)
-        },
-        element: <LoadingFallback />
+        element: <Navigate to="/" replace />
       }
     ]
   }
-], {
-  // ✅ CORREÇÃO: Future flags compatíveis com React Router v6.30.1
-  future: {
-    v7_relativeSplatPath: true,         // Novo comportamento de splat paths relativos
-    v7_fetcherPersist: true,            // Persiste fetchers através de navegação
-    v7_normalizeFormMethod: true,       // Normaliza form methods (GET/POST)
-    v7_skipActionErrorRevalidation: true  // Skip revalidation em action errors (4xx/5xx)
-  }
-})
+])
 
 // Renderizar a aplicação completa
 const root = document.getElementById('root')
@@ -147,6 +144,9 @@ if (root) {
   ReactDOM.createRoot(root).render(
     <RouterProvider 
       router={router}
+      future={{
+        v7_startTransition: true
+      }}
     />
   )
 } else {

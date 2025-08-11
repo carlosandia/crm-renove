@@ -252,79 +252,10 @@ export const TaskProgressBadge: React.FC<TaskProgressBadgeProps> = memo(({
 TaskProgressBadge.displayName = 'TaskProgressBadge';
 
 // ===================================
-// HOOK AUXILIAR PARA DADOS DO BADGE
+// HOOK AUXILIAR REMOVIDO
 // ===================================
 
-export const useTaskProgressBadgeData = (leadId: string) => {
-  const { 
-    tasks, 
-    loading, 
-    error,
-    pendingCount, 
-    overdueCount, 
-    completedCount 
-  } = useLeadTasksForCard(leadId);
-
-  return React.useMemo(() => {
-    if (loading) {
-      return {
-        loading: true,
-        hasOverdue: false,
-        hasPending: false,
-        isComplete: false,
-        progressText: '...',
-        variant: 'neutral' as const,
-        total: 0,
-        completed: 0
-      };
-    }
-
-    if (error) {
-      return {
-        loading: false,
-        hasOverdue: false,
-        hasPending: false,
-        isComplete: false,
-        progressText: 'Erro',
-        variant: 'neutral' as const,
-        total: 0,
-        completed: 0
-      };
-    }
-
-    const total = tasks?.length || 0;
-    const hasOverdue = overdueCount > 0;
-    const hasPending = pendingCount > 0;
-    const isComplete = total > 0 && completedCount === total;
-    
-    let progressText: string;
-    let variant: 'success' | 'warning' | 'danger' | 'neutral';
-
-    if (hasOverdue) {
-      progressText = overdueCount === 1 ? '1 vencida' : `${overdueCount} vencidas`;
-      variant = 'danger';
-    } else if (hasPending) {
-      progressText = total > 0 ? `${completedCount}/${total} ✓` : `${pendingCount} pendentes`;
-      variant = 'warning';
-    } else if (isComplete) {
-      progressText = 'Completo ✓';
-      variant = 'success';
-    } else {
-      progressText = 'Sem tarefas';
-      variant = 'neutral';
-    }
-
-    return {
-      loading: false,
-      hasOverdue,
-      hasPending,
-      isComplete,
-      progressText,
-      variant,
-      total,
-      completed: completedCount
-    };
-  }, [tasks, loading, error, pendingCount, overdueCount, completedCount]);
-};
+// AIDEV-NOTE: Hook useTaskProgressBadgeData removido para resolver React Fast Refresh
+// Se necessário, mover para src/hooks/useTaskProgressBadgeData.ts
 
 export default TaskProgressBadge;

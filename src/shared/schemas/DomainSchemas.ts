@@ -55,8 +55,8 @@ export const UserMemberSchema = z.object({
   first_name: z.string(),
   last_name: z.string(),
   email: z.string().email(),
-  role: z.string(),
-  is_active: z.boolean().optional(),
+  role: z.enum(['super_admin', 'admin', 'member']).or(z.string()), // ✅ CORREÇÃO: Aceitar qualquer role string
+  is_active: z.boolean().nullable().optional(), // ✅ CORREÇÃO: Pode ser null no banco
   tenant_id: z.string().uuid().optional(),
   created_at: z.string().optional() // Formato Supabase: "2025-06-30 01:14:13.34407"
 });

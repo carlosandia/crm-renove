@@ -30,13 +30,13 @@ export class EmailService {
     const { backendConfig } = require('../config/environment');
     this.appUrl = process.env.APP_URL || backendConfig.urls.app;
     this.companyName = process.env.COMPANY_NAME || 'CRM Marketing';
-    this.transporter = this.createTransporter();
+    this.transporter = this.createTransport();
   }
 
   /**
    * Criar transportador baseado no ambiente
    */
-  private createTransporter(): nodemailer.Transporter {
+  private createTransport(): nodemailer.Transporter {
     const emailProvider = process.env.EMAIL_PROVIDER || 'mailtrap';
 
     switch (emailProvider) {

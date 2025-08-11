@@ -1,3 +1,4 @@
+// ✅ MIGRADO: Usando autenticação básica Supabase conforme CLAUDE.md
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { CompanyFormData } from '../types/Company';
@@ -56,42 +57,43 @@ const forceSchemaRefresh = async () => {
   }
 };
 
-// ENTERPRISE EMAIL INTEGRATION
+// ✅ MIGRADO: ENTERPRISE EMAIL INTEGRATION com autenticação básica Supabase
 const sendAdminInvitationWithAuth = async (
   companyId: string, 
   companyName: string, 
   adminName: string, 
-  adminEmail: string,
-  authenticatedFetch: any
+  adminEmail: string
 ): Promise<{ success: boolean; details?: any; error?: string }> => {
   try {
     console.log('📧 [ENTERPRISE] Enviando convite de ativação para admin...');
     
-    // 🔧 CORREÇÃO 4: Usar authenticatedFetch com fallback
-    let response;
-    if (authenticatedFetch) {
-      response = await authenticatedFetch('/admin-invitations/send', {
+    // ✅ CORREÇÃO: Usar autenticação básica Supabase
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      return { success: false, error: 'Usuário não autenticado' };
+    }
+
+    // Verificar se é super_admin
+    const userRole = user.user_metadata?.role;
+    if (userRole !== 'super_admin') {
+      return { success: false, error: 'Acesso negado: apenas super_admin pode criar empresas' };
+    }
+    
+    // Fazer requisição usando URL relativa (proxy Vite)
+    const response = await fetch('/api/admin-invitations/send', {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+      },
       body: JSON.stringify({
-          adminEmail,
-          adminName,
-        companyName,
-          companyId
-        })
-      });
-    } else {
-      // Fallback para desenvolvimento sem autenticação
-      response = await fetch(`${import.meta.env.VITE_API_URL || (import.meta.env.VITE_ENVIRONMENT === 'production' ? 'https://crm.renovedigital.com.br/api' : 'http://127.0.0.1:3001/api')}/admin-invitations/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          adminEmail,
+        adminEmail,
         adminName,
-          companyName,
-          companyId
+        companyName,
+        companyId
       })
     });
-    }
 
     const result = await response.json();
     
@@ -121,8 +123,8 @@ export const useCompanyForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
   
-  // 🔧 CORREÇÃO 4: Usar hook useAuth diretamente
-  const { authenticatedFetch } = useAuth();
+  // ✅ MIGRADO: Usar hook useAuth para verificar usuário
+  const { user } = useAuth();
 
   // Initialize with schema refresh
   useState(() => {
@@ -171,21 +173,28 @@ export const useCompanyForm = () => {
         hasAdmin: !!adminData 
       });
       
-      // 🔧 CORREÇÃO 4: Usar authenticatedFetch com fallback
-      let response;
-      if (authenticatedFetch) {
-        response = await authenticatedFetch('/companies', {
-          method: 'POST',
-          body: JSON.stringify(apiData)
-        });
-      } else {
-        // Fallback para desenvolvimento sem autenticação
-        response = await fetch(`${import.meta.env.VITE_API_URL || (import.meta.env.VITE_ENVIRONMENT === 'production' ? 'https://crm.renovedigital.com.br/api' : 'http://127.0.0.1:3001/api')}/companies`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(apiData)
-        });
+      // ✅ MIGRADO: Usar autenticação básica Supabase
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !currentUser) {
+        throw new Error('Usuário não autenticado');
       }
+
+      // Verificar se é super_admin
+      const userRole = currentUser.user_metadata?.role;
+      if (userRole !== 'super_admin') {
+        throw new Error('Acesso negado: apenas super_admin pode criar empresas');
+      }
+      
+      // Fazer requisição usando URL relativa (proxy Vite)
+      const response = await fetch('/api/companies', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+        },
+        body: JSON.stringify(apiData)
+      });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -311,8 +320,7 @@ export const useCompanyForm = () => {
         companyResult.companyId,
         companyData.name,
         adminData.name,
-        adminData.email,
-        authenticatedFetch
+        adminData.email
       );
 
       if (!invitationResult.success) {

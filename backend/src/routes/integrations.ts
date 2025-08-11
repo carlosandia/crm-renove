@@ -245,7 +245,7 @@ router.post('/regenerate-keys', async (req: Request, res: Response) => {
 // WEBHOOK ENDPOINT - RECEBER LEADS EXTERNOS
 // ============================================
 
-// POST /api/integrations/webhook/:company_slug - Receber leads via webhook
+// POST /api/integrations/webhook/:company_slug - Receber leads via webhook (LEGACY - manter compatibilidade)
 router.post('/webhook/:company_slug', async (req: Request, res: Response) => {
   try {
     const { company_slug } = req.params;
@@ -374,10 +374,9 @@ router.post('/webhook/:company_slug', async (req: Request, res: Response) => {
     // 🆕 BUSCAR STAGE "NOVOS LEADS" DO PIPELINE
     const { data: stageData, error: stageError } = await supabase
       .from('pipeline_stages')
-      .select('id, name, position')
+      .select('id, name')
       .eq('pipeline_id', pipelineId)
-      .or('name.ilike.%novos leads%,name.ilike.%novo%,name.ilike.%inicial%')
-      .order('position', { ascending: true })
+      .or('name.ilike.%novos leads%,name.ilike.%novo%,name.ilike.%inicial%,name.ilike.%lead%')
       .limit(1)
       .single();
 
@@ -389,7 +388,6 @@ router.post('/webhook/:company_slug', async (req: Request, res: Response) => {
         .from('pipeline_stages')
         .select('id')
         .eq('pipeline_id', pipelineId)
-        .order('position', { ascending: true })
         .limit(1)
         .single();
       
@@ -449,6 +447,28 @@ router.post('/webhook/:company_slug', async (req: Request, res: Response) => {
       }
     }
 
+    // 🆕 BUSCAR USUÁRIO ADMIN COMO FALLBACK PARA created_by (campo obrigatório)
+    let finalCreatedBy = createdByUserId;
+    if (!finalCreatedBy) {
+      const { data: adminUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('tenant_id', integration.company_id)
+        .eq('role', 'admin')
+        .limit(1)
+        .single();
+      
+      finalCreatedBy = adminUser?.id || null;
+    }
+
+    // Verificação de segurança: created_by é obrigatório
+    if (!finalCreatedBy) {
+      return res.status(500).json({
+        success: false,
+        error: 'Nenhum usuário admin encontrado para criar lead via webhook'
+      });
+    }
+
     // 🆕 CRIAR LEAD NA TABELA PIPELINE_LEADS (SISTEMA MODERNO ATUALIZADO)
     const leadInsertData = {
       pipeline_id: pipelineId,
@@ -456,7 +476,7 @@ router.post('/webhook/:company_slug', async (req: Request, res: Response) => {
       tenant_id: integration.company_id,
       temperature_level: leadData.lead_temperature || 'warm',
       assigned_to: assignedUserId,    // 🆕 Usuário específico ou null
-      created_by: createdByUserId,    // 🆕 Criador específico ou null
+      created_by: finalCreatedBy,    // 🆕 Criador específico ou admin fallback
       custom_data: {
         // Dados básicos do lead
         nome_lead: leadData.first_name + (leadData.last_name ? ` ${leadData.last_name}` : ''),
@@ -490,10 +510,7 @@ router.post('/webhook/:company_slug', async (req: Request, res: Response) => {
         pipeline_id: leadData.pipeline_id,
         assigned_to: leadData.assigned_to,
         created_by: leadData.created_by
-      },
-      // Timestamps automáticos para temperatura
-      initial_stage_entry_time: new Date().toISOString(),
-      stage_entry_time: new Date().toISOString()
+      }
     };
 
     const { data: newLead, error: leadError } = await supabase

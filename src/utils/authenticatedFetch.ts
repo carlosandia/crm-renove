@@ -1,3 +1,5 @@
+// ❌ ARQUIVO COMPLETAMENTE DEPRECADO: Sistema migrado para autenticação básica Supabase
+// 🚫 NÃO USAR: Use supabase.auth.getUser() + RLS policies diretamente
 import { supabase } from '../lib/supabase';
 
 /**

@@ -25,6 +25,7 @@ export interface SubHeaderProps {
   onFilterChange?: (filterId: string) => void;
   actions?: React.ReactNode;
   showSearch?: boolean;
+  showFilterBadge?: boolean;
   className?: string;
 }
 
@@ -42,6 +43,7 @@ const SubHeader: React.FC<SubHeaderProps> = ({
   onFilterChange,
   actions,
   showSearch = true,
+  showFilterBadge = true,
   className = ""
 }) => {
   // Estado para busca expansível (similar ao módulo Leads)
@@ -98,7 +100,7 @@ const SubHeader: React.FC<SubHeaderProps> = ({
           </h1>
           
           {/* Badge de filtros ativos */}
-          {activeFilterCount > 0 && (
+          {showFilterBadge && activeFilterCount > 0 && (
             <Badge variant="secondary" className="text-xs">
               {activeFilterCount} filtro{activeFilterCount > 1 ? 's' : ''} ativo{activeFilterCount > 1 ? 's' : ''}
             </Badge>

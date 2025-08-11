@@ -11,6 +11,11 @@ declare global {
         first_name?: string;
         last_name?: string;
       };
+      webhookAuth?: {
+        tenantId: string;
+        apiKey: string;
+        authenticatedVia: 'webhook_api_key';
+      };
       apiKey?: string;
       rateLimit?: {
         limit: number;

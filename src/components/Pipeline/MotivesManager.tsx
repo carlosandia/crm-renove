@@ -1,8 +1,8 @@
 import React, { useState, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Plus, Trophy, X, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import { BlurFade } from '../ui/blur-fade';
+import { Plus, Trophy, X, Trash2, CheckCircle, XCircle, Target } from 'lucide-react';
 
 // AIDEV-NOTE: Componente para gerenciar motivos de ganho e perda (pipeline_outcome_reasons JSONB)
 // Essencial para analytics e melhoria contínua do processo de vendas
@@ -163,163 +163,143 @@ export const MotivesManager: React.FC<MotivesManagerProps> = ({
     title: string,
     icon: React.ReactNode,
     description: string,
-    colorClasses: string
+    bgColorClass: string,
+    iconColorClass: string
   ) => (
-    <Card>
-      <CardHeader>
-        <CardTitle className={`text-base flex items-center gap-2 ${colorClasses}`}>
+    <div className="bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 rounded-xl p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <div className={`p-2 ${bgColorClass} rounded-lg`}>
           {icon}
-          {title}
-        </CardTitle>
-        <p className="text-sm text-gray-500">{description}</p>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {/* Motivos existentes */}
-          {outcomeReasons[type].length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-medium text-gray-700">Motivos Configurados</h4>
-                <span className="text-xs text-gray-500">
-                  {outcomeReasons[type].length} motivo{outcomeReasons[type].length !== 1 ? 's' : ''}
-                </span>
-              </div>
-              {outcomeReasons[type].map((reason) => (
-                <div key={reason.id} className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg">
-                  <div className={`p-1 rounded-full ${colorClasses} text-white mt-1`}>
-                    {type === 'won' ? (
-                      <CheckCircle className="h-3 w-3" />
-                    ) : (
-                      <XCircle className="h-3 w-3" />
-                    )}
-                  </div>
-                  
-                  <div className="flex-1 space-y-2">
-                    <Input
-                      placeholder="Texto do motivo"
-                      value={reason.reason_text}
-                      onChange={(e) => handleUpdateReason(type, reason.id, 'reason_text', e.target.value)}
-                      className="text-sm font-medium"
-                    />
-                    {reason.is_default && (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-700">
-                        Padrão
-                      </span>
-                    )}
-                  </div>
-                  
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemoveReason(type, reason.id)}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50 mt-1"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Botão para adicionar motivos padrão */}
-          <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-            <div>
-              <p className="text-sm font-medium text-gray-700">Motivos Padrão</p>
-              <p className="text-xs text-gray-500">
-                Adicionar motivos comuns de {type === 'won' ? 'ganho' : 'perda'}
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleAddDefaultReasons(type)}
-              className="flex items-center gap-1"
-            >
-              <Plus className="h-3 w-3" />
-              Adicionar Padrão
-            </Button>
-          </div>
-
-          {/* Formulário para novo motivo */}
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+          <p className="text-sm text-slate-500">{description}</p>
+        </div>
+      </div>
+      <div className="space-y-4">
+        {/* Motivos existentes */}
+        {outcomeReasons[type].length > 0 && (
           <div className="space-y-3">
+            <h4 className="text-sm font-medium text-slate-700">Motivos Configurados</h4>
+            {outcomeReasons[type].map((reason) => (
+              <div key={reason.id} className="flex items-center gap-3 p-4 bg-white/80 border border-slate-200 rounded-lg shadow-sm">
+                <div className="flex-1">
+                  <Input
+                    placeholder="Texto do motivo"
+                    value={reason.reason_text}
+                    onChange={(e) => handleUpdateReason(type, reason.id, 'reason_text', e.target.value)}
+                    className="border-slate-300 focus:ring-indigo-500"
+                  />
+                  {reason.is_default && (
+                    <span className="inline-flex items-center px-2 py-1 rounded text-xs bg-slate-100 text-slate-600 border border-slate-200 mt-2">
+                      Padrão do Sistema
+                    </span>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleRemoveReason(type, reason.id)}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Formulário para novo motivo */}
+        <div className="bg-slate-50/80 rounded-lg p-4 border border-slate-200">
+          <h5 className="text-sm font-medium text-slate-700 mb-4">Adicionar Novo Motivo</h5>
+          <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Novo Motivo *
-              </label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Texto do Motivo</label>
               <Input
                 placeholder={`Ex: ${type === 'won' ? 'Proposta aceita' : 'Preço muito alto'}`}
                 value={newReason.reason_text || ''}
                 onChange={(e) => setNewReason(prev => ({ ...prev, reason_text: e.target.value }))}
-                className="text-sm"
+                className="border-slate-300 focus:ring-indigo-500"
               />
-            </div>
-            
-            <div className="flex justify-end">
-              <Button
-                onClick={handleAdd}
-                disabled={!newReason.reason_text?.trim()}
-                className="flex items-center gap-2"
-                size="sm"
-              >
-                <Plus className="h-4 w-4" />
-                Adicionar Motivo
-              </Button>
             </div>
           </div>
         </div>
-      </CardContent>
-    </Card>
+        
+        <div className="flex justify-between">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => handleAddDefaultReasons(type)}
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Adicionar Padrão
+          </Button>
+          <Button
+            type="button"
+            onClick={handleAdd}
+            disabled={!newReason.reason_text?.trim()}
+            className="flex items-center gap-2"
+            size="sm"
+          >
+            <Plus className="h-4 w-4" />
+            Adicionar Motivo
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-medium text-gray-900">Motivos de Ganho e Perda</h3>
+      <BlurFade delay={0.1} direction="up">
+        <div className="bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 rounded-xl p-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-indigo-50 rounded-lg">
+              <Target className="h-5 w-5 text-indigo-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Motivos de Ganho e Perda</h3>
+              <p className="text-sm text-slate-500">
+                {outcomeReasons.won.length + outcomeReasons.lost.length} motivos configurados
+              </p>
+            </div>
+          </div>
         </div>
-        <div className="text-sm text-gray-500">
-          {outcomeReasons.won.length + outcomeReasons.lost.length} motivos configurados
-        </div>
-      </div>
+      </BlurFade>
 
       {/* Motivos de Ganho */}
-      {renderReasonForm(
-        'won',
-        newWonReason,
-        setNewWonReason,
-        handleAddWonReason,
-        'Motivos de Ganho',
-        <Trophy className="h-4 w-4" />,
-        'Motivos pelos quais leads são conquistados com sucesso',
-        'bg-green-600'
-      )}
+      <BlurFade delay={0.2} direction="up">
+        {renderReasonForm(
+          'won',
+          newWonReason,
+          setNewWonReason,
+          handleAddWonReason,
+          'Motivos de Ganho',
+          <Trophy className="h-4 w-4 text-green-600" />,
+          'Motivos pelos quais leads são conquistados com sucesso',
+          'bg-green-50',
+          'text-green-600'
+        )}
+      </BlurFade>
 
       {/* Motivos de Perda */}
-      {renderReasonForm(
-        'lost',
-        newLostReason,
-        setNewLostReason,
-        handleAddLostReason,
-        'Motivos de Perda',
-        <X className="h-4 w-4" />,
-        'Motivos pelos quais leads são perdidos ou não convertidos',
-        'bg-red-600'
-      )}
-
-      {/* Informações sobre o uso */}
-      <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-        <h4 className="text-sm font-medium text-purple-900 mb-2 flex items-center gap-2">
-          <CheckCircle className="h-4 w-4" />
-          Como usar os motivos
-        </h4>
-        <ul className="text-sm text-purple-800 space-y-1">
-          <li>• <strong>Ganho:</strong> Selecionados quando um lead é movido para "Ganho"</li>
-          <li>• <strong>Perda:</strong> Selecionados quando um lead é movido para "Perdido"</li>
-          <li>• <strong>Analytics:</strong> Dados usados para relatórios de performance e insights</li>
-          <li>• <strong>Melhoria:</strong> Identifique padrões para otimizar seu processo de vendas</li>
-        </ul>
-      </div>
+      <BlurFade delay={0.3} direction="up">
+        {renderReasonForm(
+          'lost',
+          newLostReason,
+          setNewLostReason,
+          handleAddLostReason,
+          'Motivos de Perda',
+          <X className="h-4 w-4 text-red-600" />,
+          'Motivos pelos quais leads são perdidos ou não convertidos',
+          'bg-red-50',
+          'text-red-600'
+        )}
+      </BlurFade>
     </div>
   );
 };

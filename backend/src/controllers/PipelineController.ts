@@ -557,10 +557,15 @@ export class PipelineController {
 
       // ✅ CORREÇÃO: Processar member_ids se fornecido
       if (member_ids !== undefined) {
-        console.log('🔄 [updatePipeline] Processando member_ids:', {
+        console.log('🔄 [updatePipeline] Processando member_ids - DEBUG DETALHADO:', {
           pipeline_id: id,
           member_ids,
-          member_ids_count: member_ids?.length || 0
+          member_ids_type: typeof member_ids,
+          member_ids_count: member_ids?.length || 0,
+          member_ids_isArray: Array.isArray(member_ids),
+          member_ids_sample: member_ids?.slice(0, 3) || [],
+          request_body_keys: Object.keys(req.body),
+          full_request_body: req.body
         });
 
         try {
@@ -581,6 +586,7 @@ export class PipelineController {
             const memberInserts = member_ids.map((member_id: string) => ({
               pipeline_id: id,
               member_id,
+              tenant_id: user.tenant_id, // ✅ CORREÇÃO: Adicionar tenant_id obrigatório
               assigned_at: new Date().toISOString()
             }));
 

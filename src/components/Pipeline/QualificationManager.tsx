@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { BlurFade } from '../ui/blur-fade';
 import { Plus, Target, Users, Trash2, AlertCircle } from 'lucide-react';
 
 // AIDEV-NOTE: Componente para gerenciar regras de qualificação (qualification_rules JSONB)
@@ -163,164 +163,203 @@ export const QualificationManager: React.FC<QualificationManagerProps> = ({
     icon: React.ReactNode,
     description: string
   ) => (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2">
+    <div className="bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 rounded-xl p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="p-2 bg-slate-50 rounded-lg">
           {icon}
-          {title}
-        </CardTitle>
-        <p className="text-sm text-gray-500">{description}</p>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {/* Regras existentes */}
-          {qualificationRules[type].length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium text-gray-700">Regras Configuradas</h4>
-              {qualificationRules[type].map((rule) => (
-                <div key={rule.id} className="flex items-center gap-2 p-2 border border-gray-200 rounded">
-                  <span className="text-sm font-medium">{rule.field}</span>
-                  <span className="text-xs text-gray-500">
-                    {QUALIFICATION_OPERATORS.find(op => op.value === rule.operator)?.label}
-                  </span>
-                  {rule.value && <span className="text-sm text-blue-600">"{rule.value}"</span>}
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+          <p className="text-sm text-slate-500">{description}</p>
+        </div>
+      </div>
+      <div className="space-y-4">
+        {/* Regras existentes */}
+        {qualificationRules[type].length > 0 && (
+          <div className="space-y-3">
+            <h4 className="text-sm font-medium text-slate-700">Regras Configuradas</h4>
+            {qualificationRules[type].map((rule) => (
+              <div key={rule.id} className="flex items-center gap-3 p-4 bg-white/80 border border-slate-200 rounded-lg shadow-sm">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-medium text-slate-900">{rule.field}</span>
+                    <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                      {QUALIFICATION_OPERATORS.find(op => op.value === rule.operator)?.label}
+                    </span>
+                    {rule.value && <span className="text-sm text-blue-600 font-medium">"{rule.value}"</span>}
+                  </div>
                   {rule.description && (
-                    <span className="text-xs text-gray-500 italic">({rule.description})</span>
+                    <p className="text-xs text-slate-500">{rule.description}</p>
                   )}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemoveRule(type, rule.id)}
-                    className="ml-auto text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
                 </div>
-              ))}
-            </div>
-          )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleRemoveRule(type, rule.id)}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
 
-          {/* Formulário para nova regra */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Campo</label>
-              <select
-                value={newRule.field}
-                onChange={(e) => setNewRule(prev => ({ ...prev, field: e.target.value }))}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-              >
-                {fieldsToUse.map(field => (
-                  <option key={field.value} value={field.value}>
-                    {field.label}
-                  </option>
-                ))}
-              </select>
+        {/* Formulário para nova regra */}
+        <div className="bg-slate-50/80 rounded-lg p-4 border border-slate-200">
+          <h5 className="text-sm font-medium text-slate-700 mb-4">Adicionar Nova Regra</h5>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Campo</label>
+                <select
+                  value={newRule.field}
+                  onChange={(e) => setNewRule(prev => ({ ...prev, field: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                >
+                  {fieldsToUse.map(field => (
+                    <option key={field.value} value={field.value}>
+                      {field.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Operador</label>
+                <select
+                  value={newRule.operator}
+                  onChange={(e) => setNewRule(prev => ({ ...prev, operator: e.target.value as any }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                >
+                  {QUALIFICATION_OPERATORS.map(op => (
+                    <option key={op.value} value={op.value}>
+                      {op.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
             
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Operador</label>
-              <select
-                value={newRule.operator}
-                onChange={(e) => setNewRule(prev => ({ ...prev, operator: e.target.value as any }))}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-              >
-                {QUALIFICATION_OPERATORS.map(op => (
-                  <option key={op.value} value={op.value}>
-                    {op.label}
-                  </option>
-                ))}
-              </select>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Valor</label>
+                <Input
+                  placeholder="Valor para comparação"
+                  value={newRule.value || ''}
+                  onChange={(e) => setNewRule(prev => ({ ...prev, value: e.target.value }))}
+                  className="border-slate-300 focus:ring-indigo-500"
+                  disabled={newRule.operator === 'not_empty'}
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Descrição</label>
+                <Input
+                  placeholder="Descrição da regra"
+                  value={newRule.description || ''}
+                  onChange={(e) => setNewRule(prev => ({ ...prev, description: e.target.value }))}
+                  className="border-slate-300 focus:ring-indigo-500"
+                />
+              </div>
             </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Valor</label>
-              <Input
-                placeholder="Valor para comparação"
-                value={newRule.value || ''}
-                onChange={(e) => setNewRule(prev => ({ ...prev, value: e.target.value }))}
-                className="text-sm"
-                disabled={newRule.operator === 'not_empty'}
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
-              <Input
-                placeholder="Descrição da regra"
-                value={newRule.description || ''}
-                onChange={(e) => setNewRule(prev => ({ ...prev, description: e.target.value }))}
-                className="text-sm"
-              />
-            </div>
-          </div>
-          
-          <div className="flex justify-end">
-            <Button
-              type="button"
-              onClick={handleAdd}
-              disabled={!newRule.field || !newRule.operator}
-              className="flex items-center gap-2"
-              size="sm"
-            >
-              <Plus className="h-4 w-4" />
-              Adicionar Regra
-            </Button>
           </div>
         </div>
-      </CardContent>
-    </Card>
+        
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            onClick={handleAdd}
+            disabled={!newRule.field || !newRule.operator}
+            className="flex items-center gap-2"
+            size="sm"
+          >
+            <Plus className="h-4 w-4" />
+            Adicionar Regra
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-medium text-gray-900">Regras de Qualificação</h3>
+      <BlurFade delay={0.1} direction="up">
+        <div className="bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 rounded-xl p-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-indigo-50 rounded-lg">
+              <Target className="h-5 w-5 text-indigo-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Regras de Qualificação</h3>
+              <p className="text-sm text-slate-500">
+                {qualificationRules.mql.length + qualificationRules.sql.length} regras configuradas
+              </p>
+            </div>
+          </div>
         </div>
-        <div className="text-sm text-gray-500">
-          {qualificationRules.mql.length + qualificationRules.sql.length} regras configuradas
-        </div>
-      </div>
+      </BlurFade>
 
       {/* MQL Rules */}
-      {renderRuleForm(
-        'mql',
-        newMqlRule,
-        setNewMqlRule,
-        handleAddMqlRule,
-        'Marketing Qualified Lead (MQL)',
-        <Target className="h-4 w-4 text-orange-600" />,
-        'Leads que demonstraram interesse através de ações de marketing'
-      )}
+      <BlurFade delay={0.2} direction="up">
+        {renderRuleForm(
+          'mql',
+          newMqlRule,
+          setNewMqlRule,
+          handleAddMqlRule,
+          'Marketing Qualified Lead (MQL)',
+          <Target className="h-4 w-4 text-orange-600" />,
+          'Leads que demonstraram interesse através de ações de marketing'
+        )}
+      </BlurFade>
 
       {/* SQL Rules */}
-      {renderRuleForm(
-        'sql',
-        newSqlRule,
-        setNewSqlRule,
-        handleAddSqlRule,
-        'Sales Qualified Lead (SQL)',
-        <Users className="h-4 w-4 text-green-600" />,
-        'Leads qualificados pela equipe de vendas e prontos para abordagem comercial'
-      )}
+      <BlurFade delay={0.3} direction="up">
+        {renderRuleForm(
+          'sql',
+          newSqlRule,
+          setNewSqlRule,
+          handleAddSqlRule,
+          'Sales Qualified Lead (SQL)',
+          <Users className="h-4 w-4 text-green-600" />,
+          'Leads qualificados pela equipe de vendas e prontos para abordagem comercial'
+        )}
+      </BlurFade>
 
       {/* Informações sobre o uso */}
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-        <h4 className="text-sm font-medium text-amber-900 mb-2 flex items-center gap-2">
-          <AlertCircle className="h-4 w-4" />
-          Como funciona a qualificação
-        </h4>
-        <ul className="text-sm text-amber-800 space-y-1">
-          <li>• <strong>MQL:</strong> Leads são automaticamente marcados como MQL quando atendem às regras configuradas</li>
-          <li>• <strong>SQL:</strong> Leads MQL podem ser promovidos para SQL quando atendem aos critérios de vendas</li>
-          <li>• <strong>Múltiplas regras:</strong> Todas as regras do mesmo tipo devem ser atendidas (operador AND)</li>
-          <li>• <strong>Automação:</strong> A classificação é automática baseada nos dados do lead</li>
-        </ul>
-      </div>
+      <BlurFade delay={0.4} direction="up">
+        <div className="bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-amber-50 rounded-lg">
+              <AlertCircle className="h-5 w-5 text-amber-600" />
+            </div>
+            <div>
+              <h4 className="text-lg font-semibold text-slate-900">Como funciona a qualificação</h4>
+              <p className="text-sm text-slate-500">Entenda o processo automatizado de qualificação de leads</p>
+            </div>
+          </div>
+          <ul className="text-sm text-slate-700 space-y-1.5">
+            <li className="flex items-start gap-2">
+              <span className="text-amber-500 font-bold">•</span>
+              <span><strong>MQL:</strong> Leads são automaticamente marcados como MQL quando atendem às regras configuradas</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-amber-500 font-bold">•</span>
+              <span><strong>SQL:</strong> Leads MQL podem ser promovidos para SQL quando atendem aos critérios de vendas</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-amber-500 font-bold">•</span>
+              <span><strong>Múltiplas regras:</strong> Todas as regras do mesmo tipo devem ser atendidas (operador AND)</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-amber-500 font-bold">•</span>
+              <span><strong>Automação:</strong> A classificação é automática baseada nos dados do lead</span>
+            </li>
+          </ul>
+        </div>
+      </BlurFade>
     </div>
   );
 };

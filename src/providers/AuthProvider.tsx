@@ -12,8 +12,6 @@ interface AuthContextType {
   session: Session | null;
   login: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
-  // Função essencial para compatibilidade com hooks existentes
-  authenticatedFetch: (url: string, options?: RequestInit) => Promise<Response>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -106,37 +104,8 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     }
   }, []);
 
-  // ✅ CORREÇÃO CRÍTICA: authenticatedFetch memoizada para evitar re-renders
-  const authenticatedFetch = useCallback(async (url: string, options: RequestInit = {}): Promise<Response> => {
-    try {
-      // Obter sessão atual do Supabase
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session?.access_token) {
-        throw new Error('No authentication token available');
-      }
-
-      // Configurar headers com autenticação
-      const headers = new Headers(options.headers);
-      headers.set('Authorization', `Bearer ${session.access_token}`);
-      headers.set('Content-Type', 'application/json');
-
-      // URL completa se for uma URL relativa - usar configuração centralizada
-      const { environmentConfig } = await import('../config/environment');
-      const fullUrl = url.startsWith('http') ? url : `${environmentConfig.urls.api}${url}`;
-
-      // Fazer a requisição autenticada
-      const response = await fetch(fullUrl, {
-        ...options,
-        headers,
-      });
-
-      return response;
-    } catch (error) {
-      console.error('🚨 [authenticatedFetch] Erro:', error);
-      throw error;
-    }
-  }, []);
+  // ✅ MIGRAÇÃO CONCLUÍDA: Sistema migrado para autenticação básica Supabase
+  // Todas as operações usam supabase.auth.getUser() + RLS policies
 
   // AIDEV-NOTE: Funções JWT customizadas removidas
   // O sistema agora usa 100% refresh automático do Supabase
@@ -190,9 +159,8 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     loading,
     session,
     login,
-    logout,
-    authenticatedFetch
-  }), [user, loading, session, login, logout, authenticatedFetch]);
+    logout
+  }), [user, loading, session, login, logout]);
 
   return (
     <AuthContext.Provider value={contextValue}>

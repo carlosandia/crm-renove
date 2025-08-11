@@ -228,6 +228,7 @@ export class BaseErrorBoundary extends Component<BaseErrorBoundaryProps, ErrorBo
 
   private reportToMonitoringService = (errorDetails: any) => {
     // AIDEV-NOTE: Integração com serviço de monitoramento
+    // ✅ CORREÇÃO: Evitar POST 404 para /api/errors
     try {
       // Placeholder para Sentry, LogRocket, etc.
       if (window.Sentry?.captureException) {
@@ -240,15 +241,19 @@ export class BaseErrorBoundary extends Component<BaseErrorBoundaryProps, ErrorBo
         });
       }
 
-      // Enviar para endpoint interno se necessário
+      // ✅ CORREÇÃO: Usar apenas console.error por enquanto
+      // Enviar para endpoint interno quando disponível
       if (process.env.NODE_ENV === 'production') {
-        fetch('/api/errors', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(errorDetails)
-        }).catch(() => {
-          // Falha silenciosa no reporting
-        });
+        console.error('🚨 [ErrorBoundary] Production error detected:', errorDetails);
+        
+        // TODO: Implementar endpoint /api/errors quando disponível no backend
+        // fetch('/api/errors', {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/json' },
+        //   body: JSON.stringify(errorDetails)
+        // }).catch(() => {
+        //   // Falha silenciosa no reporting
+        // });
       }
     } catch (reportingError) {
       console.warn('Failed to report error to monitoring service:', reportingError);

@@ -180,7 +180,7 @@ export class ConversionService {
           event_name: conversion.event_name,
           event_time: Math.floor(new Date(conversion.event_time).getTime() / 1000),
           action_source: 'website',
-          event_source_url: `https://app.crm.com/pipeline/${payload.pipeline_id}`,
+          event_source_url: `${process.env.VITE_FRONTEND_URL || process.env.APP_URL || 'https://crm.renovedigital.com.br'}/pipeline/${payload.pipeline_id}`,
           user_data: this.buildMetaUserData(leadData),
           custom_data: {
             campaign_id: leadData.campaign_id,

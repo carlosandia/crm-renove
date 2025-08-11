@@ -517,47 +517,115 @@ export class PipelineService {
       }
     }
 
-    // ✅ NOVA FUNCIONALIDADE: Atualizar pipeline_stages se fornecidas
+    // ✅ CORREÇÃO CRÍTICA: Atualizar pipeline_stages corretamente
     if (data.stages !== undefined) {
       console.log('🔄 [PipelineService] Atualizando etapas da pipeline...');
       
       try {
-        // ✅ NOVA ABORDAGEM: Atualizar order_index das stages existentes (não-destrutivo)
-        console.log('🔄 [PipelineService] Atualizando ordem das etapas (não-destrutivo)...');
+        // ✅ FILTRAR: Apenas stages customizadas (não do sistema)
+        const customStages = data.stages.filter(stage => !stage.is_system_stage);
         
-        if (data.stages.length > 0) {
-          // ✅ FILTRAR: Apenas stages customizadas (não do sistema)
-          const customStages = data.stages.filter(stage => !stage.is_system_stage);
+        if (customStages.length > 0) {
+          console.log('📝 [PipelineService] Processando', customStages.length, 'etapas customizadas');
           
-          if (customStages.length > 0) {
-            console.log('📝 [PipelineService] Atualizando order_index de', customStages.length, 'etapas customizadas');
+          // ✅ CORREÇÃO: Buscar etapas existentes no banco primeiro
+          const { data: existingStages, error: fetchError } = await supabase
+            .from('pipeline_stages')
+            .select('id, name, order_index, color')
+            .eq('pipeline_id', id)
+            .eq('is_system_stage', false);
+
+          if (fetchError) {
+            console.error('❌ [PipelineService] Erro ao buscar etapas existentes:', fetchError.message);
+            throw new Error(`Erro ao buscar etapas existentes: ${fetchError.message}`);
+          }
+
+          const existingStagesMap = new Map(existingStages?.map(stage => [stage.id, stage]) || []);
+          
+          // ✅ NOVA FUNCIONALIDADE: Identificar etapas para remover
+          const providedStageIds = new Set(
+            customStages
+              .filter(stage => stage.id) // Apenas etapas com ID
+              .map(stage => stage.id)
+          );
+          
+          const stagesToDelete = existingStages?.filter(
+            stage => stage.id && !providedStageIds.has(stage.id)
+          ) || [];
+          
+          // ✅ REMOÇÃO: Deletar etapas que não estão mais na lista
+          if (stagesToDelete.length > 0) {
+            console.log('🗑️ [PipelineService] Removendo etapas excluídas:', 
+              stagesToDelete.map(s => `"${s.name}" (${s.id.substring(0, 8)})`).join(', ')
+            );
             
-            // Atualizar cada stage individualmente com sua nova order_index
-            for (const stage of customStages) {
-              console.log(`🔄 Atualizando etapa "${stage.name}" para order_index: ${stage.order_index}`);
+            for (const stageToDelete of stagesToDelete) {
+              const { error: deleteError } = await supabase
+                .from('pipeline_stages')
+                .delete()
+                .eq('id', stageToDelete.id)
+                .eq('pipeline_id', id)
+                .eq('is_system_stage', false); // Apenas etapas customizadas podem ser removidas
+              
+              if (deleteError) {
+                console.error(`❌ [PipelineService] Erro ao remover etapa "${stageToDelete.name}":`, deleteError.message);
+                throw new Error(`Erro ao remover etapa "${stageToDelete.name}": ${deleteError.message}`);
+              }
+              
+              console.log(`✅ Etapa "${stageToDelete.name}" removida com sucesso`);
+            }
+          }
+          
+          // ✅ PROCESSAMENTO: Atualizar/inserir etapas restantes
+          for (const stage of customStages) {
+            // ✅ CORREÇÃO: Verificar se é uma etapa nova ou existente pelo ID
+            if (stage.id && existingStagesMap.has(stage.id)) {
+              // Etapa existente: ATUALIZAR usando ID
+              console.log(`🔄 Atualizando etapa existente "${stage.name}" (${stage.id.substring(0, 8)}) para order_index: ${stage.order_index}`);
               
               const { error: updateError } = await supabase
                 .from('pipeline_stages')
                 .update({ 
+                  name: stage.name, // ✅ Permitir mudanças no nome também
                   order_index: stage.order_index,
-                  color: stage.color || '#3B82F6' // Também atualizar cor se fornecida
+                  color: stage.color || '#3B82F6'
                 })
-                .eq('pipeline_id', id)
-                .eq('name', stage.name)
-                .eq('is_system_stage', false);
+                .eq('id', stage.id) // ✅ USAR ID, não nome!
+                .eq('pipeline_id', id);
 
               if (updateError) {
                 console.error(`❌ [PipelineService] Erro ao atualizar etapa "${stage.name}":`, updateError.message);
                 throw new Error(`Erro ao atualizar etapa "${stage.name}": ${updateError.message}`);
               }
-            }
+            } else {
+              // Etapa nova: INSERIR
+              console.log(`➕ Inserindo nova etapa "${stage.name}" com order_index: ${stage.order_index}`);
+              
+              const { error: insertError } = await supabase
+                .from('pipeline_stages')
+                .insert({
+                  pipeline_id: id,
+                  name: stage.name,
+                  order_index: stage.order_index,
+                  color: stage.color || '#3B82F6',
+                  is_system_stage: false,
+                  stage_type: 'personalizado',
+                  tenant_id: currentPipeline.tenant_id
+                });
 
-            console.log('✅ [PipelineService] Ordem das etapas atualizada com sucesso');
-          } else {
-            console.log('✅ [PipelineService] Apenas stages do sistema fornecidas, nenhuma atualização necessária');
+              if (insertError) {
+                console.error(`❌ [PipelineService] Erro ao inserir nova etapa "${stage.name}":`, insertError.message);
+                throw new Error(`Erro ao inserir nova etapa "${stage.name}": ${insertError.message}`);
+              }
+            }
           }
+          
+          // ✅ NOVA FUNCIONALIDADE: Garantir order_index sequencial após todas operações
+          await this.reindexStagesSequentially(id, currentPipeline.tenant_id);
+          
+          console.log('✅ [PipelineService] Etapas atualizadas e reindexadas sequencialmente com sucesso');
         } else {
-          console.log('⚠️ [PipelineService] Nenhuma etapa fornecida para atualização');
+          console.log('✅ [PipelineService] Apenas stages do sistema fornecidas, nenhuma atualização necessária');
         }
       } catch (stagesError: any) {
         console.error('❌ [PipelineService] Erro crítico ao atualizar stages:', stagesError.message);
@@ -591,6 +659,104 @@ export class PipelineService {
     return updatedPipeline;
   }
 
+  /**
+   * ✅ NOVA FUNÇÃO: Garantir order_index sequencial (1, 2, 3...) para etapas customizadas
+   * Executada após operações de inserção/atualização/remoção de stages
+   */
+  static async reindexStagesSequentially(pipelineId: string, tenantId: string): Promise<void> {
+    try {
+      console.log('🔢 [PipelineService] INICIANDO reindexacao sequencial de stages:', {
+        pipelineId: pipelineId.substring(0, 8),
+        tenantId: tenantId.substring(0, 8)
+      });
+      
+      // ✅ BUSCAR todas etapas customizadas da pipeline ordenadas por order_index atual
+      const { data: customStages, error: fetchError } = await supabase
+        .from('pipeline_stages')
+        .select('id, name, order_index')
+        .eq('pipeline_id', pipelineId)
+        .eq('tenant_id', tenantId)
+        .eq('is_system_stage', false)
+        .order('order_index', { ascending: true });
+        
+      if (fetchError) {
+        console.error('❌ [PipelineService] Erro ao buscar etapas para reindexacao:', fetchError.message);
+        throw new Error(`Erro ao buscar etapas para reindexacao: ${fetchError.message}`);
+      }
+      
+      if (!customStages || customStages.length === 0) {
+        console.log('ℹ️ [PipelineService] Nenhuma etapa customizada encontrada para reindexacao');
+        return;
+      }
+      
+      console.log('🔍 [PipelineService] Etapas ANTES da reindexacao:', {
+        stages: customStages.map(s => ({ name: s.name, order_index: s.order_index, id: s.id.substring(0, 8) })),
+        sequenciaAtual: customStages.map(s => s.order_index).join(' → ')
+      });
+      
+      // ✅ RECÁLCULO SEQUENCIAL: Aplicar nova sequência 1, 2, 3, 4...
+      const reindexPromises = customStages.map((stage, index) => {
+        const newOrderIndex = index + 1; // Forçar sequência: 1, 2, 3...
+        
+        console.log(`🔄 Reindexando "${stage.name}": ${stage.order_index} → ${newOrderIndex}`);
+        
+        return supabase
+          .from('pipeline_stages')
+          .update({ order_index: newOrderIndex })
+          .eq('id', stage.id)
+          .eq('pipeline_id', pipelineId)
+          .eq('is_system_stage', false); // Segurança extra
+      });
+      
+      // ✅ EXECUTAR todas atualizações em paralelo para performance
+      const results = await Promise.all(reindexPromises);
+      
+      // ✅ VERIFICAR se houve erros nas atualizações
+      const errors = results.filter(result => result.error);
+      if (errors.length > 0) {
+        console.error('❌ [PipelineService] Erros durante reindexacao:', 
+          errors.map(e => e.error?.message).join(', ')
+        );
+        throw new Error(`Erro durante reindexacao: ${errors[0].error?.message}`);
+      }
+      
+      // ✅ VERIFICACAO FINAL: Confirmar sequência correta no banco
+      const { data: verificationStages, error: verificationError } = await supabase
+        .from('pipeline_stages')
+        .select('name, order_index')
+        .eq('pipeline_id', pipelineId)
+        .eq('is_system_stage', false)
+        .order('order_index', { ascending: true });
+        
+      if (verificationError) {
+        console.error('❌ [PipelineService] Erro na verificacao final:', verificationError.message);
+      } else {
+        const finalSequence = verificationStages?.map(s => s.order_index) || [];
+        const expectedSequence = Array.from({ length: finalSequence.length }, (_, i) => i + 1);
+        const isSequential = JSON.stringify(finalSequence) === JSON.stringify(expectedSequence);
+        
+        console.log('✅ [PipelineService] REINDEXACAO CONCLUÍDA:', {
+          totalStages: finalSequence.length,
+          finalSequence: finalSequence.join(' → '),
+          expectedSequence: expectedSequence.join(' → '),
+          isSequential: isSequential ? '✅ CORRETO' : '❌ INCORRETO',
+          stageNames: verificationStages?.map(s => `${s.name}(${s.order_index})`).join(', ')
+        });
+        
+        if (!isSequential) {
+          throw new Error('Reindexacao falhou - sequencia nao e 1,2,3,4...');
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ [PipelineService] ERRO CRÍTICO na reindexacao sequencial:', {
+        pipelineId: pipelineId.substring(0, 8),
+        error: error.message
+      });
+      // ✅ NAO FALHAR o processo principal - apenas logar erro
+      // A reindexacao e uma melhoria, nao uma operação crítica
+    }
+  }
+  
   /**
    * ✅ NOVO: Validar consistência entre cadence_configs e task_instances
    * Prevenir inconsistências futuras entre configurações e instâncias
@@ -655,6 +821,402 @@ export class PipelineService {
     } catch (error: any) {
       console.error('❌ [PipelineService] Erro na validação de consistência:', error.message);
       throw error;
+    }
+  }
+
+  /**
+   * ✅ NOVA: Validação robusta para exclusão de etapa (backend)
+   * Complementa a validação do frontend com verificações do banco de dados
+   */
+  static async validateStageForDeletion(
+    stageId: string, 
+    pipelineId: string, 
+    tenantId: string
+  ): Promise<{
+    canDelete: boolean;
+    reasons: string[];
+    warnings: string[];
+    severity: 'low' | 'medium' | 'high';
+    leadCount: number;
+    tasksCount: number;
+  }> {
+    try {
+      console.log('🔍 [PipelineService] Iniciando validação robusta para exclusão de etapa:', {
+        stage_id: stageId.substring(0, 8),
+        pipeline_id: pipelineId.substring(0, 8),
+        tenant_id: tenantId.substring(0, 8)
+      });
+
+      const reasons: string[] = [];
+      const warnings: string[] = [];
+      let severity: 'low' | 'medium' | 'high' = 'low';
+      let canDelete = true;
+
+      // 1. ✅ VERIFICAR SE É ETAPA DO SISTEMA
+      const { data: stage, error: stageError } = await supabase
+        .from('pipeline_stages')
+        .select('name, order_index, is_system_stage')
+        .eq('id', stageId)
+        .eq('pipeline_id', pipelineId)
+        .eq('tenant_id', tenantId)
+        .single();
+
+      if (stageError || !stage) {
+        reasons.push('Etapa não encontrada no banco de dados');
+        severity = 'high';
+        canDelete = false;
+        return { canDelete, reasons, warnings, severity, leadCount: 0, tasksCount: 0 };
+      }
+
+      if (stage.is_system_stage) {
+        reasons.push(`"${stage.name}" é uma etapa do sistema e não pode ser excluída`);
+        severity = 'high';
+        canDelete = false;
+      }
+
+      // 2. ✅ CONTAR LEADS NA ETAPA
+      const { count: leadCount, error: leadsError } = await supabase
+        .from('pipeline_leads')
+        .select('*', { count: 'exact', head: true })
+        .eq('stage_id', stageId)
+        .eq('tenant_id', tenantId);
+
+      const actualLeadCount = leadCount || 0;
+
+      if (leadsError) {
+        console.warn('⚠️ [PipelineService] Erro ao contar leads:', leadsError.message);
+        warnings.push('Não foi possível verificar leads na etapa - proceda com cuidado');
+        severity = severity === 'low' ? 'medium' : severity;
+      } else if (actualLeadCount > 0) {
+        if (actualLeadCount > 50) {
+          warnings.push(`${actualLeadCount} leads serão movidos para a primeira etapa - operação demorada`);
+          severity = 'high';
+        } else if (actualLeadCount > 10) {
+          warnings.push(`${actualLeadCount} leads serão movidos para a primeira etapa`);
+          severity = severity === 'low' ? 'medium' : severity;
+        } else {
+          warnings.push(`${actualLeadCount} leads serão movidos para a primeira etapa`);
+        }
+      }
+
+      // 3. ✅ CONTAR TAREFAS DE CADÊNCIA ASSOCIADAS
+      const { count: tasksCount, error: tasksError } = await supabase
+        .from('cadence_task_instances')
+        .select('*', { count: 'exact', head: true })
+        .eq('stage_id', stageId)
+        .eq('tenant_id', tenantId);
+
+      const actualTasksCount = tasksCount || 0;
+
+      if (tasksError) {
+        console.warn('⚠️ [PipelineService] Erro ao contar tarefas:', tasksError.message);
+        warnings.push('Não foi possível verificar tarefas de cadência - algumas podem ser perdidas');
+        severity = severity === 'low' ? 'medium' : severity;
+      } else if (actualTasksCount > 0) {
+        if (actualTasksCount > 100) {
+          warnings.push(`${actualTasksCount} tarefas de cadência serão removidas - impacto significativo`);
+          severity = 'high';
+        } else if (actualTasksCount > 20) {
+          warnings.push(`${actualTasksCount} tarefas de cadência serão removidas`);
+          severity = severity === 'low' ? 'medium' : severity;
+        } else {
+          warnings.push(`${actualTasksCount} tarefas de cadência serão removidas`);
+        }
+      }
+
+      // 4. ✅ VERIFICAR NÚMERO MÍNIMO DE ETAPAS
+      const { count: totalStages, error: countError } = await supabase
+        .from('pipeline_stages')
+        .select('*', { count: 'exact', head: true })
+        .eq('pipeline_id', pipelineId)
+        .eq('tenant_id', tenantId)
+        .eq('is_system_stage', false);
+
+      if (countError) {
+        warnings.push('Não foi possível verificar número total de etapas');
+        severity = severity === 'low' ? 'medium' : severity;
+      } else if ((totalStages || 0) <= 1) {
+        reasons.push('Deve haver pelo menos uma etapa customizada na pipeline');
+        severity = 'high';
+        canDelete = false;
+      } else if ((totalStages || 0) <= 2) {
+        warnings.push('Pipeline ficará com apenas 1 etapa customizada - considere adicionar mais');
+        severity = severity === 'low' ? 'medium' : severity;
+      }
+
+      // 5. ✅ VERIFICAR POSIÇÕES CRÍTICAS
+      if (stage.order_index === 1) {
+        warnings.push('Primeira etapa será removida - leads novos irão para a próxima etapa');
+        severity = severity === 'low' ? 'medium' : severity;
+      }
+
+      console.log('✅ [PipelineService] Validação robusta concluída:', {
+        stage_name: stage.name,
+        can_delete: canDelete,
+        severity,
+        reasons_count: reasons.length,
+        warnings_count: warnings.length,
+        lead_count: actualLeadCount,
+        tasks_count: actualTasksCount
+      });
+
+      return {
+        canDelete,
+        reasons,
+        warnings,
+        severity,
+        leadCount: actualLeadCount,
+        tasksCount: actualTasksCount
+      };
+
+    } catch (error: any) {
+      console.error('❌ [PipelineService] Erro na validação robusta:', error.message);
+      return {
+        canDelete: false,
+        reasons: [`Erro do servidor: ${error.message}`],
+        warnings: [],
+        severity: 'high',
+        leadCount: 0,
+        tasksCount: 0
+      };
+    }
+  }
+
+  /**
+   * ✅ NOVA: Mover leads para primeira etapa ao excluir etapa
+   * Operação segura para preservar dados dos leads
+   */
+  static async moveLeadsToFirstStage(
+    stageId: string, 
+    pipelineId: string, 
+    tenantId: string
+  ): Promise<{ movedCount: number; firstStageId: string | null }> {
+    try {
+      console.log('🔄 [PipelineService] Movendo leads para primeira etapa:', {
+        from_stage_id: stageId.substring(0, 8),
+        pipeline_id: pipelineId.substring(0, 8)
+      });
+
+      // 1. ✅ ENCONTRAR PRIMEIRA ETAPA DA PIPELINE
+      const { data: firstStage, error: firstStageError } = await supabase
+        .from('pipeline_stages')
+        .select('id, name')
+        .eq('pipeline_id', pipelineId)
+        .eq('tenant_id', tenantId)
+        .order('order_index', { ascending: true })
+        .limit(1)
+        .single();
+
+      if (firstStageError || !firstStage) {
+        throw new Error('Não foi possível encontrar a primeira etapa da pipeline');
+      }
+
+      // 2. ✅ MOVER TODOS OS LEADS
+      const { data: movedLeads, error: moveError } = await supabase
+        .from('pipeline_leads')
+        .update({ 
+          stage_id: firstStage.id,
+          moved_at: new Date().toISOString()
+        })
+        .eq('stage_id', stageId)
+        .eq('tenant_id', tenantId)
+        .select('id');
+
+      if (moveError) {
+        throw new Error(`Erro ao mover leads: ${moveError.message}`);
+      }
+
+      const movedCount = movedLeads?.length || 0;
+
+      console.log('✅ [PipelineService] Leads movidos com sucesso:', {
+        moved_count: movedCount,
+        to_stage: firstStage.name,
+        to_stage_id: firstStage.id.substring(0, 8)
+      });
+
+      return {
+        movedCount,
+        firstStageId: firstStage.id
+      };
+
+    } catch (error: any) {
+      console.error('❌ [PipelineService] Erro ao mover leads:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * ✅ NOVA: Limpar tarefas de cadência ao excluir etapa
+   * Remove tarefas associadas para evitar referências órfãs
+   */
+  static async cleanupStageTasks(
+    stageId: string, 
+    tenantId: string
+  ): Promise<{ removedTasksCount: number; removedConfigsCount: number }> {
+    try {
+      console.log('🧹 [PipelineService] Limpando tarefas de cadência da etapa:', {
+        stage_id: stageId.substring(0, 8),
+        tenant_id: tenantId.substring(0, 8)
+      });
+
+      // 1. ✅ REMOVER TASK INSTANCES
+      const { data: removedTasks, error: tasksError } = await supabase
+        .from('cadence_task_instances')
+        .delete()
+        .eq('stage_id', stageId)
+        .eq('tenant_id', tenantId)
+        .select('id');
+
+      if (tasksError) {
+        console.warn('⚠️ [PipelineService] Erro ao remover task instances:', tasksError.message);
+      }
+
+      // 2. ✅ BUSCAR NOME DA ETAPA PARA CONFIGS
+      const { data: stage, error: stageError } = await supabase
+        .from('pipeline_stages')
+        .select('name')
+        .eq('id', stageId)
+        .eq('tenant_id', tenantId)
+        .single();
+
+      let removedConfigsCount = 0;
+
+      if (!stageError && stage) {
+        // 3. ✅ REMOVER CONFIGS POR STAGE_NAME
+        const { data: removedConfigs, error: configsError } = await supabase
+          .from('cadence_configs')
+          .delete()
+          .eq('stage_name', stage.name)
+          .eq('tenant_id', tenantId)
+          .select('id');
+
+        if (configsError) {
+          console.warn('⚠️ [PipelineService] Erro ao remover cadence configs:', configsError.message);
+        } else {
+          removedConfigsCount = removedConfigs?.length || 0;
+        }
+      }
+
+      const removedTasksCount = removedTasks?.length || 0;
+
+      console.log('✅ [PipelineService] Limpeza de tarefas concluída:', {
+        removed_tasks: removedTasksCount,
+        removed_configs: removedConfigsCount
+      });
+
+      return {
+        removedTasksCount,
+        removedConfigsCount
+      };
+
+    } catch (error: any) {
+      console.error('❌ [PipelineService] Erro na limpeza de tarefas:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * ✅ NOVA: Exclusão completa e segura de etapa com validações e limpeza
+   * Integra todas as validações e operações de cleanup necessárias
+   */
+  static async deleteStage(
+    stageId: string,
+    pipelineId: string,
+    tenantId: string,
+    options: {
+      skipValidation?: boolean;
+      skipLeadMovement?: boolean;
+      skipTaskCleanup?: boolean;
+    } = {}
+  ): Promise<{
+    success: boolean;
+    validation?: any;
+    movedLeads?: { movedCount: number; firstStageId: string | null };
+    cleanupTasks?: { removedTasksCount: number; removedConfigsCount: number };
+    message: string;
+  }> {
+    try {
+      console.log('🚀 [PipelineService] Iniciando exclusão completa de etapa:', {
+        stage_id: stageId.substring(0, 8),
+        pipeline_id: pipelineId.substring(0, 8),
+        tenant_id: tenantId.substring(0, 8),
+        options
+      });
+
+      // 1. ✅ EXECUTAR VALIDAÇÃO (se não pulada)
+      let validation = null;
+      if (!options.skipValidation) {
+        validation = await this.validateStageForDeletion(stageId, pipelineId, tenantId);
+        
+        if (!validation.canDelete) {
+          console.warn('❌ [PipelineService] Exclusão bloqueada pela validação:', {
+            reasons: validation.reasons.join(', '),
+            severity: validation.severity
+          });
+          return {
+            success: false,
+            validation,
+            message: `Exclusão bloqueada: ${validation.reasons.join(', ')}`
+          };
+        }
+      }
+
+      // 2. ✅ MOVER LEADS PARA PRIMEIRA ETAPA (se não pulado)
+      let movedLeads = null;
+      if (!options.skipLeadMovement) {
+        movedLeads = await this.moveLeadsToFirstStage(stageId, pipelineId, tenantId);
+        console.log('✅ [PipelineService] Leads movidos:', movedLeads);
+      }
+
+      // 3. ✅ LIMPAR TAREFAS DE CADÊNCIA (se não pulado)
+      let cleanupTasks = null;
+      if (!options.skipTaskCleanup) {
+        cleanupTasks = await this.cleanupStageTasks(stageId, tenantId);
+        console.log('✅ [PipelineService] Tarefas limpas:', cleanupTasks);
+      }
+
+      // 4. ✅ EXCLUIR A ETAPA DO BANCO
+      const { error: deleteError } = await supabase
+        .from('pipeline_stages')
+        .delete()
+        .eq('id', stageId)
+        .eq('pipeline_id', pipelineId)
+        .eq('tenant_id', tenantId);
+
+      if (deleteError) {
+        throw new Error(`Erro ao excluir etapa do banco: ${deleteError.message}`);
+      }
+
+      // 5. ✅ REINDEXAR ETAPAS SEQUENCIALMENTE
+      await this.reindexStagesSequentially(pipelineId, tenantId);
+      console.log('✅ [PipelineService] Reindexação concluída');
+
+      console.log('🎉 [PipelineService] Exclusão de etapa concluída com sucesso:', {
+        stage_id: stageId.substring(0, 8),
+        moved_leads: movedLeads?.movedCount || 0,
+        removed_tasks: cleanupTasks?.removedTasksCount || 0,
+        removed_configs: cleanupTasks?.removedConfigsCount || 0
+      });
+
+      return {
+        success: true,
+        validation,
+        movedLeads,
+        cleanupTasks,
+        message: 'Etapa excluída com sucesso'
+      };
+
+    } catch (error: any) {
+      console.error('❌ [PipelineService] ERRO na exclusão de etapa:', {
+        stage_id: stageId.substring(0, 8),
+        error: error.message,
+        stack: error.stack?.split('\n')[0] // Primeira linha do stack
+      });
+
+      return {
+        success: false,
+        message: `Erro ao excluir etapa: ${error.message}`
+      };
     }
   }
 

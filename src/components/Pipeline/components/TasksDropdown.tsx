@@ -1,5 +1,7 @@
+// ✅ MIGRAÇÃO CONCLUÍDA: Sistema usando autenticação básica Supabase
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../../providers/AuthProvider';
+import { supabase } from '../../../lib/supabase';
 import { createPortal } from 'react-dom';
 import { 
   CheckCircle, 
@@ -233,14 +235,22 @@ export const TasksDropdown: React.FC<TasksDropdownProps> = ({
   }, [deleteTask, forceRefreshCache]);
 
   // ✅ CORREÇÃO: Hook de autenticação segura
-  const { authenticatedFetch } = useAuth();
+  const { user } = useAuth();
 
   // ✅ NOVO: Handler para salvar atividade personalizada
   const handleSaveCustomActivity = useCallback(async (activity: any) => {
     try {
-      // ✅ CORREÇÃO: Usar autenticação segura do Supabase
-      const response = await authenticatedFetch('/activities/manual', {
+      // ✅ CORREÇÃO: Usar autenticação básica Supabase diretamente via API
+      // AIDEV-NOTE: Migração para padrão básico - usar fetch direto com autenticação manual
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Usuário não autenticado');
+
+      const response = await fetch('/api/activities/manual', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
         body: JSON.stringify({
           lead_id: leadId,
           pipeline_id: pipelineId,

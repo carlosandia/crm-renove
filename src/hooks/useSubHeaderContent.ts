@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { SubHeader, FilterOption } from '../components/SubHeader';
+import SubHeader, { FilterOption } from '../components/SubHeader/SubHeader';
 import { Button } from '../components/ui/button';
 import { Plus, Archive, MoreHorizontal, Download, Upload } from 'lucide-react';
 import {
@@ -24,6 +24,7 @@ export interface SubHeaderConfig {
   onFilterChange?: (filterId: string) => void;
   actions?: React.ReactNode;
   showSearch?: boolean;
+  showFilterBadge?: boolean;
 }
 
 // ============================================
@@ -43,7 +44,8 @@ export const useSubHeaderContent = (config?: SubHeaderConfig): React.ReactNode =
       activeFilter: config.activeFilter,
       onFilterChange: config.onFilterChange,
       actions: config.actions,
-      showSearch: config.showSearch
+      showSearch: config.showSearch,
+      showFilterBadge: config.showFilterBadge
     });
   }, [config]);
 };
@@ -230,6 +232,49 @@ export const useLeadsSubHeader = ({
       showSearch: true
     };
   }, [leads, leadsWithOpportunities, searchTerm, selectedFilter, onSearchChange, onFilterChange, onCreateLead]);
+
+  return useSubHeaderContent(config);
+};
+
+// ============================================
+// HOOK PARA INTEGRAÇÕES SUBHEADER
+// ============================================
+
+export const useIntegrationsSubHeader = ({
+  activeTab = 'config',
+  onTabChange
+}: {
+  activeTab?: 'config' | 'calendar' | 'email';
+  onTabChange?: (tab: 'config' | 'calendar' | 'email') => void;
+}) => {
+  const config: SubHeaderConfig = useMemo(() => {
+    // Criar filtros que funcionam como abas
+    const filters: FilterOption[] = [
+      {
+        id: 'config',
+        label: 'Configurações'
+      },
+      {
+        id: 'calendar',
+        label: 'Google Calendar'
+      },
+      {
+        id: 'email',
+        label: 'E-mail pessoal'
+      }
+    ];
+
+    return {
+      title: 'Integrações',
+      searchPlaceholder: '',
+      searchValue: '',
+      filters,
+      activeFilter: activeTab,
+      onFilterChange: onTabChange,
+      showSearch: false, // Sem busca para integrações
+      showFilterBadge: false // Sem badge de filtro para integrações (são abas, não filtros)
+    };
+  }, [activeTab, onTabChange]);
 
   return useSubHeaderContent(config);
 };

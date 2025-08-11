@@ -21,6 +21,7 @@ const AppDashboard: React.FC = () => {
   
   // ✅ THROTTLING: Ref para controlar logs duplicados
   const lastLoggedPipeline = useRef<string | null>(null);
+  const lastSubHeaderLogTime = useRef<number>(0);
   
   // 🔄 SINCRONIZAR: Estado local com dados do hook
   useEffect(() => {
@@ -174,22 +175,45 @@ const AppDashboard: React.FC = () => {
     return 'Dashboard Admin';
   });
 
+  // 🎯 INTEGRAÇÕES: Estado para gerenciar aba ativa das integrações
+  const [integrationsActiveTab, setIntegrationsActiveTab] = useState<'config' | 'calendar' | 'email'>('config');
+
   // 🔄 PERSISTÊNCIA: Salvar módulo ativo sempre que mudar (useCallback para evitar re-renders)
   const handleNavigateWithPersistence = useCallback((moduleName: string) => {
     console.log(`📍 Navegando para: ${moduleName}`);
     
     try {
-      // Salvar no localStorage
-      localStorage.setItem('crm_active_module', moduleName);
+      // 🎯 NOVO: Verificar se há query parameters (para Integrações)
+      let actualModuleName = moduleName;
+      let queryParams: URLSearchParams | undefined;
       
-      // Atualizar estado
-      setActiveModule(moduleName);
+      if (moduleName.includes('?')) {
+        const [module, queryString] = moduleName.split('?');
+        actualModuleName = module;
+        queryParams = new URLSearchParams(queryString);
+        
+        // Se for Integrações com parâmetro tab, atualizar estado da aba
+        if (actualModuleName === 'Integrações' && queryParams.has('tab')) {
+          const tabParam = queryParams.get('tab') as 'config' | 'calendar' | 'email';
+          if (['config', 'calendar', 'email'].includes(tabParam)) {
+            setIntegrationsActiveTab(tabParam);
+            console.log(`🎯 Aba de integrações definida: ${tabParam}`);
+          }
+        }
+      }
       
-      console.log(`✅ Módulo '${moduleName}' salvo com sucesso`);
+      // Salvar no localStorage apenas o nome do módulo (sem query params)
+      localStorage.setItem('crm_active_module', actualModuleName);
+      
+      // Atualizar estado do módulo ativo
+      setActiveModule(actualModuleName);
+      
+      console.log(`✅ Módulo '${actualModuleName}' salvo com sucesso${queryParams ? ` (com parâmetros)` : ''}`);
     } catch (error) {
       console.error('Erro ao salvar módulo ativo:', error);
       // Mesmo com erro, atualizar o estado
-      setActiveModule(moduleName);
+      const actualModuleName = moduleName.includes('?') ? moduleName.split('?')[0] : moduleName;
+      setActiveModule(actualModuleName);
     }
   }, []);
 
@@ -247,6 +271,8 @@ const AppDashboard: React.FC = () => {
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [leadsWithOpportunities, setLeadsWithOpportunities] = useState<Set<string>>(new Set());
 
+  // 🗑️ REMOVIDO: Declaração duplicada de integrationsActiveTab (já definida acima)
+
   // ✅ REMOVIDO: userPipelines já definido no topo do componente
 
   // 🎯 SUBHEADER: Handlers para Pipelines
@@ -294,6 +320,8 @@ const AppDashboard: React.FC = () => {
     
     window.dispatchEvent(createLeadEvent);
   }, []);
+
+  // 🗑️ REMOVIDO: handleIntegrationsTabChange (controle agora é via header dropdown)
 
   const handleImportLeads = useCallback(() => {
     console.log('📥 [AppDashboard] Solicitando importação de leads via evento');
@@ -408,15 +436,23 @@ const AppDashboard: React.FC = () => {
     onExportClick: handleExportLeads
   });
 
+  // 🗑️ REMOVIDO: useIntegrationsSubHeader (controle de abas agora é via header dropdown)
+  
+
   // ✅ FASE 2: Pipeline específico simplificado - APENAS cache inteligente para acesso direto
   const pipelineSpecificSubHeader = useMemo(() => {
+    // ✅ CORREÇÃO CRÍTICA: Só executar para módulos de Pipeline
+    if (activeModule !== 'Pipeline' && activeModule !== 'Gestão de pipeline') {
+      return null;
+    }
+    
     // Aguardar carregamento do cache e pipelines
     if (cacheLoading || pipelinesLoading || !user) {
       return null;
     }
 
     // ✅ FASE 2: LÓGICA UNIFICADA - Acesso direto ao pipeline com cache inteligente (Members E Admins)
-    if ((activeModule === 'Pipeline' || activeModule === 'Gestão de pipeline') && userPipelines.length > 0) {
+    if (userPipelines.length > 0) {
       // ✅ AGUARDAR: Cache deve estar completamente carregado
       if (cacheLoading) {
         console.log('⏳ [AppDashboard] Aguardando cache carregar antes de criar SubHeader');
@@ -536,6 +572,17 @@ const AppDashboard: React.FC = () => {
 
   // ✅ FASE 2: Selecionar o subheader correto com acesso direto ao pipeline
   const subHeaderContent = useMemo(() => {
+    // ✅ OTIMIZAÇÃO: Log com throttling de 5 segundos para evitar spam
+    const now = Date.now();
+    if (process.env.NODE_ENV === 'development' && (now - lastSubHeaderLogTime.current >= 5000)) {
+      lastSubHeaderLogTime.current = now;
+      console.log('🔍 [AppDashboard] Selecionando SubHeader:', {
+        activeModule,
+        hasLeadsSubHeader: !!leadsSubHeaderContent,
+        hasPipelineSubHeader: !!pipelineSpecificSubHeader
+      });
+    }
+    
     switch (activeModule) {
       case 'Gestão de pipeline':
         // ✅ FASE 2: Sempre usar acesso direto ao pipeline (sem lista intermediária)
@@ -544,6 +591,9 @@ const AppDashboard: React.FC = () => {
         return pipelineSpecificSubHeader;
       case 'Leads':
         return leadsSubHeaderContent;
+      case 'Integrações':
+        // 🗑️ REMOVIDO: Integrações não tem mais subheader (controle via header dropdown)
+        return undefined;
       default:
         return undefined;
     }
@@ -640,7 +690,7 @@ const AppDashboard: React.FC = () => {
         }
       });
       window.dispatchEvent(leadsFiltersEvent);
-      console.log('🔍 [AppDashboard] Filtros de leads enviados:', { searchTerm: leadsSearchTerm, selectedFilter: leadsSelectedFilter });
+      console.log('🔍 [AppDashboard] Filtros de leads enviados');
     }
   }, [leadsSearchTerm, leadsSelectedFilter, activeModule]);
 
@@ -833,6 +883,8 @@ const AppDashboard: React.FC = () => {
         selectedPipeline={lastViewedPipeline}
         onPipelineChange={setLastViewedPipeline}
         cacheLoading={cacheLoading}
+        // ✅ INTEGRAÇÃO: Prop para controle de aba ativa das integrações
+        integrationsActiveTab={integrationsActiveTab}
       />
     </CRMLayout>
       

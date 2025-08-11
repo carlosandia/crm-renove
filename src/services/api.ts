@@ -54,6 +54,7 @@ class ApiService {
 
   /**
    * Request base com retry e timeout + autenticação automática Supabase
+   * ✅ CORREÇÃO: Tratamento robusto de AbortController e timeout
    */
   private async request<T>(
     endpoint: string,
@@ -82,30 +83,80 @@ class ApiService {
       console.error('❌ [API] Erro ao obter token Supabase:', authError);
     }
     
+    // ✅ TIMEOUT ESPECÍFICO: Validação SMTP vs outras operações SMTP
+    const isSmtpValidation = endpoint.includes('/simple-email/validate-config');
+    const isSmtpOperation = endpoint.includes('/simple-email/') && !isSmtpValidation;
+    
+    // ✅ TIMEOUT CONFIGURADO para cada tipo de operação
+    let timeoutDuration = API.TIMEOUT; // 30s padrão
+    if (isSmtpValidation) {
+      // ✅ BASEADO EM DIAGNÓSTICO: 3 tentativas x 7min cada = 21min total
+      // Adicionando margem de segurança: 25 minutos
+      timeoutDuration = 25 * 60 * 1000; // 25 minutos
+      console.log('🧪 [API-TIMEOUT] Validação SMTP ultra robusta: timeout 25min (3 tentativas x 7min + margem)');
+    } else if (isSmtpOperation) {
+      // Outras operações SMTP: sem timeout (controlado pelo Nodemailer)
+      console.log('📧 [API-SMTP] Operação SMTP: sem timeout de frontend');
+    }
+    
+    // ✅ CRIAR CONTROLLER baseado no tipo de operação
+    const shouldCreateController = !options.signal && !isSmtpOperation; // Validação ainda precisa de controller
+    const controller = shouldCreateController ? new AbortController() : null;
+    const signal = options.signal || controller?.signal;
+    
     const config: RequestInit = {
       ...options,
       headers,
+      signal,
     };
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), API.TIMEOUT);
+    // ✅ TIMEOUT APLICADO baseado no tipo de operação
+    const timeoutId = shouldCreateController ? setTimeout(() => {
+      if (controller) {
+        const operationType = isSmtpValidation ? 'Validação SMTP' : 'Operação padrão';
+        console.log(`⏰ [API] ${operationType} - Timeout atingido (${timeoutDuration}ms) - abortando requisição`);
+        controller.abort();
+      }
+    }, timeoutDuration) : null;
 
     try {
-      const response = await fetch(url, {
-        ...config,
-        signal: controller.signal,
-      });
+      console.log(`🌐 [API] ${options.method || 'GET'} ${url}`);
+      const startTime = Date.now();
+      
+      const response = await fetch(url, config);
+      const duration = Date.now() - startTime;
+      
+      if (timeoutId) clearTimeout(timeoutId);
 
-      clearTimeout(timeoutId);
+      console.log(`✅ [API] Resposta recebida em ${duration}ms: ${response.status}`);
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ [API] Erro HTTP ${response.status}: ${errorText}`);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
       return data;
-    } catch (error) {
-      clearTimeout(timeoutId);
+    } catch (error: any) {
+      if (timeoutId) clearTimeout(timeoutId);
+      
+      // ✅ CORREÇÃO: Melhor tratamento de erros AbortError
+      if (error.name === 'AbortError') {
+        console.error('❌ [API] Requisição cancelada:', {
+          url,
+          method: options.method || 'GET',
+          reason: error.message || 'Timeout ou cancelamento'
+        });
+        throw new Error('Requisição cancelada ou timeout atingido');
+      }
+      
+      console.error('❌ [API] Erro na requisição:', {
+        url,
+        method: options.method || 'GET',
+        error: error.message
+      });
+      
       throw error;
     }
   }
@@ -121,13 +172,15 @@ class ApiService {
   }
 
   /**
-   * POST request
+   * POST request simplificado - timeout padrão para todas operações
    */
   async post<T>(endpoint: string, data?: unknown): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, {
+    const config: RequestInit = {
       method: 'POST',
       body: data ? JSON.stringify(data) : undefined,
-    });
+    };
+    
+    return this.request<T>(endpoint, config);
   }
 
   /**
@@ -147,6 +200,38 @@ class ApiService {
     return this.request<T>(endpoint, {
       method: 'DELETE',
     });
+  }
+
+  /**
+   * ✅ MIGRAÇÃO CONCLUÍDA: Método mantido para compatibilidade - usa autenticação básica Supabase
+   */
+  async authenticatedFetch(endpoint: string, options: RequestInit = {}): Promise<Response> {
+    const url = `${this.baseURL}${endpoint}`;
+    
+    // Incluir automaticamente token Supabase
+    const headers: Record<string, string> = {
+      ...this.defaultHeaders,
+      ...(options.headers as Record<string, string>),
+    };
+    
+    // Buscar token Supabase automaticamente
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch (authError) {
+      console.error('❌ [API] Erro ao obter token Supabase:', authError);
+    }
+    
+    const config: RequestInit = {
+      ...options,
+      headers,
+    };
+
+    return fetch(url, config);
   }
 
   /**

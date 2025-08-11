@@ -9,6 +9,7 @@ import PendingLeadsTab from './Pipeline/PendingLeadsTab';
 import LeadsImportModal from './Leads/LeadsImportModal';
 import LeadsExportModal from './Leads/LeadsExportModal';
 import { filterLeadsWithoutOpportunity } from '../utils/leadOpportunityUtils';
+import { usePerformanceMonitor } from '../shared/utils/performance';
 
 interface LeadMaster {
   id: string;
@@ -41,6 +42,7 @@ interface LeadMaster {
 
 const LeadsModule: React.FC = () => {
   const { user } = useAuth();
+  const performanceMonitor = usePerformanceMonitor('LeadsModule');
   const [leads, setLeads] = useState<LeadMaster[]>([]);
   const [filteredLeads, setFilteredLeads] = useState<LeadMaster[]>([]);
   const [loading, setLoading] = useState(true);
@@ -141,41 +143,42 @@ const LeadsModule: React.FC = () => {
     console.log('📊 [LeadsModule] Dados completos enviados para AppDashboard:', leads.length, 'leads,', leadsWithOpps.size, 'com oportunidades');
   };
 
-  // Carregar leads
+  // ✅ PERFORMANCE-OPTIMIZED: Carregar leads com monitoramento
   const loadLeads = async () => {
     if (!user?.tenant_id) return;
 
     try {
       setLoading(true);
-      console.log('🔍 Carregando leads para tenant_id:', user.tenant_id, 'role:', user.role);
+      console.log('🔍 [LeadsModule] Carregando leads:', user.tenant_id.substring(0, 8), user.role);
       
-      let query = supabase
-        .from('leads_master')
-        .select('*')
-        .eq('tenant_id', user.tenant_id);
+      // ✅ PERFORMANCE: Monitorar operação crítica de carregamento
+      const result = await performanceMonitor.measureAsync('LeadsModule.loadLeads', async () => {
+        let query = supabase
+          .from('leads_master')
+          .select('*')
+          .eq('tenant_id', user.tenant_id);
 
-      // Se for member, ver apenas seus leads
-      if (user.role === 'member') {
-        console.log('👤 Aplicando filtro de member para assigned_to:', user.id);
-        query = query.eq('assigned_to', user.id);
-      }
+        // Se for member, ver apenas seus leads
+        if (user.role === 'member') {
+          console.log('👤 [LeadsModule] Filtro member aplicado');
+          query = query.eq('assigned_to', user.id);
+        }
 
-      const { data, error } = await query.order('created_at', { ascending: false });
+        const { data, error } = await query.order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('❌ Erro ao carregar leads:', error);
-        return;
-      }
+        if (error) {
+          console.error('❌ [LeadsModule] Erro ao carregar leads:', error.message);
+          throw error;
+        }
 
-      console.log('✅ Leads carregados:', data?.length || 0, 'leads encontrados');
-      if (data && data.length > 0) {
-        console.log('📋 Primeiros 3 leads:', data.slice(0, 3));
-      }
+        return data || [];
+      });
 
-      setLeads(data || []);
-      setFilteredLeads(data || []);
-    } catch (error) {
-      console.error('❌ Erro ao carregar leads:', error);
+      console.log('✅ [LeadsModule] Leads carregados:', result.length);
+      setLeads(result);
+      setFilteredLeads(result);
+    } catch (error: any) {
+      console.error('❌ [LeadsModule] Erro crítico:', error.message);
     } finally {
       setLoading(false);
     }
@@ -223,7 +226,7 @@ const LeadsModule: React.FC = () => {
       );
     }
 
-    console.log('🔍 [LeadsModule] Aplicando filtros:', { selectedFilter, searchTerm, totalLeads: localLeads.length, filteredLeads: filtered.length });
+    console.log('🔍 [LeadsModule] Filtros aplicados:', filtered.length, 'de', localLeads.length, 'leads');
     setFilteredLeads(filtered);
   }, [localLeads, searchTerm, selectedFilter]);
 
@@ -310,25 +313,31 @@ const LeadsModule: React.FC = () => {
     setIsFormModalOpen(true);
   };
 
+  // ✅ PERFORMANCE-OPTIMIZED: Deletar lead com monitoramento
   const handleDeleteLead = async (leadId: string) => {
     if (!window.confirm('Tem certeza que deseja excluir este lead?')) return;
 
     try {
-      const { error } = await supabase
-        .from('leads_master')
-        .delete()
-        .eq('id', leadId);
+      console.log('🗑️ [LeadsModule] Iniciando exclusão:', leadId.substring(0, 8));
+      
+      // ✅ PERFORMANCE: Monitorar operação de exclusão
+      await performanceMonitor.measureAsync('LeadsModule.deleteLead', async () => {
+        const { error } = await supabase
+          .from('leads_master')
+          .delete()
+          .eq('id', leadId);
 
-      if (error) {
-        console.error('Erro ao excluir lead:', error);
-        showErrorToast('Erro ao excluir', 'Erro ao excluir lead');
-        return;
-      }
+        if (error) {
+          console.error('❌ [LeadsModule] Erro ao excluir:', error.message);
+          throw error;
+        }
+      });
 
       await loadLeads();
+      console.log('✅ [LeadsModule] Lead excluído com sucesso');
       showSuccessToast('Lead excluído', 'Lead excluído com sucesso');
-    } catch (error) {
-      console.error('Erro ao excluir lead:', error);
+    } catch (error: any) {
+      console.error('❌ [LeadsModule] Erro crítico na exclusão:', error.message);
       showErrorToast('Erro ao excluir', 'Erro ao excluir lead');
     }
   };

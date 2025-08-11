@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../ui/card';
 import { Button } from '../../ui/button';
 import { Label } from '../../ui/label';
 import { Switch } from '../../ui/switch';
-import { AnimatedCard } from '../../ui/animated-card';
 import { BlurFade } from '../../ui/blur-fade';
 import { 
   Shuffle, 
@@ -19,8 +17,10 @@ import {
   Loader2
 } from 'lucide-react';
 
-// Shared components
-import { SectionHeader } from '../shared/SectionHeader';
+// ✅ NOVO: Import do seletor de horários específicos
+import WorkingHoursSelector from './WorkingHoursSelector';
+import type { WorkingHoursConfig } from '../../../types/workingHours';
+
 
 // Constants
 import { PIPELINE_UI_CONSTANTS } from '../../../styles/pipeline-constants';
@@ -65,6 +65,7 @@ export interface UseLocalDistributionManagerReturn {
   handleModeChange: (e: React.MouseEvent, mode: 'manual' | 'rodizio') => void;
   handleToggleActive: () => void;
   handleToggleWorkingHours: () => void;
+  handleWorkingHoursConfigChange: (config: WorkingHoursConfig) => void;
   handleToggleSkipInactive: () => void;
   handleToggleFallback: () => void;
   
@@ -133,31 +134,46 @@ export function useLocalDistributionManager({
 
   // 🔧 CORREÇÃO: Inicializar com dados da API quando disponível (modo edição)
   useEffect(() => {
-    if (hasValidPipelineId && apiData.rule && !localRule) {
-      console.log('🔄 [useLocalDistributionManager] Carregando dados da API (inicialização)');
-      setLocalRule(apiData.rule);
-      // ✅ CRÍTICO: Marcar fim da inicialização após configurar dados da API
-      setIsInitializing(false);
+    if (hasValidPipelineId && apiData.rule) {
+      // ✅ CORREÇÃO: Sempre sincronizar com dados da API quando disponíveis, especialmente após refresh
+      if (!localRule) {
+        console.log('🔄 [useLocalDistributionManager] Carregando dados da API (inicialização)');
+        setLocalRule(apiData.rule);
+        setIsInitializing(false);
+      } else {
+        // ✅ NOVO: Sincronizar dados salvos da API com estado local após refresh
+        const shouldForceSync = !localRule.working_hours_start && apiData.rule.working_hours_start;
+        if (shouldForceSync) {
+          console.log('🔄 [useLocalDistributionManager] Sincronizando dados salvos após refresh:', {
+            apiStart: apiData.rule.working_hours_start,
+            apiEnd: apiData.rule.working_hours_end,
+            apiDays: apiData.rule.working_days,
+            localStart: localRule.working_hours_start
+          });
+          setLocalRule(apiData.rule);
+        }
+      }
     }
   }, [apiData.rule, localRule, hasValidPipelineId]);
 
-  // ✅ NOVO: Sincronizar estado local quando dados da API são atualizados após salvamento
+  // ✅ CORREÇÃO: Sincronizar apenas quando há salvamento bem-sucedido, não automaticamente
   useEffect(() => {
     if (hasValidPipelineId && apiData.rule && localRule && !isInitializing) {
-      // Verificar se os dados da API são diferentes do estado local
-      const apiMode = apiData.rule.mode;
-      const localMode = localRule.mode;
+      // AIDEV-NOTE: Sincronização controlada - apenas após operações de salvamento
+      // Verificar se há flag de sincronização pendente (será adicionada no handleSave)
+      const shouldSync = sessionStorage.getItem(`sync-pending-${hasValidPipelineId ? pipelineId : 'temp'}`);
       
-      if (apiMode !== localMode) {
-        console.log('🔄 [useLocalDistributionManager] Detectada mudança nos dados da API, sincronizando:', {
-          apiMode,
-          localMode,
+      if (shouldSync) {
+        console.log('🔄 [useLocalDistributionManager] Sincronizando após salvamento:', {
+          apiMode: apiData.rule.mode,
+          localMode: localRule.mode,
           timestamp: new Date().toISOString()
         });
         setLocalRule(apiData.rule);
+        sessionStorage.removeItem(`sync-pending-${hasValidPipelineId ? pipelineId : 'temp'}`);
       }
     }
-  }, [apiData.rule, localRule, hasValidPipelineId, isInitializing]);
+  }, [apiData.rule, localRule, hasValidPipelineId, isInitializing, pipelineId]);
 
   // ✅ CORREÇÃO: Função para comparação inteligente de regras de distribuição
   const areRulesEqual = React.useCallback((rule1: DistributionRule | null, rule2: DistributionRule | null): boolean => {
@@ -178,10 +194,23 @@ export function useLocalDistributionManager({
     return JSON.stringify(normalized1) === JSON.stringify(normalized2);
   }, []);
 
-  // 🔧 CORREÇÃO: Memoizar verificação de mudanças com comparação inteligente
+  // 🔧 CORREÇÃO: Memoizar verificação de mudanças com comparação inteligente e proteção contra sincronização prematura
   const hasUnsavedChanges = React.useMemo(() => {
-    return localRule && apiData.rule ? 
-      !areRulesEqual(localRule, apiData.rule) : false;
+    // Se não há regra local, não há mudanças
+    if (!localRule) return false;
+    
+    // Se não há regra da API ainda (carregando), considerar que há mudanças se regra local não é padrão
+    if (!apiData.rule) {
+      const isDefaultRule = localRule.mode === 'manual' && 
+                           localRule.is_active === true && 
+                           localRule.working_hours_only === false && 
+                           localRule.skip_inactive_members === true && 
+                           localRule.fallback_to_manual === true;
+      return !isDefaultRule;
+    }
+    
+    // Comparação inteligente entre regras
+    return !areRulesEqual(localRule, apiData.rule);
   }, [localRule, apiData.rule, areRulesEqual]);
 
   // 🔧 CORREÇÃO: Memoizar callback de notificação com flag de navegação
@@ -247,6 +276,20 @@ export function useLocalDistributionManager({
     }
   };
 
+  // ✅ NOVO: Handler para configuração de horários específicos
+  const handleWorkingHoursConfigChange = (config: WorkingHoursConfig) => {
+    if (localRule) {
+      setLocalRule(prev => prev ? { 
+        ...prev, 
+        working_hours_only: config.enabled,
+        // ✅ Atualizar novos campos do banco de dados
+        working_hours_start: config.hours.start,
+        working_hours_end: config.hours.end,
+        working_days: config.hours.days
+      } : null);
+    }
+  };
+
   const handleToggleSkipInactive = () => {
     if (localRule) {
       setLocalRule(prev => prev ? { ...prev, skip_inactive_members: !prev.skip_inactive_members } : null);
@@ -269,35 +312,30 @@ export function useLocalDistributionManager({
         localRule
       });
       
+      // AIDEV-NOTE: Marcar que sincronização deve ocorrer após salvamento
+      const syncKey = `sync-pending-${hasValidPipelineId ? pipelineId : 'temp'}`;
+      sessionStorage.setItem(syncKey, 'true');
+      
       const saveData: SaveDistributionRuleRequest = {
         mode: localRule.mode,
         is_active: localRule.is_active,
         working_hours_only: localRule.working_hours_only,
+        // ✅ NOVO: Incluir campos de horários específicos no salvamento
+        working_hours_start: localRule.working_hours_start,
+        working_hours_end: localRule.working_hours_end,
+        working_days: localRule.working_days,
         skip_inactive_members: localRule.skip_inactive_members,
         fallback_to_manual: localRule.fallback_to_manual
       };
       
       await apiData.saveRule(saveData);
-      
-      console.log('✅ [handleSave] Regra salva com sucesso, aguardando dados atualizados...');
-      
-      // ✅ CORREÇÃO CRÍTICA: Aguardar dados atualizados da API e sincronizar
-      // Usar setTimeout para aguardar invalidação e refetch completarem
-      setTimeout(() => {
-        if (apiData.rule) {
-          console.log('🔄 [handleSave] Sincronizando estado local com dados da API:', {
-            apiMode: apiData.rule.mode,
-            localMode: localRule.mode
-          });
-          setLocalRule(apiData.rule);
-        } else {
-          console.warn('⚠️ [handleSave] Dados da API ainda não disponíveis após salvamento');
-        }
-      }, 100);
+      console.log('✅ [handleSave] Regra salva com sucesso');
       
     } catch (error) {
       console.error('❌ [handleSave] Erro ao salvar:', error);
-      // Erro já tratado no hook da API
+      // Remover flag de sincronização em caso de erro
+      const syncKey = `sync-pending-${hasValidPipelineId ? pipelineId : 'temp'}`;
+      sessionStorage.removeItem(syncKey);
     }
   };
 
@@ -334,6 +372,7 @@ export function useLocalDistributionManager({
     handleModeChange,
     handleToggleActive,
     handleToggleWorkingHours,
+    handleWorkingHoursConfigChange,
     handleToggleSkipInactive,
     handleToggleFallback,
     // ✅ EXPOSTO: Funções de persistência para sistema centralizado
@@ -359,6 +398,7 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
     handleModeChange,
     handleToggleActive,
     handleToggleWorkingHours,
+    handleWorkingHoursConfigChange,
     handleToggleSkipInactive,
     handleToggleFallback,
     handleSave,
@@ -399,25 +439,27 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
     hasUnsavedChanges,
     isLoading,
     isSaving,
+    modesMatch: localRule.mode === apiData.rule?.mode,
+    shouldShowSaveButton: hasUnsavedChanges && !isLoading && !isSaving,
     timestamp: new Date().toISOString()
   });
 
   return (
-    <div className={PIPELINE_UI_CONSTANTS.spacing.section}>
-      <SectionHeader
-        icon={RotateCcw}
-        title="Distribuição de Leads"
-      />
+    <div className="space-y-6">
+      {/* ===== SEÇÃO 1: MODO DE DISTRIBUIÇÃO ===== */}
+      <BlurFade delay={0.1} direction="up">
+        <div className="bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-orange-50 rounded-lg">
+              <RotateCcw className="h-5 w-5 text-orange-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Distribuição de Leads</h3>
+              <p className="text-sm text-slate-500">Escolha como os leads serão atribuídos aos vendedores</p>
+            </div>
+          </div>
 
-      <BlurFade delay={0.1} inView>
-        <AnimatedCard>
-          <CardHeader>
-            <CardTitle className="text-base">Modo de Distribuição</CardTitle>
-            <CardDescription>
-              Escolha como os leads serão atribuídos aos vendedores
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <Button
                 type="button"
@@ -459,39 +501,37 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
                 }
               </p>
             </div>
-          </CardContent>
-        </AnimatedCard>
+          </div>
+        </div>
       </BlurFade>
 
       {localRule.mode === 'rodizio' && (
-        <BlurFade delay={0.05} inView>
-          <AnimatedCard>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Settings className="h-4 w-4" />
-                Configurações Avançadas
-              </CardTitle>
-              <CardDescription>
-                Defina regras específicas para o rodízio automático
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-blue-500" />
-                  <div>
-                    <Label>Apenas em Horário Comercial</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Distribuir leads apenas durante horário de trabalho
-                    </p>
-                  </div>
-                </div>
-                <Switch
-                  checked={localRule.working_hours_only}
-                  onCheckedChange={handleToggleWorkingHours}
-                  disabled={isSaving}
-                />
+        <BlurFade delay={0.2} direction="up">
+          <div className="bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 rounded-xl p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-blue-50 rounded-lg">
+                <Settings className="h-5 w-5 text-blue-600" />
               </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Configurações Avançadas</h3>
+                <p className="text-sm text-slate-500">Defina regras específicas para o rodízio automático</p>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              {/* ✅ NOVO: Seletor de Horários Específicos */}
+              <WorkingHoursSelector
+                value={{
+                  enabled: localRule.working_hours_only,
+                  hours: {
+                    start: localRule.working_hours_start || '09:00:00',
+                    end: localRule.working_hours_end || '18:00:00',
+                    days: localRule.working_days || [2, 3, 4, 5, 6] // Segunda a Sexta
+                  }
+                }}
+                onChange={handleWorkingHoursConfigChange}
+                disabled={isSaving}
+              />
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -526,25 +566,26 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
                   disabled={isSaving}
                 />
               </div>
-            </CardContent>
-          </AnimatedCard>
+            </div>
+          </div>
         </BlurFade>
       )}
 
       {/* ✅ CORREÇÃO: Estatísticas aparecem APENAS no modo Rodízio */}
       {apiData.stats && localRule.mode === 'rodizio' && (
-        <BlurFade delay={0.08} inView>
-          <AnimatedCard>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4" />
-                Estatísticas de Distribuição
-              </CardTitle>
-              <CardDescription>
-                Métricas sobre a distribuição de leads
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+        <BlurFade delay={0.3} direction="up">
+          <div className="bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 rounded-xl p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-green-50 rounded-lg">
+                <AlertTriangle className="h-5 w-5 text-green-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Estatísticas de Distribuição</h3>
+                <p className="text-sm text-slate-500">Métricas sobre a distribuição de leads</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
               <div className="grid grid-cols-3 gap-4">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-green-600">
@@ -573,14 +614,13 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
               </div>
               
               {localRule.mode === 'rodizio' && (
-                <div className="pt-4 space-y-3">
+                <div className="pt-4 flex justify-center gap-4">
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     onClick={handleTest}
                     disabled={isTesting}
-                    className="w-full"
                   >
                     {isTesting ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -594,7 +634,6 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
                     size="sm"
                     onClick={handleResetDistribution}
                     disabled={isResetting}
-                    className="w-full"
                   >
                     {isResetting ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -603,13 +642,10 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
                     )}
                     Resetar Rodízio
                   </Button>
-                  <p className="text-xs text-muted-foreground text-center mt-2">
-                    Testa a distribuição atual ou limpa o histórico
-                  </p>
                 </div>
               )}
-            </CardContent>
-          </AnimatedCard>
+            </div>
+          </div>
         </BlurFade>
       )}
 

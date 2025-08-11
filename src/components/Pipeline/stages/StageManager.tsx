@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 
 // Interface simplificada para etapas sem sistema de temperatura
 interface StageData {
+  id?: string; // ✅ CORREÇÃO: Adicionado id para consistência
   name: string;
   order_index: number;
   color: string;
@@ -94,6 +95,25 @@ interface UseStageManagerReturn {
   moveStageUp: (index: number) => void;
   moveStageDown: (index: number) => void;
   organizeStages: (stages: StageData[]) => StageData[];
+  // ✅ NOVOS ESTADOS DE LOADING PARA ANIMAÇÕES
+  isSaving: boolean;
+  isMoving: string | null; // ✅ CORREÇÃO: string | null para consistência com ImprovedStageManager
+  lastActionStage: string | null;
+  isReordering: boolean;
+  showDeleteModal: boolean;
+  setShowDeleteModal: React.Dispatch<React.SetStateAction<boolean>>;
+  stageToDelete: { 
+    stage: StageData; 
+    index: number; 
+    validation?: { canDelete: boolean; reasons: string[]; warnings: string[]; severity: 'low' | 'medium' | 'high' }
+  } | null; // ✅ CORREÇÃO: Objeto completo para consistência
+  setStageToDelete: React.Dispatch<React.SetStateAction<{ 
+    stage: StageData; 
+    index: number; 
+    validation?: { canDelete: boolean; reasons: string[]; warnings: string[]; severity: 'low' | 'medium' | 'high' }
+  } | null>>;
+  isDeleting: boolean;
+  executeStageDelete: () => Promise<void>;
 }
 
 export function useStageManager({ 
@@ -104,6 +124,19 @@ export function useStageManager({
   const [editingStage, setEditingStage] = useState<StageData | null>(null);
   const [editStageIndex, setEditStageIndex] = useState<number | null>(null);
   const [showStageModal, setShowStageModal] = useState(false);
+  
+  // ✅ NOVOS ESTADOS DE LOADING PARA ANIMAÇÕES
+  const [isSaving, setIsSaving] = useState(false);
+  const [isMoving, setIsMoving] = useState<string | null>(null); // ✅ CORREÇÃO: string | null
+  const [lastActionStage, setLastActionStage] = useState<string | null>(null);
+  const [isReordering, setIsReordering] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [stageToDelete, setStageToDelete] = useState<{ 
+    stage: StageData; 
+    index: number; 
+    validation?: { canDelete: boolean; reasons: string[]; warnings: string[]; severity: 'low' | 'medium' | 'high' }
+  } | null>(null); // ✅ CORREÇÃO: Objeto completo
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Função para organizar etapas com sistema no lugar correto
   const organizeStages = (stages: StageData[]) => {
@@ -248,6 +281,30 @@ export function useStageManager({
     onStagesChange?.(organizedStages);
   };
 
+  // ✅ NOVA FUNÇÃO: Executar exclusão de etapa com validações
+  const executeStageDelete = async (): Promise<void> => {
+    if (!stageToDelete) return;
+
+    try {
+      setIsDeleting(true);
+      
+      // Simular operação async (futura integração com backend)
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const stageIndex = stages.findIndex(s => s.name === stageToDelete.stage.name);
+      if (stageIndex === -1) return;
+      
+      handleDeleteStage(stageIndex);
+      
+      setShowDeleteModal(false);
+      setStageToDelete(null);
+    } catch (error) {
+      console.error('Erro ao excluir etapa:', error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return {
     stages,
     setStages,
@@ -263,7 +320,18 @@ export function useStageManager({
     handleDeleteStage,
     moveStageUp,
     moveStageDown,
-    organizeStages
+    organizeStages,
+    // ✅ NOVOS ESTADOS DE LOADING PARA ANIMAÇÕES
+    isSaving,
+    isMoving,
+    lastActionStage,
+    isReordering,
+    showDeleteModal,
+    setShowDeleteModal,
+    stageToDelete,
+    setStageToDelete,
+    isDeleting,
+    executeStageDelete
   };
 }
 

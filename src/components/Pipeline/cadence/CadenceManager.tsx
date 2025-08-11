@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../ui/card';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
@@ -10,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogOverlay, DialogPortal } from '../../ui/dialog';
 import { Badge } from '../../ui/badge';
 import { Switch } from '../../ui/switch';
-import { AnimatedCard } from '../../ui/animated-card';
 import { BlurFade } from '../../ui/blur-fade';
 import { 
   Plus, 
@@ -35,8 +33,7 @@ import {
   // ✅ CORREÇÃO: Removidos Eye, EyeOff - ícones desnecessários conforme solicitação
 } from 'lucide-react';
 
-// Shared components
-import { SectionHeader } from '../shared/SectionHeader';
+// ✅ REMOVIDO: SectionHeader não é mais usado com o padrão gradient
 
 // Constants
 import { PIPELINE_UI_CONSTANTS } from '../../../styles/pipeline-constants';
@@ -980,154 +977,180 @@ export function CadenceManagerRender({
   // ✅ NOVO: Exibir loading se estiver carregando dados da API
   if (isLoading && isApiEnabled) {
     return (
-      <div className={PIPELINE_UI_CONSTANTS.spacing.section}>
-        <SectionHeader
-          icon={Zap}
-          title="Automação de Atividades"
-        />
-        <div className="flex items-center justify-center py-8">
-          <div className="flex flex-col items-center gap-3">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="text-sm text-muted-foreground">
-              Carregando atividades existentes...
-            </p>
+      <div className="space-y-6">
+        <BlurFade delay={0.1} direction="up">
+          <div className="bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 rounded-xl p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-purple-50 rounded-lg">
+                <Zap className="h-5 w-5 text-purple-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Automação de Atividades</h3>
+                <p className="text-sm text-slate-500">Configure atividades automáticas por etapa da pipeline</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center justify-center py-8">
+              <div className="flex flex-col items-center gap-3">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                <p className="text-sm text-muted-foreground">
+                  Carregando atividades existentes...
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
+        </BlurFade>
       </div>
     );
   }
 
   return (
-    <div className={PIPELINE_UI_CONSTANTS.spacing.section}>
-      <SectionHeader
-        icon={Zap}
-        title="Automação de Atividades"
-      />
-
-      {/* ✅ NOVO: Indicador de salvamento */}
-      {isSaving && (
-        <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
-          <div className="flex items-center gap-3">
-            <div className="w-4 h-4 border-2 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
+    <div className="space-y-6">
+      {/* ===== HEADER PRINCIPAL ===== */}
+      <BlurFade delay={0.1} direction="up">
+        <div className="bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-purple-50 rounded-lg">
+              <Zap className="h-5 w-5 text-purple-600" />
+            </div>
             <div>
-              <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                Salvando alterações...
+              <h3 className="text-lg font-semibold text-slate-900">Automação de Atividades</h3>
+              <p className="text-sm text-slate-500">Configure atividades automáticas por etapa da pipeline</p>
+            </div>
+          </div>
+
+          {/* ✅ NOVO: Indicador de salvamento */}
+          {isSaving && (
+            <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-4 h-4 border-2 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
+                <div>
+                  <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                    Salvando alterações...
+                  </p>
+                  {savingMessage && (
+                    <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                      {savingMessage}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ✅ NOVA SEÇÃO: Atalhos rápidos por etapa OU mensagem explicativa */}
+          {availableStages.length > 0 ? (
+            <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+              <h4 className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-3 flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                Criar Atividades por Etapa
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {availableStages
+                  // ✅ CORREÇÃO: Filtrar etapas finais - nunca devem ter atividades de cadência
+                  .filter(stage => stage.order_index < 998) // Excluir "Ganho" (998) e "Perdido" (999)
+                  .map(stage => {
+                    const hasActivities = cadenceConfigs.some(c => c.stage_name === stage.name);
+                    const activitiesCount = cadenceConfigs.find(c => c.stage_name === stage.name)?.tasks?.length || 0;
+                    
+                    return (
+                      <Button
+                        key={stage.name}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAddActivityForStage(stage.name)}
+                        disabled={isSaving}
+                        className="flex items-center gap-2"
+                      >
+                        <Plus className="h-3 w-3" />
+                        <span>{stage.name}</span>
+                        {hasActivities && (
+                          <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
+                            {activitiesCount}
+                          </Badge>
+                        )}
+                      </Button>
+                    );
+                  })}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-amber-50 dark:bg-amber-950/20 p-4 rounded-lg border border-amber-200 dark:border-amber-800">
+              <h4 className="text-sm font-medium text-amber-900 dark:text-amber-100 mb-2">
+                ⚠️ Nenhuma etapa disponível para atividades
+              </h4>
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                As etapas finais (Ganho/Perdido) não podem ter atividades de follow-up automáticas. 
+                Crie etapas intermediárias na aba "Etapas" para configurar automações de cadência.
               </p>
-              {savingMessage && (
-                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                  {savingMessage}
-                </p>
-              )}
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </BlurFade>
 
-      <div className="space-y-4">
-        {/* ✅ NOVA SEÇÃO: Atalhos rápidos por etapa OU mensagem explicativa */}
-        {availableStages.length > 0 ? (
-          <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
-            <h4 className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-3">
-              🚀 Criar Atividades por Etapa
-            </h4>
-            <div className="flex flex-wrap gap-2">
-              {availableStages
-                // ✅ CORREÇÃO: Filtrar etapas finais - nunca devem ter atividades de cadência
-                .filter(stage => stage.order_index < 998) // Excluir "Ganho" (998) e "Perdido" (999)
-                .map(stage => {
-                  const hasActivities = cadenceConfigs.some(c => c.stage_name === stage.name);
-                  const activitiesCount = cadenceConfigs.find(c => c.stage_name === stage.name)?.tasks?.length || 0;
-                  
-                  return (
-                    <Button
-                      key={stage.name}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleAddActivityForStage(stage.name)}
-                      disabled={isSaving}
-                      className="flex items-center gap-2"
-                    >
-                      <Plus className="h-3 w-3" />
-                      <span>{stage.name}</span>
-                      {hasActivities && (
-                        <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
-                          {activitiesCount}
-                        </Badge>
-                      )}
-                    </Button>
-                  );
-                })}
+      {/* ===== CONFIGURAÇÕES EXISTENTES ===== */}
+      {isApiEnabled && cadenceConfigs.length === 0 && (
+        <BlurFade delay={0.2} direction="up">
+          <div className="bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 rounded-xl p-8">
+            <div className="flex flex-col items-center gap-4">
+              <div className="p-3 bg-slate-50 rounded-lg">
+                <ClipboardList className="h-8 w-8 text-slate-500" />
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium text-slate-900 mb-1">
+                  Nenhuma atividade configurada para esta pipeline.
+                </p>
+                <p className="text-xs text-slate-500">
+                  Use os botões acima para criar atividades automáticas por etapa.
+                </p>
+              </div>
             </div>
           </div>
-        ) : (
-          <div className="bg-amber-50 dark:bg-amber-950/20 p-4 rounded-lg border border-amber-200 dark:border-amber-800">
-            <h4 className="text-sm font-medium text-amber-900 dark:text-amber-100 mb-2">
-              ⚠️ Nenhuma etapa disponível para atividades
-            </h4>
-            <p className="text-xs text-amber-700 dark:text-amber-300">
-              As etapas finais (Ganho/Perdido) não podem ter atividades de follow-up automáticas. 
-              Crie etapas intermediárias na aba "Etapas" para configurar automações de cadência.
-            </p>
-          </div>
-        )}
-
-        {/* ✅ REMOVIDO: Debug de renderização desnecessário */}
-        
-        {isApiEnabled && cadenceConfigs.length === 0 && (
-          <div className="text-center py-6 bg-muted/50 rounded-lg">
-            <p className="text-sm text-muted-foreground">
-              Nenhuma atividade configurada para esta pipeline.
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Use os atalhos acima ou clique em "Adicionar Atividades" para começar.
-            </p>
-          </div>
-        )}
-        
-        {cadenceConfigs.map((cadence, cadenceIndex) => (
-          <BlurFade key={cadenceIndex} delay={0.03 * cadenceIndex} inView>
-            <AnimatedCard>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${cadence.is_active ? 'bg-green-500/10' : 'bg-gray-500/10'}`}>
-                      {cadence.is_active ? (
-                        <Play className="h-4 w-4 text-green-500" />
-                      ) : (
-                        <Pause className="h-4 w-4 text-gray-500" />
-                      )}
-                    </div>
-                    <div>
-                      <CardTitle className="text-base">{cadence.stage_name}</CardTitle>
-                      <CardDescription>
-                        {cadence.tasks.length} tarefa(s) configurada(s)
-                      </CardDescription>
-                    </div>
+        </BlurFade>
+      )}
+      
+      {cadenceConfigs.map((cadence, cadenceIndex) => (
+          <BlurFade key={cadenceIndex} delay={0.3 + (0.1 * cadenceIndex)} direction="up">
+            <div className="bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 rounded-xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${cadence.is_active ? 'bg-green-50' : 'bg-slate-50'}`}>
+                    {cadence.is_active ? (
+                      <Play className="h-5 w-5 text-green-600" />
+                    ) : (
+                      <Pause className="h-5 w-5 text-slate-500" />
+                    )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={cadence.is_active}
-                      onCheckedChange={() => handleToggleCadenceActive(cadenceIndex)}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDeleteCadence(cadenceIndex)}
-                      disabled={isSaving}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                  <div>
+                    <h4 className="text-lg font-semibold text-slate-900">{cadence.stage_name}</h4>
+                    <p className="text-sm text-slate-500">
+                      {cadence.tasks.length} tarefa(s) configurada(s)
+                    </p>
                   </div>
                 </div>
-              </CardHeader>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={cadence.is_active}
+                    onCheckedChange={() => handleToggleCadenceActive(cadenceIndex)}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeleteCadence(cadenceIndex)}
+                    disabled={isSaving}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
 
-              <CardContent className="pt-0">
+              <div className="space-y-3">
                 <div className="space-y-3">
                   {cadence.tasks.map((task, taskIndex) => (
-                    <div key={taskIndex} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                    <div key={taskIndex} className="flex items-center justify-between p-4 bg-gradient-to-r from-slate-50/50 to-white border border-slate-200/40 rounded-lg">
                       <div className="flex items-center gap-3">
                         <div className="flex items-center gap-2">
                           <Badge variant="outline" className="text-xs">
@@ -1184,11 +1207,10 @@ export function CadenceManagerRender({
                     Adicionar Tarefa
                   </Button>
                 </div>
-              </CardContent>
-            </AnimatedCard>
+              </div>
+            </div>
           </BlurFade>
         ))}
-      </div>
 
       {/* ✅ REMOVIDO: Modal de cadência inline - substituído por workflow unificado */}
 
@@ -1330,10 +1352,10 @@ export function CadenceManagerRender({
 
       {/* ✅ MODAL DE EDIÇÃO: Manter modal inline para editar tarefas existentes */}
       {showTaskModal && (
-        <BlurFade>
-          <div className="mt-6 p-6 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg space-y-4">
+        <BlurFade delay={0.1} direction="up">
+          <div className="mt-6 p-6 bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 rounded-xl space-y-4">
             {/* Header do Formulário Inline */}
-            <div className="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-200">
               <div className="flex items-center gap-2">
                 <h4 className="text-lg font-semibold">
                   {editingTask?.task_title ? `Editar Tarefa: ${editingTask.task_title}` : 'Nova Tarefa'}
@@ -1343,13 +1365,13 @@ export function CadenceManagerRender({
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowTaskModal(false)}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-slate-500 hover:text-slate-700"
               >
                 ✕
               </Button>
             </div>
 
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-slate-500">
               Configure os detalhes da tarefa de automação.
             </p>
 
@@ -1485,7 +1507,7 @@ export function CadenceManagerRender({
                 </div>
 
                 {/* Botões de Ação Inline */}
-                <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
                   <Button
                     variant="outline"
                     onClick={() => setShowTaskModal(false)}

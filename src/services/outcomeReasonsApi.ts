@@ -54,14 +54,61 @@ export class OutcomeReasonsApiService {
     const startTime = Date.now();
 
     try {
+      console.log('🔍 [OutcomeReasonsApiService] Iniciando carregamento:', {
+        pipelineId: pipelineId.substring(0, 8)
+      });
+
       // ✅ WINSTON-STYLE: Usar retry básico para operações de leitura
       return await withApiRetry(async () => {
         const response = await api.get<OutcomeReason[]>(
           `/outcome-reasons?pipeline_id=${pipelineId}&reason_type=all&active_only=true`
         );
         
-        // ✅ Transformar array em estrutura organizada
-        const reasons = response.data;
+        // ✅ CORREÇÃO: Type-safe response processing
+        const responseData = response.data;
+        console.log('📡 [OutcomeReasonsApiService] Resposta recebida:', {
+          pipelineId: pipelineId.substring(0, 8),
+          responseType: typeof responseData,
+          isArray: Array.isArray(responseData)
+        });
+        
+        // ✅ CORREÇÃO: Tratar resposta API padronizada {success, data} vs array direto
+        let reasons: OutcomeReason[] = [];
+        if (Array.isArray(responseData)) {
+          // Resposta é array direto
+          reasons = responseData;
+          console.log('🔍 [OutcomeReasonsApiService] Formato: array direto');
+        } else if (responseData && typeof responseData === 'object' && !Array.isArray(responseData)) {
+          // Resposta é objeto, verificar propriedades conhecidas
+          const responseObj = responseData as Record<string, any>;
+          if (Array.isArray(responseObj.data)) {
+            reasons = responseObj.data;
+            console.log('🔍 [OutcomeReasonsApiService] Formato: objeto com propriedade data');
+          } else if (Array.isArray(responseObj.reasons)) {
+            reasons = responseObj.reasons;
+            console.log('🔍 [OutcomeReasonsApiService] Formato: objeto com propriedade reasons');
+          } else if (Array.isArray(responseObj.items)) {
+            reasons = responseObj.items;
+            console.log('🔍 [OutcomeReasonsApiService] Formato: objeto com propriedade items');
+          }
+        }
+        
+        console.log('🔍 [OutcomeReasonsApiService] Reasons processados:', {
+          reasonsType: typeof reasons,
+          reasonsIsArray: Array.isArray(reasons),
+          reasonsLength: Array.isArray(reasons) ? reasons.length : 0,
+          firstReason: Array.isArray(reasons) && reasons.length > 0 ? reasons[0] : null
+        });
+        
+        // ✅ Validar se reasons é array antes de filtrar
+        if (!Array.isArray(reasons)) {
+          console.error('❌ [OutcomeReasonsApiService] ERRO: reasons não é array:', {
+            reasonsType: typeof reasons,
+            reasonsValue: reasons
+          });
+          reasons = [];
+        }
+        
         const won = reasons.filter(r => r.reason_type === 'won');
         const lost = reasons.filter(r => r.reason_type === 'lost');
         
@@ -71,11 +118,25 @@ export class OutcomeReasonsApiService {
         const duration = Date.now() - startTime;
         loggers.outcomeReasons.loadOperation(pipelineId, won.length, lost.length, duration);
         
+        console.log('✅ [OutcomeReasonsApiService] Carregamento concluído:', {
+          pipelineId: pipelineId.substring(0, 8),
+          wonCount: won.length,
+          lostCount: lost.length,
+          duration
+        });
+        
         return outcomeReasons;
       }, `Carregar Motivos [${pipelineId}]`);
       
     } catch (error: any) {
       // ✅ WINSTON-STYLE: Log de erro estruturado
+      console.error('❌ [OutcomeReasonsApiService] Erro detalhado no carregamento:', {
+        pipelineId: pipelineId.substring(0, 8),
+        error: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText
+      });
+      
       loggers.outcomeReasons.error('loadOutcomeReasons', pipelineId, error);
       
       // Em caso de erro após retry, retornar estrutura vazia
@@ -93,12 +154,28 @@ export class OutcomeReasonsApiService {
     const startTime = Date.now();
     let retryCount = 0;
 
+    console.log('🚀 [saveOutcomeReasons] INICIANDO SALVAMENTO:', {
+      pipelineId: pipelineId.substring(0, 8),
+      outcomeReasons: {
+        wonCount: outcomeReasons.won.length,
+        lostCount: outcomeReasons.lost.length,
+        wonReasons: outcomeReasons.won.map(r => ({ id: r.id, text: r.reason_text })),
+        lostReasons: outcomeReasons.lost.map(r => ({ id: r.id, text: r.reason_text }))
+      }
+    });
+
     // ✅ WINSTON-STYLE: Usar retry crítico para operações de salvamento individuais
     return await withCriticalRetry(async () => {
       retryCount++;
+      console.log(`🔄 [saveOutcomeReasons] TENTATIVA ${retryCount} para pipeline ${pipelineId.substring(0, 8)}`);
       
       // ✅ ETAPA 1: Carregar motivos existentes para comparação
+      console.log('📋 [saveOutcomeReasons] ETAPA 1: Carregando motivos existentes...');
       const existingReasons = await this.loadOutcomeReasons(pipelineId);
+      console.log('📋 [saveOutcomeReasons] Motivos existentes carregados:', {
+        wonCount: existingReasons.won.length,
+        lostCount: existingReasons.lost.length
+      });
       
       // ✅ ETAPA 2: Identificar motivos para remover (existem mas não estão na nova lista)
       const allCurrentReasons = [...outcomeReasons.won, ...outcomeReasons.lost];
@@ -117,11 +194,15 @@ export class OutcomeReasonsApiService {
       
       // ✅ ETAPA 3: Remover motivos que não estão mais na lista
       const reasonsToRemove = [...existingWonToRemove, ...existingLostToRemove];
+      console.log('📋 [saveOutcomeReasons] ETAPA 3: Removendo motivos não utilizados...');
+      console.log('🗑️  Motivos para remover:', reasonsToRemove.length, 'itens');
+      
       if (reasonsToRemove.length > 0) {
         const removePromises = reasonsToRemove.map(reason => 
           api.delete(`/outcome-reasons/${reason.id}`)
         );
         await Promise.all(removePromises);
+        console.log(`✅ [saveOutcomeReasons] ${reasonsToRemove.length} motivos removidos com sucesso`);
       }
       
       // ✅ ETAPA 4: Identificar motivos novos para criar (não possuem ID ou não existem)
@@ -131,6 +212,9 @@ export class OutcomeReasonsApiService {
       );
       
       // ✅ ETAPA 5: Criar novos motivos
+      console.log('📋 [saveOutcomeReasons] ETAPA 5: Criando novos motivos...');
+      console.log('➕ Motivos para criar:', reasonsToCreate.length, 'itens');
+      
       if (reasonsToCreate.length > 0) {
         const createPromises = reasonsToCreate.map((reason, index) => 
           api.post<OutcomeReason>('/outcome-reasons', {
@@ -142,6 +226,7 @@ export class OutcomeReasonsApiService {
         );
         
         await Promise.all(createPromises);
+        console.log(`✅ [saveOutcomeReasons] ${reasonsToCreate.length} novos motivos criados com sucesso`);
       }
       
       // ✅ ETAPA 6: Atualizar motivos existentes se necessário
@@ -151,6 +236,9 @@ export class OutcomeReasonsApiService {
         )
       );
       
+      console.log('📋 [saveOutcomeReasons] ETAPA 6: Atualizando motivos existentes...');
+      console.log('🔄 Motivos para atualizar:', reasonsToUpdate.length, 'itens');
+      
       if (reasonsToUpdate.length > 0) {
         const updatePromises = reasonsToUpdate.map(reason => 
           api.put(`/outcome-reasons/${reason.id}`, {
@@ -158,6 +246,7 @@ export class OutcomeReasonsApiService {
           })
         );
         await Promise.all(updatePromises);
+        console.log(`✅ [saveOutcomeReasons] ${reasonsToUpdate.length} motivos atualizados com sucesso`);
       }
       
       const totalOperations = reasonsToRemove.length + reasonsToCreate.length + reasonsToUpdate.length;
@@ -177,6 +266,14 @@ export class OutcomeReasonsApiService {
         outcome_reasons: outcomeReasons,
         saved_count: totalOperations
       };
+
+      console.log('🎉 [saveOutcomeReasons] SALVAMENTO CONCLUÍDO COM SUCESSO!', {
+        pipelineId: pipelineId.substring(0, 8),
+        totalOperations,
+        changes,
+        duration: `${duration}ms`,
+        retryCount
+      });
       
       return savedRules;
     }, `Salvar Motivos [${pipelineId}]`);

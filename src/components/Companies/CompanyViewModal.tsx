@@ -9,6 +9,7 @@ import { usePasswordManager } from '../../hooks/usePasswordManager';
 import { formatPhone } from '../../utils/formatUtils';
 import CityAutocomplete from '../CityAutocomplete';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { supabase } from '../../lib/supabase';
 
 // Lista de nichos/segmentos baseada em CRMs enterprise (igual ao formulário de criação)
 const INDUSTRY_SEGMENTS = [
@@ -69,7 +70,7 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
   onClose,
   onRefetch
 }) => {
-  const { authenticatedFetch } = useAuth();
+  const { user } = useAuth();
   
   // 🚀 REFACTOR: Usar hook especializado para gerenciamento de senhas
   const passwordManager = usePasswordManager();
@@ -163,28 +164,26 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
       console.log('🔧 [COMPANY-VIEW] Enviando requisição para alterar expectativas...');
       console.log('🔧 [COMPANY-VIEW] Company ID:', company.id);
 
-      // 🔧 CORREÇÃO: Usar authenticatedFetch em vez de fetch direto
-      const response = await authenticatedFetch('/companies/update-expectations', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          companyId: company.id,
-          expectations: expectations
+      // ✅ CORREÇÃO: Usar Supabase diretamente
+      const { data, error } = await supabase
+        .from('companies')
+        .update({
+          expected_leads_monthly: expectations.expected_leads_monthly,
+          expected_sales_monthly: expectations.expected_sales_monthly,
+          expected_followers_monthly: expectations.expected_followers_monthly
         })
-      });
+        .eq('id', company.id)
+        .select()
+        .single();
 
-      console.log('🔧 [COMPANY-VIEW] Status da resposta:', response.status);
+      console.log('🔧 [COMPANY-VIEW] Resposta Supabase:', { data, error });
 
-      if (response.ok) {
-        const result = await response.json();
+      if (!error && data) {
         alert('Expectativas atualizadas com sucesso!');
         setIsEditingExpectations(false);
         onRefetch();
       } else {
-        const errorData = await response.json();
-        alert(`Erro ao atualizar expectativas: ${errorData.message || errorData.error || 'Erro desconhecido'}`);
+        alert(`Erro ao atualizar expectativas: ${error?.message || 'Erro desconhecido'}`);
       }
     } catch (error: any) {
       console.error('Erro ao atualizar expectativas:', error);
@@ -221,39 +220,30 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
 
       console.log('🔧 [COMPANY-VIEW] Request Payload:', requestPayload);
 
-      const response = await authenticatedFetch('/companies/update-info', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestPayload)
-      });
+      const { data, error } = await supabase
+        .from('companies')
+        .update({
+          name: requestPayload.companyData.name,
+          industry: requestPayload.companyData.industry,
+          website: requestPayload.companyData.website,
+          phone: requestPayload.companyData.phone,
+          city: requestPayload.companyData.city,
+          state: requestPayload.companyData.state
+        })
+        .eq('id', company.id)
+        .select()
+        .single();
 
-      console.log('🔧 [COMPANY-VIEW] Response Status:', response.status);
-      console.log('🔧 [COMPANY-VIEW] Response Headers:', response.headers);
+      console.log('🔧 [COMPANY-VIEW] Resposta Supabase:', { data, error });
 
-      if (response.ok) {
-        const result = await response.json();
-        console.log('✅ [COMPANY-VIEW] Sucesso:', result);
+      if (!error && data) {
+        console.log('✅ [COMPANY-VIEW] Sucesso:', data);
         alert('✅ Informações da empresa atualizadas com sucesso!');
         setIsEditingCompany(false);
         onRefetch();
       } else {
-        console.log('❌ [COMPANY-VIEW] Erro HTTP:', response.status);
-        
-        let errorData;
-        try {
-          errorData = await response.json();
-          console.log('❌ [COMPANY-VIEW] Error Data:', errorData);
-        } catch (parseError) {
-          console.log('❌ [COMPANY-VIEW] Erro ao parsear resposta:', parseError);
-          const errorText = await response.text();
-          console.log('❌ [COMPANY-VIEW] Error Text:', errorText);
-          errorData = { message: `Erro ${response.status}: ${errorText}` };
-        }
-
-        const errorMessage = errorData?.message || errorData?.error || `Erro HTTP ${response.status}`;
-        alert(`❌ Erro ao atualizar empresa: ${errorMessage}`);
+        console.log('❌ [COMPANY-VIEW] Erro Supabase:', error);
+        alert(`❌ Erro ao atualizar empresa: ${error?.message || 'Erro desconhecido'}`);
       }
     } catch (error: any) {
       console.error('❌ [COMPANY-VIEW] Exception:', error);
@@ -290,38 +280,47 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
 
       console.log('🔧 [COMPANY-VIEW] Request Payload:', requestPayload);
 
-      const response = await authenticatedFetch('/companies/update-admin-info', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestPayload)
-      });
+      // ✅ CORREÇÃO: Primeiro buscar usuário admin, depois atualizar
+      const { data: adminUser, error: adminQueryError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('role', 'admin')
+        .eq('tenant_id', company.id)
+        .single();
 
-      console.log('🔧 [COMPANY-VIEW] Response Status:', response.status);
+      if (adminQueryError || !adminUser) {
+        console.error('❌ [COMPANY-VIEW] Admin não encontrado:', adminQueryError);
+        alert('❌ Erro: Admin não encontrado para esta empresa');
+        return;
+      }
 
-      if (response.ok) {
-        const result = await response.json();
-        console.log('✅ [COMPANY-VIEW] Sucesso Admin:', result);
+      // Atualizar informações do admin - separar nome completo
+      const fullName = requestPayload.adminData.name.trim();
+      const nameParts = fullName.split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+
+      const { data, error } = await supabase
+        .from('users')
+        .update({
+          first_name: firstName,
+          last_name: lastName,
+          email: requestPayload.adminData.email
+        })
+        .eq('id', adminUser.id)
+        .select()
+        .single();
+
+      console.log('🔧 [COMPANY-VIEW] Resposta Supabase Admin:', { data, error });
+
+      if (!error && data) {
+        console.log('✅ [COMPANY-VIEW] Sucesso Admin:', data);
         alert('✅ Informações do administrador atualizadas com sucesso!');
         setIsEditingAdmin(false);
         onRefetch();
       } else {
-        console.log('❌ [COMPANY-VIEW] Erro HTTP Admin:', response.status);
-        
-        let errorData;
-        try {
-          errorData = await response.json();
-          console.log('❌ [COMPANY-VIEW] Error Data Admin:', errorData);
-        } catch (parseError) {
-          console.log('❌ [COMPANY-VIEW] Erro ao parsear resposta Admin:', parseError);
-          const errorText = await response.text();
-          console.log('❌ [COMPANY-VIEW] Error Text Admin:', errorText);
-          errorData = { message: `Erro ${response.status}: ${errorText}` };
-        }
-
-        const errorMessage = errorData?.message || errorData?.error || `Erro HTTP ${response.status}`;
-        alert(`❌ Erro ao atualizar admin: ${errorMessage}`);
+        console.error('❌ [COMPANY-VIEW] Erro Admin:', error);
+        alert(`❌ Erro ao atualizar admin: ${error?.message || 'Erro desconhecido'}`);
       }
     } catch (error: any) {
       console.error('❌ [COMPANY-VIEW] Exception Admin:', error);

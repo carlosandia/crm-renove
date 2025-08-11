@@ -96,7 +96,7 @@ class RealtimeChannelManager {
       channelInfo.lastUsed = Date.now();
       channelInfo.listeners.add(leadId);
       
-      console.log(`📊 [SINGLETON] Canal reutilizado: ${channelName}, RefCount: ${channelInfo.refCount}, Listeners: [${Array.from(channelInfo.listeners).map(id => id.substring(0, 8)).join(', ')}]`);
+      console.log(`📊 [SINGLETON] Canal reutilizado: RefCount: ${channelInfo.refCount}`);
       
       return channelInfo;
       
@@ -119,7 +119,7 @@ class RealtimeChannelManager {
     }
     
     listeners.add(listener);
-    console.log(`🎧 [SINGLETON] Listener adicionado para lead: ${listener.leadId.substring(0, 8)}, Total: ${listeners.size}`);
+    console.log(`🎧 [SINGLETON] Listener adicionado: Total: ${listeners.size}`);
     return true;
   }
 
@@ -135,7 +135,7 @@ class RealtimeChannelManager {
       channelInfo.refCount = Math.max(0, channelInfo.refCount - 1);
       channelInfo.listeners.delete(leadId);
       
-      console.log(`📉 [SINGLETON] Listener removido para lead: ${leadId.substring(0, 8)}, RefCount: ${channelInfo.refCount}`);
+      console.log(`📉 [SINGLETON] Listener removido: RefCount: ${channelInfo.refCount}`);
     }
     
     if (listeners) {
@@ -161,7 +161,7 @@ class RealtimeChannelManager {
     
     if (!listeners) return;
     
-    console.log(`📡 [SINGLETON] Broadcasting ${type} para ${listeners.size} listeners`);
+    console.log(`📡 [SINGLETON] Broadcasting ${type}: ${listeners.size} listeners`);
     
     for (const listener of listeners) {
       if (listener.leadId === leadId) {
@@ -186,7 +186,7 @@ class RealtimeChannelManager {
     
     channel.on('broadcast', { event: 'lead_update' }, (payload) => {
       const { leadId: updatedLeadId, type } = payload.payload || {};
-      console.log(`📡 [SINGLETON] Lead update recebido: ${updatedLeadId?.substring(0, 8)} via ${channelName}`);
+      console.log(`📡 [SINGLETON] Lead update recebido`);
       
       if (updatedLeadId) {
         this.broadcastUpdate(channelInfo.tenantId, updatedLeadId, 'lead_update', payload.payload);
@@ -197,7 +197,7 @@ class RealtimeChannelManager {
       const { leadId: updatedLeadId, type } = payload.payload || {};
       
       if (updatedLeadId) {
-        console.log(`📡 [SINGLETON] Task update recebido: ${updatedLeadId?.substring(0, 8)} via ${channelName}`);
+        console.log(`📡 [SINGLETON] Task update recebido`);
         this.broadcastUpdate(channelInfo.tenantId, updatedLeadId, 'task_update', payload.payload);
       }
     });
@@ -206,29 +206,30 @@ class RealtimeChannelManager {
   /**
    * Subscribe ao canal com error handling
    */
+  // ✅ PERFORMANCE-OPTIMIZED: Subscribe com logs consolidados
   private subscribeChannel(channelInfo: ChannelInfo, channelName: string): void {
     channelInfo.channel.subscribe((status) => {
-      console.log(`🔍 [SINGLETON] Status change: ${status} - Canal: ${channelName}, RefCount: ${channelInfo.refCount}`);
+      console.log(`🔍 [SINGLETON] Status: ${status} - RefCount: ${channelInfo.refCount}`);
       
       if (status === 'SUBSCRIBED') {
         channelInfo.status = 'connected';
         channelInfo.errorCount = 0;
-        console.log(`✅ [SINGLETON] Canal conectado: ${channelName}`);
+        console.log(`✅ [SINGLETON] Canal conectado`);
       } else if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
         channelInfo.status = 'error';
         channelInfo.errorCount++;
-        console.error(`❌ [SINGLETON] Canal com erro: ${channelName}, Errors: ${channelInfo.errorCount}`);
+        console.error(`❌ [SINGLETON] Canal erro: tentativa ${channelInfo.errorCount}/${this.MAX_ERROR_COUNT}`);
         
         // Retry automático se não passou do limite
         if (channelInfo.errorCount <= this.MAX_ERROR_COUNT) {
           setTimeout(() => {
-            console.log(`🔄 [SINGLETON] Tentando reconectar canal: ${channelName}`);
+            console.log(`🔄 [SINGLETON] Reconectando...`);
             this.subscribeChannel(channelInfo, channelName);
           }, this.RETRY_DELAY);
         }
       } else if (status === 'TIMED_OUT') {
         channelInfo.status = 'disconnected';
-        console.warn(`⏰ [SINGLETON] Canal timeout: ${channelName}`);
+        console.warn(`⏰ [SINGLETON] Canal timeout`);
       }
     });
   }
@@ -240,13 +241,13 @@ class RealtimeChannelManager {
     const channelInfo = this.channels.get(channelName);
     
     if (channelInfo && channelInfo.refCount <= 0) {
-      console.log(`🧹 [SINGLETON] Iniciando cleanup de canal: ${channelName}`);
+      console.log(`🧹 [SINGLETON] Iniciando cleanup canal`);
       
       // Delay para evitar cleanup muito rápido
       setTimeout(() => {
         const currentInfo = this.channels.get(channelName);
         if (currentInfo && currentInfo.refCount <= 0) {
-          console.log(`🗑️ [SINGLETON] Removendo canal não utilizado: ${channelName}`);
+          console.log(`🗑️ [SINGLETON] Canal removido`);
           
           currentInfo.channel.unsubscribe();
           this.channels.delete(channelName);
@@ -266,10 +267,10 @@ class RealtimeChannelManager {
       for (const [channelName, channelInfo] of this.channels.entries()) {
         // Cleanup canais inativos há muito tempo
         if (now - channelInfo.lastUsed > this.CHANNEL_TIMEOUT) {
-          console.log(`⏰ [SINGLETON] Canal inativo detectado: ${channelName}, LastUsed: ${new Date(channelInfo.lastUsed).toISOString()}`);
+          console.log(`⏰ [SINGLETON] Canal inativo detectado`);
           
           if (channelInfo.refCount <= 0) {
-            console.log(`🧹 [SINGLETON] Removendo canal inativo: ${channelName}`);
+            console.log(`🧹 [SINGLETON] Canal inativo removido`);
             channelInfo.channel.unsubscribe();
             this.channels.delete(channelName);
             this.eventListeners.delete(channelName);
@@ -304,14 +305,14 @@ class RealtimeChannelManager {
     }
     
     subscribers.add(callback);
-    console.log(`📡 [V3.3-MONITOR] Status subscriber adicionado para tenant: ${tenantId.substring(0, 8)}, Total: ${subscribers.size}`);
+    console.log(`📡 [V3.3-MONITOR] Subscriber adicionado: Total: ${subscribers.size}`);
     
     // Retorna função de cleanup
     return () => {
       const currentSubscribers = this.statusSubscribers.get(tenantId);
       if (currentSubscribers) {
         currentSubscribers.delete(callback);
-        console.log(`📡 [V3.3-MONITOR] Status subscriber removido para tenant: ${tenantId.substring(0, 8)}, Restantes: ${currentSubscribers.size}`);
+        console.log(`📡 [V3.3-MONITOR] Subscriber removido: Restantes: ${currentSubscribers.size}`);
         
         if (currentSubscribers.size === 0) {
           this.statusSubscribers.delete(tenantId);
@@ -348,8 +349,8 @@ class RealtimeChannelManager {
           // Atualizar status do último update (sem timestamp desnecessário)
           this.lastStatusUpdates.set(tenantId, { status: currentStatus, timestamp: Date.now() });
           
-          // Log apenas quando status realmente muda
-          console.log(`🔄 [V3.4-MONITOR] Status update: ${tenantId.substring(0, 8)} → ${currentStatus} (${subscribers.size} subscribers)`);
+          // ✅ PERFORMANCE-OPTIMIZED: Log consolidado
+          console.log(`🔄 [V3.4-MONITOR] Status: ${currentStatus} (${subscribers.size} subscribers)`);
         }
       }
     }, this.STATUS_MONITOR_INTERVAL);

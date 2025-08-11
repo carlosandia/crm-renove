@@ -16,6 +16,7 @@ import { useLeadTasksForCard } from '../../../hooks/useLeadTasksForCard';
 import type { CombinedActivityView } from '../../../shared/types/cadenceTaskInstance';
 import DocumentsTab from '../tabs/DocumentsTab';
 import { AnnotationsTab } from '../../Annotations/AnnotationsTab';
+import SimpleEmailForm from '../../Leads/SimpleEmailForm';
 
 interface LeadTask {
   id: string;
@@ -81,6 +82,9 @@ interface InteractiveMenuBlockProps {
   
   // Custom Activity Modal
   onOpenCustomActivity: () => void;
+  
+  // Email Modal - REMOVIDO: Agora usa EmailInlineComposer
+  // onOpenEmailModal: () => void;
 }
 
 const InteractiveMenuBlock: React.FC<InteractiveMenuBlockProps> = ({
@@ -100,6 +104,7 @@ const InteractiveMenuBlock: React.FC<InteractiveMenuBlockProps> = ({
   setFeedbackType,
   handleAddFeedbackWrapper,
   onOpenCustomActivity
+  // onOpenEmailModal - REMOVIDO
 }) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -670,12 +675,26 @@ const InteractiveMenuBlock: React.FC<InteractiveMenuBlockProps> = ({
 
         {/* E-MAIL */}
         {activeInteractiveTab === 'email' && (
-          <div className="text-center py-8">
-            <Mail className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <h4 className="text-md font-medium text-gray-900 mb-1">Integração de E-mail</h4>
-            <p className="text-sm text-gray-600">
-              Em breve integração com SMTP será implementada para envio e recebimento de e-mails diretamente do CRM.
-            </p>
+          <div className="space-y-4">
+
+
+            {/* ✅ NOVO: SimpleEmailForm - Interface ultra simples sem complexidade */}
+            <SimpleEmailForm
+              lead={lead}
+              onEmailSent={(success, message) => {
+                // Callback para feedback de envio
+                console.log(success ? '✅ E-mail enviado:' : '❌ Erro no e-mail:', message);
+              }}
+            />
+
+            {/* Histórico de e-mails (placeholder para futura implementação) */}
+            <div className="border-t pt-4">
+              <h5 className="text-sm font-medium text-gray-700 mb-2">Histórico de E-mails</h5>
+              <div className="text-center py-4">
+                <Mail className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                <p className="text-xs text-gray-500">Nenhum e-mail enviado ainda</p>
+              </div>
+            </div>
           </div>
         )}
 

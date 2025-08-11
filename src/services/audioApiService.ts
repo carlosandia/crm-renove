@@ -4,7 +4,7 @@
 // Descrição: Serviço para upload de áudio via API backend (padrão consistente)
 // =====================================================================================
 
-import { api } from '../lib/api';
+import { api } from './api';
 
 // ================================================================================
 // TIPOS E INTERFACES
@@ -80,12 +80,8 @@ export class AudioApiService {
       console.log('🔄 [AudioApiService] Enviando requisição para API backend...');
 
       // Enviar para API backend (interceptors cuidam da autenticação)
-      const response = await api.post<AudioUploadResponse>('/annotations/upload-audio', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        timeout: 30000, // 30 segundos timeout para upload
-      });
+      // AIDEV-NOTE: Usar timeout padrão do API client - não passar configurações extras
+      const response = await api.post<AudioUploadResponse>('/annotations/upload-audio', formData);
 
       console.log('✅ [AudioApiService] Upload realizado com sucesso:', {
         fileName: response.data.data?.fileName,

@@ -11,8 +11,8 @@ export const useCompanies = () => {
   const [error, setError] = useState<string | null>(null);
   const [isPolling, setIsPolling] = useState(false);
   
-  // 🔧 CORREÇÃO: Usar hook useAuth diretamente
-  const { user, authenticatedFetch } = useAuth();
+  // 🔧 CORREÇÃO: Usar padrão básico Supabase Authentication
+  const { user } = useAuth();
   
   const formatDateBrasilia = useCallback((dateString: string) => {
     try {
@@ -45,48 +45,23 @@ export const useCompanies = () => {
       let companiesData: any[] = [];
       let usedBackendAPI = false;
 
-      // 🔧 TENTATIVA 1: Backend API com autenticação (se disponível)
-      if (authenticatedFetch) {
-        console.log('🚀 [useCompanies] Tentando Backend API...');
-        try {
-          const response = await authenticatedFetch(`/companies${cacheBreaker}`);
-          
-          if (response.ok) {
-            const result = await response.json();
-            if (result.success && result.data) {
-              companiesData = result.data;
-              usedBackendAPI = true;
-              console.log(`✅ [useCompanies] Backend API: ${companiesData.length} empresas encontradas`);
-            } else {
-              console.warn('⚠️ [useCompanies] Backend API retornou erro:', result.error);
-            }
-          } else {
-            console.warn(`⚠️ [useCompanies] Backend API HTTP ${response.status}`);
-          }
-        } catch (backendError: any) {
-          console.warn('⚠️ [useCompanies] Backend API falhou:', backendError.message);
+      // ✅ CORREÇÃO: Usar Supabase direto com autenticação básica
+      console.log('🔄 [useCompanies] Usando Supabase...');
+      try {
+        const { data: supabaseData, error: supabaseError } = await supabase
+          .from('companies')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (supabaseError) {
+          throw new Error(`Supabase error: ${supabaseError.message}`);
         }
-      }
-
-      // 🔄 FALLBACK: Se Backend API falhou, usar Supabase direto
-      if (!usedBackendAPI || companiesData.length === 0) {
-        console.log('🔄 [useCompanies] Usando fallback Supabase...');
-        try {
-          const { data: supabaseData, error: supabaseError } = await supabase
-            .from('companies')
-            .select('*')
-            .order('created_at', { ascending: false });
-          
-          if (supabaseError) {
-            throw new Error(`Supabase error: ${supabaseError.message}`);
-          }
-          
-          companiesData = supabaseData || [];
-          console.log(`🔄 [useCompanies] Supabase Fallback: ${companiesData.length} empresas encontradas`);
-        } catch (supabaseError: any) {
-          console.error('❌ [useCompanies] Supabase fallback falhou:', supabaseError.message);
-          throw supabaseError;
-        }
+        
+        companiesData = supabaseData || [];
+        console.log(`✅ [useCompanies] Supabase: ${companiesData.length} empresas encontradas`);
+      } catch (supabaseError: any) {
+        console.error('❌ [useCompanies] Supabase falhou:', supabaseError.message);
+        throw supabaseError;
       }
 
       // 🔧 Processar empresas buscando admin via queries separadas
@@ -199,7 +174,7 @@ export const useCompanies = () => {
     } finally {
       setLoading(false);
     }
-  }, [authenticatedFetch, user]);
+  }, [user]);
 
   const toggleCompanyStatus = useCallback(async (company: Company) => {
     const novoStatus = !company.is_active;
@@ -236,35 +211,25 @@ export const useCompanies = () => {
     try {
       console.log(`🗑️ [useCompanies] Excluindo empresa: ${company.name}`);
       
-      // 🔧 CORREÇÃO: Usar authenticatedFetch com fallback
-      let response;
-      if (authenticatedFetch) {
-        response = await authenticatedFetch(`/companies/${company.id}`, {
-          method: 'DELETE'
-        });
-      } else {
-        // Fallback para desenvolvimento sem autenticação
-        response = await fetch(`(await import('../config/environment')).environmentConfig.urls.api/api/companies/${company.id}`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
-      const result = await response.json();
+      // ✅ CORREÇÃO: Usar Supabase diretamente
+      const { error } = await supabase
+        .from('companies')
+        .update({ is_active: false })
+        .eq('id', company.id);
       
-      if (result.success) {
+      if (!error) {
         console.log(`✅ [useCompanies] Empresa excluída com sucesso: ${company.name}`);
         await fetchCompanies(); // Atualizar dados
         showSuccessToast('Empresa excluída', `Empresa "${company.name}" excluída com sucesso!`);
       } else {
-        console.error(`❌ [useCompanies] Erro ao excluir empresa:`, result.error);
-        showErrorToast('Erro ao excluir', `Erro ao excluir empresa: ${result.error}`);
+        console.error(`❌ [useCompanies] Erro ao excluir empresa:`, error);
+        showErrorToast('Erro ao excluir', `Erro ao excluir empresa: ${error.message}`);
       }
     } catch (error) {
       console.error(`❌ [useCompanies] Erro de conexão:`, error);
       showErrorToast('Erro de conexão', `${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
-  }, [fetchCompanies, authenticatedFetch]);
+  }, [fetchCompanies]);
 
   const resendActivationEmail = useCallback(async (company: Company) => {
     if (!company.admin) {
@@ -274,24 +239,26 @@ export const useCompanies = () => {
     try {
       console.log(`📧 [useCompanies] Reenviando email para: ${company.admin.email}`);
       
-      // 🔧 CORREÇÃO 4: Usar authenticatedFetch com fallback
-      let response;
-      if (authenticatedFetch) {
-        response = await authenticatedFetch('/admin-invitations/send', {
-          method: 'POST',
-          body: JSON.stringify({
-            adminEmail: company.admin.email,
-            adminName: company.admin.name,
-            companyName: company.name,
-            companyId: company.id
-          })
-        });
-      } else {
-        // Fallback para desenvolvimento sem autenticação
-        const { environmentConfig } = await import('../config/environment');
-        response = await fetch(`${environmentConfig.urls.api}/admin-invitations/send`, {
+      // ✅ MIGRADO: Usar autenticação básica Supabase
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !currentUser) {
+        return { success: false, message: 'Usuário não autenticado' };
+      }
+
+      // Verificar se é super_admin
+      const userRole = currentUser.user_metadata?.role;
+      if (userRole !== 'super_admin') {
+        return { success: false, message: 'Acesso negado: apenas super_admin pode reenviar convites' };
+      }
+      
+      // Fazer requisição usando URL relativa (proxy Vite)
+      const response = await fetch('/api/admin-invitations/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+        },
         body: JSON.stringify({
           adminEmail: company.admin.email,
           adminName: company.admin.name,
@@ -299,7 +266,6 @@ export const useCompanies = () => {
           companyId: company.id
         })
       });
-      }
 
       const result = await response.json();
       

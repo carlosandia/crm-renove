@@ -24,7 +24,7 @@ export default defineConfig(({ command, mode }) => {
   // URLs baseadas no ambiente
   const apiUrl = isProduction 
     ? 'https://crm.renovedigital.com.br/api'
-    : env.VITE_API_URL || 'http://127.0.0.1:3001'
+    : env.VITE_API_URL || 'http://127.0.0.1:3001/api'
     
   const frontendUrl = isProduction
     ? 'https://crm.renovedigital.com.br'
@@ -33,10 +33,15 @@ export default defineConfig(({ command, mode }) => {
   return {
     plugins: [
       react({
-        // ✅ CORREÇÃO: Desabilitar Babel plugin para resolver token-map.js error
-        babel: false,
-        // Usar apenas esbuild para transformação JSX
-        jsxRuntime: 'automatic'
+        // ✅ CORREÇÃO HMR: Configuração otimizada para Fast Refresh estável
+        jsxRuntime: 'automatic',
+        // Remover babel: false que estava causando problemas de Fast Refresh
+        babel: {
+          // Permitir parsing de decorators e outras features ES proposal
+          parserOpts: {
+            plugins: ['decorators-legacy', 'classProperties']
+          }
+        }
       }),
       // AIDEV-NOTE: lovable-tagger temporariamente desabilitado devido conflito Vite 6.x
       // mode === 'development' && componentTagger(),
@@ -62,13 +67,16 @@ export default defineConfig(({ command, mode }) => {
     strictPort: true, // ✅ CORREÇÃO: Forçar porta 8080 sem fallback
     cors: true,
     open: false, // Não abrir automaticamente
-    // ✅ CORREÇÃO PROBLEMA #4: Proxy simplificado conforme Vite 6.x documentação
-    // Vite 6.x gerencia logs e erros automaticamente de forma mais eficiente
+    // ✅ CORREÇÃO DA REGRESSÃO: Proxy SMTP corrigido (revertido para configuração funcional)
+    // PROBLEMA ORIGINAL: URLs /api/simple-email/* chegavam como /simple-email/* no backend
+    // PROBLEMA DA "CORREÇÃO": target com /api + rewrite criou duplicação api/api/simple-email/*
+    // SOLUÇÃO CORRETA: target sem /api, sem rewrite, mantém URLs como /api/simple-email/*
     proxy: {
       '/api': {
-        target: isDevelopment ? 'http://127.0.0.1:3001' : apiUrl,
+        target: isDevelopment ? 'http://127.0.0.1:3001' : 'https://crm.renovedigital.com.br',
         changeOrigin: true,
         secure: isProduction
+        // Sem rewrite: URLs /api/simple-email/* são enviadas como /api/simple-email/* ao backend
       }
     },
     // ✅ CORREÇÃO PROBLEMA #2: HMR simplificado usando configuração padrão Vite 6.x
@@ -163,9 +171,10 @@ export default defineConfig(({ command, mode }) => {
     // ✅ Herda configuração de proxy do server para manter compatibilidade
     proxy: isProduction ? undefined : {
       '/api': {
-        target: isDevelopment ? 'http://127.0.0.1:3001' : apiUrl,
+        target: isDevelopment ? 'http://127.0.0.1:3001' : 'https://crm.renovedigital.com.br',
         changeOrigin: true,
         secure: isProduction
+        // Corrigido: mesmo padrão do server para consistência
       }
     },
     // ✅ Headers de segurança para preview

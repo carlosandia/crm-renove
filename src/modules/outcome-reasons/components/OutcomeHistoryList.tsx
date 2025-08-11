@@ -28,10 +28,13 @@ const OutcomeHistoryList: React.FC<OutcomeHistoryProps> = ({
   // ============================================
   // DATA PROCESSING
   // ============================================
-
+  
+  // ✅ CORREÇÃO CRÍTICA: Garantir que history é sempre um array
+  const safeHistory = Array.isArray(history) ? history : [];
+  
   const displayHistory = maxItems 
-    ? history.slice(0, maxItems) 
-    : history;
+    ? safeHistory.slice(0, maxItems) 
+    : safeHistory;
 
   // ============================================
   // RENDER FUNCTIONS
@@ -100,7 +103,7 @@ const OutcomeHistoryList: React.FC<OutcomeHistoryProps> = ({
   // EMPTY STATE
   // ============================================
 
-  if (history.length === 0) {
+  if (safeHistory.length === 0) {
     return (
       <div className="space-y-3">
         {showTitle && (
@@ -122,9 +125,9 @@ const OutcomeHistoryList: React.FC<OutcomeHistoryProps> = ({
       {showTitle && (
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-medium text-gray-900">Histórico de Motivos</h4>
-          {maxItems && history.length > maxItems && (
+          {maxItems && safeHistory.length > maxItems && (
             <span className="text-xs text-gray-500">
-              Mostrando {maxItems} de {history.length}
+              Mostrando {maxItems} de {safeHistory.length}
             </span>
           )}
         </div>
@@ -181,10 +184,10 @@ const OutcomeHistoryList: React.FC<OutcomeHistoryProps> = ({
       </div>
 
       {/* INDICADOR DE MAIS ITENS */}
-      {maxItems && history.length > maxItems && (
+      {maxItems && safeHistory.length > maxItems && (
         <div className="text-center pt-2">
           <p className="text-xs text-gray-500">
-            +{history.length - maxItems} item(ns) mais antigo(s)
+            +{safeHistory.length - maxItems} item(ns) mais antigo(s)
           </p>
         </div>
       )}

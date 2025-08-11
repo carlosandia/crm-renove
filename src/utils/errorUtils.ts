@@ -317,19 +317,29 @@ export class ErrorHandler {
 
   /**
    * Envia erro para serviço de monitoramento
+   * AIDEV-NOTE: Corrigido para evitar POST 404 - usando apenas console.error por enquanto
    */
   private static reportError(error: AppError, context?: string) {
-    // Implementar integração com Sentry, LogRocket, etc.
+    // ✅ CORREÇÃO: Usar apenas console.error por enquanto
+    // Em produção, integrar com Sentry, LogRocket, etc. quando endpoint estiver disponível
     try {
-      fetch('/api/errors/report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error, context, timestamp: Date.now() })
-      }).catch(() => {
-        // Falha silenciosa no report
+      console.error('🚨 [ERROR-REPORT] Critical error detected:', {
+        error,
+        context,
+        timestamp: Date.now(),
+        userAgent: navigator.userAgent,
+        url: window.location.href
       });
-    } catch {
-      // Falha silenciosa
+      
+      // TODO: Implementar integração com serviço de monitoramento quando disponível
+      // Exemplo:
+      // if (window.Sentry) {
+      //   window.Sentry.captureException(new Error(error.message), {
+      //     extra: { error, context }
+      //   });
+      // }
+    } catch (reportingError) {
+      console.error('🚫 [ERROR-REPORT] Failed to report error:', reportingError);
     }
   }
 

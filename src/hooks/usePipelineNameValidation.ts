@@ -1,4 +1,6 @@
+// ✅ MIGRADO: Usando autenticação básica Supabase conforme CLAUDE.md
 import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../providers/AuthProvider';
 
 export interface PipelineNameValidation {
@@ -15,7 +17,7 @@ export interface ValidationState {
 }
 
 export const usePipelineNameValidation = (initialName: string = '', pipelineId?: string) => {
-  const { authenticatedFetch } = useAuth();
+  const { user } = useAuth();
   const [name, setName] = useState(initialName);
   const [validationState, setValidationState] = useState<ValidationState>({
     isValidating: false,
@@ -37,9 +39,15 @@ export const usePipelineNameValidation = (initialName: string = '', pipelineId?:
       };
     }
 
-    if (!authenticatedFetch) {
-      console.warn('⚠️ [usePipelineNameValidation] authenticatedFetch não disponível');
-      return null;
+    // ✅ MIGRADO: Verificar autenticação básica Supabase
+    const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !currentUser) {
+      console.warn('⚠️ [usePipelineNameValidation] Usuário não autenticado');
+      return {
+        is_valid: false,
+        error: 'Autenticação necessária para validar nome'
+      };
     }
 
     try {
@@ -56,7 +64,13 @@ export const usePipelineNameValidation = (initialName: string = '', pipelineId?:
         params.append('pipeline_id', pipelineId);
       }
 
-      const response = await authenticatedFetch(`/pipelines/validate-name?${params.toString()}`);
+      // Fazer requisição usando URL relativa (proxy Vite)
+      const response = await fetch(`/api/pipelines/validate-name?${params.toString()}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+        }
+      });
 
       if (!response.ok) {
         throw new Error(`API retornou: ${response.status}`);
@@ -86,7 +100,7 @@ export const usePipelineNameValidation = (initialName: string = '', pipelineId?:
         error: 'Erro ao validar nome. Tente novamente.'
       };
     }
-  }, [authenticatedFetch, pipelineId]);
+  }, [user, pipelineId]);
 
   /**
    * Função com debounce para validação automática
@@ -252,10 +266,15 @@ export const usePipelineNameValidation = (initialName: string = '', pipelineId?:
   const isValid = validationState.validation?.is_valid === true;
   const hasError = validationState.validation?.error !== undefined;
   const isNameEmpty = !name.trim();
-  const showValidation = validationState.hasChecked && !validationState.isValidating;
-  // Para edição, permitir submit se nome não mudou ou se é válido
+  
+  // ✅ CORREÇÃO: Para modo edição, não mostrar validação se nome não mudou do inicial
+  const isEditMode = !!pipelineId;
+  const nameUnchanged = isEditMode && name === initialName;
+  const showValidation = validationState.hasChecked && !validationState.isValidating && !nameUnchanged;
+  
+  // ✅ CORREÇÃO: Para edição, sempre permitir submit se não está validando
   const canSubmit = (!isNameEmpty && !validationState.isValidating) && 
-    (pipelineId ? (isValid || !validationState.hasChecked) : isValid);
+    (isEditMode ? true : isValid);
 
   return {
     // Estado principal
@@ -270,6 +289,11 @@ export const usePipelineNameValidation = (initialName: string = '', pipelineId?:
     isNameEmpty,
     showValidation,
     canSubmit,
+    
+    // ✅ NOVO: Estados de contexto para debugging
+    isEditMode,
+    nameUnchanged,
+    initialName,
     
     // Ações
     updateName,

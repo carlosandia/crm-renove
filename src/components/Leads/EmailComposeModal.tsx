@@ -241,27 +241,32 @@ const EmailComposeModal: React.FC<EmailComposeModalProps> = ({ isOpen, onClose, 
 
       setSuccess('E-mail enviado com sucesso!');
       
-      // ✅ NOVO: Registrar no histórico de emails
-      await supabase.from('email_history').insert({
-        subject: formData.subject,
-        to_email: formData.to,
-        from_email: emailIntegration?.from_email,
-        status: 'sent',
-        sent_at: new Date().toISOString(),
-        lead_id: lead.id,
-        pipeline_id: lead.pipeline_id || lead.id, // Usar pipeline_id se disponível
-        user_id: user?.id,
-        tenant_id: user?.user_metadata?.tenant_id
-      });
+      // ✅ NOVO: Registrar no histórico de emails com tratamento de erro
+      try {
+        await supabase.from('email_history').insert({
+          subject: formData.subject,
+          to_email: formData.to,
+          from_email: emailIntegration?.from_email,
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+          lead_id: lead.id,
+          pipeline_id: lead.pipeline_id || lead.id, // Usar pipeline_id se disponível
+          user_id: user?.id,
+          tenant_id: user?.user_metadata?.tenant_id
+        });
 
-      // Registrar atividade no lead
-      await supabase.from('lead_activities').insert({
-        lead_id: lead.id,
-        activity_type: 'email_sent',
-        description: `E-mail enviado: ${formData.subject}`,
-        user_id: user?.id,
-        created_at: new Date().toISOString()
-      });
+        // Registrar atividade no lead
+        await supabase.from('lead_activities').insert({
+          lead_id: lead.id,
+          activity_type: 'email_sent',
+          description: `E-mail enviado: ${formData.subject}`,
+          user_id: user?.id,
+          created_at: new Date().toISOString()
+        });
+      } catch (historyError) {
+        // ✅ CORREÇÃO: Log apenas, não falhar o envio principal
+        console.warn('Erro ao salvar histórico de e-mail:', historyError);
+      }
 
       // Fechar modal após 2 segundos
       setTimeout(() => {
@@ -271,6 +276,7 @@ const EmailComposeModal: React.FC<EmailComposeModalProps> = ({ isOpen, onClose, 
 
     } catch (error) {
       console.error('Erro ao enviar e-mail:', error);
+      // ✅ CORREÇÃO: Não tentar acessar /api/errors que não existe
       setError(error instanceof Error ? error.message : 'Erro ao enviar e-mail');
     } finally {
       setSending(false);

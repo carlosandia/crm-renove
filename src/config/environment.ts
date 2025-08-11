@@ -95,7 +95,7 @@ const environmentConfigs: Record<Environment, Partial<EnvironmentConfig>> = {
       environment: 'development',
     },
     urls: {
-      api: import.meta.env.VITE_API_URL || (import.meta.env.VITE_ENVIRONMENT === 'production' ? 'https://crm.renovedigital.com.br/api' : 'http://127.0.0.1:3001/api'),
+      api: import.meta.env.VITE_API_URL || (import.meta.env.VITE_ENVIRONMENT === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:3001'),
       frontend: import.meta.env.VITE_FRONTEND_URL || (import.meta.env.VITE_ENVIRONMENT === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:8080'),
       backend: import.meta.env.VITE_BACKEND_URL || (import.meta.env.VITE_ENVIRONMENT === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:3001'),
     },
@@ -128,9 +128,9 @@ const environmentConfigs: Record<Environment, Partial<EnvironmentConfig>> = {
       environment: 'production',
     },
     urls: {
-      api: 'https://crm.renovedigital.com.br/api',
+      api: 'https://crm.renovedigital.com.br',
       frontend: 'https://crm.renovedigital.com.br',
-      backend: 'https://crm.renovedigital.com.br/api',
+      backend: 'https://crm.renovedigital.com.br',
     },
     debug: {
       enabled: false,
@@ -163,7 +163,7 @@ const environmentConfigs: Record<Environment, Partial<EnvironmentConfig>> = {
     urls: {
       api: 'https://staging.crm.renovedigital.com.br/api',
       frontend: 'https://staging.crm.renovedigital.com.br',
-      backend: 'https://staging.crm.renovedigital.com.br/api',
+      backend: 'https://staging.crm.renovedigital.com.br',
     },
     debug: {
       enabled: true,
@@ -194,7 +194,7 @@ const environmentConfigs: Record<Environment, Partial<EnvironmentConfig>> = {
       environment: 'test',
     },
     urls: {
-      api: import.meta.env.VITE_API_URL || (import.meta.env.VITE_ENVIRONMENT === 'production' ? 'https://crm.renovedigital.com.br/api' : 'http://127.0.0.1:3001/api'),
+      api: import.meta.env.VITE_API_URL || (import.meta.env.VITE_ENVIRONMENT === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:3001'),
       frontend: import.meta.env.VITE_FRONTEND_URL || (import.meta.env.VITE_ENVIRONMENT === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:8080'),
       backend: import.meta.env.VITE_BACKEND_URL || (import.meta.env.VITE_ENVIRONMENT === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:3001'),
     },
@@ -236,7 +236,7 @@ function mergeWithEnvVars(config: Partial<EnvironmentConfig>): EnvironmentConfig
       // AIDEV-NOTE: Fallback inteligente - produção primeiro, depois desenvolvimento
       api: import.meta.env.VITE_API_URL || config.urls?.api || 
            (import.meta.env.VITE_ENVIRONMENT === 'production' 
-             ? 'https://crm.renovedigital.com.br/api' 
+             ? 'https://crm.renovedigital.com.br' 
              : process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:3001'),
       frontend: import.meta.env.VITE_FRONTEND_URL || config.urls?.frontend || 
                (import.meta.env.VITE_ENVIRONMENT === 'production' 

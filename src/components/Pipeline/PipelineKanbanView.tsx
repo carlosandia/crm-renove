@@ -1,9 +1,10 @@
-import React, { useCallback, useMemo, useDebugValue, useRef } from 'react';
+import React, { useCallback, useMemo, useDebugValue, useRef, useState } from 'react';
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import { Lead, PipelineStage } from '../../types/Pipeline';
 import { usePipelineKanban } from '../../hooks/usePipelineKanban';
 import KanbanColumn from './KanbanColumn';
 import PipelineMetricsDisplay from './metrics/PipelineMetricsDisplay';
+import OutcomeReasonModal from '../../modules/outcome-reasons/components/OutcomeReasonModal';
 
 
 // ============================================
@@ -31,6 +32,19 @@ const PipelineKanbanView: React.FC<PipelineKanbanViewProps> = ({
   onViewDetails // ✅ NOVO: Callback externo para modal
 }) => {
   // 🎯 REMOÇÃO: Estado local removido - usar apenas optimistic updates do React Query
+  
+  // ============================================
+  // ESTADO PARA OUTCOME MODAL OBRIGATÓRIO
+  // ============================================
+  
+  const [pendingMove, setPendingMove] = useState<{
+    leadId: string;
+    destinationStageId: string;
+    calculatedPosition: number;
+    sourceStageId: string;
+    destinationIndex: number;
+    outcomeType: 'won' | 'lost';
+  } | null>(null);
   
   // ============================================
   // HOOK CENTRALIZADO
@@ -74,6 +88,26 @@ const PipelineKanbanView: React.FC<PipelineKanbanViewProps> = ({
   
   // ✅ REF SIMPLES: Container do kanban
   const kanbanContainerRef = useRef<HTMLDivElement>(null);
+  
+  // ============================================
+  // HELPER FUNCTIONS
+  // ============================================
+  
+  // Helper para detectar se uma stage é de ganho/perdido
+  const getStageOutcomeType = useCallback((stageId: string): 'won' | 'lost' | null => {
+    const stage = stages.find(s => s.id === stageId);
+    if (!stage) return null;
+    
+    if (stage.stage_type === 'ganho' || stage.name === 'Ganho') {
+      return 'won';
+    }
+    
+    if (stage.stage_type === 'perdido' || stage.name === 'Perdido') {
+      return 'lost';
+    }
+    
+    return null;
+  }, [stages]);
   
   // ============================================
   // ✅ @hello-pangea/dnd: Drag and Drop Handlers
@@ -129,7 +163,7 @@ const PipelineKanbanView: React.FC<PipelineKanbanViewProps> = ({
     return (destinationIndex + 1) * 100;
   }, []);
 
-  // 🎯 DRAG END HANDLER: Posicionamento preciso baseado em contexto real
+  // 🎯 DRAG END HANDLER COM INTERCEPTAÇÃO OBRIGATÓRIA PARA GANHO/PERDIDO
   const handleDragEnd = useCallback(async (result: DropResult) => {
     const { destination, source, draggableId } = result;
     
@@ -177,7 +211,33 @@ const PipelineKanbanView: React.FC<PipelineKanbanViewProps> = ({
       });
     }
     
-    // Executar optimistic update com posição contextual
+    // ✅ INTERCEPTAÇÃO OBRIGATÓRIA: Verificar se destino é ganho/perdido
+    const outcomeType = getStageOutcomeType(destination.droppableId);
+    
+    if (outcomeType) {
+      // 🛑 INTERCEPTAR: Destino é ganho/perdido - abrir modal ANTES de mover
+      console.log('🛑 [OUTCOME REQUIRED] Movimento interceptado para stage de outcome:', {
+        leadId: draggableId.substring(0, 8),
+        destinationStage: destination.droppableId.substring(0, 8),
+        outcomeType,
+        message: 'Modal de motivo será exibido antes da movimentação'
+      });
+      
+      // Armazenar dados da movimentação pendente
+      setPendingMove({
+        leadId: draggableId,
+        destinationStageId: destination.droppableId,
+        calculatedPosition,
+        sourceStageId: source.droppableId,
+        destinationIndex: destination.index,
+        outcomeType
+      });
+      
+      // Modal será aberto automaticamente pela renderização
+      return;
+    }
+    
+    // ✅ MOVIMENTAÇÃO NORMAL: Executar diretamente se não for ganho/perdido
     try {
       await handleLeadMove?.(
         draggableId, 
@@ -187,12 +247,54 @@ const PipelineKanbanView: React.FC<PipelineKanbanViewProps> = ({
         destination.index
       );
       if (import.meta.env.DEV) {
-        console.log('✅ [DRAG END] Optimistic update concluído com posição contextual:', calculatedPosition);
+        console.log('✅ [DRAG END] Movimentação normal concluída:', calculatedPosition);
       }
     } catch (error) {
-      console.error('❌ [DRAG END] Erro no optimistic update:', error);
+      console.error('❌ [DRAG END] Erro na movimentação normal:', error);
     }
-  }, [handleLeadMove, leadsByStage, calculateRealPosition]);
+  }, [handleLeadMove, leadsByStage, calculateRealPosition, getStageOutcomeType]);
+  
+  // ============================================
+  // HANDLERS DO OUTCOME MODAL
+  // ============================================
+  
+  // Handler para quando o modal é fechado (cancelado)
+  const handleOutcomeModalClose = useCallback(() => {
+    console.log('❌ [OUTCOME MODAL] Cancelado pelo usuário - movimento não executado');
+    setPendingMove(null);
+  }, []);
+  
+  // Handler para quando o motivo é aplicado com sucesso
+  const handleOutcomeSuccess = useCallback(async () => {
+    if (!pendingMove) {
+      console.warn('⚠️ [OUTCOME MODAL] Sucesso sem movimento pendente');
+      return;
+    }
+    
+    console.log('✅ [OUTCOME MODAL] Motivo aplicado - executando movimento:', {
+      leadId: pendingMove.leadId.substring(0, 8),
+      destinationStage: pendingMove.destinationStageId.substring(0, 8),
+      outcomeType: pendingMove.outcomeType
+    });
+    
+    try {
+      // Executar a movimentação que estava pendente
+      await handleLeadMove?.(
+        pendingMove.leadId,
+        pendingMove.destinationStageId,
+        pendingMove.calculatedPosition,
+        pendingMove.sourceStageId,
+        pendingMove.destinationIndex
+      );
+      
+      console.log('🎉 [OUTCOME MODAL] Movimento concluído com sucesso após aplicar motivo');
+    } catch (error) {
+      console.error('❌ [OUTCOME MODAL] Erro ao executar movimento após motivo:', error);
+    } finally {
+      // Limpar movimento pendente
+      setPendingMove(null);
+    }
+  }, [pendingMove, handleLeadMove]);
   
   // ============================================
   // RENDERIZAÇÃO
@@ -234,8 +336,6 @@ const PipelineKanbanView: React.FC<PipelineKanbanViewProps> = ({
             <div className="flex px-0 py-2 min-w-max gap-2">
               {isLoading ? (
                 <div className="flex items-center justify-center w-full py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400 mx-auto mb-2"></div>
-                  <p className="text-sm text-gray-500 ml-3">Carregando pipeline...</p>
                 </div>
               ) : error ? (
                 <div className="flex items-center justify-center w-full py-8">
@@ -268,6 +368,21 @@ const PipelineKanbanView: React.FC<PipelineKanbanViewProps> = ({
             </div>
         </div>
       </div>
+      
+      {/* ============================================ */}
+      {/* OUTCOME MODAL OBRIGATÓRIO PARA GANHO/PERDIDO */}
+      {/* ============================================ */}
+      
+      {pendingMove && (
+        <OutcomeReasonModal
+          isOpen={true}
+          onClose={handleOutcomeModalClose}
+          leadId={pendingMove.leadId}
+          outcomeType={pendingMove.outcomeType}
+          pipelineId={pipelineId}
+          onSuccess={handleOutcomeSuccess}
+        />
+      )}
     </DragDropContext>
   );
 };

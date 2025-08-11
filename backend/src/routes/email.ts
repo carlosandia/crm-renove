@@ -67,70 +67,126 @@ async function validateSMTPServer(hostname: string): Promise<{ valid: boolean; e
   }
 }
 
-// ✅ NOVO: Configurações TLS inteligentes com fallbacks
+// ✅ CORREÇÃO CRÍTICA: Sistema dual-stack IPv4/IPv6 com fallbacks robustos
 function createTransportConfigs(host: string, port: number, username: string, password: string, secure: boolean) {
   const baseConfig = {
     host,
     port: parseInt(String(port)),
-    auth: { user: username, pass: password }
+    auth: { user: username, pass: password },
+    connectionTimeout: 45000, // 45s timeout estendido
+    socketTimeout: 45000
   };
 
   // Configurações a serem tentadas em ordem de prioridade
   const configs = [];
+
+  // ✅ PRIORIDADE 1: Configurações específicas para UNI5/servidores problemáticos
+  if (host.includes('uni5.net') || host.includes('smtpi')) {
+    // Configuração IPv6 forçada para UNI5
+    configs.push({
+      ...baseConfig,
+      family: 6, // Força IPv6
+      secure: false,
+      requireTLS: true,
+      tls: {
+        rejectUnauthorized: false,
+        minVersion: 'TLSv1',
+        servername: host
+      },
+      name: 'IPv6 STARTTLS (UNI5 otimizado)'
+    });
+
+    // Configuração com IP hardcoded IPv6 (backup)
+    configs.push({
+      ...baseConfig,
+      host: '2804:10:8028::220:80', // IPv6 do UNI5
+      family: 6,
+      secure: false,
+      requireTLS: true,
+      tls: {
+        rejectUnauthorized: false,
+        minVersion: 'TLSv1',
+        servername: host // Preserva hostname original para TLS
+      },
+      name: 'IPv6 hardcoded (UNI5 fallback)'
+    });
+  }
 
   if (port === 465) {
     // Porta 465 = SSL direto (sempre secure: true)
     configs.push({
       ...baseConfig,
       secure: true,
+      tls: {
+        rejectUnauthorized: false,
+        minVersion: 'TLSv1'
+      },
       name: 'SSL direto (porta 465)'
     });
   } else if (port === 587) {
-    // Porta 587 = STARTTLS
-    if (secure) {
-      // Se usuário quer segurança, tentar STARTTLS primeiro
-      configs.push({
-        ...baseConfig,
-        secure: false,
-        requireTLS: true,
-        tls: {
-          rejectUnauthorized: false,
-          minVersion: 'TLSv1'
-        },
-        name: 'STARTTLS forçado (porta 587)'
-      });
-    }
+    // ✅ PRIORIDADE 2: Configurações otimizadas para porta 587
     
-    // Configuração padrão para 587
+    // Configuração dual-stack padrão
     configs.push({
       ...baseConfig,
+      family: 0, // Permite IPv4 e IPv6
+      secure: false,
+      requireTLS: true,
+      tls: {
+        rejectUnauthorized: false,
+        minVersion: 'TLSv1',
+        servername: host
+      },
+      name: 'Dual-stack STARTTLS (porta 587)'
+    });
+
+    // IPv4 forçado para compatibilidade
+    configs.push({
+      ...baseConfig,
+      family: 4, // Força IPv4
       secure: false,
       tls: {
         rejectUnauthorized: false,
         minVersion: 'TLSv1'
       },
-      name: 'STARTTLS padrão (porta 587)'
+      name: 'IPv4 STARTTLS (porta 587)'
     });
   } else {
     // Portas customizadas - tentar conforme solicitado pelo usuário
     configs.push({
       ...baseConfig,
       secure: secure,
+      family: 0, // Dual-stack
       ...(secure ? {} : {
         tls: {
-          rejectUnauthorized: false
+          rejectUnauthorized: false,
+          minVersion: 'TLSv1'
         }
       }),
-      name: `Configuração customizada (porta ${port})`
+      name: `Dual-stack customizada (porta ${port})`
     });
   }
+
+  // ✅ PRIORIDADE 3: Fallbacks universais
+  
+  // Configuração com TLS relaxado
+  configs.push({
+    ...baseConfig,
+    secure: false,
+    tls: {
+      rejectUnauthorized: false,
+      minVersion: 'TLSv1',
+      ciphers: 'ALL'
+    },
+    name: 'TLS relaxado (fallback)'
+  });
 
   // Fallback sem TLS como última opção
   configs.push({
     ...baseConfig,
     secure: false,
     ignoreTLS: true,
-    name: 'Sem criptografia (fallback)'
+    name: 'Sem criptografia (último recurso)'
   });
 
   return configs;
@@ -229,11 +285,11 @@ router.post('/test-connection', authenticateToken, async (req: Request, res: Res
         const { name, ...transportConfig } = config;
         const transporter = nodemailer.createTransport(transportConfig);
 
-        // Teste de verificação com timeout
+        // ✅ CORREÇÃO: Timeout estendido para 45s (servidores lentos)
         await Promise.race([
           transporter.verify(),
           new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('TIMEOUT')), 15000)
+            setTimeout(() => reject(new Error('TIMEOUT')), 45000)
           )
         ]);
 
@@ -260,19 +316,37 @@ router.post('/test-connection', authenticateToken, async (req: Request, res: Res
         }
       });
     } else {
-      // Mapear erro específico
+      // ✅ CORREÇÃO: Mensagens específicas para diferentes tipos de erro
       let errorMessage = 'Falha na conexão SMTP';
-      if (lastError?.code === 'EAUTH') errorMessage = 'Credenciais inválidas - verifique email e senha';
-      else if (lastError?.code === 'ENOTFOUND') errorMessage = 'Servidor SMTP não encontrado';
-      else if (lastError?.code === 'ECONNECTION') errorMessage = 'Falha na conexão - servidor pode estar indisponível';
-      else if (lastError?.code === 'ETIMEDOUT' || lastError?.message === 'TIMEOUT') errorMessage = 'Timeout na conexão - servidor muito lento';
-      else if (lastError?.message) errorMessage = `Erro: ${lastError.message}`;
+      let suggestion = '';
+
+      if (lastError?.code === 'EAUTH') {
+        errorMessage = 'Credenciais inválidas - verifique email e senha';
+        suggestion = 'Confirme o email e senha. Para Gmail/Yahoo, use senha de aplicativo.';
+      } else if (lastError?.code === 'ENOTFOUND') {
+        errorMessage = 'Servidor SMTP não encontrado';
+        suggestion = 'Verifique se o servidor SMTP está correto.';
+      } else if (lastError?.code === 'ECONNECTION') {
+        errorMessage = 'Falha na conexão - servidor pode estar indisponível';
+        suggestion = 'Tente novamente em alguns minutos ou contate o administrador.';
+      } else if (lastError?.code === 'ETIMEDOUT' || lastError?.message === 'TIMEOUT') {
+        if (smtp_host.includes('uni5.net')) {
+          errorMessage = 'Timeout na conexão com servidor UNI5';
+          suggestion = 'O servidor UNI5 está lento. Tentamos IPv6 e IPv4. Contate o suporte UNI5 se o problema persistir.';
+        } else {
+          errorMessage = 'Timeout na conexão - servidor muito lento';
+          suggestion = 'O servidor SMTP não respondeu em 45 segundos. Verifique a conectividade.';
+        }
+      } else if (lastError?.message) {
+        errorMessage = `Erro: ${lastError.message}`;
+      }
 
       console.log(`❌ [EMAIL] Todas as configurações falharam. Último erro: ${lastError?.message}`);
 
       res.status(400).json({
         success: false,
         error: errorMessage,
+        suggestion: suggestion,
         data: { 
           status: 'failed',
           last_error: lastError?.code || 'UNKNOWN',
@@ -384,6 +458,117 @@ router.post('/integrations', authenticateToken, async (req: Request, res: Respon
   }
 });
 
+// ✅ TESTE TEMPORÁRIO: Endpoint sem auth para validar correções IPv6
+router.post('/test-connection-debug', async (req: Request, res: Response) => {
+  try {
+    const { email_address, smtp_host, smtp_port, smtp_username, smtp_password, smtp_secure } = req.body;
+
+    // Validação básica
+    if (!email_address || !smtp_host || !smtp_port || !smtp_username || !smtp_password) {
+      return res.status(400).json({ success: false, error: 'Todos os campos são obrigatórios' });
+    }
+
+    console.log('🧪 [EMAIL-DEBUG] Iniciando teste sem auth:', { 
+      email: email_address, 
+      host: smtp_host, 
+      port: smtp_port, 
+      secure: smtp_secure 
+    });
+
+    // ✅ ETAPA 1: Validação DNS
+    const dnsValidation = await validateSMTPServer(smtp_host);
+    if (!dnsValidation.valid) {
+      console.log(`❌ [EMAIL-DEBUG] Falha na validação DNS: ${dnsValidation.error}`);
+      return res.status(400).json({
+        success: false,
+        error: `Servidor SMTP inválido: ${dnsValidation.error}`,
+        data: { status: 'dns_failed', tested_at: new Date().toISOString() }
+      });
+    }
+
+    // ✅ ETAPA 2: Configurações com fallback
+    const transportConfigs = createTransportConfigs(smtp_host, smtp_port, smtp_username, smtp_password, smtp_secure);
+    
+    let lastError = null;
+    let successful = false;
+    let usedConfig = null;
+
+    // ✅ ETAPA 3: Tentar configurações em ordem de prioridade
+    for (const config of transportConfigs) {
+      try {
+        console.log(`🔧 [EMAIL-DEBUG] Tentando: ${config.name}`);
+        
+        // Remover propriedades auxiliares antes de criar o transport
+        const { name, ...transportConfig } = config;
+        const transporter = nodemailer.createTransport(transportConfig);
+
+        // Teste de verificação com timeout
+        await Promise.race([
+          transporter.verify(),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('TIMEOUT')), 45000)
+          )
+        ]);
+
+        console.log(`✅ [EMAIL-DEBUG] Sucesso com: ${config.name}`);
+        successful = true;
+        usedConfig = config;
+        break;
+
+      } catch (error) {
+        console.log(`⚠️ [EMAIL-DEBUG] Falhou ${config.name}: ${error.message}`);
+        lastError = error;
+        continue;
+      }
+    }
+
+    if (successful) {
+      res.json({
+        success: true,
+        message: `Conexão SMTP estabelecida! (Configuração: ${usedConfig.name})`,
+        data: { 
+          status: 'success', 
+          config_used: usedConfig.name,
+          tested_at: new Date().toISOString() 
+        }
+      });
+    } else {
+      let errorMessage = 'Falha na conexão SMTP';
+      let suggestion = '';
+
+      if (lastError?.code === 'ETIMEDOUT' || lastError?.message === 'TIMEOUT') {
+        if (smtp_host.includes('uni5.net')) {
+          errorMessage = 'Timeout na conexão com servidor UNI5';
+          suggestion = 'O servidor UNI5 está lento. Tentamos IPv6 e IPv4. Contate o suporte UNI5 se o problema persistir.';
+        } else {
+          errorMessage = 'Timeout na conexão - servidor muito lento';
+          suggestion = 'O servidor SMTP não respondeu em 45 segundos. Verifique a conectividade.';
+        }
+      }
+
+      res.status(400).json({
+        success: false,
+        error: errorMessage,
+        suggestion: suggestion,
+        data: { 
+          status: 'failed',
+          last_error: lastError?.code || 'UNKNOWN',
+          configs_tried: transportConfigs.length,
+          tested_at: new Date().toISOString() 
+        }
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ [EMAIL-DEBUG] Erro crítico no teste:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      data: { status: 'server_error', tested_at: new Date().toISOString() }
+    });
+  }
+});
+
 // GET /api/email/providers - Provedores disponíveis
 router.get('/providers', (req: Request, res: Response) => {
   const providers = Object.entries(EMAIL_PROVIDERS).map(([domain, config]) => ({
@@ -398,6 +583,152 @@ router.get('/providers', (req: Request, res: Response) => {
   }));
 
   res.json({ success: true, data: providers });
+});
+
+// POST /api/email/send - Enviar e-mail usando integração do usuário
+router.post('/send', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Não autenticado' });
+    }
+
+    const { to, subject, message, lead_id } = req.body;
+
+    // Validação básica
+    if (!to || !subject || !message) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Campos obrigatórios: to, subject, message' 
+      });
+    }
+
+    console.log('📧 [EMAIL-SEND] Iniciando envio:', {
+      to,
+      subject: subject.substring(0, 50) + '...',
+      user_id: req.user.id.substring(0, 8),
+      lead_id: lead_id?.substring(0, 8)
+    });
+
+    // Buscar integração de e-mail ativa do usuário
+    const { data: integration, error: integrationError } = await supabase
+      .from('user_email_integrations')
+      .select('*')
+      .eq('user_id', req.user.id)
+      .eq('is_active', true)
+      .single();
+
+    if (integrationError || !integration) {
+      console.error('❌ [EMAIL-SEND] Nenhuma integração ativa encontrada:', integrationError);
+      return res.status(400).json({
+        success: false,
+        error: 'Nenhuma integração de e-mail ativa configurada'
+      });
+    }
+
+    // Descriptografar senha
+    const password = decryptPassword(integration.smtp_password_encrypted);
+
+    // Criar configurações de transporte
+    const transportConfigs = createTransportConfigs(
+      integration.smtp_host,
+      integration.smtp_port,
+      integration.smtp_username,
+      password,
+      integration.smtp_secure
+    );
+
+    let successful = false;
+    let messageId = '';
+    let lastError: any = null;
+
+    // Tentar enviar com configurações em ordem de prioridade
+    for (const config of transportConfigs) {
+      try {
+        console.log(`📧 [EMAIL-SEND] Tentando: ${config.name}`);
+        
+        const { name, ...transportConfig } = config;
+        const transporter = nodemailer.createTransport(transportConfig);
+
+        const mailOptions = {
+          from: `${integration.display_name || integration.smtp_username} <${integration.email_address}>`,
+          to: to,
+          subject: subject,
+          html: message.replace(/\n/g, '<br>'),
+          text: message
+        };
+
+        const result = await transporter.sendMail(mailOptions);
+        messageId = result.messageId;
+        successful = true;
+        console.log(`✅ [EMAIL-SEND] Sucesso com: ${config.name}`);
+        break;
+
+      } catch (error: any) {
+        console.log(`⚠️ [EMAIL-SEND] Falhou ${config.name}: ${error.message}`);
+        lastError = error;
+        continue;
+      }
+    }
+
+    if (successful) {
+      // Buscar tenant_id do usuário para salvar histórico
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('tenant_id')
+        .eq('id', req.user.id)
+        .single();
+
+      // Registrar no histórico (não bloquear envio se falhar)
+      try {
+        await supabase.from('email_history').insert({
+          tenant_id: userData?.tenant_id || req.user.tenant_id,
+          user_id: req.user.id,
+          lead_id: lead_id || null,
+          to_email: to,
+          from_email: integration.email_address,
+          subject: subject,
+          content: message,
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+          email_message_id: messageId
+        });
+      } catch (historyError) {
+        console.warn('⚠️ [EMAIL-SEND] Erro ao salvar histórico (não crítico):', historyError);
+      }
+
+      res.json({
+        success: true,
+        message: 'E-mail enviado com sucesso',
+        data: {
+          messageId,
+          to,
+          subject,
+          sent_at: new Date().toISOString()
+        }
+      });
+    } else {
+      let errorMessage = 'Falha ao enviar e-mail';
+      if (lastError?.code === 'EAUTH') errorMessage = 'Credenciais inválidas - verifique sua configuração SMTP';
+      else if (lastError?.code === 'ENOTFOUND') errorMessage = 'Servidor SMTP não encontrado';
+      else if (lastError?.message) errorMessage = lastError.message;
+
+      console.log(`❌ [EMAIL-SEND] Todas as configurações falharam: ${lastError?.message}`);
+
+      res.status(500).json({
+        success: false,
+        error: errorMessage,
+        details: lastError?.code || 'UNKNOWN'
+      });
+    }
+
+  } catch (error: any) {
+    console.error('❌ [EMAIL-SEND] Erro crítico:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      details: error.message
+    });
+  }
 });
 
 // GET /api/email/history - Histórico de emails 

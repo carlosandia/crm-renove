@@ -72,8 +72,24 @@ export const outcomeReasonsApi = {
       return [];
     }
 
-    const response = await api.get(`/outcome-reasons/history/${leadId}`);
-    return response.data;
+    try {
+      const response = await api.get(`/outcome-reasons/history/${leadId}`);
+      
+      // ✅ CORREÇÃO CRÍTICA: Garantir que response.data é sempre um array
+      const data = response.data;
+      if (Array.isArray(data)) {
+        return data;
+      } else if (data && typeof data === 'object' && Array.isArray(data.data)) {
+        // Caso a API retorne formato {data: array}
+        return data.data;
+      } else {
+        console.warn('⚠️ [outcomeReasonsApi] Resposta não é array, retornando vazio:', typeof data);
+        return [];
+      }
+    } catch (error) {
+      console.error('❌ [outcomeReasonsApi] Erro ao buscar histórico:', error);
+      return [];
+    }
   },
 
   // ============================================

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../providers/AuthProvider';
+import { supabase } from '../lib/supabase';
 
 interface PasswordRequirements {
   length: boolean;
@@ -35,7 +36,7 @@ interface UsePasswordManagerReturn {
 }
 
 export const usePasswordManager = (): UsePasswordManagerReturn => {
-  const { user, authenticatedFetch } = useAuth();
+  const { user } = useAuth();
   
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -82,7 +83,7 @@ export const usePasswordManager = (): UsePasswordManagerReturn => {
     return { strength: 'Forte', color: 'bg-green-500', width: '100%' };
   };
 
-  // ✅ CORREÇÃO: API usando authenticatedFetch com headers automáticos
+  // ✅ MIGRAÇÃO CONCLUÍDA: Sistema migrado para autenticação básica Supabase
   const updateAdminPassword = async (companyId: string): Promise<{ success: boolean; message: string }> => {
     if (!isPasswordValid()) {
       return {
@@ -102,19 +103,18 @@ export const usePasswordManager = (): UsePasswordManagerReturn => {
       const { hashPasswordEnterprise } = await import('../lib/utils');
       const hashedPassword = await hashPasswordEnterprise(newPassword);
 
-      // ✅ CORREÇÃO: Usar authenticatedFetch que adiciona headers automáticos
-      const response = await authenticatedFetch('/companies/update-admin-password', {
-        method: 'PUT',
-        body: JSON.stringify({
-          companyId: companyId,
-          newPassword: hashedPassword
-        })
-      });
+      // ✅ CORREÇÃO: Migração para autenticação básica Supabase
+      const { data, error } = await supabase
+        .from('companies')
+        .update({ admin_password: hashedPassword })
+        .eq('id', companyId)
+        .eq('tenant_id', (user as any)?.user_metadata?.tenant_id)
+        .select()
+        .single();
 
-      console.log('🔐 [PASSWORD-MANAGER] Response status:', response.status);
+      console.log('🔐 [PASSWORD-MANAGER] Supabase response:', { data, error });
 
-      if (response.ok) {
-        const result = await response.json();
+      if (!error && data) {
         console.log('✅ [PASSWORD-MANAGER] Senha alterada com sucesso');
         
         resetForm();
@@ -123,12 +123,11 @@ export const usePasswordManager = (): UsePasswordManagerReturn => {
           message: 'Senha atualizada com sucesso! O administrador pode fazer login com a nova senha.'
         };
       } else {
-        const errorData = await response.json();
-        console.error('❌ [PASSWORD-MANAGER] Erro na resposta:', errorData);
+        console.error('❌ [PASSWORD-MANAGER] Erro na resposta:', error);
         
         return {
           success: false,
-          message: errorData.message || errorData.error || 'Erro desconhecido no servidor'
+          message: error?.message || 'Erro desconhecido no servidor'
         };
       }
 

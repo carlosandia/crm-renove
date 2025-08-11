@@ -734,19 +734,27 @@ export function CustomFieldsManagerRender({ fieldsManager }: CustomFieldsManager
   } = fieldsManager;
 
   return (
-    <div className={PIPELINE_UI_CONSTANTS.spacing.section}>
+    <div className="space-y-6">
       {/* ===== SEÇÃO 1: CAMPOS CUSTOMIZADOS (TOPO) ===== */}
-      <div className="mb-6">
-        <SectionHeader
-          icon={Database}
-          title="Campos Customizados"
-          action={
-            <Button type="button" onClick={handleAddField} size="sm">
-            <Plus className="h-4 w-4 mr-2" />
-            Adicionar Campo
-          </Button>
-        }
-        />
+      <BlurFade delay={0.1} direction="up">
+        <div className="bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 rounded-xl p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-50 rounded-lg">
+                <Database className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Campos Customizados</h3>
+                <p className="text-sm text-slate-500">Personalize os campos específicos para sua pipeline</p>
+              </div>
+            </div>
+            <Button type="button" onClick={handleAddField} size="sm" className="bg-blue-600 hover:bg-blue-700">
+              <Plus className="h-4 w-4 mr-2" />
+              Adicionar Campo
+            </Button>
+          </div>
+        </div>
+      </BlurFade>
 
         {/* ✅ MELHOR UX: Formulário de adição aparece logo após o header quando ativo */}
         {showFieldModal && editFieldIndex === null && (
@@ -941,21 +949,27 @@ export function CustomFieldsManagerRender({ fieldsManager }: CustomFieldsManager
           </div>
         )}
 
-        {/* Lista de Campos Customizados */}
-        <div className="space-y-3 mt-6">
+      {/* Lista de Campos Customizados */}
+      <BlurFade delay={0.2} direction="up">
+        <div className="space-y-3">
           {customFieldsOnly.length > 0 ? (
             customFieldsOnly.map((field, index) => (
               <div key={field.id || `custom-${index}`}>
-                <AnimatedCard className="border-l-4 border-l-blue-500">
+                <Card className="bg-gradient-to-r from-white to-blue-50/30 border-slate-200/80 hover:border-blue-300/60 transition-all duration-200">
                   <CardContent className="flex items-center justify-between p-4">
                     <div className="flex items-center gap-3">
-                      {getFieldIcon(field.field_type)}
+                      <div className="p-2 bg-blue-100/70 rounded-md">
+                        {getFieldIcon(field.field_type)}
+                      </div>
                       <div>
-                        <div className="font-medium">{field.field_label}</div>
-                        <div className="text-sm text-muted-foreground">
+                        <div className="font-medium text-slate-900">{field.field_label}</div>
+                        <div className="text-sm text-slate-600 flex items-center gap-2">
                           {getFieldTypeLabel(field.field_type)}
-                          {field.is_required && <Badge variant="secondary" className="ml-2">Obrigatório</Badge>}
-                          {field.show_in_card && <Badge variant="outline" className="ml-2">Visível no Card</Badge>}
+                          {field.is_required && (
+                            <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-700 border-orange-200">
+                              Obrigatório
+                            </Badge>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -965,6 +979,7 @@ export function CustomFieldsManagerRender({ fieldsManager }: CustomFieldsManager
                         variant="ghost"
                         size="sm"
                         onClick={() => handleEditField(customFields.findIndex(f => f.field_name === field.field_name))}
+                        className="hover:bg-blue-50 hover:text-blue-700 transition-colors"
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
@@ -973,13 +988,13 @@ export function CustomFieldsManagerRender({ fieldsManager }: CustomFieldsManager
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDeleteField(customFields.findIndex(f => f.field_name === field.field_name))}
-                        className="text-destructive hover:text-destructive"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </CardContent>
-                </AnimatedCard>
+                </Card>
                 
                 {/* ✅ MELHOR UX: Formulário de edição aparece logo abaixo do campo sendo editado */}
                 {showFieldModal && editFieldIndex === customFields.findIndex(f => f.field_name === field.field_name) && (
@@ -1072,39 +1087,53 @@ export function CustomFieldsManagerRender({ fieldsManager }: CustomFieldsManager
             </div>
           )}
         </div>
-      </div>
+      </BlurFade>
 
       {/* ===== SEÇÃO 2: CAMPOS DO SISTEMA (BAIXO) ===== */}
-      <div className="mb-6">
-        <SectionHeader
-          icon={Lock}
-          title="Campos do Sistema"
-          description="Campos obrigatórios e não editáveis"
-        />
+      <BlurFade delay={0.3} direction="up">
+        <div className="bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-slate-100 rounded-lg">
+              <Lock className="h-5 w-5 text-slate-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Campos do Sistema</h3>
+              <p className="text-sm text-slate-500">Campos obrigatórios e não editáveis</p>
+            </div>
+          </div>
 
-        <div className="space-y-3 mt-6">
-          {systemFields.map((field, index) => (
-            <AnimatedCard key={field.field_name} className="border-l-4 border-l-gray-400 bg-gray-50/50">
-              <CardContent className="flex items-center justify-between p-4">
-                <div className="flex items-center gap-3">
-                  {getFieldIcon(field.field_type)}
-                  <div>
-                    <div className="font-medium text-gray-700">{field.field_label}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {getFieldTypeLabel(field.field_type)}
-                      <Badge variant="secondary" className="ml-2">Sistema</Badge>
-                      <Badge variant="secondary" className="ml-2">Obrigatório</Badge>
+          <div className="space-y-3">
+            {systemFields.map((field, index) => (
+              <Card key={field.field_name} className="bg-gradient-to-r from-white to-slate-50/30 border-slate-200/80">
+                <CardContent className="flex items-center justify-between p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-slate-100/70 rounded-md">
+                      {getFieldIcon(field.field_type)}
+                    </div>
+                    <div>
+                      <div className="font-medium text-slate-900">{field.field_label}</div>
+                      <div className="text-sm text-slate-600 flex items-center gap-2">
+                        {getFieldTypeLabel(field.field_type)}
+                        <Badge variant="secondary" className="text-xs bg-slate-100 text-slate-700 border-slate-200">
+                          Sistema
+                        </Badge>
+                        <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-700 border-orange-200">
+                          Obrigatório
+                        </Badge>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Lock className="h-4 w-4 text-gray-400" />
-                </div>
-              </CardContent>
-            </AnimatedCard>
-          ))}
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-slate-100 rounded-md">
+                      <Lock className="h-4 w-4 text-slate-500" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
-      </div>
+      </BlurFade>
 
       {/* ===== ALERT DIALOG PARA CONFIRMAÇÃO DE EXCLUSÃO ===== */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

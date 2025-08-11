@@ -8,6 +8,10 @@ export interface DistributionRule {
   mode: 'manual' | 'rodizio';
   is_active: boolean;
   working_hours_only: boolean;
+  // ✅ NOVOS CAMPOS: Horários específicos
+  working_hours_start?: string; // Formato "HH:MM:SS"
+  working_hours_end?: string;   // Formato "HH:MM:SS"
+  working_days?: number[];      // Array de dias da semana (1=Domingo, 2=Segunda...)
   skip_inactive_members: boolean;
   fallback_to_manual: boolean;
   last_assigned_member_id?: string;
@@ -48,6 +52,10 @@ export interface SaveDistributionRuleRequest {
   mode: 'manual' | 'rodizio';
   is_active?: boolean;
   working_hours_only?: boolean;
+  // ✅ NOVOS CAMPOS: Horários específicos para salvamento
+  working_hours_start?: string; // Formato "HH:MM:SS"
+  working_hours_end?: string;   // Formato "HH:MM:SS" 
+  working_days?: number[];      // Array de dias da semana (1=Domingo, 2=Segunda...)
   skip_inactive_members?: boolean;
   fallback_to_manual?: boolean;
 }
@@ -70,32 +78,20 @@ export class DistributionApiService {
    */
   static async getDistributionRule(pipelineId: string): Promise<DistributionRule> {
     try {
-      console.log('🔍 [DistributionApiService] Buscando regra para pipeline:', {
-        pipelineId,
-        timestamp: new Date().toISOString()
-      });
+      // ✅ PERFORMANCE: Log consolidado sem dados técnicos desnecessários
+      console.log('🔍 [DistributionApi] Carregando regra:', pipelineId.substring(0, 8));
       
       const response = await api.get<ApiResponse<DistributionRule>>(
         `/pipelines/${pipelineId}/distribution-rule`
       );
-      
-      console.log('📡 [DistributionApiService] Resposta de carregamento:', {
-        success: response.data.success,
-        hasData: !!response.data.data,
-        statusCode: response.status
-      });
       
       if (!response.data.success) {
         throw new Error(response.data.error || 'Erro ao buscar regra de distribuição');
       }
       
       const rule = response.data.data!;
-      console.log('✅ [DistributionApiService] Regra carregada:', {
-        mode: rule.mode,
-        is_active: rule.is_active,
-        pipelineId,
-        timestamp: new Date().toISOString()
-      });
+      // ✅ PERFORMANCE: Log consolidado com informações essenciais
+      console.log('✅ [DistributionApi] Regra carregada:', `${rule.mode} (${rule.is_active ? 'ativa' : 'inativa'})`);
       
       return rule;
     } catch (error: any) {
@@ -128,35 +124,21 @@ export class DistributionApiService {
     rule: SaveDistributionRuleRequest
   ): Promise<DistributionRule> {
     try {
-      console.log('💾 [DistributionApiService] Iniciando salvamento:', {
-        pipelineId,
-        rule,
-        timestamp: new Date().toISOString()
-      });
+      // ✅ PERFORMANCE: Log consolidado
+      console.log('💾 [DistributionApi] Salvando regra:', `${rule.mode} (${rule.is_active ? 'ativa' : 'inativa'})`);
       
       const response = await api.post<ApiResponse<DistributionRule>>(
         `/pipelines/${pipelineId}/distribution-rule`,
         rule
       );
       
-      console.log('📡 [DistributionApiService] Resposta da API recebida:', {
-        success: response.data.success,
-        hasData: !!response.data.data,
-        statusCode: response.status
-      });
-      
       if (!response.data.success) {
         throw new Error(response.data.error || 'Erro ao salvar regra de distribuição');
       }
       
       const savedRule = response.data.data!;
-      console.log('✅ [DistributionApiService] Regra salva com sucesso:', {
-        savedMode: savedRule.mode,
-        savedIsActive: savedRule.is_active,
-        originalMode: rule.mode,
-        pipelineId,
-        timestamp: new Date().toISOString()
-      });
+      // ✅ PERFORMANCE: Log consolidado e essencial
+      console.log('✅ [DistributionApi] Regra salva:', `${savedRule.mode} (${savedRule.is_active ? 'ativa' : 'inativa'})`);
       
       return savedRule;
     } catch (error: any) {

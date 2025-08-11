@@ -58,6 +58,22 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
     getMemberLinkedPipelines 
   } = usePipelineData();
   const { members } = useMembers();
+  
+  // ✅ CORREÇÃO: Log otimizado para evitar spam no console
+  if (process.env.NODE_ENV === 'development' && members && Math.random() < 0.05) {
+    console.log('🔍 [UnifiedPipelineManager] Hook useMembers resultado:', {
+      membersLength: members?.length || 0,
+      membersData: members?.slice(0, 5).map(m => ({ 
+        id: m.id, 
+        name: `${m.first_name} ${m.last_name}`, 
+        role: m.role,
+        is_active: m.is_active,
+        tenant_id: m.tenant_id 
+      })) || [],
+      userTenant: user?.tenant_id
+    });
+  }
+  
   const queryClient = useQueryClient();
   
   // ✅ FASE 2: Enterprise-grade mutation hook
@@ -348,6 +364,18 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
       // ✅ CANCELAR queries em andamento para evitar race conditions
       await queryClient.cancelQueries({ queryKey: QueryKeys.pipelines.byTenant(user?.tenant_id!) });
       
+      // ✅ DEBUG: Log detalhado do payload enviado incluindo member_ids
+      console.log('🔍 [UnifiedPipelineManager] Payload enviado para backend:', {
+        targetPipelineId,
+        name: pipelineData.name,
+        description: pipelineData.description,
+        member_ids: pipelineData.member_ids,
+        member_ids_count: pipelineData.member_ids?.length || 0,
+        member_ids_sample: pipelineData.member_ids?.slice(0, 3) || [],
+        tenant_id: user?.tenant_id,
+        fullPayload: pipelineData
+      });
+
       const response = await api.put(`/pipelines/${targetPipelineId}`, {
         ...pipelineData,
         tenant_id: user?.tenant_id
@@ -409,8 +437,11 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
           timestamp: new Date().toISOString()
         });
       } else {
-        // Submit manual - fechar modal e mostrar sucesso
-        console.log('💾 [UnifiedPipelineManager] Submit manual detectado - fechando modal');
+        // Submit manual - verificar se deve fechar modal baseado em shouldRedirect
+        console.log('💾 [UnifiedPipelineManager] Submit manual detectado', {
+          shouldRedirect,
+          willCloseModal: shouldRedirect
+        });
         
         // ✅ VERIFICAÇÃO DE PROTEÇÃO: Não fechar se autosave em progresso
         if (isAutoSaveInProgress) {
@@ -422,10 +453,16 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
         // Refresh antes de fechar para garantir dados atualizados
         await refreshPipelines();
         
-        setShowEditModal(false);
-        setEditingPipeline(null);
-        showSuccessToast('Sucesso', 'Pipeline atualizada com sucesso!');
-        console.log('✅ [UnifiedPipelineManager] Submit manual concluído - modal fechado');
+        // ✅ CORREÇÃO CRÍTICA: Só fechar modal se shouldRedirect for true
+        if (shouldRedirect) {
+          setShowEditModal(false);
+          setEditingPipeline(null);
+          showSuccessToast('Sucesso', 'Pipeline atualizada com sucesso!');
+          console.log('✅ [UnifiedPipelineManager] Submit manual concluído - modal fechado');
+        } else {
+          // ✅ CORREÇÃO: Não mostrar notificação duplicada - handleSaveChanges já cuida disso
+          console.log('✅ [UnifiedPipelineManager] Submit manual concluído - modal MANTIDO ABERTO (sem notificação duplicada)');
+        }
       }
       
       // ✅ NOVA: Retornar pipeline atualizada para permitir updates locais
@@ -692,10 +729,6 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
     return (
       <div className="flex items-center justify-center h-64">
         <div className="flex flex-col items-center space-y-4">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="text-sm text-gray-600">
-            Carregando Pipeline {isAdmin ? '(Admin)' : '(Vendedor)'}...
-          </p>
         </div>
       </div>
     );
@@ -800,7 +833,6 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 shadow-xl">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Carregando detalhes do lead...</p>
           </div>
         </div>
       }>

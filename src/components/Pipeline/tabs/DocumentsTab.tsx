@@ -258,7 +258,7 @@ const UploadHandlers = React.memo<UploadHandlersProps>(({
 // ============================================
 
 const DocumentsTab: React.FC<DocumentsTabProps> = ({ lead, pipelineId }) => {
-  const { user, authenticatedFetch } = useAuth();
+  const { user } = useAuth();
   const [documents, setDocuments] = useState<LeadDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -278,7 +278,7 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({ lead, pipelineId }) => {
   // ✅ CONFIGURAÇÃO DE UPLOAD otimizada e segura - token direto do AuthProvider
   const uploadDestination = useMemo(() => {
     const config = {
-      url: `${import.meta.env.VITE_API_URL}/api/leads/${lead.id}/documents`,
+      url: `${import.meta.env.VITE_API_URL}/leads/${lead.id}/documents`,
       headers: {
         'Authorization': `Bearer ${currentToken}`,
         'tenant-id': user?.tenant_id || ''
@@ -307,20 +307,21 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({ lead, pipelineId }) => {
       setLoading(true);
       logger.info('Carregando documentos do lead', { leadId: lead.id });
       
-      const response = await authenticatedFetch(`/leads/${lead.id}/documents`);
+      const { data, error } = await supabase
+        .from('lead_documents')
+        .select('*')
+        .eq('lead_id', lead.id)
+        .eq('tenant_id', (user as any)?.user_metadata?.tenant_id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
       
-      if (response.ok) {
-        const data = await response.json();
-        const documentsList = data.documents || [];
+      if (!error && data) {
+        const documentsList = data || [];
         setDocuments(documentsList);
         logger.success('Documentos carregados com sucesso', { count: documentsList.length });
       } else {
-        const errorText = response.statusText || 'Erro desconhecido';
-        logger.error('Erro na resposta do servidor ao carregar documentos', { 
-          status: response.status, 
-          statusText: errorText 
-        });
-        setError(`Erro ao carregar documentos: ${errorText}`);
+        logger.error('Erro ao carregar documentos', { error });
+        setError(`Erro ao carregar documentos: ${error?.message || 'Erro desconhecido'}`);
       }
     } catch (error) {
       logger.error('Exceção ao carregar documentos', error);
@@ -328,7 +329,7 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({ lead, pipelineId }) => {
     } finally {
       setLoading(false);
     }
-  }, [lead?.id, user?.tenant_id, authenticatedFetch, logger, setError]);
+  }, [lead?.id, user, logger, setError]);
 
   const deleteDocument = useCallback(async (documentId: string) => {
     if (!confirm('Tem certeza que deseja excluir este documento?')) {
@@ -339,19 +340,20 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({ lead, pipelineId }) => {
     try {
       logger.info('Iniciando exclusão de documento', { documentId });
       
-      const response = await authenticatedFetch(`/leads/${lead.id}/documents/${documentId}`, {
-        method: 'DELETE'
-      });
+      const { error } = await supabase
+        .from('lead_documents')
+        .update({ is_active: false })
+        .eq('id', documentId)
+        .eq('tenant_id', (user as any)?.user_metadata?.tenant_id);
 
-      if (response.ok) {
+      if (!error) {
         setDocuments(prev => prev.filter(doc => doc.id !== documentId));
         setSuccess('Documento excluído com sucesso!');
         logger.success('Documento excluído com sucesso', { documentId });
         setTimeout(() => setSuccess(null), 3000);
       } else {
-        const errorText = response.statusText || 'Erro desconhecido';
-        logger.error('Erro ao excluir documento', { documentId, status: response.status, statusText: errorText });
-        setError(`Erro ao excluir documento: ${errorText}`);
+        logger.error('Erro ao excluir documento', { documentId, error });
+        setError(`Erro ao excluir documento: ${error.message}`);
         setTimeout(() => setError(null), 3000);
       }
     } catch (error) {
@@ -359,7 +361,7 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({ lead, pipelineId }) => {
       setError('Erro de conexão ao excluir documento');
       setTimeout(() => setError(null), 3000);
     }
-  }, [lead.id, authenticatedFetch, logger, setError, setSuccess]);
+  }, [lead.id, user, logger, setError, setSuccess]);
 
   const downloadDocument = useCallback(async (document: LeadDocument) => {
     try {
@@ -368,11 +370,13 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({ lead, pipelineId }) => {
         fileName: document.original_name 
       });
       
-      const response = await authenticatedFetch(`/leads/${lead.id}/documents/${document.id}/download`);
+      const { data: fileData, error } = await supabase
+        .storage
+        .from(document.storage_bucket)
+        .download(document.storage_path);
       
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
+      if (!error && fileData) {
+        const url = window.URL.createObjectURL(fileData);
         const a = window.document.createElement('a');
         a.href = url;
         a.download = document.original_name;
@@ -383,13 +387,11 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({ lead, pipelineId }) => {
         
         logger.success('Download concluído com sucesso', { fileName: document.original_name });
       } else {
-        const errorText = response.statusText || 'Erro desconhecido';
         logger.error('Erro ao baixar documento', { 
           documentId: document.id, 
-          status: response.status, 
-          statusText: errorText 
+          error
         });
-        setError(`Erro ao baixar documento: ${errorText}`);
+        setError(`Erro ao baixar documento: ${error?.message || 'Erro desconhecido'}`);
         setTimeout(() => setError(null), 3000);
       }
     } catch (error) {
@@ -397,7 +399,7 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({ lead, pipelineId }) => {
       setError('Erro de conexão ao baixar documento');
       setTimeout(() => setError(null), 3000);
     }
-  }, [lead.id, authenticatedFetch, logger, setError]);
+  }, [lead.id, logger, setError]);
 
   // ============================================
   // HELPERS DE RENDERIZAÇÃO

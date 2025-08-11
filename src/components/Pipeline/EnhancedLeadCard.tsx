@@ -163,21 +163,10 @@ export const TaskStatusIndicator: React.FC<TaskStatusIndicatorProps> = ({
 };
 
 // ===================================
-// HOOK AUXILIAR PARA INTEGRAÇÃO FÁCIL
+// UTILIDADES PARA INTEGRAÇÃO FÁCIL
 // ===================================
 
-export const useEnhancedCardProps = (leadId: string) => {
-  const visualState = useLeadCardVisualState(leadId);
-  const cardClasses = useLeadCardClasses(leadId);
-
-  return {
-    className: cardClasses,
-    hasUrgentTasks: visualState.hasOverdueTasks,
-    shouldShowBadge: visualState.badgeData.show,
-    badgeVariant: visualState.badgeData.variant,
-    badgeLabel: visualState.badgeData.label,
-    isAnimated: visualState.shouldPulse || visualState.shouldGlow
-  };
-};
+// AIDEV-NOTE: Hook removido para resolver React Fast Refresh
+// Se necessário, mover para src/hooks/useEnhancedCardProps.ts
 
 export default EnhancedLeadCard;

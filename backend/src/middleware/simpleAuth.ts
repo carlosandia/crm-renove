@@ -120,5 +120,124 @@ export async function optionalSimpleAuth(
   }
 }
 
+/**
+ * 🆕 Middleware de autenticação universal para WEBHOOKS
+ * Aceita API Keys via múltiplos métodos para suportar N8N, Zapier, Make.com, etc.
+ */
+export async function webhookAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    console.log('🔐 [WEBHOOK-AUTH] Verificando autenticação para webhook...');
+    
+    // ✅ MÉTODO 1: X-API-Key header (padrão N8N)
+    let apiKey = req.headers['x-api-key'] as string;
+    
+    // ✅ MÉTODO 2: Authorization Bearer (alguns sistemas)
+    if (!apiKey) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        apiKey = authHeader.substring(7); // Remove "Bearer "
+      }
+    }
+    
+    // ✅ MÉTODO 3: Query parameter ?api_key= (fallback)
+    if (!apiKey) {
+      apiKey = req.query.api_key as string;
+    }
+    
+    if (!apiKey) {
+      console.log('❌ [WEBHOOK-AUTH] API Key não encontrada');
+      res.status(401).json({
+        success: false,
+        error: 'API Key requerida. Use X-API-Key header, Authorization Bearer, ou ?api_key= query parameter'
+      });
+      return;
+    }
+
+    console.log('🔄 [WEBHOOK-AUTH] Validando API Key:', {
+      keyPrefix: apiKey.substring(0, 8) + '...',
+      source: req.headers['x-api-key'] ? 'header' : (req.headers.authorization ? 'bearer' : 'query')
+    });
+
+    // ✅ VALIDAR API KEY no banco de dados Supabase
+    const { data: integration, error: integrationError } = await supabase
+      .from('integrations')
+      .select('company_id, api_key_public, api_key_secret')
+      .eq('api_key_public', apiKey)
+      .single();
+
+    if (integrationError || !integration) {
+      console.error('❌ [WEBHOOK-AUTH] API Key inválida:', {
+        keyPrefix: apiKey.substring(0, 8) + '...',
+        error: integrationError?.message
+      });
+      res.status(401).json({
+        success: false,
+        error: 'API Key inválida ou não encontrada'
+      });
+      return;
+    }
+
+    // ✅ CONFIGURAR CONTEXTO DE WEBHOOK (sem usuário específico)
+    req.webhookAuth = {
+      tenantId: integration.company_id,
+      apiKey: apiKey,
+      authenticatedVia: 'webhook_api_key'
+    };
+
+    console.log('✅ [WEBHOOK-AUTH] Webhook autenticado com sucesso:', {
+      tenantId: integration.company_id.substring(0, 8) + '...',
+      keyPrefix: apiKey.substring(0, 8) + '...'
+    });
+
+    next();
+
+  } catch (error) {
+    console.error('❌ [WEBHOOK-AUTH] Erro interno:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno na autenticação do webhook'
+    });
+  }
+}
+
+/**
+ * 🆕 Middleware híbrido: Tenta webhook auth primeiro, depois user auth
+ * Para rotas que podem aceitar tanto usuários quanto webhooks
+ */
+export async function hybridAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    console.log('🔄 [HYBRID-AUTH] Tentando autenticação híbrida...');
+    
+    // Primeiro, tentar webhook authentication
+    const hasApiKey = req.headers['x-api-key'] || 
+                     (req.headers.authorization && req.headers.authorization.startsWith('Bearer ') && !req.headers.authorization.includes('eyJ')) ||
+                     req.query.api_key;
+    
+    if (hasApiKey) {
+      console.log('🔗 [HYBRID-AUTH] Detectada API Key - usando webhook auth...');
+      return webhookAuth(req, res, next);
+    }
+    
+    // Se não tem API Key, tentar user authentication
+    console.log('👤 [HYBRID-AUTH] Sem API Key - usando user auth...');
+    return simpleAuth(req, res, next);
+    
+  } catch (error) {
+    console.error('❌ [HYBRID-AUTH] Erro na autenticação híbrida:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno na autenticação'
+    });
+  }
+}
+
 // Export para compatibilidade com código existente
 export { simpleAuth as authenticateToken };

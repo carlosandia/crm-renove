@@ -26,10 +26,6 @@ const PlatformIntegrationsManager = lazy(() => import('./PlatformIntegrationsMan
 const ModuleLoader: React.FC<{ moduleName: string; isV2?: boolean }> = ({ moduleName, isV2 }) => (
   <div className="flex items-center justify-center h-64">
     <div className="flex flex-col items-center space-y-4">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      <p className="text-sm text-gray-600">
-        Carregando {moduleName}{isV2 ? ' (Nova Versão)' : ''}...
-      </p>
     </div>
   </div>
 );
@@ -69,6 +65,8 @@ interface RoleBasedMenuProps {
   selectedPipeline?: any;
   onPipelineChange?: (pipeline: any) => void;
   cacheLoading?: boolean;
+  // ✅ INTEGRAÇÃO: Prop para controle de aba ativa do IntegrationsModule
+  integrationsActiveTab?: 'config' | 'calendar' | 'email';
 }
 
 const RoleBasedMenu: React.FC<RoleBasedMenuProps> = ({ 
@@ -79,7 +77,9 @@ const RoleBasedMenu: React.FC<RoleBasedMenuProps> = ({
   // ✅ CORREÇÃO: Props de cache (opcionais)
   selectedPipeline,
   onPipelineChange,
-  cacheLoading = false
+  cacheLoading = false,
+  // ✅ INTEGRAÇÃO: Prop para aba ativa das integrações
+  integrationsActiveTab
 }) => {
   const { user } = useAuth();
 
@@ -297,7 +297,7 @@ const RoleBasedMenu: React.FC<RoleBasedMenuProps> = ({
             }
           >
             <Suspense fallback={<ModuleLoader moduleName="Integrações" />}>
-              <IntegrationsModule />
+              <IntegrationsModule initialTab={integrationsActiveTab} />
             </Suspense>
           </SafeErrorBoundary>
         );

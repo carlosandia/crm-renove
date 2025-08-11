@@ -28,7 +28,7 @@ interface UsePipelineDataReturn {
 }
 
 export const usePipelineData = (): UsePipelineDataReturn => {
-  const { user, authenticatedFetch } = useAuth();
+  const { user } = useAuth();
   
   // Estados principais
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -188,7 +188,7 @@ export const usePipelineData = (): UsePipelineDataReturn => {
             logger.warn('Supabase falhou para members, tentando backend:', membersResult.error?.message);
             
             const backendResult = await retryFetchOperation(
-              () => fetch(`${import.meta.env.VITE_API_URL}/api/database/pipeline-members/${pipeline.id}?tenant_id=${user.tenant_id}`, {
+              () => fetch(`${import.meta.env.VITE_API_URL}/database/pipeline-members/${pipeline.id}?tenant_id=${user.tenant_id}`, {
                 method: 'GET',
                 headers: {
                   'Content-Type': 'application/json'
@@ -268,7 +268,7 @@ export const usePipelineData = (): UsePipelineDataReturn => {
     } finally {
       setLoading(false);
     }
-  }, [user, authenticatedFetch, getCachedPipelines, setCachedPipelines]);
+  }, [user, getCachedPipelines, setCachedPipelines]);
 
   /**
    * ✅ BUSCAR LEADS DE UMA PIPELINE VIA API REST (COM SUPABASE AUTH)
@@ -279,16 +279,34 @@ export const usePipelineData = (): UsePipelineDataReturn => {
     logger.debug('fetchLeads chamado:', { pipelineId, userId: user.id });
 
     try {
-      // ✅ Usar API REST para garantir autenticação Supabase
-      const response = await authenticatedFetch(`/api/pipelines/${pipelineId}/leads?tenant_id=${user.tenant_id}`);
+      // ✅ CORREÇÃO: Usar autenticação básica Supabase conforme CLAUDE.md
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
       
-      if (!response.ok) {
-        throw new Error(`Erro na API: ${response.status} ${response.statusText}`);
+      if (userError || !currentUser) {
+        throw new Error('Usuário não autenticado');
       }
       
-      const data = await response.json();
+      const userTenantId = currentUser.user_metadata?.tenant_id;
+      if (!userTenantId || userTenantId !== user.tenant_id) {
+        throw new Error('Acesso negado: tenant não autorizado');
+      }
+      
+      // Buscar leads diretamente do Supabase usando RLS
+      const { data, error } = await supabase
+        .from('pipeline_leads')
+        .select(`
+          *,
+          pipeline_stages!inner(name, order_index)
+        `)
+        .eq('pipeline_id', pipelineId)
+        .eq('tenant_id', user.tenant_id)
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        throw new Error(`Erro Supabase: ${error.message}`);
+      }
 
-      logger.info('Leads buscados via API:', {
+      logger.info('Leads buscados via Supabase:', {
         pipelineId,
         leadsCount: data?.length || 0
       });
@@ -298,7 +316,7 @@ export const usePipelineData = (): UsePipelineDataReturn => {
       logger.error('Erro ao buscar leads:', error);
       setLeads([]);
     }
-  }, [user, authenticatedFetch]);
+  }, [user]);
 
   /**
    * ✅ IMPLEMENTAR FUNÇÕES NECESSÁRIAS

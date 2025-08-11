@@ -34,7 +34,7 @@ export const outcomeReasonsKeys = {
 export const useOutcomeReasons = (params: UseOutcomeReasonsParams) => {
   const queryClient = useQueryClient();
 
-  // ✅ Query para buscar motivos
+  // ✅ Query para buscar motivos com fallback inteligente
   const query = useQuery({
     queryKey: outcomeReasonsKeys.reasons(params),
     queryFn: async () => {
@@ -45,8 +45,61 @@ export const useOutcomeReasons = (params: UseOutcomeReasonsParams) => {
           active_only: params.activeOnly ?? true
         });
         
-        console.log('✅ [useOutcomeReasons] Sucesso:', result);
+        // ✅ FALLBACK INTELIGENTE: Se não há motivos configurados, usar motivos padrão
+        if (!result || result.length === 0) {
+          console.log('🔄 [useOutcomeReasons] Nenhum motivo configurado, buscando padrões...');
+          
+          try {
+            const defaultReasons = await outcomeReasonsApi.getDefaultReasons();
+            const fallbackReasons = [];
+            
+            // Transformar motivos padrão em formato esperado
+            if (params.reasonType === 'won' || params.reasonType === 'all') {
+              (defaultReasons.won || []).forEach((reasonText: string, index: number) => {
+                fallbackReasons.push({
+                  id: `default-won-${index}`,
+                  pipeline_id: params.pipelineId,
+                  tenant_id: '',
+                  reason_type: 'won' as const,
+                  reason_text: reasonText,
+                  is_active: true,
+                  display_order: index,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                  is_default: true // Marcador para identificar motivos padrão
+                });
+              });
+            }
+            
+            if (params.reasonType === 'lost' || params.reasonType === 'all') {
+              (defaultReasons.lost || []).forEach((reasonText: string, index: number) => {
+                fallbackReasons.push({
+                  id: `default-lost-${index}`,
+                  pipeline_id: params.pipelineId,
+                  tenant_id: '',
+                  reason_type: 'lost' as const,
+                  reason_text: reasonText,
+                  is_active: true,
+                  display_order: index,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                  is_default: true // Marcador para identificar motivos padrão
+                });
+              });
+            }
+            
+            console.log('✅ [useOutcomeReasons] Usando motivos padrão:', fallbackReasons.length);
+            return fallbackReasons;
+            
+          } catch (fallbackError) {
+            console.error('❌ [useOutcomeReasons] Erro ao buscar padrões:', fallbackError);
+            return []; // Retorna array vazio se até o fallback falhar
+          }
+        }
+        
+        console.log('✅ [useOutcomeReasons] Motivos configurados encontrados:', result.length);
         return result;
+        
       } catch (error: any) {
         console.error('❌ [useOutcomeReasons] Erro detalhado:', {
           error,
@@ -59,6 +112,42 @@ export const useOutcomeReasons = (params: UseOutcomeReasonsParams) => {
             active_only: params.activeOnly ?? true
           }
         });
+        
+        // ✅ FALLBACK DE EMERGÊNCIA: Se erro na API, tentar motivos padrão do sistema
+        if (error?.response?.status === 404 || error?.response?.status >= 500) {
+          console.log('🔄 [useOutcomeReasons] Erro na API, tentando fallback de emergência...');
+          return [
+            {
+              id: 'emergency-won-1',
+              pipeline_id: params.pipelineId,
+              tenant_id: '',
+              reason_type: 'won' as const,
+              reason_text: 'Proposta aceita',
+              is_active: true,
+              display_order: 0,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              is_default: true,
+              is_emergency: true
+            },
+            {
+              id: 'emergency-lost-1',
+              pipeline_id: params.pipelineId,
+              tenant_id: '',
+              reason_type: 'lost' as const,
+              reason_text: 'Não converteu',
+              is_active: true,
+              display_order: 0,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              is_default: true,
+              is_emergency: true
+            }
+          ].filter(reason => 
+            params.reasonType === 'all' || reason.reason_type === params.reasonType
+          );
+        }
+        
         throw error;
       }
     },

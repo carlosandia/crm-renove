@@ -32,6 +32,9 @@ import { MinimalHorizontalStageSelector } from './MinimalHorizontalStageSelector
 import { EnhancedGoogleCalendarTab } from '../meetings/EnhancedGoogleCalendarTab';
 import AddManualActivityModal from '../Activities/AddManualActivityModal';
 import CustomActivityModal from './components/CustomActivityModal';
+// ✅ REMOVIDO: EmailComposeModal e ErrorBoundary - Agora usa interface inline
+// import EmailComposeModal from '../Leads/EmailComposeModal';
+// import EmailModalErrorBoundary from '../ui/EmailModalErrorBoundary';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 } from '../ui/dropdown-menu';
@@ -147,6 +150,7 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
       deleting: false,
       showAddManualActivityModal: false,
       showCustomActivityModal: false,
+      // showEmailComposeModal: false, // ✅ REMOVIDO: Não mais necessário
       showStageSelector: false,
       loadingStages: false,
       cadenceLoading: false
@@ -1500,6 +1504,9 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
               
               // Custom Activity Modal
               onOpenCustomActivity={handleOpenCustomActivity}
+              
+              // Email Modal - REMOVIDO: Agora usa interface inline
+              // onOpenEmailModal={() => setUIState({ showEmailComposeModal: true })}
             />
           </div>
 
@@ -1544,6 +1551,8 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
         onSave={handleSaveCustomActivity}
         leadId={localLeadData.id}
       />
+
+      {/* ✅ REMOVIDO: EmailModalErrorBoundary e EmailComposeModal - Agora usa interface inline */}
 
       {/* Modal de Confirmação de Exclusão */}
       <AlertDialog open={uiState.showDeleteDialog} onOpenChange={(open) => setUIState({ showDeleteDialog: open })}>

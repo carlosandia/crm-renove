@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { useAuth } from '../providers/AuthProvider';
 import { showSuccessToast, showErrorToast } from '../lib/toast';
 import { logger } from '../lib/logger';
+import { supabase } from '../lib/supabase';
 
 interface MemberData {
   first_name: string;
@@ -32,7 +33,7 @@ interface ApiResponse<T> {
 
 export const useMembersAPI = () => {
   const [isLoading, setIsLoading] = useState(false);
-  const { authenticatedFetch, user } = useAuth();
+  const { user } = useAuth();
 
   /**
    * ENTERPRISE PATTERN: Criar member via Backend API
@@ -66,13 +67,18 @@ export const useMembersAPI = () => {
         hasCustomPassword: !!memberData.password
       });
 
-      // Fazer requisição via authenticatedFetch
-      if (!authenticatedFetch) {
-        throw new Error('authenticatedFetch não disponível');
+      // ✅ Fazer requisição autenticada usando Supabase tokens
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Usuário não autenticado');
       }
 
-      const response = await authenticatedFetch('/members', {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/members`, {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify(apiData)
       });
 
@@ -117,7 +123,7 @@ export const useMembersAPI = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [authenticatedFetch, user?.tenant_id]);
+  }, [user?.tenant_id]);
 
   /**
    * Listar members da empresa
@@ -127,11 +133,19 @@ export const useMembersAPI = () => {
     setIsLoading(true);
 
     try {
-      if (!authenticatedFetch) {
-        throw new Error('authenticatedFetch não disponível');
+      // ✅ Fazer requisição autenticada usando Supabase tokens
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Usuário não autenticado');
       }
 
-      const response = await authenticatedFetch('/members');
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/members`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        }
+      });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -163,7 +177,7 @@ export const useMembersAPI = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [authenticatedFetch]);
+  }, []);
 
   /**
    * Atualizar member
@@ -173,12 +187,18 @@ export const useMembersAPI = () => {
     setIsLoading(true);
 
     try {
-      if (!authenticatedFetch) {
-        throw new Error('authenticatedFetch não disponível');
+      // ✅ Fazer requisição autenticada usando Supabase tokens
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Usuário não autenticado');
       }
 
-      const response = await authenticatedFetch(`/members/${memberId}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/members/${memberId}`, {
         method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify(updates)
       });
 
@@ -222,7 +242,7 @@ export const useMembersAPI = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [authenticatedFetch]);
+  }, []);
 
   /**
    * Remover member
@@ -232,12 +252,18 @@ export const useMembersAPI = () => {
     setIsLoading(true);
 
     try {
-      if (!authenticatedFetch) {
-        throw new Error('authenticatedFetch não disponível');
+      // ✅ Fazer requisição autenticada usando Supabase tokens
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Usuário não autenticado');
       }
 
-      const response = await authenticatedFetch(`/members/${memberId}`, {
-        method: 'DELETE'
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/members/${memberId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        }
       });
 
       if (!response.ok) {
@@ -277,17 +303,13 @@ export const useMembersAPI = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [authenticatedFetch]);
+  }, []);
 
   /**
    * Verificar disponibilidade de email
    */
   const checkEmailAvailability = useCallback(async (email: string): Promise<{ available: boolean; message: string }> => {
     try {
-      if (!authenticatedFetch) {
-        return { available: true, message: 'Verificação offline - email disponível' };
-      }
-
       // Para verificação rápida, vamos usar a listagem
       const membersResult = await fetchMembers();
       
@@ -305,7 +327,7 @@ export const useMembersAPI = () => {
       logger.error('Erro na verificação de email:', error);
       return { available: true, message: 'Verificação com erro - email disponível' };
     }
-  }, [authenticatedFetch, fetchMembers]);
+  }, [fetchMembers]);
 
   return {
     createMember,

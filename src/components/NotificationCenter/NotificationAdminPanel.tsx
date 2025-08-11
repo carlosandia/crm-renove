@@ -2,12 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../providers/AuthProvider';
 import { 
   Send, 
-  Users, 
-  Calendar, 
   BarChart3, 
   Plus, 
   Search, 
-  Filter,
   Edit,
   Trash2,
   Eye,
@@ -19,6 +16,7 @@ import {
   Target
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { supabase } from '../../lib/supabase';
 
 // Sistema de logs condicionais
 const LOG_LEVEL = import.meta.env.VITE_LOG_LEVEL || 'warn';
@@ -55,7 +53,7 @@ interface NotificationAdminPanelProps {
 }
 
 export const NotificationAdminPanel: React.FC<NotificationAdminPanelProps> = ({ className = '' }) => {
-  const { user, authenticatedFetch } = useAuth();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'create' | 'manage' | 'analytics'>('create');
   
   // Estados para criação
@@ -106,20 +104,21 @@ export const NotificationAdminPanel: React.FC<NotificationAdminPanelProps> = ({ 
         return;
       }
 
-      // ✅ CORREÇÃO: Usar autenticação segura do Supabase
-      const response = await authenticatedFetch('/users', {
-        signal: AbortSignal.timeout(5000)
-      });
+      // ✅ CORREÇÃO: Usar Supabase diretamente
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, email, first_name, last_name, role, is_active')
+        .eq('is_active', true)
+        .order('email', { ascending: true });
 
-      if (response.ok) {
-        const data = await response.json();
-        setUsers(data.users || []);
+      if (!error && data) {
+        setUsers(data);
         
         if (isDebugMode) {
-          console.log(`📋 NotificationAdmin: ${data.users?.length || 0} usuários carregados`);
+          console.log(`📋 NotificationAdmin: ${data.length} usuários carregados`);
         }
       } else if (isDebugMode) {
-        console.log('📋 NotificationAdmin: Erro ao carregar usuários (API indisponível)');
+        console.log('📋 NotificationAdmin: Erro ao carregar usuários:', error);
       }
     } catch (error: any) {
       if (isDebugMode) {
@@ -141,20 +140,20 @@ export const NotificationAdminPanel: React.FC<NotificationAdminPanelProps> = ({ 
         return;
       }
 
-      // ✅ CORREÇÃO: Usar autenticação segura do Supabase
-      const response = await authenticatedFetch('/notifications/admin', {
-        signal: AbortSignal.timeout(5000)
-      });
+      // ✅ CORREÇÃO: Usar Supabase diretamente
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-      if (response.ok) {
-        const data = await response.json();
-        setExistingNotifications(data.data?.notifications || []);
+      if (!error && data) {
+        setExistingNotifications(data);
         
         if (isDebugMode) {
-          console.log(`📋 NotificationAdmin: ${data.data?.notifications?.length || 0} notificações carregadas`);
+          console.log(`📋 NotificationAdmin: ${data.length} notificações carregadas`);
         }
       } else if (isDebugMode) {
-        console.log('📋 NotificationAdmin: Erro ao carregar notificações existentes');
+        console.log('📋 NotificationAdmin: Erro ao carregar notificações existentes:', error);
       }
     } catch (error: any) {
       if (isDebugMode) {
@@ -176,22 +175,28 @@ export const NotificationAdminPanel: React.FC<NotificationAdminPanelProps> = ({ 
         return;
       }
 
-      const { environmentConfig } = await import('../../config/environment');
-      const apiUrl = environmentConfig.urls.backend;
-      // ✅ CORREÇÃO: Usar autenticação segura do Supabase
-      const response = await authenticatedFetch('/notifications/analytics', {
-        signal: AbortSignal.timeout(5000)
-      });
+      // ✅ CORREÇÃO: Usar Supabase diretamente para analytics
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('status, created_at, type')
+        .order('created_at', { ascending: false });
 
-      if (response.ok) {
-        const data = await response.json();
-        setAnalytics(data.data);
+      if (!error && data) {
+        // Processar analytics localmente
+        const analyticsData = {
+          totalSent: data.length,
+          totalRead: data.filter(n => n.status === 'read').length,
+          totalPending: data.filter(n => n.status === 'pending').length,
+          readRate: data.length > 0 ? ((data.filter(n => n.status === 'read').length / data.length) * 100).toFixed(1) : '0'
+        };
+        
+        setAnalytics(analyticsData);
         
         if (isDebugMode) {
-          console.log('📋 NotificationAdmin: Analytics carregados');
+          console.log('📋 NotificationAdmin: Analytics carregados:', analyticsData);
         }
       } else if (isDebugMode) {
-        console.log('📋 NotificationAdmin: Erro ao carregar analytics');
+        console.log('📋 NotificationAdmin: Erro ao carregar analytics:', error);
       }
     } catch (error: any) {
       if (isDebugMode) {
@@ -220,16 +225,24 @@ export const NotificationAdminPanel: React.FC<NotificationAdminPanelProps> = ({ 
         return;
       }
 
-      // ✅ CORREÇÃO: Usar autenticação segura do Supabase
-      const response = await authenticatedFetch('/notifications/create', {
-        method: 'POST',
-        body: JSON.stringify(notification),
-        signal: AbortSignal.timeout(10000)
-      });
+      // ✅ CORREÇÃO: Usar Supabase diretamente
+      const { data, error } = await supabase
+        .from('notifications')
+        .insert([{
+          title: notification.title,
+          message: notification.message,
+          type: notification.type,
+          category: notification.category,
+          priority: notification.priority,
+          target_users: notification.targetUsers,
+          rich_content: notification.richContent,
+          status: 'pending',
+          created_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
 
-      const data = await response.json();
-
-      if (response.ok) {
+      if (!error && data) {
         setSuccess('Notificação criada com sucesso!');
         // Limpar formulário
         setNotification({
@@ -245,12 +258,12 @@ export const NotificationAdminPanel: React.FC<NotificationAdminPanelProps> = ({ 
         loadNotifications();
         
         if (isDebugMode) {
-          console.log('📋 NotificationAdmin: Notificação criada com sucesso');
+          console.log('📋 NotificationAdmin: Notificação criada com sucesso:', data);
         }
       } else {
-        setError(data.error || 'Erro ao criar notificação');
+        setError(error?.message || 'Erro ao criar notificação');
         if (isDebugMode) {
-          console.log('📋 NotificationAdmin: Erro ao criar notificação:', data.error);
+          console.log('📋 NotificationAdmin: Erro ao criar notificação:', error);
         }
       }
     } catch (error: any) {

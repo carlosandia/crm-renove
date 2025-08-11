@@ -19,7 +19,8 @@ import {
   Bell,
   Cog,
   PlusCircle,
-  MinusCircle
+  MinusCircle,
+  Mail
 } from 'lucide-react';
 
 // Shadcn/UI Components
@@ -140,8 +141,7 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
         { id: 'Gestão de pipeline', label: 'Negócios', icon: GitBranch, category: 'primary' },
         { id: 'Vendedores', label: 'Equipe', icon: Users, category: 'secondary' },
         { id: 'Gestão de formulários', label: 'Formulários', icon: FileText, category: 'secondary' },
-        { id: 'Acompanhamento', label: 'Acompanhamento', icon: Eye, category: 'secondary' },
-        { id: 'Integrações', label: 'Integrações', icon: Settings, category: 'secondary' }
+        { id: 'Acompanhamento', label: 'Acompanhamento', icon: Eye, category: 'secondary' }
       ];
     }
     
@@ -306,6 +306,89 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
     );
   };
 
+  // AIDEV-NOTE: Renderizar submenu de Integrações
+  const renderIntegrationsSubmenu = () => {
+    // Verificar se deve mostrar o submenu (apenas para roles que têm acesso)
+    if (user?.role !== 'admin' && user?.role !== 'super_admin') return null;
+    
+    const integrationsSubmenuItems = [
+      { 
+        id: 'config', 
+        label: 'Configurações', 
+        icon: Cog, 
+        path: 'Integrações?tab=config',
+        description: 'Tokens API e Webhooks'
+      },
+      { 
+        id: 'calendar', 
+        label: 'Google Calendar', 
+        icon: Calendar, 
+        path: 'Integrações?tab=calendar',
+        description: 'Sincronização de eventos'
+      },
+      { 
+        id: 'email', 
+        label: 'E-mail pessoal', 
+        icon: Mail, 
+        path: 'Integrações?tab=email',
+        description: 'Configuração SMTP'
+      }
+    ];
+
+    const isIntegrationsActive = activeModule === 'Integrações';
+    
+    return (
+      <BlurFade delay={0.2}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button 
+              variant={isIntegrationsActive ? "default" : "ghost"} 
+              size="sm" 
+              className={`gap-2 ${
+                isIntegrationsActive 
+                  ? 'bg-primary/10 text-primary border border-primary/20 shadow-sm' 
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+              }`}
+            >
+              <Settings className="w-4 h-4" />
+              Integrações
+              <ChevronDown className="w-3 h-3" />
+              {isIntegrationsActive && <div className="w-1.5 h-1.5 bg-primary rounded-full ml-auto" />}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-64">
+            <DropdownMenuLabel>Módulos de Integração</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {integrationsSubmenuItems.map((subItem) => {
+              const SubIconComponent = subItem.icon;
+              return (
+                <DropdownMenuItem
+                  key={subItem.id}
+                  onClick={() => onNavigate(subItem.path)}
+                  className="gap-3 cursor-pointer p-3 hover:bg-gray-50"
+                >
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    subItem.id === 'config' ? 'bg-blue-100' :
+                    subItem.id === 'calendar' ? 'bg-green-100' : 'bg-purple-100'
+                  }`}>
+                    <SubIconComponent className={`w-4 h-4 ${
+                      subItem.id === 'config' ? 'text-blue-600' :
+                      subItem.id === 'calendar' ? 'text-green-600' : 'text-purple-600'
+                    }`} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-medium text-gray-900">{subItem.label}</div>
+                    <div className="text-xs text-gray-500">{subItem.description}</div>
+                  </div>
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </BlurFade>
+    );
+  };
+
   // AIDEV-NOTE: Componente de item de menu reutilizável
   const NavItem: React.FC<{ 
     item: MenuItem; 
@@ -353,6 +436,9 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
           />
         </BlurFade>
       ))}
+      
+      {/* Submenu de Integrações */}
+      {renderIntegrationsSubmenu()}
       
       {/* Menu secundário em dropdown se existir */}
       {secondaryItems.length > 0 && (
@@ -453,6 +539,9 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
           />
         </BlurFade>
       ))}
+      
+      {/* Submenu de Integrações no tablet */}
+      {renderIntegrationsSubmenu()}
       
       {/* Todo o resto em dropdown */}
       {(primaryItems.slice(3).length > 0 || secondaryItems.length > 0 || adminItems.length > 0) && (
@@ -576,6 +665,77 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
                   </BlurFade>
                 );
               })}
+              
+              {/* Seção de Integrações no Mobile */}
+              {(user?.role === 'admin' || user?.role === 'super_admin') && (
+                <>
+                  <div className="pt-2 pb-1">
+                    <div className="px-2 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Integrações
+                    </div>
+                  </div>
+                  
+                  {[
+                    { 
+                      id: 'config', 
+                      label: 'Configurações', 
+                      icon: Cog, 
+                      path: 'Integrações?tab=config',
+                      description: 'Tokens API e Webhooks'
+                    },
+                    { 
+                      id: 'calendar', 
+                      label: 'Google Calendar', 
+                      icon: Calendar, 
+                      path: 'Integrações?tab=calendar',
+                      description: 'Sincronização de eventos'
+                    },
+                    { 
+                      id: 'email', 
+                      label: 'E-mail pessoal', 
+                      icon: Mail, 
+                      path: 'Integrações?tab=email',
+                      description: 'Configuração SMTP'
+                    }
+                  ].map((integrationItem, idx) => {
+                    const IntegrationIcon = integrationItem.icon;
+                    const isIntegrationActive = activeModule === 'Integrações';
+                    
+                    return (
+                      <BlurFade key={integrationItem.id} delay={(menuItems.length + idx + 1) * 0.05}>
+                        <button
+                          onClick={() => {
+                            onNavigate(integrationItem.path);
+                            setMobileMenuOpen(false);
+                          }}
+                          className={`
+                            w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors
+                            ${isIntegrationActive 
+                              ? 'bg-primary/10 text-primary border border-primary/20' 
+                              : 'text-foreground hover:bg-muted'
+                            }
+                          `}
+                        >
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                            integrationItem.id === 'config' ? 'bg-blue-100' :
+                            integrationItem.id === 'calendar' ? 'bg-green-100' : 'bg-purple-100'
+                          }`}>
+                            <IntegrationIcon className={`w-4 h-4 ${
+                              integrationItem.id === 'config' ? 'text-blue-600' :
+                              integrationItem.id === 'calendar' ? 'text-green-600' : 'text-purple-600'
+                            }`} />
+                          </div>
+                          <div className="flex-1 text-left">
+                            <div className="font-medium">{integrationItem.label}</div>
+                            <div className="text-xs text-gray-500">{integrationItem.description}</div>
+                          </div>
+                          {isIntegrationActive && <div className="w-2 h-2 bg-primary rounded-full ml-auto" />}
+                        </button>
+                      </BlurFade>
+                    );
+                  })}
+                </>
+              )}
             </nav>
           </div>
         </div>

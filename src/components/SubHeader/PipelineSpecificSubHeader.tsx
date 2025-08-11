@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { 
   Search, X, Calendar, Plus, ChevronDown, 
   Edit3, Archive, Eye, Folder, Settings, Play 
@@ -88,6 +88,20 @@ const PipelineSpecificSubHeader: React.FC<PipelineSpecificSubHeaderProps> = ({
   const [isPipelineDropdownOpen, setIsPipelineDropdownOpen] = useState(false);
   const [pipelineFilter, setPipelineFilter] = useState<'all' | 'active' | 'archived'>('active');
 
+  // ✅ OTIMIZAÇÃO: Sistema de throttling para logs (5 segundos)
+  const lastLogTime = useRef<{[key: string]: number}>({});
+  const throttleLog = useCallback((key: string, logFn: () => void, throttleMs: number = 5000) => {
+    const now = Date.now();
+    const lastTime = lastLogTime.current[key] || 0;
+    
+    if (now - lastTime >= throttleMs) {
+      lastLogTime.current[key] = now;
+      if (process.env.NODE_ENV === 'development') {
+        logFn();
+      }
+    }
+  }, []);
+
   // ============================================
   // HANDLERS
   // ============================================
@@ -106,15 +120,21 @@ const PipelineSpecificSubHeader: React.FC<PipelineSpecificSubHeaderProps> = ({
   };
 
   const handleSearchChange = (value: string) => {
-    console.log('🔍 [PipelineSpecificSubHeader] Busca alterada:', value);
+    throttleLog('search', () => {
+      console.log('🔍 [PipelineSpecificSubHeader] Busca alterada:', value);
+    });
     onSearchChange?.(value);
   };
 
   const handlePipelineSelect = (pipelineId: string) => {
-    console.log('🔄 [PipelineSpecificSubHeader] Pipeline selecionada:', pipelineId);
+    throttleLog('pipeline-select', () => {
+      console.log('🔄 [PipelineSpecificSubHeader] Pipeline selecionada:', pipelineId);
+    });
     const pipeline = pipelines.find(p => p.id === pipelineId);
     if (pipeline) {
-      console.log('✅ [PipelineSpecificSubHeader] Chamando onPipelineChange:', pipeline);
+      throttleLog('pipeline-change', () => {
+        console.log('✅ [PipelineSpecificSubHeader] Chamando onPipelineChange:', pipeline.name);
+      });
       onPipelineChange(pipeline);
     } else {
       console.error('❌ [PipelineSpecificSubHeader] Pipeline não encontrada:', pipelineId);
@@ -122,13 +142,17 @@ const PipelineSpecificSubHeader: React.FC<PipelineSpecificSubHeaderProps> = ({
   };
 
   const handleDateSelect = (date: Date | undefined) => {
-    console.log('🗓️ [PipelineSpecificSubHeader] Data selecionada:', date);
+    throttleLog('date-select', () => {
+      console.log('🗓️ [PipelineSpecificSubHeader] Data selecionada:', date);
+    });
     if (!date) return;
     
     if (!dateRange.start || (dateRange.start && dateRange.end)) {
       // Primeira data ou resetar
       const newRange = { start: date, end: null };
-      console.log('📅 [PipelineSpecificSubHeader] Definindo primeiro range:', newRange);
+      throttleLog('date-first-range', () => {
+        console.log('📅 [PipelineSpecificSubHeader] Definindo primeiro range');
+      });
       setDateRange(newRange);
       onDateRangeChange?.(newRange);
     } else {
@@ -141,7 +165,9 @@ const PipelineSpecificSubHeader: React.FC<PipelineSpecificSubHeaderProps> = ({
         newRange.start = date;
         newRange.end = dateRange.start;
       }
-      console.log('📅 [PipelineSpecificSubHeader] Definindo segundo range:', newRange);
+      throttleLog('date-second-range', () => {
+        console.log('📅 [PipelineSpecificSubHeader] Range completo definido');
+      });
       setDateRange(newRange);
       onDateRangeChange?.(newRange);
       setIsDatePickerOpen(false);
@@ -156,24 +182,29 @@ const PipelineSpecificSubHeader: React.FC<PipelineSpecificSubHeaderProps> = ({
 
   // ✅ FASE 3.1: Novos handlers para dropdown avançado
   const handleCreatePipeline = () => {
-    console.log('➕ [PipelineSpecificSubHeader] Criando nova pipeline');
+    throttleLog('create-pipeline', () => {
+      console.log('➕ [PipelineSpecificSubHeader] Criando nova pipeline');
+    });
     setIsPipelineDropdownOpen(false);
     onCreatePipeline?.();
   };
 
   const handleEditPipeline = (pipeline: Pipeline, event: React.MouseEvent) => {
     event.stopPropagation(); // Previne fechamento do dropdown
-    console.log('✏️ [PipelineSpecificSubHeader] Editando pipeline:', pipeline.name);
+    throttleLog('edit-pipeline', () => {
+      console.log('✏️ [PipelineSpecificSubHeader] Editando pipeline:', pipeline.name);
+    });
     setIsPipelineDropdownOpen(false);
     onEditPipeline?.(pipeline);
   };
 
   const handleArchivePipeline = (pipeline: Pipeline, event: React.MouseEvent) => {
     event.stopPropagation();
-    console.log('🚀 [PipelineSpecificSubHeader] Arquivando pipeline via enterprise mutation:', {
-      name: pipeline.name, 
-      id: pipeline.id.substring(0, 8),
-      currentStatus: { is_archived: pipeline.archived_at ? true : false }
+    throttleLog('archive-pipeline', () => {
+      console.log('📦 [PipelineSpecificSubHeader] Arquivando pipeline:', {
+        name: pipeline.name, 
+        id: pipeline.id.substring(0, 8)
+      });
     });
     setIsPipelineDropdownOpen(false);
     onArchivePipeline?.(pipeline);
@@ -181,10 +212,11 @@ const PipelineSpecificSubHeader: React.FC<PipelineSpecificSubHeaderProps> = ({
 
   const handleUnarchivePipeline = (pipeline: Pipeline, event: React.MouseEvent) => {
     event.stopPropagation();
-    console.log('🚀 [PipelineSpecificSubHeader] Desarquivando pipeline via enterprise mutation:', {
-      name: pipeline.name, 
-      id: pipeline.id.substring(0, 8),
-      currentStatus: { is_archived: pipeline.archived_at ? true : false }
+    throttleLog('unarchive-pipeline', () => {
+      console.log('📤 [PipelineSpecificSubHeader] Desarquivando pipeline:', {
+        name: pipeline.name, 
+        id: pipeline.id.substring(0, 8)
+      });
     });
     setIsPipelineDropdownOpen(false);
     onUnarchivePipeline?.(pipeline);

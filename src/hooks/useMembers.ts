@@ -36,13 +36,41 @@ export const useMembers = () => {
 
   useEffect(() => {
     if (user?.tenant_id && (user.role === 'admin' || user.role === 'member' || user.role === 'super_admin')) {
+      console.log('🔍 [useMembers] Iniciando carregamento automático:', {
+        tenantId: user.tenant_id,
+        userRole: user.role,
+        timestamp: new Date().toISOString()
+      });
+      
       // Filtrar usuários do tenant com roles específicos
       usersCrud.fetchAll({
         filters: {
           tenant_id: user.tenant_id
         }
+      }).then(() => {
+        const salesMembers = usersCrud.data.filter(member => member.role === 'member' && member.is_active !== false);
+        console.log('✅ [useMembers] Carregamento concluído:', {
+          totalResultCount: usersCrud.data.length,
+          salesMembersCount: salesMembers.length,
+          allRoles: usersCrud.data.map(m => m.role),
+          sampleSalesMembers: salesMembers.slice(0, 3).map(m => ({ 
+            id: m.id, 
+            name: `${m.first_name} ${m.last_name}`, 
+            role: m.role,
+            is_active: m.is_active
+          })),
+          validationSuccess: true
+        });
       }).catch(error => {
-        console.warn('⚠️ [useMembers] Erro no carregamento automático:', error);
+        console.error('❌ [useMembers] Erro no carregamento automático:', error);
+        console.error('❌ [useMembers] Stack trace:', error.stack);
+      });
+    } else {
+      console.log('⚠️ [useMembers] Carregamento não iniciado:', {
+        hasUser: !!user,
+        hasTenantId: !!user?.tenant_id,
+        userRole: user?.role,
+        roleValid: user?.role && ['admin', 'member', 'super_admin'].includes(user.role)
       });
     }
   }, [user?.tenant_id, user?.role]);
