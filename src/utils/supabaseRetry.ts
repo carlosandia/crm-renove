@@ -255,21 +255,34 @@ export async function withSilentRetry<T>(
 // ================================================================================
 
 /**
- * Verifica conectividade básica com Supabase
+ * Verifica conectividade básica com Supabase (Basic Supabase Authentication)
  */
 export async function checkSupabaseHealth(): Promise<boolean> {
   try {
     const { supabase } = await import('../lib/supabase');
     
-    // Teste simples de conectividade
-    const { data, error } = await supabase.auth.getSession();
+    // ✅ BÁSICO: Verificar usuário autenticado primeiro
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
     
-    if (error) {
-      console.warn('⚠️ [SupabaseHealth] Erro ao verificar sessão:', error.message);
+    if (userError) {
+      console.warn('⚠️ [SupabaseHealth] Erro ao verificar usuário:', userError.message);
       return false;
     }
+
+    // ✅ BÁSICO: Se há usuário, obter sessão
+    if (user) {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.warn('⚠️ [SupabaseHealth] Erro ao verificar sessão:', sessionError.message);
+        return false;
+      }
+      
+      console.log('✅ [SupabaseHealth] Conectividade OK - usuário autenticado');
+    } else {
+      console.log('✅ [SupabaseHealth] Conectividade OK - usuário não autenticado');
+    }
     
-    console.log('✅ [SupabaseHealth] Conectividade OK');
     return true;
     
   } catch (error: any) {

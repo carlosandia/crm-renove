@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../ui/card';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
@@ -28,6 +28,9 @@ import { showErrorToast, showSuccessToast } from '../../../hooks/useToast';
 import { api } from '../../../lib/api';
 import { AnimatedCard } from '../../ui/animated-card';
 import { BlurFade } from '../../ui/blur-fade';
+
+// ✅ LOGGING CENTRALIZADO: Importar hook de logging inteligente
+import { useSmartLogger } from '../../../hooks/useSmartLogger';
 import { 
   Plus, 
   Edit, 
@@ -55,25 +58,19 @@ import { SectionHeader } from '../shared/SectionHeader';
 // Constants
 import { PIPELINE_UI_CONSTANTS } from '../../../styles/pipeline-constants';
 
+// ✅ AIDEV-NOTE: Usando tipo derivado do schema Zod para garantir consistência
+import { CustomField } from '../../../types/Pipeline';
+
 // ================================================================================
 // INTERFACES E TIPOS
 // ================================================================================
-export interface CustomField {
-  id?: string;
-  field_name: string;
-  field_label: string;
-  field_type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number' | 'date';
-  field_options?: string[];
-  is_required: boolean;
-  field_order: number;
-  placeholder?: string;
-  show_in_card: boolean;
-}
 
 export interface CustomFieldsManagerProps {
   customFields: CustomField[];
   onFieldsUpdate: (fields: CustomField[]) => void;
   pipelineId?: string; // ✅ ID da pipeline para chamadas API
+  // ✅ DRAFT MODE: Callback para notificar quando pipeline é criada
+  onPipelineCreated?: (pipelineId: string) => void;
 }
 
 export interface CustomFieldsManagerReturn {
@@ -99,6 +96,13 @@ export interface CustomFieldsManagerReturn {
   
   // Save state (similar to stages)
   hasUnsavedChanges: boolean;
+  
+  // ✅ DRAFT MODE: Estados e funções específicas
+  isDraftMode: boolean;
+  draftFields: CustomField[];
+  isFlushingDraft: boolean;
+  draftError: string | null;
+  flushDraftFields: () => Promise<void>;
   
   // CRUD operations
   handleAddField: () => void;
@@ -308,13 +312,39 @@ const DynamicFieldInput: React.FC<DynamicFieldInputProps> = ({
 export function useCustomFieldsManager({ 
   customFields = [], 
   onFieldsUpdate,
-  pipelineId 
+  pipelineId,
+  onPipelineCreated
 }: CustomFieldsManagerProps): CustomFieldsManagerReturn {
-  const [localFields, setLocalFields] = useState<CustomField[]>([]);
+  
+  // ✅ LOGGING CENTRALIZADO: Hook inteligente para logs estruturados
+  const logger = useSmartLogger('CUSTOM_FIELDS_MANAGER');
+  const [localFields, setLocalFields] = useState<CustomField[]>(() => {
+    // Inicialização inteligente: combinar campos sistema + customFields/draftFields
+    const systemFields = [...SYSTEM_REQUIRED_FIELDS];
+    const isCurrentlyInDraftMode = !pipelineId || pipelineId === '';
+    
+    if (isCurrentlyInDraftMode) {
+      return [...systemFields]; // Inicia apenas com campos sistema em modo draft
+    } else {
+      const customFieldsFromDB = customFields.filter(field => 
+        !SYSTEM_REQUIRED_FIELDS.some(sys => sys.field_name === field.field_name)
+      );
+      return [...systemFields, ...customFieldsFromDB];
+    }
+  });
   const [editingField, setEditingField] = useState<CustomField | null>(null);
   const [editFieldIndex, setEditFieldIndex] = useState<number | null>(null);
   const [showFieldModal, setShowFieldModal] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  
+  // ✅ DRAFT MODE: Estados para gerenciar campos draft
+  const [draftFields, setDraftFields] = useState<CustomField[]>([]);
+  const [isDraftMode, setIsDraftMode] = useState(false);
+  const [isFlushingDraft, setIsFlushingDraft] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  
+  // ✅ DETECÇÃO: Modo draft quando pipelineId é undefined
+  const isInDraftMode = !pipelineId || pipelineId === '';
   
   // Estados para AlertDialog de confirmação de exclusão
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -327,29 +357,206 @@ export function useCustomFieldsManager({
 
   // Separar campos sistema vs customizados
   const systemFields = SYSTEM_REQUIRED_FIELDS;
-  const customFieldsOnly = localFields.filter(field => !isSystemField(field.field_name));
 
-  // ✅ INICIALIZAÇÃO: Combinar campos sistema + customizados
+  // ✅ EFEITO: Atualizar modo draft baseado no pipelineId
   useEffect(() => {
+    const newDraftMode = isInDraftMode;
+    setIsDraftMode(newDraftMode);
+    
+    if (newDraftMode) {
+      logger.logDraft({}, 'Ativando modo draft - pipelineId ausente');
+      setDraftError(null);
+    } else {
+      logger.logDraft({ pipelineId }, 'Modo normal - pipelineId presente');
+    }
+  }, [isInDraftMode, pipelineId]);
+  
+  // ✅ CORREÇÃO LOOP INFINITO: Usar useMemo para calcular fieldsToUse sem side effects
+  const fieldsToUse = useMemo(() => {
     // Campos do sistema (sempre presentes)
     const systemFields = [...SYSTEM_REQUIRED_FIELDS];
     
-    // Campos customizados vindos do banco (field_order >= 10)
+    // ✅ CORREÇÃO: Campos customizados vindos do banco (sem filtro de field_order)
     let customFieldsFromDB: CustomField[] = [];
     if (customFields.length > 0) {
       customFieldsFromDB = customFields.filter(field => 
-        !isSystemField(field.field_name) && field.field_order >= 10
+        !isSystemField(field.field_name)
       );
       
       // Ordenar por field_order
       customFieldsFromDB.sort((a, b) => a.field_order - b.field_order);
     }
 
-    // Combinar todos os campos
-    const allFields = [...systemFields, ...customFieldsFromDB];
-    setLocalFields(allFields);
-    setHasUnsavedChanges(false);
-  }, [customFields, isSystemField]);
+    // ✅ DRAFT MODE: Se estiver em modo draft, usar campos draft locais
+    if (isInDraftMode) {
+      // Em modo draft: sistema + draft locais
+      return [...systemFields, ...draftFields];
+    } else {
+      // Modo normal: sistema + banco
+      return [...systemFields, ...customFieldsFromDB];
+    }
+  }, [customFields, isSystemField, isInDraftMode, draftFields]);
+
+  // ✅ Sincronização quando customFields props mudam
+  useEffect(() => {
+    // Comparação otimizada por referência e length primeiro
+    const localLength = localFields.length;
+    const fieldsLength = fieldsToUse.length;
+    
+    // Quick check: Se lengths são diferentes, definitivamente precisa sincronizar
+    if (localLength !== fieldsLength) {
+      setLocalFields(fieldsToUse);
+      setHasUnsavedChanges(false);
+      return;
+    }
+    
+    // Se lengths são iguais mas conteúdo pode ser diferente
+    // Usar comparação mais eficiente apenas quando necessário
+    const fieldsChanged = localFields.some((local, index) => {
+      const fieldsItem = fieldsToUse[index];
+      return !fieldsItem || local.id !== fieldsItem.id || local.field_name !== fieldsItem.field_name;
+    });
+    
+    if (fieldsChanged) {
+      setLocalFields(fieldsToUse);
+      setHasUnsavedChanges(false);
+    }
+  }, [fieldsToUse, customFields.length]); // Dependências otimizadas
+
+  // ✅ CORREÇÃO: Derivar customFieldsOnly incluindo draftFields quando em modo draft
+  const customFieldsOnly = useMemo(() => {
+    if (isInDraftMode) {
+      // Em modo draft: mostrar campos draft locais
+      return draftFields;
+    } else {
+      // ✅ CORREÇÃO: Modo normal: mostrar campos customizados do banco (sem filtro field_order)
+      const filteredFields = localFields.filter(field => 
+        !isSystemField(field.field_name)
+      );
+      
+      // ✅ DEBUG TEMPORÁRIO: Log para diagnóstico da renderização
+      console.log('🔍 [CUSTOM-FIELDS-ONLY-DEBUG] Filtragem de campos:', {
+        localFields_length: localFields.length,
+        customFields_props_length: customFields.length,
+        filteredFields_length: filteredFields.length,
+        isInDraftMode,
+        pipelineId,
+        localFields_sample: localFields.slice(0, 3).map(f => ({
+          field_name: f.field_name,
+          field_label: f.field_label,
+          isSystem: isSystemField(f.field_name)
+        })),
+        filteredFields_sample: filteredFields.slice(0, 3).map(f => ({
+          field_name: f.field_name,
+          field_label: f.field_label
+        }))
+      });
+      
+      return filteredFields;
+    }
+  }, [isInDraftMode, draftFields, localFields, isSystemField, customFields.length, pipelineId]);
+
+  // ✅ FUNÇÃO CRÍTICA: Sincronizar campos draft com API quando pipeline é criada
+  const flushDraftFields = useCallback(async () => {
+    if (!pipelineId || draftFields.length === 0 || isFlushingDraft) {
+      logger.logFlush({
+        hasPipelineId: !!pipelineId,
+        draftFieldsCount: draftFields.length,
+        isFlushingDraft
+      }, 'Skipping flush');
+      return;
+    }
+
+    logger.logFlush({
+      pipelineId,
+      draftFieldsCount: draftFields.length,
+      draftFields: draftFields.map(f => ({ name: f.field_name, label: f.field_label }))
+    }, 'Iniciando sincronização');
+
+    setIsFlushingDraft(true);
+    setDraftError(null);
+    
+    try {
+      const savedFields: CustomField[] = [];
+      
+      // Sincronizar cada campo draft com a API
+      for (const draftField of draftFields) {
+        logger.logField({ fieldLabel: draftField.field_label }, 'Salvando campo');
+        
+        const response = await api.post(`/pipelines/${pipelineId}/custom-fields`, {
+          field_name: draftField.field_name,
+          field_label: draftField.field_label,
+          field_type: draftField.field_type,
+          field_options: draftField.field_options,
+          is_required: draftField.is_required,
+          show_in_card: draftField.show_in_card,
+          field_order: draftField.field_order
+        });
+        
+        const savedField = response.data.field || response.data;
+        savedFields.push(savedField);
+        logger.logField({ savedField }, 'Campo salvo');
+      }
+      
+      // Limpar draft e atualizar campos locais
+      setDraftFields([]);
+      setIsDraftMode(false);
+      
+      // Combinar com campos do sistema
+      const systemFields = [...SYSTEM_REQUIRED_FIELDS];
+      const allFields = [...systemFields, ...savedFields];
+      setLocalFields(allFields);
+      
+      // Notificar componente pai
+      if (onFieldsUpdate) {
+        onFieldsUpdate(allFields);
+      }
+      
+      showSuccessToast(
+        'Campos sincronizados!', 
+        `${savedFields.length} campo(s) customizado(s) foram salvos automaticamente.`
+      );
+      
+      logger.logFlush({
+        savedCount: savedFields.length,
+        totalFields: allFields.length
+      }, 'Sincronização concluída com sucesso');
+      
+    } catch (error: any) {
+      logger.logError(error, 'Erro na sincronização de flush');
+      
+      const errorMessage = error.response?.data?.error || error.message || 'Erro desconhecido';
+      setDraftError(`Erro ao sincronizar campos: ${errorMessage}`);
+      
+      showErrorToast(
+        'Erro na sincronização', 
+        `Não foi possível salvar os campos automaticamente: ${errorMessage}`
+      );
+    } finally {
+      setIsFlushingDraft(false);
+    }
+  }, [pipelineId, draftFields, isFlushingDraft, onFieldsUpdate]);
+  
+  // ✅ EFEITO: Executar flush automático quando pipelineId muda de undefined para válido
+  useEffect(() => {
+    if (pipelineId && !isInDraftMode && draftFields.length > 0) {
+      // ✅ LOGGING CENTRALIZADO: Auto-flush é operação importante
+      logger.logFlush(
+        { draftFieldsCount: draftFields.length, trigger: 'auto-flush' }, 
+        'AUTO'
+      );
+      flushDraftFields();
+    }
+  }, [pipelineId, isInDraftMode, draftFields.length, flushDraftFields]);
+
+  // ✅ DRAFT MODE: Detectar criação da pipeline e acionar flush automático via callback
+  useEffect(() => {
+    if (onPipelineCreated && !pipelineId && draftFields.length > 0) {
+      logger.logDraft({ draftFieldsCount: draftFields.length }, 'Callback onPipelineCreated disponível, aguardando criação da pipeline');
+      // Aqui podemos implementar uma função para se registrar no callback
+      // O flush será acionado quando ModernPipelineCreatorRefactored chamar onPipelineCreated
+    }
+  }, [onPipelineCreated, pipelineId, draftFields.length]);
 
   // ✅ CORREÇÃO: Notificar mudanças apenas quando necessário, evitando loop infinito
   const notifyFieldsUpdate = useCallback(() => {
@@ -374,10 +581,10 @@ export function useCustomFieldsManager({
   };
 
   const handleAddField = () => {
-    // ✅ CORREÇÃO: Campo customizado com field_order >= 10
+    // ✅ CORREÇÃO: Campo customizado com order_index baseado nos existentes
     const nextOrder = Math.max(
       ...localFields.filter(f => !isSystemField(f.field_name)).map(f => f.field_order || 0),
-      9 // Garantir que seja >= 10
+      0 // Permitir qualquer order_index >= 1
     ) + 1;
     
     setEditingField({
@@ -427,23 +634,81 @@ export function useCustomFieldsManager({
     try {
       let savedField: CustomField;
       
-      if (editFieldIndex !== null) {
-        // ✅ EDITANDO CAMPO EXISTENTE: Chamar API PUT usando axios
-        const existingField = localFields[editFieldIndex];
-        if (existingField.id) {
-          console.log('✏️ [handleSaveField] Editando campo via API:', {
-            pipelineId: pipelineId || 'undefined',
-            fieldId: existingField.id,
-            fieldLabel: editingField.field_label,
-            changes: {
+      // ✅ DRAFT MODE: Validar se deve salvar em modo draft ou via API
+      if (isInDraftMode) {
+        logger.logDraft({
+          fieldLabel: editingField.field_label,
+          isNewField: editFieldIndex === null,
+          draftFieldsCount: draftFields.length
+        }, 'Salvando campo em modo draft');
+        
+        // Salvar localmente em modo draft
+        savedField = {
+          ...editingField,
+          id: `draft_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` // ID temporário
+        };
+        
+        if (editFieldIndex !== null) {
+          // Editando campo draft existente
+          const updatedDraftFields = [...draftFields];
+          const draftIndex = draftFields.findIndex(f => f.field_name === editingField.field_name);
+          if (draftIndex >= 0) {
+            updatedDraftFields[draftIndex] = savedField;
+          }
+          setDraftFields(updatedDraftFields);
+          
+          showSuccessToast('🟡 Campo draft atualizado!', `O campo "${editingField.field_label}" será salvo quando a pipeline for criada.`);
+        } else {
+          // Novo campo draft
+          setDraftFields(prev => [...prev, savedField]);
+          showSuccessToast('🟡 Campo draft criado!', `O campo "${editingField.field_label}" será salvo automaticamente quando a pipeline for criada.`);
+        }
+        
+      } else {
+        // ✅ MODO NORMAL: Salvar via API com validação de segurança
+        if (!pipelineId) {
+          throw new Error('Pipeline ID é obrigatório para salvar campos via API');
+        }
+        
+        if (editFieldIndex !== null) {
+          // ✅ EDITANDO CAMPO EXISTENTE: Chamar API PUT usando axios
+          const existingField = localFields[editFieldIndex];
+          if (existingField.id && !existingField.id.startsWith('draft_')) {
+            logger.logField({
+              pipelineId,
+              fieldId: existingField.id,
+              fieldLabel: editingField.field_label
+            }, 'Editando campo via API');
+
+            const response = await api.put(`/pipelines/${pipelineId}/custom-fields/${existingField.id}`, {
               field_label: editingField.field_label,
               field_type: editingField.field_type,
+              field_options: editingField.field_options,
               is_required: editingField.is_required,
-              show_in_card: editingField.show_in_card
-            }
-          });
+              show_in_card: editingField.show_in_card,
+              field_order: editingField.field_order
+            });
 
-          const response = await api.put(`/pipelines/${pipelineId || ''}/custom-fields/${existingField.id}`, {
+            logger.logField({ response: response.data }, 'Campo editado com sucesso');
+            savedField = response.data.field || response.data;
+            
+            showSuccessToast('Campo atualizado!', `O campo "${editingField.field_label}" foi atualizado com sucesso.`);
+          } else {
+            savedField = editingField;
+          }
+        } else {
+          // ✅ NOVO CAMPO: Chamar API POST usando axios
+          logger.logField({
+            pipelineId,
+            fieldData: {
+              field_name: editingField.field_name,
+              field_label: editingField.field_label,
+              field_type: editingField.field_type
+            }
+          }, 'Criando novo campo via API');
+
+          const response = await api.post(`/pipelines/${pipelineId}/custom-fields`, {
+            field_name: editingField.field_name,
             field_label: editingField.field_label,
             field_type: editingField.field_type,
             field_options: editingField.field_options,
@@ -452,101 +717,82 @@ export function useCustomFieldsManager({
             field_order: editingField.field_order
           });
 
-          console.log('✅ [handleSaveField] Campo editado com sucesso:', response.data);
+          logger.logField({ response: response.data }, 'Novo campo criado com sucesso');
           savedField = response.data.field || response.data;
           
-          showSuccessToast('Campo atualizado!', `O campo "${editingField.field_label}" foi atualizado com sucesso.`);
-        } else {
-          savedField = editingField;
+          showSuccessToast('Campo criado!', `O campo "${editingField.field_label}" foi criado com sucesso.`);
         }
-      } else {
-        // ✅ NOVO CAMPO: Chamar API POST usando axios
-        console.log('➕ [handleSaveField] Criando novo campo via API:', {
-          pipelineId: pipelineId || 'undefined',
-          fieldData: {
-            field_name: editingField.field_name,
-            field_label: editingField.field_label,
-            field_type: editingField.field_type,
-            is_required: editingField.is_required,
-            show_in_card: editingField.show_in_card
-          }
-        });
+      }
 
-        const response = await api.post(`/pipelines/${pipelineId || ''}/custom-fields`, {
-          field_name: editingField.field_name,
-          field_label: editingField.field_label,
-          field_type: editingField.field_type,
-          field_options: editingField.field_options,
-          is_required: editingField.is_required,
-          show_in_card: editingField.show_in_card,
-          field_order: editingField.field_order
-        });
-
-        console.log('✅ [handleSaveField] Novo campo criado com sucesso:', response.data);
-        savedField = response.data.field || response.data;
+      // ✅ ATUALIZAR ESTADO LOCAL: Diferenciar entre draft e normal
+      if (!isInDraftMode) {
+        // Modo normal: atualizar localFields diretamente
+        let updatedFields: CustomField[];
         
-        showSuccessToast('Campo criado!', `O campo "${editingField.field_label}" foi criado com sucesso. Você pode continuar adicionando mais campos.`);
-      }
+        if (editFieldIndex !== null) {
+          // Editando campo existente
+          updatedFields = [...localFields];
+          updatedFields[editFieldIndex] = savedField;
+        } else {
+          // Novo campo
+          updatedFields = [...localFields, savedField];
+        }
 
-      // ✅ ATUALIZAR ESTADO LOCAL COM DADOS DO SERVIDOR
-      let updatedFields: CustomField[];
-      
-      if (editFieldIndex !== null) {
-        // Editando campo existente
-        updatedFields = [...localFields];
-        updatedFields[editFieldIndex] = savedField;
-      } else {
-        // Novo campo
-        updatedFields = [...localFields, savedField];
+        setLocalFields(updatedFields);
+        
+        // ✅ NOTIFICAR MUDANÇAS: Apenas em modo normal
+        if (onFieldsUpdate) {
+          onFieldsUpdate(updatedFields);
+        }
       }
-
-      setLocalFields(updatedFields);
+      // No modo draft, os campos são atualizados via useEffect que monitora draftFields
       
-      // ✅ CORREÇÃO: NÃO fechar modal automaticamente para melhor UX
-      // setShowFieldModal(false); // Removido para manter modal aberto
-      
-      // Limpar estado de edição mas manter modal aberto para novo campo
+      // ✅ UX: Gerenciar estado do modal baseado no contexto
       if (editFieldIndex === null) {
+        // Novo campo: limpar formulário mas manter modal aberto
+        const nextOrder = Math.max(
+          ...(isInDraftMode ? draftFields : localFields)
+            .filter(f => !isSystemField(f.field_name))
+            .map(f => f.field_order || 0),
+          9
+        ) + 1;
+        
         setEditingField({
           field_name: '',
           field_label: '',
           field_type: 'text',
           is_required: false,
-          field_order: Math.max(
-            ...updatedFields.filter(f => !isSystemField(f.field_name)).map(f => f.field_order || 0),
-            9
-          ) + 1,
+          field_order: nextOrder,
           show_in_card: true
         });
       } else {
-        // Para edição, fechar modal após salvar
+        // Edição: fechar modal após salvar
         setShowFieldModal(false);
         setEditingField(null);
       }
       
       setEditFieldIndex(null);
-      // ✅ CORREÇÃO: NÃO marcar hasUnsavedChanges para campos individuais
-      // pois isso causa fechamento automático do modal
-      // setHasUnsavedChanges(true); // Removido temporariamente
-      
-      // ✅ CORREÇÃO CRÍTICA: Notificar mudanças sem triggerar save automático
-      if (onFieldsUpdate) {
-        onFieldsUpdate(updatedFields);
-      }
 
     } catch (error: any) {
       console.error('❌ [handleSaveField] Erro ao salvar campo:', error);
       
-      // ✅ MELHOR TRATAMENTO DE ERRO: Detalhar resposta da API
-      let errorMessage = 'Não foi possível salvar o campo. Verifique os dados e tente novamente.';
-      
-      if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.message) {
-        errorMessage = error.message;
+      // ✅ TRATAMENTO DIFERENCIADO: Draft vs Normal
+      if (isInDraftMode) {
+        // Em modo draft, erros são menos críticos
+        logger.logError(error, 'Erro em modo draft (não crítico)');
+        showErrorToast('Erro no modo draft', 'Houve um problema ao salvar o campo em modo draft. Você pode tentar novamente.');
+      } else {
+        // Em modo normal, erros são críticos
+        let errorMessage = 'Não foi possível salvar o campo. Verifique os dados e tente novamente.';
+        
+        if (error.response?.data?.error) {
+          errorMessage = error.response.data.error;
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        
+        showErrorToast('Erro ao salvar', errorMessage);
       }
-      
-      showErrorToast('Erro ao salvar', errorMessage);
     }
   };
 
@@ -573,15 +819,20 @@ export function useCustomFieldsManager({
     try {
       // ✅ CORREÇÃO: Usar API axios em vez de fetch direto para aproveitar proxy do Vite
       if (field.id) {
-        console.log('🗑️ [handleConfirmDelete] Excluindo campo via API:', {
+        // ✅ LOGGING CENTRALIZADO: Delete é operação importante
+        logger.logField({
           pipelineId: pipelineId || 'undefined',
           fieldId: field.id,
           fieldLabel: field.field_label
-        });
+        }, 'DELETE');
 
         const response = await api.delete(`/pipelines/${pipelineId || ''}/custom-fields/${field.id}`);
 
-        console.log('✅ [handleConfirmDelete] Campo excluído com sucesso:', response.data);
+        // ✅ LOGGING CENTRALIZADO: Sucesso é operação importante
+        logger.logField({
+          success: true,
+          response: response.data
+        }, 'DELETE_SUCCESS');
         showSuccessToast('Campo excluído!', `O campo "${field.field_label}" foi removido com sucesso.`);
       }
 
@@ -619,9 +870,9 @@ export function useCustomFieldsManager({
   // ✅ NOVA FUNÇÃO: Salvar todas as mudanças (similar às stages)
   const handleSaveAllChanges = useCallback(() => {
     if (onFieldsUpdate && hasUnsavedChanges) {
-      // Enviar apenas campos customizados (field_order >= 10)
+      // ✅ CORREÇÃO: Enviar apenas campos customizados (sem filtro field_order)
       const customFieldsToSave = localFields.filter(field => 
-        !isSystemField(field.field_name) && field.field_order >= 10
+        !isSystemField(field.field_name)
       );
       onFieldsUpdate(customFieldsToSave);
       setHasUnsavedChanges(false);
@@ -682,6 +933,12 @@ export function useCustomFieldsManager({
     setShowDeleteDialog,
     fieldToDelete,
     handleConfirmDelete,
+    // ✅ DRAFT MODE: Novos estados e funções
+    isDraftMode: isInDraftMode,
+    draftFields,
+    isFlushingDraft,
+    draftError,
+    flushDraftFields,
     // Funções originais
     handleAddField,
     handleEditField,
@@ -705,6 +962,8 @@ interface CustomFieldsManagerRenderProps {
 }
 
 export function CustomFieldsManagerRender({ fieldsManager }: CustomFieldsManagerRenderProps) {
+  // ✅ RENDER: CustomFieldsManagerRender - logs removidos para evitar spam
+
   const {
     customFields,
     systemFields,
@@ -744,8 +1003,27 @@ export function CustomFieldsManagerRender({ fieldsManager }: CustomFieldsManager
                 <Database className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">Campos Customizados</h3>
-                <p className="text-sm text-slate-500">Personalize os campos específicos para sua pipeline</p>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-semibold text-slate-900">Campos Customizados</h3>
+                  {/* ✅ DRAFT MODE: Indicador no header quando em modo draft */}
+                  {fieldsManager.isDraftMode && fieldsManager.draftFields.length > 0 && (
+                    <Badge variant="secondary" className="text-xs bg-yellow-100 text-yellow-800 border-yellow-200 animate-pulse">
+                      {fieldsManager.draftFields.length} Draft{fieldsManager.draftFields.length > 1 ? 's' : ''}
+                    </Badge>
+                  )}
+                  {/* ✅ DRAFT MODE: Indicador quando está sincronizando */}
+                  {fieldsManager.isFlushingDraft && (
+                    <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-800 border-blue-200">
+                      Sincronizando...
+                    </Badge>
+                  )}
+                </div>
+                <div className="text-sm text-slate-500">
+                  {fieldsManager.isDraftMode 
+                    ? "Modo Draft: Campos serão salvos quando a pipeline for criada"
+                    : "Personalize os campos específicos para sua pipeline"
+                  }
+                </div>
               </div>
             </div>
             <Button type="button" onClick={handleAddField} size="sm" className="bg-blue-600 hover:bg-blue-700">
@@ -949,16 +1227,37 @@ export function CustomFieldsManagerRender({ fieldsManager }: CustomFieldsManager
           </div>
         )}
 
+      {/* ✅ DRAFT MODE: Exibir erro de draft se houver */}
+      {fieldsManager.draftError && (
+        <BlurFade delay={0.15} direction="up">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 text-red-800">
+              <AlertTriangle className="h-4 w-4" />
+              <span className="font-medium">Erro na sincronização draft</span>
+            </div>
+            <p className="text-sm text-red-700 mt-1">{fieldsManager.draftError}</p>
+          </div>
+        </BlurFade>
+      )}
+
       {/* Lista de Campos Customizados */}
       <BlurFade delay={0.2} direction="up">
         <div className="space-y-3">
           {customFieldsOnly.length > 0 ? (
             customFieldsOnly.map((field, index) => (
               <div key={field.id || `custom-${index}`}>
-                <Card className="bg-gradient-to-r from-white to-blue-50/30 border-slate-200/80 hover:border-blue-300/60 transition-all duration-200">
+                <Card className={`transition-all duration-200 ${
+                  fieldsManager.isDraftMode && field.id?.startsWith('draft_')
+                    ? "bg-gradient-to-r from-yellow-50 to-amber-50/30 border-yellow-200/80 hover:border-yellow-300/60"
+                    : "bg-gradient-to-r from-white to-blue-50/30 border-slate-200/80 hover:border-blue-300/60"
+                }`}>
                   <CardContent className="flex items-center justify-between p-4">
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-blue-100/70 rounded-md">
+                      <div className={`p-2 rounded-md ${
+                        fieldsManager.isDraftMode && field.id?.startsWith('draft_')
+                          ? "bg-yellow-100/70"
+                          : "bg-blue-100/70"
+                      }`}>
                         {getFieldIcon(field.field_type)}
                       </div>
                       <div>
@@ -968,6 +1267,16 @@ export function CustomFieldsManagerRender({ fieldsManager }: CustomFieldsManager
                           {field.is_required && (
                             <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-700 border-orange-200">
                               Obrigatório
+                            </Badge>
+                          )}
+                          {/* ✅ DRAFT MODE: Indicador visual de draft vs saved */}
+                          {fieldsManager.isDraftMode && field.id?.startsWith('draft_') ? (
+                            <Badge variant="secondary" className="text-xs bg-yellow-100 text-yellow-800 border-yellow-200 animate-pulse">
+                              Draft
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 border-green-200">
+                              Salvo
                             </Badge>
                           )}
                         </div>

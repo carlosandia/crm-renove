@@ -51,9 +51,15 @@ export const useCadenceActivityGenerator = () => {
       
       // Logs reduzidos para melhor performance
 
-      // Obter token de autenticação
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
+      // ✅ BÁSICO: Verificar autenticação (Basic Supabase Authentication)
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+      if (!currentUser || userError) {
+        throw new Error('Usuário não autenticado');
+      }
+      
+      // ✅ BÁSICO: Obter token de autenticação
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
       
       if (!token) {
         throw new Error('Token de autenticação não disponível');

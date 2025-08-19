@@ -36,7 +36,34 @@ const createUpdateRateLimit = rateLimit({
 // Apply rate limiting to all routes
 router.use(memberToolsRateLimit);
 
-// Apply authentication to all routes
+// =====================================================
+// PUBLIC ROUTES (before auth middleware)
+// =====================================================
+
+/**
+ * @route GET /api/member-tools/health
+ * @desc Health check endpoint for member tools
+ * @access Public (for monitoring)
+ */
+router.get('/health', (req, res) => {
+  res.json({
+    success: true,
+    service: 'Member Tools API',
+    version: '4B.1.0',
+    timestamp: new Date().toISOString(),
+    features: [
+      'Task Management',
+      'Calendar Integration',
+      'Email Templates',
+      'WhatsApp Integration',
+      'Performance Tracking',
+      'Dashboard Configuration',
+      'Activity Monitoring'
+    ]
+  });
+});
+
+// Apply authentication to all routes below
 router.use(authMiddleware);
 
 // =====================================================
@@ -356,30 +383,7 @@ router.post('/activity/record',
 );
 
 // =====================================================
-// HEALTH CHECK ROUTE
+// HEALTH CHECK ROUTE (moved to top for public access)
 // =====================================================
-
-/**
- * @route GET /api/member-tools/health
- * @desc Health check endpoint for member tools
- * @access Public (for monitoring)
- */
-router.get('/health', (req, res) => {
-  res.json({
-    success: true,
-    service: 'Member Tools API',
-    version: '4B.1.0',
-    timestamp: new Date().toISOString(),
-    features: [
-      'Task Management',
-      'Calendar Integration',
-      'Email Templates',
-      'WhatsApp Integration',
-      'Performance Tracking',
-      'Dashboard Configuration',
-      'Activity Monitoring'
-    ]
-  });
-});
 
 export { router as memberToolsRoutes }; 

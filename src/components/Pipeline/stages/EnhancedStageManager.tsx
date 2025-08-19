@@ -129,8 +129,8 @@ const getSystemStageTooltip = (stageName: string) => {
     case 'Perdido':
       return {
         title: 'Vendas Perdidas',
-        description: 'Etapa para análise de perdas e otimização do funil. Identifica gargalos no processo de vendas.',
-        tip: '🔍 Tip: Analise os motivos de perda para melhorar sua estratégia!'
+        description: 'Etapa para análise de perdidos e otimização do funil. Identifica gargalos no processo de vendas.',
+        tip: '🔍 Tip: Analise os motivos de perdido para melhorar sua estratégia!'
       };
     default:
       return {

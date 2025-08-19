@@ -22,10 +22,11 @@ export const PAGINATION = {
 export const API = {
   TIMEOUT: 30000, // 30 segundos (padrão)
   TIMEOUT_SMTP: 150000, // 150 segundos (2.5 min) para operações SMTP
+  TIMEOUT_PIPELINE: 60000, // 60 segundos para operações de pipeline (save/load)
   RETRY_ATTEMPTS: 3,
   RETRY_DELAY: 1000, // 1 segundo
   CACHE_DURATION: 5 * 60 * 1000, // 5 minutos
-  DEBOUNCE_DELAY: 300 // 300ms para search
+  DEBOUNCE_DELAY: 250 // 250ms para search (otimizado para melhor UX)
 } as const;
 
 // ============================================
@@ -162,7 +163,7 @@ export const CACHE_DURATION_MINUTES = {
 
 export const SEARCH_CONFIG = {
   MIN_QUERY_LENGTH: 2,
-  DEBOUNCE_DELAY: 300,
+  DEBOUNCE_DELAY: 250, // Otimizado para melhor responsividade
   MAX_RESULTS: 100,
   HIGHLIGHT_CLASS: 'bg-yellow-200 font-semibold'
 } as const;

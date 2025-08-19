@@ -10,7 +10,10 @@ if (import.meta.env.DEV) {
   import('./utils/logger-controls');
 }
 
-console.log('🚀 Main.tsx carregado - renderizando App completo com React Router v7 Future Flags')
+// ✅ CORREÇÃO: Log apenas em desenvolvimento
+if (import.meta.env.DEV) {
+  console.log('🚀 Main.tsx carregado - renderizando App completo com React Router v7 Future Flags');
+}
 
 // 🔧 CORREÇÃO: Tratamento de erros de dynamic imports (baseado na documentação do Vite)
 window.addEventListener('vite:preloadError', (event) => {
@@ -31,21 +34,35 @@ const ModernLoginForm = lazy(() => import('./components/auth/ModernLoginForm')
   .then(module => ({ default: module.ModernLoginForm }))
   .catch(() => ({ default: () => <div>Erro ao carregar Login</div> })))
 
-// ✅ CORREÇÃO: Loading mais rápido e menos intrusivo
-const LoadingFallback = React.memo(() => (
-  <div className="min-h-screen flex items-center justify-center bg-gray-50">
-    <div className="text-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-      <p className="mt-2 text-sm text-gray-500">Iniciando...</p>
+// ✅ CORREÇÃO: Loading removido em desenvolvimento, minimal em produção
+const LoadingFallback = React.memo(() => {
+  // Em desenvolvimento: sem loading intrusivo
+  if (import.meta.env.DEV) {
+    return null;
+  }
+  
+  // Em produção: loading minimal e rápido
+  return (
+    <div className="fixed top-4 right-4 z-50">
+      <div className="bg-white shadow-lg rounded-lg p-3 flex items-center space-x-2">
+        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+        <span className="text-sm text-gray-700">Carregando...</span>
+      </div>
     </div>
-  </div>
-))
+  );
+})
 
 // 🔧 CORREÇÃO: Componente wrapper para rotas protegidas (simplificado)
 const ProtectedDashboard = React.memo(() => {
   const { user, loading } = useAuth()
   
-  console.log('🔍 [ProtectedDashboard] Estado:', { loading, user: user?.email || 'null' })
+  // ✅ CORREÇÃO: Log apenas em desenvolvimento e com throttling
+  React.useEffect(() => {
+    if (import.meta.env.DEV) {
+      const logData = { loading, user: user?.email || 'null' };
+      console.log('🔍 [ProtectedDashboard] Estado:', logData);
+    }
+  }, [loading, user?.email])
   
   if (loading) {
     return <LoadingFallback />
@@ -140,7 +157,9 @@ const router = createBrowserRouter([
 // Renderizar a aplicação completa
 const root = document.getElementById('root')
 if (root) {
-  console.log('✅ Elemento root encontrado')
+  if (import.meta.env.DEV) {
+    console.log('✅ Elemento root encontrado');
+  }
   ReactDOM.createRoot(root).render(
     <RouterProvider 
       router={router}

@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useState, lazy, useRef, useCallback } from 'react';
+import React, { Suspense, useEffect, useState, lazy, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../../providers/AuthProvider';
 import { usePipelineData } from '../../hooks/usePipelineData';
 import { usePipelineCache } from '../../hooks/usePipelineCache'; // ✅ FASE 2: Import cache inteligente
@@ -57,22 +57,55 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
     getAdminCreatedPipelines,
     getMemberLinkedPipelines 
   } = usePipelineData();
-  const { members } = useMembers();
+  const { 
+    members, 
+    loading: membersLoading, 
+    forceRefreshWithAuthIds 
+  } = useMembers();
   
-  // ✅ CORREÇÃO: Log otimizado para evitar spam no console
-  if (process.env.NODE_ENV === 'development' && members && Math.random() < 0.05) {
-    console.log('🔍 [UnifiedPipelineManager] Hook useMembers resultado:', {
-      membersLength: members?.length || 0,
-      membersData: members?.slice(0, 5).map(m => ({ 
-        id: m.id, 
-        name: `${m.first_name} ${m.last_name}`, 
-        role: m.role,
-        is_active: m.is_active,
-        tenant_id: m.tenant_id 
-      })) || [],
-      userTenant: user?.tenant_id
-    });
-  }
+  // ✅ THROTTLING: Ref para controlar logs duplicados
+  const lastMembersLogTime = useRef<number>(0);
+  
+  // ✅ DEBUG: Log detalhado do resultado do hook useMembers com throttling
+  useEffect(() => {
+    // ✅ OTIMIZAÇÃO: Log com throttling para evitar spam (apenas uma vez por 5 segundos)
+    const now = Date.now();
+    if (process.env.NODE_ENV === 'development' && (now - lastMembersLogTime.current >= 5000)) {
+      lastMembersLogTime.current = now;
+      console.log('🔍 [UnifiedPipelineManager] Hook useMembers resultado ATUALIZADO:', {
+        membersLength: members?.length || 0,
+        membersLoading,
+        userTenant: user?.tenant_id,
+        userRole: user?.role,
+        membersData: members?.map(m => ({ 
+          id: m.id, 
+          name: `${m.first_name} ${m.last_name}`, 
+          email: m.email,
+          role: m.role,
+          is_active: m.is_active,
+          tenant_id: m.tenant_id,
+          auth_user_id: m.auth_user_id,
+          isRafael: m.email === 'rafael@renovedigital.com.br' || m.first_name.toLowerCase().includes('rafael')
+        })) || [],
+        salesMembers: members?.filter(m => m.role === 'member' && m.is_active !== false) || [],
+        rafaelFound: members?.find(m => 
+          m.email === 'rafael@renovedigital.com.br' || 
+          m.first_name.toLowerCase().includes('rafael')
+        ) || null
+      });
+    }
+  }, [members, membersLoading, user?.tenant_id, user?.role]);
+
+  // ✅ ETAPA 2: Força refresh inicial com IDs de auth.users para corrigir persistência
+  useEffect(() => {
+    // Executar apenas uma vez quando componente monta e tem tenant_id
+    if (user?.tenant_id && forceRefreshWithAuthIds) {
+      console.log('🔄 [ETAPA-2] UnifiedPipelineManager forçando refresh inicial com IDs de auth.users');
+      forceRefreshWithAuthIds().catch(error => {
+        console.error('❌ [ETAPA-2] Erro ao forçar refresh inicial:', error);
+      });
+    }
+  }, [user?.tenant_id]); // Executar apenas quando tenant_id muda (mount + login)
   
   const queryClient = useQueryClient();
   
@@ -129,6 +162,13 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
   }, [isAdmin]);
 
   const handleEditPipeline = useCallback((pipeline: Pipeline) => {
+    // ✅ DEBUG CRÍTICO: Log detalhado da pipeline que está sendo editada
+    console.log('🔍 [PIPELINE-ID-DEBUG] handleEditPipeline chamado:', {
+      pipeline_id: pipeline?.id,
+      pipeline_name: pipeline?.name,
+      pipeline_full: pipeline
+    });
+    
     // ✅ CONTROLE DE PERMISSÕES: Admin pode editar, member só pode visualizar
     console.log(`✏️ [UnifiedPipelineManager] ${isAdmin ? 'Editando' : 'Visualizando'} pipeline:`, pipeline.name);
     setEditingPipeline(pipeline);
@@ -271,15 +311,62 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
 
   const handlePipelineCreate = useCallback(async (pipelineData: any) => {
     try {
+      // ✅ CORREÇÃO: Validar autenticação antes de enviar
+      if (!user?.tenant_id || !user?.id) {
+        throw new Error('Usuário deve estar autenticado');
+      }
+
       console.log('💾 [UnifiedPipelineManager] Criando nova pipeline:', pipelineData);
       
       // ✅ CANCELAR queries em andamento para evitar race conditions
       await queryClient.cancelQueries({ queryKey: QueryKeys.pipelines.byTenant(user?.tenant_id!) });
       
-      const response = await api.post('/pipelines', {
+      // ✅ DIAGNÓSTICO: Logs detalhados do payload
+      const finalPayload = {
         ...pipelineData,
-        tenant_id: user?.tenant_id
+        tenant_id: user?.tenant_id,
+        created_by: user?.id,  // ✅ CORREÇÃO: Campo obrigatório que estava faltando
+        // ✅ CORREÇÃO: Garantir campo qualification_rules obrigatório com valor padrão
+        qualification_rules: pipelineData.qualification_rules || { mql: [], sql: [] },
+        // ✅ CORREÇÃO: Garantir campo outcome_reasons com valor padrão adequado
+        outcome_reasons: pipelineData.outcome_reasons || { ganho_reasons: [], perdido_reasons: [] }
+      };
+      
+      // ✅ VALIDAÇÃO ROBUSTA: Verificar campos obrigatórios
+      const requiredFields = ['name', 'tenant_id', 'created_by', 'qualification_rules'];
+      const missingFields = requiredFields.filter(field => !finalPayload[field]);
+      
+      if (missingFields.length > 0) {
+        console.error('❌ [VALIDATION] Campos obrigatórios faltando:', missingFields);
+        throw new Error(`Campos obrigatórios faltando: ${missingFields.join(', ')}`);
+      }
+      
+      console.log('✅ [VALIDATION] Todos os campos obrigatórios presentes:', requiredFields);
+      
+      console.log('🔍 [DEBUG] Payload sendo enviado para /pipelines:', {
+        user_id: user?.id,
+        tenant_id: user?.tenant_id,
+        user_email: user?.email,
+        pipelineData_keys: Object.keys(pipelineData),
+        finalPayload_keys: Object.keys(finalPayload),
+        // ✅ Validações básicas
+        has_created_by: !!finalPayload.created_by,
+        has_tenant_id: !!finalPayload.tenant_id,
+        has_name: !!finalPayload.name,
+        // ✅ Validações dos novos campos obrigatórios
+        has_qualification_rules: !!finalPayload.qualification_rules,
+        qualification_rules_structure: finalPayload.qualification_rules,
+        has_outcome_reasons: !!finalPayload.outcome_reasons,
+        outcome_reasons_structure: finalPayload.outcome_reasons
       });
+      
+      // ✅ VERIFICAÇÃO EXPLÍCITA: Confirmar endpoint correto
+      const endpoint = '/pipelines/complete';
+      console.log('🎯 [ENDPOINT-CHECK] Usando endpoint:', endpoint);
+      console.log('🎯 [CACHE-BUSTER] Timestamp:', Date.now());
+      
+      // ✅ CORREÇÃO: Usar endpoint completo para pipeline com todas as configurações
+      const response = await api.post(endpoint, finalPayload);
       
       if (!response.data.success) {
         throw new Error(response.data.error || 'Erro desconhecido');
@@ -297,6 +384,8 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
     } catch (error: any) {
       console.error('❌ [UnifiedPipelineManager] Erro ao criar pipeline:', error);
       showErrorToast('Erro ao criar', `Erro ao criar pipeline: ${error.message}`);
+      // ✅ CORREÇÃO: Re-lançar erro para que o componente pai possa tratar adequadamente
+      throw error;
     }
   }, [user, refreshPipelines, queryClient]);
 
@@ -376,10 +465,22 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
         fullPayload: pipelineData
       });
 
-      const response = await api.put(`/pipelines/${targetPipelineId}`, {
+      // ✅ DEBUGGING CRÍTICO: Log do payload EXATO que será serializado
+      const finalPayload = {
         ...pipelineData,
         tenant_id: user?.tenant_id
+      };
+      
+      console.log('🚀 [API-PAYLOAD-DEBUG] Payload EXATO antes da serialização:', {
+        finalPayload,
+        member_ids_no_payload: finalPayload.member_ids,
+        member_ids_count_final: finalPayload.member_ids?.length || 0,
+        member_ids_serialized: JSON.stringify(finalPayload.member_ids),
+        pipelineData_original: pipelineData,
+        spread_funcionou: finalPayload.member_ids === pipelineData.member_ids
       });
+
+      const response = await api.put(`/pipelines/${targetPipelineId}`, finalPayload);
       
       if (!response.data.success) {
         throw new Error(response.data.error || 'Erro desconhecido');
@@ -724,11 +825,24 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
     return unsubscribe;
   }, [shouldUseDirectAccess, finalSetPipeline, eventManager, queryClient]);
 
+  // ✅ PERFORMANCE: Memoizar members formatados para evitar re-renders
+  const memoizedMembers = useMemo(() => {
+    return (members || []) as any[];
+  }, [members]);
+
   // ✅ CORREÇÃO CRÍTICA: LoadingComponent como componente React válido
   const LoadingComponent = React.useCallback(() => {
+    // ✅ CORREÇÃO: Em desenvolvimento, não mostrar loading intrusivo
+    if (import.meta.env.DEV) {
+      return null;
+    }
+    
+    // Em produção: loading minimal
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex flex-col items-center space-y-4">
+      <div className="fixed top-4 right-4 z-50">
+        <div className="bg-white shadow-lg rounded-lg p-3 flex items-center space-x-2">
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+          <span className="text-sm text-gray-700">Pipeline...</span>
         </div>
       </div>
     );
@@ -805,7 +919,8 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
           isOpen={showCreateModal}
           onClose={handleCloseCreateModal}
           pipeline={null}
-          members={(members || []) as any[]}
+          members={memoizedMembers}
+          membersLoading={membersLoading}
           onSubmit={handlePipelineCreate}
           isEdit={false}
         />
@@ -817,7 +932,8 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
           isOpen={showEditModal}
           onClose={handleCloseEditModal}
           pipeline={editingPipeline}
-          members={(members || []) as any[]}
+          members={memoizedMembers}
+          membersLoading={membersLoading}
           onSubmit={handlePipelineUpdate}
           isEdit={true}
           onDuplicatePipeline={editingPipeline ? () => handleDuplicatePipeline(editingPipeline) : undefined}
@@ -830,11 +946,16 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
 
       {/* Modal de detalhes do lead com error handling */}
       <Suspense fallback={
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 shadow-xl">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+        // ✅ CORREÇÃO: Em desenvolvimento, não mostrar loading intrusivo em modais
+        import.meta.env.DEV ? (
+          <></>
+        ) : (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 shadow-xl">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            </div>
           </div>
-        </div>
+        )
       }>
         <PipelineErrorBoundary
           pipelineId={selectedPipelineToRender?.id}

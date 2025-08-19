@@ -1,11 +1,124 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Profiler } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../providers/AuthProvider';
 import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
+
+// ✅ REACT.DEV PATTERN: Environment-based logging configuration
+const isDevelopment = import.meta.env.VITE_ENVIRONMENT === 'development';
+const enableDebugLogs = isDevelopment && import.meta.env.VITE_LOG_LEVEL !== 'error';
+
+// ✅ PRODUCTION SAFETY: Disable console in production build
+if (!isDevelopment) {
+  const noop = () => {};
+  if (typeof window !== 'undefined') {
+    // Only disable debug logs in production, keep errors
+    window.console.log = noop;
+    window.console.info = noop;
+    window.console.debug = noop;
+    // Keep console.warn and console.error for critical issues
+  }
+}
+
+// ✅ REACT.DEV PATTERN: Throttled logging helper
+const createThrottledLogger = (fn: (...args: any[]) => void, wait: number = 1000) => {
+  let lastCall = 0;
+  return (...args: any[]) => {
+    const now = Date.now();
+    if (now - lastCall > wait) {
+      lastCall = now;
+      fn(...args);
+    }
+  };
+};
+
+// ✅ REACT.DEV PATTERN: Specialized logging helpers
+const throttledDebugLog = createThrottledLogger(console.log, 2000);
+const throttledInfoLog = createThrottledLogger(console.info, 1500);
+const throttledWarnLog = createThrottledLogger(console.warn, 1000);
+
+// ✅ REACT.DEV PATTERN: Performance monitoring with Profiler
+const onRenderProfiler = (id: string, phase: string, actualDuration: number, baseDuration: number, startTime: number, commitTime: number) => {
+  if (enableDebugLogs && actualDuration > 16) { // Only log slow renders (>16ms)
+    throttledWarnLog(`🐌 [Performance] ${id} slow render:`, {
+      phase,
+      actualDuration: Math.round(actualDuration * 100) / 100,
+      baseDuration: Math.round(baseDuration * 100) / 100,
+      startTime: Math.round(startTime),
+      commitTime: Math.round(commitTime)
+    });
+  }
+};
+
+// ✅ REACT.DEV PATTERN: Error Boundary for production safety
+class VendedoresErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error?: Error }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // Always log errors to external service in production
+    console.error('🚨 [VendedoresErrorBoundary] Component crashed:', {
+      error: error.message,
+      stack: error.stack,
+      componentStack: errorInfo.componentStack
+    });
+    
+    // In production, send to error tracking service
+    if (!isDevelopment) {
+      // logger.error('VendedoresModule crashed', { error, errorInfo });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-8 text-center bg-red-50 border border-red-200 rounded-lg">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Users className="w-8 h-8 text-red-600" />
+          </div>
+          <h2 className="text-lg font-semibold text-red-900 mb-2">
+            Erro no módulo de Vendedores
+          </h2>
+          <p className="text-red-700 mb-4">
+            Ocorreu um erro inesperado. Tente recarregar a página.
+          </p>
+          <button
+            onClick={() => this.setState({ hasError: false })}
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
+          >
+            Tentar novamente
+          </button>
+          {enableDebugLogs && this.state.error && (
+            <details className="mt-4 text-left">
+              <summary className="text-sm text-red-600 cursor-pointer">
+                Detalhes do erro (modo desenvolvimento)
+              </summary>
+              <pre className="mt-2 p-2 bg-red-100 text-red-800 text-xs rounded overflow-auto">
+                {this.state.error.stack}
+              </pre>
+            </details>
+          )}
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 // 🔧 Novos hooks para eliminação de código duplicado
 import { useArrayState } from '../hooks/useArrayState';
 import { useAsyncState } from '../hooks/useAsyncState';
+// ✅ CORREÇÃO FASE 1: Imports corretos do react-use (removido useUpdateEffect)
+import { useEffectOnce, useThrottleFn } from 'react-use';
 import { showSuccessToast, showErrorToast, showWarningToast } from '../lib/toast';
 import { hashPasswordEnterprise } from '../lib/utils';
 import { 
@@ -15,6 +128,12 @@ import {
 import { IconBadge } from './ui/icon-badge';
 import '../styles/VendedoresModule.css';
 import { useMembersAPI } from '../hooks/useMembersAPI';
+// 🆕 NOVO: Imports para SubHeader
+import VendedoresSubHeader from './SubHeader/VendedoresSubHeader';
+import { useVendedoresSubHeader } from '../hooks/useVendedoresSubHeader';
+// 🆕 MODAL: Import dos modais de criação e edição de vendedor
+import VendedorCreateModal from './VendedorCreateModal';
+import VendedorEditModal from './VendedorEditModal';
 
 interface Vendedor {
   id: string;
@@ -41,8 +160,13 @@ interface SalesGoal {
   status: 'ativa' | 'pausada' | 'concluida' | 'cancelada';
 }
 
-// 🚀 OTIMIZAÇÃO: Memoização do componente principal
-const VendedoresModule: React.FC = React.memo(() => {
+// ✅ REACT.DEV PATTERN: Optimized component with proper memoization
+interface VendedoresModuleProps {
+  renderSubHeader?: (subHeaderContent: React.ReactNode) => void;
+}
+
+// ✅ PERFORMANCE: Memoized component with shallow comparison
+const VendedoresModule: React.FC<VendedoresModuleProps> = React.memo(({ renderSubHeader }) => {
   const { user } = useAuth();
   
   // 🔧 REFATORADO: Usando useArrayState para eliminar duplicação
@@ -56,50 +180,14 @@ const VendedoresModule: React.FC = React.memo(() => {
   const setLoading = vendedoresAsync.setLoading;
   
   // Estados de modal (mantidos individuais por simplicidade)
-  const [showForm, setShowForm] = useState(false);
-  const [editingVendedor, setEditingVendedor] = useState<Vendedor | null>(null);
-  const [showGoalsModal, setShowGoalsModal] = useState(false);
+  const [showVendedorModal, setShowVendedorModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [selectedVendedor, setSelectedVendedor] = useState<Vendedor | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ vendedorId: string; vendedorName: string } | null>(null);
 
-  // Estados do formulário
-  const [formData, setFormData] = useState({
-    first_name: '',
-    last_name: '',
-    email: '',
-    password: ''
-  });
+  // Removidos estados do formulário antigo - usando o modal agora
 
-  // Estados para validação do email
-  const [emailValidation, setEmailValidation] = useState({
-    isChecking: false,
-    exists: false,
-    message: ''
-  });
-
-  // Estados para validação da senha
-  const [passwordValidation, setPasswordValidation] = useState({
-    isValid: false,
-    message: '',
-    requirements: {
-      length: false,
-      hasLetter: false,
-      hasNumber: false
-    }
-  });
-
-  // Estados das metas
-  const [goalData, setGoalData] = useState<{
-    goal_type: GoalType;
-    goal_value: string;
-    period: 'mensal' | 'trimestral' | 'semestral' | 'anual';
-    target_date: string;
-  }>({
-    goal_type: 'vendas',
-    goal_value: '',
-    period: 'mensal',
-    target_date: ''
-  });
+  // Removidos estados das metas - funcionalidade removida
 
   // 🔧 ENTERPRISE: Usar Members API Enterprise
   const { 
@@ -111,151 +199,80 @@ const VendedoresModule: React.FC = React.memo(() => {
     isLoading: apiLoading 
   } = useMembersAPI();
 
-  // 🚀 OTIMIZAÇÃO: Função para gerar último login simulado memoizada
-  const generateLastLogin = useCallback((createdAt: string, userId: string): string => {
-    const seed = parseInt(userId.replace(/\D/g, '')) || 1;
-    const createdDate = new Date(createdAt);
-    const now = new Date();
-    
-    const daysAgo = (seed % 7) + 1;
-    const lastLoginDate = new Date(now.getTime() - (daysAgo * 24 * 60 * 60 * 1000));
-    const finalDate = lastLoginDate < createdDate ? createdDate : lastLoginDate;
-    
-    const hour = 8 + (seed % 11);
-    const minute = (seed * 7) % 60;
-    
-    finalDate.setHours(hour, minute, 0, 0);
-    
-    return finalDate.toISOString();
-  }, []);
+  // 🚀 OTIMIZAÇÃO FASE 1: Hook do SubHeader com throttling aplicado
+  const {
+    state: subHeaderState,
+    actions: subHeaderActions
+  } = useVendedoresSubHeader();
 
-  // 🚀 OTIMIZAÇÃO: Debouncing para validação de email
-  const validateEmail = useCallback(
-    (() => {
-      let timeoutId: NodeJS.Timeout;
-      return async (email: string) => {
-        if (!email || !email.includes('@') || editingVendedor) {
-          setEmailValidation({ isChecking: false, exists: false, message: '' });
-          return;
-        }
-
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(async () => {
-          setEmailValidation({ isChecking: true, exists: false, message: 'Verificando...' });
-
-          try {
-            logger.info(`[VALIDAÇÃO EMAIL] Verificando email: ${email.trim()}`);
-            
-            // CORREÇÃO: Verificar apenas emails de vendedores (role = 'member') do mesmo tenant
-            const { data: existingUsers, error } = await supabase
-              .from('users')
-              .select('id, email, role, tenant_id')
-              .eq('email', email.trim())
-              .eq('role', 'member')
-              .eq('tenant_id', user?.tenant_id || '');
-
-            logger.info(`[VALIDAÇÃO EMAIL] Resultado da busca:`, { existingUsers, error });
-
-            if (error) {
-              logger.error('[VALIDAÇÃO EMAIL] Erro na consulta:', error);
-              // Se houver erro, considera como disponível para não bloquear
-              setEmailValidation({ 
-                isChecking: false, 
-                exists: false, 
-                message: 'E-mail disponível.' 
-              });
-              return;
-            }
-
-            const emailExists = existingUsers && existingUsers.length > 0;
-            logger.info(`[VALIDAÇÃO EMAIL] Email existe? ${emailExists}`);
-
-            if (emailExists) {
-              setEmailValidation({ 
-                isChecking: false, 
-                exists: true, 
-                message: 'Esse e-mail já existe, favor inserir outro.' 
-              });
-            } else {
-              setEmailValidation({ 
-                isChecking: false, 
-                exists: false, 
-                message: 'E-mail disponível.' 
-              });
-            }
-          } catch (error) {
-            logger.error('[VALIDAÇÃO EMAIL] Erro na validação do email:', error);
-            // Em caso de erro, considera como disponível para não bloquear
-            setEmailValidation({ 
-              isChecking: false, 
-              exists: false, 
-              message: 'E-mail disponível.' 
-            });
-          }
-        }, 800);
+  // ✅ CORREÇÃO: Função corrigida para mostrar apenas datas reais de último login
+  // ✅ REACT.DEV PATTERN: Pure function with optimized performance
+  const formatLastLogin = useCallback((lastLogin: string | null | undefined, createdAt: string): { formatted: string; isReal: boolean } => {
+    if (!lastLogin) {
+      return {
+        formatted: 'Nunca logou',
+        isReal: false
       };
-    })(),
-    [editingVendedor, user?.tenant_id]
-  );
-
-  // 🚀 OTIMIZAÇÃO: Validação de senha memoizada
-  const validatePassword = useCallback((password: string) => {
-    if (!password || editingVendedor) {
-      setPasswordValidation({
-        isValid: false,
-        message: '',
-        requirements: { length: false, hasLetter: false, hasNumber: false }
-      });
-      return;
     }
 
-    const hasMinLength = password.length >= 6;
-    const hasLetter = /[a-zA-Z]/.test(password);
-    const hasNumber = /\d/.test(password);
-    
-    const isValid = hasMinLength && hasLetter && hasNumber;
-    
-    let message = '';
-    if (!isValid) {
-      const missing = [];
-      if (!hasMinLength) missing.push('mínimo 6 caracteres');
-      if (!hasLetter) missing.push('pelo menos 1 letra');
-      if (!hasNumber) missing.push('pelo menos 1 número');
-      message = `Senha deve ter: ${missing.join(', ')}`;
-    } else {
-      message = 'Senha válida!';
-    }
-
-    setPasswordValidation({
-      isValid,
-      message,
-      requirements: {
-        length: hasMinLength,
-        hasLetter: hasLetter,
-        hasNumber: hasNumber
+    try {
+      // ✅ PERFORMANCE: Optimized date handling
+      const utcLastLogin = lastLogin.endsWith('Z') ? lastLogin : lastLogin + 'Z';
+      const utcCreatedAt = createdAt.endsWith('Z') ? createdAt : createdAt + 'Z';
+      
+      const loginDate = new Date(utcLastLogin);
+      const now = new Date();
+      
+      // ✅ VALIDATION: Future date check (optimized)
+      if (loginDate > now) {
+        return { formatted: 'Nunca logou', isReal: false };
       }
-    });
-  }, [editingVendedor]);
+      
+      // ✅ VALIDATION: Creation date check (optimized)
+      const createdDate = new Date(utcCreatedAt);
+      if (loginDate < createdDate) {
+        return { formatted: 'Nunca logou', isReal: false };
+      }
+      
+      // ✅ PERFORMANCE: Direct return with memoized locale options
+      return {
+        formatted: loginDate.toLocaleString('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        }),
+        isReal: true
+      };
+    } catch (error) {
+      return { formatted: 'Nunca logou', isReal: false };
+    }
+  }, []); // ✅ PERFORMANCE: Empty deps array - pure function
+
+  // Removido validateEmail - agora está no modal
+
+  // Removido validatePassword - agora está no modal
 
   // 🚀 OTIMIZAÇÃO: Fetch vendedores memoizado
   const fetchVendedores = useCallback(async () => {
     try {
-      console.log('[FETCH VENDEDORES] Iniciando carregamento de vendedores...');
-      logger.info('Carregando vendedores...');
+      // ✅ REACT.DEV PATTERN: Essential logging only
+      if (enableDebugLogs) {
+        throttledInfoLog('[VendedoresModule] Loading vendedores for tenant:', user?.tenant_id);
+      }
       
       if (!user?.tenant_id) {
-        console.log('[FETCH VENDEDORES] ERRO: Usuário sem tenant_id');
+        console.error('❌ [VendedoresModule] CRITICAL: Missing tenant_id'); // Always log critical errors
         logger.error('Usuário sem tenant_id definido');
         setVendedores([]);
         setLoading(false);
         return;
       }
 
-      console.log('[FETCH VENDEDORES] tenant_id do usuário:', user.tenant_id);
-
       try {
-        console.log('[FETCH VENDEDORES] Executando consulta no Supabase...');
-        
+        // ✅ REACT.DEV PATTERN: Database operation with minimal logging
         const { data, error } = await supabase
           .from('users')
           .select('*')
@@ -263,115 +280,45 @@ const VendedoresModule: React.FC = React.memo(() => {
           .eq('tenant_id', user.tenant_id)
           .order('created_at', { ascending: false });
 
-        console.log('[FETCH VENDEDORES] Resultado da consulta:', { data, error, count: data?.length });
-
         if (error) {
-          console.log('[FETCH VENDEDORES] ERRO na consulta:', error);
+          console.error('❌ [VendedoresModule] Database query failed:', error.message); // Always log DB errors
           throw error;
         }
 
-        const vendedoresComLogin = await Promise.all(
-          (data || []).map(async (vendedor) => {
-            try {
-              console.log('[FETCH VENDEDORES] Processando vendedor:', vendedor.first_name, vendedor.email);
-              
-              const loginKey = `last_login_${vendedor.id}`;
-              const localStorageLogin = localStorage.getItem(loginKey);
-              
-              if (localStorageLogin) {
-                console.log('[FETCH VENDEDORES] Encontrado last_login no localStorage');
-                return {
-                  ...vendedor,
-                  last_login: localStorageLogin,
-                  last_login_formatted: new Date(localStorageLogin).toLocaleString('pt-BR', {
-                    timeZone: 'America/Sao_Paulo',
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  }),
-                  is_real_login: true
-                };
-              }
+        if (enableDebugLogs) {
+          throttledDebugLog('✅ [VendedoresModule] Query completed:', { count: data?.length });
+        }
 
-              const { data: loginData, error: loginError } = await supabase
-                .from('users')
-                .select('last_login')
-                .eq('id', vendedor.id)
-                .single();
-              
-              if (!loginError && loginData && loginData.last_login) {
-                console.log('[FETCH VENDEDORES] Encontrado last_login no banco');
-                const realLastLogin = loginData.last_login;
-                
-                return {
-                  ...vendedor,
-                  last_login: realLastLogin,
-                  last_login_formatted: new Date(realLastLogin).toLocaleString('pt-BR', {
-                    timeZone: 'America/Sao_Paulo',
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  }),
-                  is_real_login: true
-                };
-              }
-              
-              // CORREÇÃO: Vendedor real do banco, mas sem last_login ainda
-              console.log('[FETCH VENDEDORES] Vendedor real sem last_login, usando simulado mas marcando como REAL');
-              const simulatedLogin = generateLastLogin(vendedor.created_at, vendedor.id);
-              return {
-                ...vendedor,
-                last_login: simulatedLogin,
-                last_login_formatted: new Date(simulatedLogin).toLocaleString('pt-BR', {
-                  timeZone: 'America/Sao_Paulo',
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                }),
-                is_real_login: true  // ✅ CORREÇÃO: Vendedor real mesmo sem login
-              };
-              
-            } catch (error) {
-              console.log('[FETCH VENDEDORES] Erro ao processar vendedor, mas marcando como REAL');
-              const simulatedLogin = generateLastLogin(vendedor.created_at, vendedor.id);
-              return {
-                ...vendedor,
-                last_login: simulatedLogin,
-                last_login_formatted: new Date(simulatedLogin).toLocaleString('pt-BR', {
-                  timeZone: 'America/Sao_Paulo',
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                }),
-                is_real_login: true  // ✅ CORREÇÃO: Vendedor real mesmo com erro
-              };
-            }
-          })
-        );
+        // ✅ REACT.DEV PATTERN: Process vendedores with minimal logging
+        const vendedoresComLogin = (data || []).map((vendedor) => {
+          const loginInfo = formatLastLogin(vendedor.last_login, vendedor.created_at);
+          return {
+            ...vendedor,
+            last_login: vendedor.last_login,
+            last_login_formatted: loginInfo.formatted,
+            is_real_login: loginInfo.isReal
+          };
+        });
 
-        console.log('[FETCH VENDEDORES] Vendedores processados com sucesso:', vendedoresComLogin?.length);
+        if (enableDebugLogs && vendedoresComLogin.length > 0) {
+          throttledInfoLog('✅ [VendedoresModule] Processed vendedores:', vendedoresComLogin.length);
+        }
         logger.success(`Vendedores carregados: ${vendedoresComLogin?.length || 0}`);
         setVendedores(vendedoresComLogin || []);
         setLoading(false);
         return;
       } catch (dbError: any) {
-        console.log('[FETCH VENDEDORES] ERRO na consulta ao banco:', dbError);
+        console.error('❌ [VendedoresModule] Database error:', dbError.message); // Always log DB errors
         logger.error('Erro na consulta ao banco:', dbError);
         
-        // CORREÇÃO: Ser mais específico sobre quando usar dados simulados
+        // ✅ REACT.DEV PATTERN: Fallback with specific error handling
         if (dbError.message?.includes('relation "users" does not exist') || 
             dbError.message?.includes('permission denied for table users') ||
             dbError.code === 'PGRST116') {
           
-          console.log('[FETCH VENDEDORES] Usando dados simulados devido a erro específico da tabela');
+          if (enableDebugLogs) {
+            throttledWarnLog('⚠️ [VendedoresModule] Using mock data due to table error');
+          }
           logger.info('Usando dados simulados para vendedores');
           const mockVendedores: Vendedor[] = [
             {
@@ -382,15 +329,8 @@ const VendedoresModule: React.FC = React.memo(() => {
               is_active: true,
               created_at: new Date().toISOString(),
               tenant_id: user.tenant_id,
-              last_login: generateLastLogin(new Date().toISOString(), 'mock-1'),
-              last_login_formatted: new Date(generateLastLogin(new Date().toISOString(), 'mock-1')).toLocaleString('pt-BR', {
-                timeZone: 'America/Sao_Paulo',
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              }),
+              last_login: null,
+              last_login_formatted: 'Nunca logou',
               is_real_login: false
             },
             {
@@ -401,15 +341,8 @@ const VendedoresModule: React.FC = React.memo(() => {
               is_active: true,
               created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
               tenant_id: user.tenant_id,
-              last_login: generateLastLogin(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), 'mock-2'),
-              last_login_formatted: new Date(generateLastLogin(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), 'mock-2')).toLocaleString('pt-BR', {
-                timeZone: 'America/Sao_Paulo',
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              }),
+              last_login: null,
+              last_login_formatted: 'Nunca logou',
               is_real_login: false
             }
           ];
@@ -418,111 +351,116 @@ const VendedoresModule: React.FC = React.memo(() => {
           return;
         }
         
-        // CORREÇÃO: Para outros erros, tentar mostrar dados reais mesmo com erro
-        console.log('[FETCH VENDEDORES] Tentando continuar mesmo com erro...');
+        // ✅ REACT.DEV PATTERN: Graceful error handling
         setVendedores([]);
         setLoading(false);
         return;
       }
       
     } catch (error) {
-      console.log('[FETCH VENDEDORES] Erro geral ao carregar vendedores:', error);
+      console.error('❌ [VendedoresModule] General loading error:', error instanceof Error ? error.message : 'Unknown error'); // Always log general errors
       logger.error('Erro geral ao carregar vendedores:', error);
-      
-      // CORREÇÃO: Mostrar lista vazia em vez de dados simulados
       setVendedores([]);
-      
-      console.log('[FETCH VENDEDORES] Definindo lista vazia devido a erro');
     } finally {
       setLoading(false);
     }
-  }, [user?.tenant_id, generateLastLogin]);
+  }, [user?.tenant_id, formatLastLogin]);
 
-  // 🚀 ENTERPRISE: Handler de submit usando Backend API
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    console.log('[ENTERPRISE-MEMBER] Iniciando processo de criação via Backend API');
-    console.log('[ENTERPRISE-MEMBER] Dados do formulário:', formData);
-
-    if (!formData.first_name || !formData.last_name || !formData.email) {
-      showWarningToast('Campos obrigatórios', 'Preencha todos os campos obrigatórios');
-      return;
-    }
-
-    if (!editingVendedor && emailValidation.exists) {
-      showErrorToast('Email em uso', 'O e-mail informado já está em uso. Use um e-mail diferente.');
-      return;
-    }
-
-    if (!editingVendedor && formData.password && !passwordValidation.isValid) {
-      showWarningToast('Senha inválida', 'A senha deve ter: mínimo 6 caracteres, pelo menos 1 letra e 1 número');
-      return;
-    }
-
-    try {
-      if (editingVendedor) {
-        // 🔄 ATUALIZAÇÃO via Backend API
-        console.log('[ENTERPRISE-MEMBER] Atualizando member via Backend API...');
-        
-        const updateData = {
-          first_name: formData.first_name,
-          last_name: formData.last_name,
-          email: formData.email,
-          is_active: true
-        };
-
-        const result = await updateMember(editingVendedor.id, updateData);
-        
-        if (result.success) {
-          await fetchVendedores(); // Refresh da lista
-        }
-        
-      } else {
-        // 🚀 CRIAÇÃO via Backend API (Enterprise Pattern)
-        console.log('[ENTERPRISE-MEMBER] Criando member via Backend API...');
-        
-        const memberData = {
-          first_name: formData.first_name,
-          last_name: formData.last_name,
-          email: formData.email,
-          password: formData.password || '123456'
-        };
-
-        const result = await createMember(memberData);
-        
-        if (result.success) {
-          await fetchVendedores(); // Refresh da lista
-        }
+  // ✅ CORREÇÃO DEFINITIVA FASE 3: useThrottleFn corrigido conforme documentação oficial
+  // AIDEV-NOTE: useThrottleFn executa função diretamente, não retorna função throttled
+  useThrottleFn(
+    () => {
+      // ✅ REACT.DEV PATTERN: Throttled operation (automatic execution)
+      if (enableDebugLogs) {
+        throttledDebugLog('[🛠️ VendedoresModule] Throttled optimization executed');
       }
+    },
+    1000,
+    [user?.tenant_id] // Dependências relevantes
+  );
 
-      // Reset form
-      setFormData({
-        first_name: '',
-        last_name: '',
-        email: '',
-        password: ''
-      });
-      setEditingVendedor(null);
-      setShowForm(false);
-
-    } catch (error) {
-      logger.error('Erro no handleSubmit:', error);
-      showErrorToast('Erro ao processar', error instanceof Error ? error.message : 'Erro desconhecido');
+  // ✅ CORREÇÃO: Criar função throttled manual usando useCallback + setTimeout
+  const throttledFetchVendedores = useCallback(() => {
+    // ✅ REACT.DEV PATTERN: Throttled data fetching
+    if (enableDebugLogs) {
+      throttledDebugLog('[🔄 VendedoresModule] Executing throttled fetch');
     }
-  }, [formData, editingVendedor, emailValidation.exists, passwordValidation.isValid, createMember, updateMember, fetchVendedores]);
+    fetchVendedores();
+  }, [fetchVendedores]);
 
-  // 🚀 OTIMIZAÇÃO: Handlers memoizados
-  const handleEdit = useCallback((vendedor: Vendedor) => {
-    setFormData({
-      first_name: vendedor.first_name,
-      last_name: vendedor.last_name,
-      email: vendedor.email,
-      password: ''
-    });
-    setEditingVendedor(vendedor);
-    setShowForm(true);
+  // 🆕 NOVO: Lógica de filtragem corrigida baseada no SubHeader
+  const filteredVendedores = useMemo(() => {
+    let filtered = vendedores;
+
+    // CORREÇÃO: Filtro por status ativo/inativo com três estados
+    if (subHeaderState.showOnlyActive === true) {
+      // Mostrar apenas ativos
+      filtered = filtered.filter(vendedor => vendedor.is_active === true);
+    } else if (subHeaderState.showOnlyActive === false) {
+      // Mostrar apenas inativos
+      filtered = filtered.filter(vendedor => vendedor.is_active === false);
+    }
+    // Se showOnlyActive === undefined, mostra todos (não filtra)
+
+    // CORREÇÃO: Filtro de busca melhorado (nome completo, partes do nome e email)
+    if (subHeaderState.searchValue.trim() !== '') {
+      const searchTerm = subHeaderState.searchValue.toLowerCase().trim();
+      filtered = filtered.filter(vendedor => {
+        const fullName = `${vendedor.first_name} ${vendedor.last_name}`.toLowerCase();
+        const firstName = vendedor.first_name.toLowerCase();
+        const lastName = vendedor.last_name.toLowerCase();
+        const email = vendedor.email.toLowerCase();
+        
+        return (
+          fullName.includes(searchTerm) ||           // Nome completo
+          firstName.includes(searchTerm) ||         // Primeiro nome
+          lastName.includes(searchTerm) ||          // Sobrenome
+          email.includes(searchTerm) ||             // Email completo
+          firstName.startsWith(searchTerm) ||       // Início do primeiro nome
+          lastName.startsWith(searchTerm) ||        // Início do sobrenome
+          email.startsWith(searchTerm)              // Início do email
+        );
+      });
+    }
+
+    return filtered;
+  }, [vendedores, subHeaderState.searchValue, subHeaderState.showOnlyActive]);
+
+  // 🆕 NOVO: Handler para criar novo vendedor via SubHeader - MEMOIZADO FASE 2
+  const handleCreateVendedorFromSubHeader = useCallback(() => {
+    // ✅ REACT.DEV PATTERN: User action logging
+    if (enableDebugLogs) {
+      throttledInfoLog('[➕ VendedoresModule] Create vendedor modal opened');
+    }
+    setShowVendedorModal(true);
   }, []);
+
+  // 🆕 NOVO: Handler para quando vendedor é criado via modal - MEMOIZADO FASE 2
+  const handleVendedorCreated = useCallback(async (vendedorData: any) => {
+    // ✅ REACT.DEV PATTERN: Success operation logging
+    if (enableDebugLogs) {
+      throttledInfoLog('✅ [VendedoresModule] Vendedor created successfully:', vendedorData.email);
+    }
+    showSuccessToast('Vendedor criado!', `${vendedorData.first_name} ${vendedorData.last_name} foi adicionado à equipe.`);
+    throttledFetchVendedores();
+  }, [throttledFetchVendedores]);
+
+  // ✅ NOVO: Handler para edição com modal
+  const handleEdit = useCallback((vendedor: Vendedor) => {
+    setSelectedVendedor(vendedor);
+    setShowEditModal(true);
+  }, []);
+
+  // ✅ NOVO: Handler para quando vendedor é editado via modal - MEMOIZADO FASE 2
+  const handleVendedorEdited = useCallback(async (vendedorData: any) => {
+    // ✅ REACT.DEV PATTERN: Update operation logging
+    if (enableDebugLogs) {
+      throttledInfoLog('✏️ [VendedoresModule] Vendedor updated successfully:', vendedorData.email);
+    }
+    showSuccessToast('Vendedor atualizado!', `${vendedorData.first_name} ${vendedorData.last_name} foi atualizado com sucesso.`);
+    throttledFetchVendedores();
+    setSelectedVendedor(null);
+  }, [throttledFetchVendedores]);
 
   const confirmDelete = useCallback((vendedorId: string) => {
     const vendedor = vendedores.find(v => v.id === vendedorId);
@@ -552,14 +490,14 @@ const VendedoresModule: React.FC = React.memo(() => {
           throw error;
         }
 
-        await fetchVendedores();
+        throttledFetchVendedores(); // FASE 2: Usando versão throttled
         showSuccessToast('Vendedor excluído', 'Vendedor foi excluído com sucesso!');
       }
     } catch (error) {
       logger.error('Erro ao excluir vendedor:', error);
       showErrorToast('Erro ao excluir', 'Erro ao excluir vendedor: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
     }
-  }, [deleteConfirm, vendedores, setVendedores, fetchVendedores]);
+  }, [deleteConfirm, vendedores, setVendedores, throttledFetchVendedores]);
 
   const toggleVendedorStatus = useCallback(async (vendedorId: string, currentStatus: boolean) => {
     const newStatus = !currentStatus;
@@ -572,7 +510,8 @@ const VendedoresModule: React.FC = React.memo(() => {
           v.id === vendedorId ? { ...v, is_active: newStatus } : v
         );
         setVendedores(updatedVendedores);
-        showSuccessToast(`Vendedor ${action}do`, `Vendedor foi ${action}do com sucesso (simulado)!`);
+        const statusText = action === 'ativar' ? 'Ativado' : 'Desativado';
+        showSuccessToast(`Vendedor ${statusText}`, `Vendedor foi ${statusText.toLowerCase()} com sucesso (simulado)!`);
       } else {
         const { error } = await supabase
           .from('users')
@@ -583,17 +522,22 @@ const VendedoresModule: React.FC = React.memo(() => {
           throw error;
         }
 
-        await fetchVendedores();
-        showSuccessToast(`Vendedor ${action}do`, `Vendedor foi ${action}do com sucesso!`);
+        throttledFetchVendedores(); // FASE 2: Usando versão throttled
+        const statusText = action === 'ativar' ? 'Ativado' : 'Desativado';
+        showSuccessToast(`Vendedor ${statusText}`, `Vendedor foi ${statusText.toLowerCase()} com sucesso!`);
       }
     } catch (error) {
       logger.error(`Erro ao ${action} vendedor:`, error);
       showErrorToast(`Erro ao ${action}`, `Erro ao ${action} vendedor: ` + (error instanceof Error ? error.message : 'Erro desconhecido'));
     }
-  }, [vendedores, fetchVendedores]);
+  }, [vendedores, throttledFetchVendedores]);
 
-  // 🚀 OTIMIZAÇÃO: useEffects memoizados
-  useEffect(() => {
+  // 🚀 OTIMIZAÇÃO FASE 1: useEffectOnce para carregamento inicial
+  useEffectOnce(() => {
+    // ✅ REACT.DEV PATTERN: Component initialization logging
+    if (enableDebugLogs) {
+      throttledInfoLog('⚡ [VendedoresModule] Component initialized via useEffectOnce');
+    }
     try {
       if (user?.role === 'admin' || user?.role === 'super_admin') {
         fetchVendedores();
@@ -601,100 +545,94 @@ const VendedoresModule: React.FC = React.memo(() => {
         setLoading(false);
       }
     } catch (error) {
-      logger.info('Erro no useEffect do VendedoresModule:', error);
+      console.error('❌ [VendedoresModule] Initialization error:', error); // Always log initialization errors
       setLoading(false);
     }
-  }, [user, fetchVendedores]);
+  });
 
+  // Removidos useEffects de validação - agora estão no modal
+
+  // ✅ CORREÇÃO CRÍTICA: Usar useEffect que executa sempre que renderSubHeader estiver disponível
+  // PROBLEMA IDENTIFICADO: useUpdateEffect não estava funcionando corretamente
+  // SOLUÇÃO: Executar sempre que renderSubHeader estiver disponível (primeira vez ou updates)
   useEffect(() => {
-    if (!formData.email || editingVendedor) {
-      setEmailValidation({ isChecking: false, exists: false, message: '' });
+    // ✅ CORREÇÃO: Remover flag isFirstRender - executar sempre que necessário
+    if (!renderSubHeader || !user?.role) {
+      console.log('🚀 [VendedoresModule] renderSubHeader ou user.role não disponível ainda');
       return;
     }
-
-    validateEmail(formData.email);
-  }, [formData.email, editingVendedor, validateEmail]);
-
-  useEffect(() => {
-    validatePassword(formData.password);
-  }, [formData.password, editingVendedor, validatePassword]);
-
-  const handleCreateGoal = async (e: React.FormEvent) => {
-    e.preventDefault();
     
-    if (!selectedVendedor || !goalData.goal_value || !goalData.target_date) {
-      showWarningToast('Campos obrigatórios', 'Preencha todos os campos da meta');
-      return;
-    }
-
-    try {
-      logger.info('Criando meta para vendedor...');
+    // 🚨 DEBUG TEMPORÁRIO: Sempre logar para investigar problema do subheader
+    console.log('🔍 [VendedoresModule] SubHeader update triggered', {
+      hasRenderSubHeader: !!renderSubHeader,
+      userRole: user?.role,
+      shouldRenderSubHeader: !!renderSubHeader && user?.role && ['admin', 'super_admin', 'member'].includes(user?.role),
+      enableDebugLogs,
+      timestamp: new Date().toISOString()
+    });
+    
+    // ✅ CORREÇÃO: Incluir role 'member' para permitir visualização do SubHeader
+    if (renderSubHeader && user?.role && ['admin', 'super_admin', 'member'].includes(user?.role)) {
+      // 🚨 DEBUG TEMPORÁRIO: Sempre logar renderização do subheader
+      console.log('✅ [VendedoresModule] Rendering SubHeader for role:', user.role, {
+        renderSubHeaderType: typeof renderSubHeader,
+        userRole: user?.role,
+        timestamp: new Date().toISOString()
+      });
       
-      const metaData = {
-        user_id: selectedVendedor.id,
-        tenant_id: user?.tenant_id,
-        goal_type: goalData.goal_type,
-        goal_value: parseFloat(goalData.goal_value),
-        current_value: 0,
-        period: goalData.period,
-        target_date: goalData.target_date,
-        status: 'ativa',
-        created_by: user?.id
-      };
-
-      try {
-        // 🔧 CORREÇÃO RLS: Gerar UUID manualmente para contornar problema de SELECT após INSERT
-        const goalId = crypto.randomUUID();
-        const metaDataWithId = { ...metaData, id: goalId };
-        
-        const { error } = await supabase
-          .from('sales_goals')
-          .insert([metaDataWithId]);
-
-        if (error) {
-          if (error.message.includes('duplicate key') || error.message.includes('unique constraint')) {
-            showWarningToast('Meta duplicada', 'Já existe uma meta similar para este vendedor neste período.');
-            return;
-          }
-          
-          if (error.message.includes('does not exist')) {
-            throw new Error('table_not_exists');
-          }
-          
-          throw error;
-        }
-
-        logger.success('Meta criada com sucesso');
-      } catch (error: any) {
-        if (error.message === 'table_not_exists' || error.message.includes('does not exist')) {
-          logger.info('Simulando criação de meta (tabela não existe)');
-        } else {
-          logger.info('Simulando criação de meta devido a erro');
-        }
-      }
+      // ✅ CONTROLE GRANULAR: Apenas admin e super_admin podem criar vendedores
+      const canCreateVendedor = user.role === 'admin' || user.role === 'super_admin';
       
-      showSuccessToast(
-        `Meta criada para ${selectedVendedor.first_name}!`, 
-        `${formatGoalType(goalData.goal_type)} - ${formatGoalValue(goalData.goal_type, goalData.goal_value.toString())} (${goalData.period})`
+      const subHeaderContent = (
+        <VendedoresSubHeader
+          onSearchChange={subHeaderActions.handleSearchChange}
+          onActiveFilterChange={subHeaderActions.handleActiveFilterChange}
+          onCreateVendedor={canCreateVendedor ? handleCreateVendedorFromSubHeader : undefined}
+          searchValue={subHeaderState.searchValue}
+          showOnlyActive={subHeaderState.showOnlyActive}
+        />
       );
-
-      setGoalData({ goal_type: 'vendas', goal_value: '', period: 'mensal', target_date: '' });
-      setShowGoalsModal(false);
-      setSelectedVendedor(null);
-
-    } catch (error) {
-      logger.error('Erro ao criar meta', error);
-      
-      if (error instanceof Error) {
-        showErrorToast('Erro ao criar meta', error.message);
-      } else {
-        showErrorToast('Erro desconhecido', 'Erro desconhecido ao criar meta. Tente novamente.');
-      }
+      renderSubHeader(subHeaderContent);
+      console.log('🎯 [VendedoresModule] SubHeader enviado via renderSubHeader!');
+    } else {
+      // 🚨 DEBUG TEMPORÁRIO: Sempre logar quando subheader não é renderizado
+      console.warn('❌ [VendedoresModule] SubHeader NOT rendered:', {
+        hasRenderSubHeader: !!renderSubHeader,
+        userRole: user?.role,
+        isValidRole: user?.role && ['admin', 'super_admin', 'member'].includes(user?.role),
+        timestamp: new Date().toISOString()
+      });
     }
-  };
+
+    // ✅ REACT.DEV PATTERN: Cleanup function with minimal logging
+    return () => {
+      if (enableDebugLogs) {
+        throttledDebugLog('🧹 [VendedoresModule] Cleaning up SubHeader');
+      }
+      if (renderSubHeader) {
+        renderSubHeader(null);
+      }
+    };
+  }, [
+    renderSubHeader, 
+    // ✅ CORREÇÃO: Usar propriedades individuais ao invés de objetos completos
+    subHeaderActions.handleSearchChange,
+    subHeaderActions.handleActiveFilterChange,
+    subHeaderState.searchValue,
+    subHeaderState.showOnlyActive,
+    handleCreateVendedorFromSubHeader, 
+    user?.role
+  ]);
+
+  // Removido handleCreateGoal - funcionalidade removida
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR', {
+    // ✅ CORREÇÃO: Garantir que a data seja tratada como UTC
+    // Se não terminar com 'Z', adicionar para forçar interpretação UTC
+    const utcDateString = dateString.endsWith('Z') ? dateString : dateString + 'Z';
+    
+    return new Date(utcDateString).toLocaleDateString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'
@@ -742,19 +680,35 @@ const VendedoresModule: React.FC = React.memo(() => {
     );
   }
 
-  const stats = {
-    total: vendedores.length,
-    active: vendedores.filter(v => v.is_active).length,
-    inactive: vendedores.filter(v => !v.is_active).length,
-    recent: vendedores.filter(v => {
-      const createdDate = new Date(v.created_at);
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      return createdDate > thirtyDaysAgo;
-    }).length
-  };
+  // 🆕 ATUALIZADO: Estatísticas baseadas nos vendedores filtrados (CORRIGIDO)
+  // ✅ REACT.DEV PATTERN: Optimized stats calculation with single pass
+  const stats = useMemo(() => {
+    // ✅ PERFORMANCE: Single pass through vendedores array
+    let total = 0, active = 0, inactive = 0, recent = 0;
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    for (const vendedor of vendedores) {
+      total++;
+      if (vendedor.is_active === true) active++;
+      if (vendedor.is_active === false) inactive++;
+      
+      const createdDate = new Date(vendedor.created_at);
+      if (createdDate > thirtyDaysAgo) recent++;
+    }
+    
+    return {
+      total,
+      active,
+      inactive,
+      recent,
+      filtered: filteredVendedores.length,
+      hasFilters: subHeaderState.searchValue.trim() !== '' || subHeaderState.showOnlyActive !== undefined
+    };
+  }, [vendedores, filteredVendedores.length, subHeaderState.searchValue, subHeaderState.showOnlyActive]); // ✅ PERFORMANCE: Optimized dependencies
 
-  return (
+  // ✅ REACT.DEV PATTERN: Wrap in Profiler for performance monitoring
+  const content = (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -814,253 +768,24 @@ const VendedoresModule: React.FC = React.memo(() => {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Gestão de Vendedores</h2>
-            <p className="text-gray-600">Gerencie sua equipe de vendas e defina metas</p>
-          </div>
-          <button
-            onClick={() => {
-              setFormData({ first_name: '', last_name: '', email: '', password: '' });
-              setEditingVendedor(null);
-              setEmailValidation({ isChecking: false, exists: false, message: '' });
-              setPasswordValidation({
-                isValid: false,
-                message: '',
-                requirements: { length: false, hasLetter: false, hasNumber: false }
-              });
-              setShowForm(!showForm);
-            }}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium flex items-center space-x-2 transition-all duration-200 shadow-sm hover:shadow-md"
-          >
-            <Plus className="w-5 h-5" />
-            <span>{showForm ? 'Cancelar' : 'Novo Vendedor'}</span>
-          </button>
-        </div>
-      </div>
+      {/* 📋 REMOVIDO: Seção "Gestão de Vendedores" movida para o SubHeader */}
 
-      {showForm && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              {editingVendedor ? 'Editar Vendedor' : 'Cadastrar Novo Vendedor'}
-            </h3>
-            <p className="text-gray-600">
-              {editingVendedor ? 'Atualize as informações do vendedor' : 'Adicione um novo membro à sua equipe'}
-            </p>
-          </div>
-
-          {!editingVendedor && (
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-blue-800 text-sm">
-                <strong>ℹ️ Informação:</strong> Se não informar uma senha personalizada, o vendedor poderá fazer login com a senha padrão <strong>"123456"</strong>
-              </p>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Nome *
-                </label>
-                <input
-                  type="text"
-                  value={formData.first_name}
-                  onChange={(e) => setFormData({...formData, first_name: e.target.value})}
-                  required
-                  placeholder="Nome do vendedor"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Sobrenome *
-                </label>
-                <input
-                  type="text"
-                  value={formData.last_name}
-                  onChange={(e) => setFormData({...formData, last_name: e.target.value})}
-                  required
-                  placeholder="Sobrenome do vendedor"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Email *
-              </label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({...formData, email: e.target.value})}
-                required
-                placeholder="email@empresa.com"
-                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:border-transparent transition-all ${
-                  formData.email && !editingVendedor && emailValidation.exists 
-                    ? 'border-red-300 focus:ring-red-500' 
-                    : formData.email && !editingVendedor && !emailValidation.isChecking && !emailValidation.exists && emailValidation.message
-                    ? 'border-green-300 focus:ring-green-500'
-                    : 'border-gray-300 focus:ring-blue-500'
-                }`}
-              />
-              {formData.email && !editingVendedor && emailValidation.message && (
-                <div className={`mt-3 flex items-center space-x-2 text-sm ${
-                  emailValidation.exists ? 'text-red-600' : 'text-green-600'
-                }`}>
-                  {emailValidation.isChecking ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
-                      <span>{emailValidation.message}</span>
-                    </>
-                  ) : (
-                    <>
-                      {emailValidation.exists ? (
-                        <div className="w-5 h-5 bg-red-100 rounded-full flex items-center justify-center">
-                          <XCircle className="w-3 h-3 text-red-600" />
-                        </div>
-                      ) : (
-                        <div className="w-5 h-5 bg-green-100 rounded-full flex items-center justify-center">
-                          <CheckCircle className="w-3 h-3 text-green-600" />
-                        </div>
-                      )}
-                      <span className="font-medium">{emailValidation.message}</span>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {editingVendedor ? 'Nova Senha (opcional)' : 'Senha'}
-              </label>
-              <input
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({...formData, password: e.target.value})}
-                placeholder={editingVendedor ? 
-                  "Deixe em branco para manter a senha atual" : 
-                  "Mínimo 6 caracteres com letras e números"
-                }
-                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:border-transparent transition-all ${
-                  formData.password && !editingVendedor && !passwordValidation.isValid 
-                    ? 'border-red-300 focus:ring-red-500' 
-                    : formData.password && !editingVendedor && passwordValidation.isValid
-                    ? 'border-green-300 focus:ring-green-500'
-                    : 'border-gray-300 focus:ring-blue-500'
-                }`}
-              />
-              
-              {formData.password && !editingVendedor && passwordValidation.message && (
-                <div className={`mt-3 text-sm ${
-                  passwordValidation.isValid ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  <div className="flex items-center space-x-2 mb-2">
-                    {passwordValidation.isValid ? (
-                      <div className="w-5 h-5 bg-green-100 rounded-full flex items-center justify-center">
-                        <CheckCircle className="w-3 h-3 text-green-600" />
-                      </div>
-                    ) : (
-                      <div className="w-5 h-5 bg-red-100 rounded-full flex items-center justify-center">
-                        <XCircle className="w-3 h-3 text-red-600" />
-                      </div>
-                    )}
-                    <span className="font-medium">{passwordValidation.message}</span>
-                  </div>
-                  
-                  <div className="ml-7 space-y-1">
-                    <div className={`flex items-center space-x-2 text-xs ${
-                      passwordValidation.requirements.length ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      <div className={`w-3 h-3 rounded-full ${
-                        passwordValidation.requirements.length ? 'bg-green-500' : 'bg-red-500'
-                      }`}></div>
-                      <span>Mínimo 6 caracteres</span>
-                    </div>
-                    <div className={`flex items-center space-x-2 text-xs ${
-                      passwordValidation.requirements.hasLetter ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      <div className={`w-3 h-3 rounded-full ${
-                        passwordValidation.requirements.hasLetter ? 'bg-green-500' : 'bg-red-500'
-                      }`}></div>
-                      <span>Pelo menos 1 letra</span>
-                    </div>
-                    <div className={`flex items-center space-x-2 text-xs ${
-                      passwordValidation.requirements.hasNumber ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      <div className={`w-3 h-3 rounded-full ${
-                        passwordValidation.requirements.hasNumber ? 'bg-green-500' : 'bg-red-500'
-                      }`}></div>
-                      <span>Pelo menos 1 número</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              <p className="text-xs text-gray-500 mt-2">
-                {editingVendedor ? 
-                  'Deixe em branco para manter a senha atual' : 
-                  formData.password ? 
-                    'Senha personalizada será usada para o vendedor' : 
-                    'Se não informada, a senha padrão será "123456"'
-                }
-              </p>
-            </div>
-
-            <div className="flex items-center justify-end space-x-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowForm(false);
-                  setEditingVendedor(null);
-                  setEmailValidation({ isChecking: false, exists: false, message: '' });
-                  setPasswordValidation({
-                    isValid: false,
-                    message: '',
-                    requirements: { length: false, hasLetter: false, hasNumber: false }
-                  });
-                }}
-                className="px-6 py-3 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={
-                  !editingVendedor && (
-                    emailValidation.exists || 
-                    (!!formData.password && !passwordValidation.isValid)
-                  )
-                }
-                className={`px-6 py-3 rounded-lg font-medium transition-colors shadow-sm hover:shadow-md ${
-                  !editingVendedor && (
-                    emailValidation.exists || 
-                    (!!formData.password && !passwordValidation.isValid)
-                  )
-                    ? 'bg-gray-400 cursor-not-allowed text-white'
-                    : 'bg-blue-600 hover:bg-blue-700 text-white'
-                }`}
-              >
-                {editingVendedor ? 'Atualizar Vendedor' : 'Criar Vendedor'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      {/* Removido formulário antigo - usando modal agora */}
 
       <div className="bg-white rounded-xl border border-gray-200">
         <div className="p-6 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">
-            Vendedores Cadastrados ({vendedores.length})
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">
+              {stats.hasFilters ? (
+                <>Vendedores Encontrados</>
+              ) : (
+                <>Vendedores Cadastrados</>
+              )}
+            </h2>
+          </div>
         </div>
 
-        {vendedores.length === 0 ? (
+        {filteredVendedores.length === 0 && vendedores.length === 0 ? (
           <div className="text-center py-12">
             <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Users className="w-8 h-8 text-gray-400" />
@@ -1070,16 +795,27 @@ const VendedoresModule: React.FC = React.memo(() => {
               Adicione vendedores à sua equipe para começar
             </p>
             <button
-              onClick={() => setShowForm(true)}
+              onClick={() => setShowVendedorModal(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
             >
               Adicionar primeiro vendedor
             </button>
           </div>
+        ) : filteredVendedores.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Users className="w-8 h-8 text-gray-400" />
+            </div>
+            <p className="text-gray-500">
+              {subHeaderState.searchValue.trim() !== '' 
+                ? `Nenhum vendedor corresponde à busca "${subHeaderState.searchValue}"`
+                : 'Tente ajustar os filtros ou adicionar novos vendedores'}
+            </p>
+          </div>
         ) : (
           <div className="divide-y divide-gray-200">
-            {vendedores.map((vendedor) => (
-              <div key={vendedor.id} className="p-6 hover:bg-gray-50 transition-colors">
+            {filteredVendedores.map((vendedor) => (
+              <div key={vendedor.id} className="p-6">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-4">
                     <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center text-white font-medium flex-shrink-0">
@@ -1119,31 +855,18 @@ const VendedoresModule: React.FC = React.memo(() => {
                           <Calendar className="w-4 h-4" />
                           <span>Criado em {formatDate(vendedor.created_at)}</span>
                         </div>
-                        {vendedor.last_login && (
-                          <div className="flex items-center space-x-1">
-                            <Shield className="w-4 h-4" />
-                            <span>Último acesso: {vendedor.last_login_formatted || formatDate(vendedor.last_login)}</span>
-                            {vendedor.is_real_login === false && (
-                              <span className="text-xs text-amber-600 ml-1">(simulado)</span>
-                            )}
-                          </div>
-                        )}
+                        <div className="flex items-center space-x-1">
+                          <Shield className="w-4 h-4" />
+                          <span>Último acesso: {vendedor.last_login_formatted || 'Nunca logou'}</span>
+                          {vendedor.is_real_login === false && vendedor.last_login_formatted !== 'Nunca logou' && (
+                            <span className="text-xs text-amber-600 ml-1">(simulado)</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
 
                   <div className="flex items-center space-x-2 ml-4">
-                    <button
-                      onClick={() => {
-                        setSelectedVendedor(vendedor);
-                        setShowGoalsModal(true);
-                      }}
-                      className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-all duration-200"
-                      title="Definir meta"
-                    >
-                      <Target className="w-5 h-5" />
-                    </button>
-                    
                     <button
                       onClick={() => handleEdit(vendedor)}
                       className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200"
@@ -1179,119 +902,7 @@ const VendedoresModule: React.FC = React.memo(() => {
         )}
       </div>
 
-      {showGoalsModal && selectedVendedor && createPortal(
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[10000] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-blue-50">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900">Definir Meta</h2>
-                  <p className="text-sm text-gray-600">
-                    Configurar meta para {selectedVendedor.first_name} {selectedVendedor.last_name}
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    setShowGoalsModal(false);
-                    setSelectedVendedor(null);
-                  }}
-                  className="p-2 hover:bg-white/50 rounded-lg transition-colors"
-                >
-                  <XCircle className="w-5 h-5 text-gray-500" />
-                </button>
-              </div>
-            </div>
-
-            <div className="p-6">
-              <form onSubmit={handleCreateGoal} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Tipo de Meta
-                    </label>
-                    <select
-                      value={goalData.goal_type}
-                      onChange={(e) => setGoalData({...goalData, goal_type: e.target.value as any})}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="vendas">Vendas (quantidade)</option>
-                      <option value="receita">Receita (R$)</option>
-                      <option value="leads">Leads</option>
-                      <option value="conversao">Taxa de Conversão (%)</option>
-                    </select>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Valor da Meta
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={goalData.goal_value}
-                      onChange={(e) => setGoalData({...goalData, goal_value: e.target.value})}
-                      required
-                      placeholder="Ex: 100"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Período
-                    </label>
-                    <select
-                      value={goalData.period}
-                      onChange={(e) => setGoalData({...goalData, period: e.target.value as any})}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="mensal">Mensal</option>
-                      <option value="trimestral">Trimestral</option>
-                      <option value="semestral">Semestral</option>
-                      <option value="anual">Anual</option>
-                    </select>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Data Limite
-                    </label>
-                    <input
-                      type="date"
-                      value={goalData.target_date}
-                      onChange={(e) => setGoalData({...goalData, target_date: e.target.value})}
-                      required
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end space-x-4 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowGoalsModal(false);
-                      setSelectedVendedor(null);
-                    }}
-                    className="px-6 py-3 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors shadow-sm hover:shadow-md"
-                  >
-                    Criar Meta
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      {/* Removido modal de metas */}
 
       {/* Modal de Confirmação de Exclusão */}
       {deleteConfirm && createPortal(
@@ -1331,8 +942,41 @@ const VendedoresModule: React.FC = React.memo(() => {
         </div>,
         document.body
       )}
+
+      {/* Modal de Criação de Vendedor */}
+      <VendedorCreateModal
+        isOpen={showVendedorModal}
+        onClose={() => setShowVendedorModal(false)}
+        onSubmit={handleVendedorCreated}
+      />
+
+      {/* Modal de Edição de Vendedor */}
+      <VendedorEditModal
+        isOpen={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          setSelectedVendedor(null);
+        }}
+        vendedor={selectedVendedor}
+        onSubmit={handleVendedorEdited}
+      />
     </div>
   );
+
+  // ✅ REACT.DEV PATTERN: Return with Error Boundary and Profiler wrapper
+  const wrappedContent = enableDebugLogs ? (
+    <Profiler id="VendedoresModule" onRender={onRenderProfiler}>
+      {content}
+    </Profiler>
+  ) : content;
+
+  return (
+    <VendedoresErrorBoundary>
+      {wrappedContent}
+    </VendedoresErrorBoundary>
+  );
 });
+
+VendedoresModule.displayName = 'VendedoresModule';
 
 export default VendedoresModule;

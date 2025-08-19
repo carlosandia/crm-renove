@@ -3,7 +3,7 @@
  * 🌐 OUTCOME REASONS API SERVICE
  * ============================================
  * 
- * Serviço dedicado para operações de motivos de ganho/perda
+ * Serviço dedicado para operações de motivos de ganho/perdido
  * AIDEV-NOTE: Isolado em módulo próprio seguindo arquitetura domain-driven
  */
 

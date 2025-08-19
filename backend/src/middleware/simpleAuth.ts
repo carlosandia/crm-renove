@@ -4,6 +4,25 @@ import { supabase } from '../config/supabase';
 // AIDEV-NOTE: Autenticação simplificada usando token Supabase diretamente
 // Elimina complexidade JWT manual e usa session do Supabase
 
+// ✅ THROTTLING DE LOGS: Reduzir spam de logs em produção
+const LOG_THROTTLE_MAP = new Map<string, number>();
+const THROTTLE_INTERVAL = 30000; // 30 segundos
+
+function shouldLogAuth(userId: string, type: 'success' | 'verify'): boolean {
+  if (process.env.NODE_ENV === 'development') return true;
+  
+  const key = `${userId}-${type}`;
+  const now = Date.now();
+  const lastLog = LOG_THROTTLE_MAP.get(key);
+  
+  if (!lastLog || now - lastLog > THROTTLE_INTERVAL) {
+    LOG_THROTTLE_MAP.set(key, now);
+    return true;
+  }
+  
+  return false;
+}
+
 // Usar interface existente do sistema
 
 /**
@@ -16,7 +35,10 @@ export async function simpleAuth(
   next: NextFunction
 ): Promise<void> {
   try {
-    console.log('🔐 [SIMPLE-AUTH] Verificando autenticação Supabase...');
+    // ✅ THROTTLING: Log de verificação apenas se necessário
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔐 [SIMPLE-AUTH] Verificando autenticação Supabase...');
+    }
     
     // Extrair token do header Authorization
     const authHeader = req.headers.authorization;
@@ -44,21 +66,32 @@ export async function simpleAuth(
     }
 
     // ✅ EXTRAIR DADOS BÁSICOS do usuário Supabase - preservar role real
+    // AIDEV-NOTE: Padronização da estrutura para compatibilidade com DistributionService
     req.user = {
       id: user.id,
       email: user.email || 'unknown@email.com',
       tenant_id: user.user_metadata?.tenant_id || '',
       role: user.user_metadata?.role || 'member', // ✅ Preserva role real (admin, member, etc.)
       first_name: user.user_metadata?.first_name,
-      last_name: user.user_metadata?.last_name
+      last_name: user.user_metadata?.last_name,
+      // ✅ COMPATIBILIDADE: Manter estrutura nested também para legacy
+      user_metadata: {
+        tenant_id: user.user_metadata?.tenant_id || '',
+        role: user.user_metadata?.role || 'member',
+        first_name: user.user_metadata?.first_name,
+        last_name: user.user_metadata?.last_name
+      }
     };
 
-    console.log('✅ [SIMPLE-AUTH] Autenticação bem-sucedida:', {
-      userId: req.user.id.substring(0, 8),
-      email: req.user.email,
-      role: req.user.role, // ✅ Mostrar role real (admin/member podem configurar email)
-      tenant_id: req.user.tenant_id?.substring(0, 8) || 'N/A'
-    });
+    // ✅ THROTTLING: Log de sucesso com throttling inteligente
+    if (shouldLogAuth(req.user.id, 'success')) {
+      console.log('✅ [SIMPLE-AUTH] Autenticação bem-sucedida:', {
+        userId: req.user.id.substring(0, 8),
+        email: req.user.email,
+        role: req.user.role, // ✅ Mostrar role real (admin/member podem configurar email)
+        tenant_id: req.user.tenant_id?.substring(0, 8) || 'N/A'
+      });
+    }
 
     next();
 

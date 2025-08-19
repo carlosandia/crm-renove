@@ -4,6 +4,7 @@ import { asyncHandler, NotFoundError, ForbiddenError, ConflictError } from '../m
 import { validateRequest, schemas } from '../middleware/validation';
 import { requireRole } from '../middleware/auth';
 import { ApiResponse } from '../types/express';
+import { randomUUID } from 'crypto';
 
 const router = Router();
 
@@ -14,7 +15,7 @@ const companyValidation = {
   create: {
     body: {
       name: { required: true, type: 'string', min: 2, max: 255 },
-      industry: { required: true, type: 'string', max: 100 },
+      segmento: { required: true, type: 'string', max: 100 },
       website: { type: 'string', max: 255 },
       phone: { type: 'string', max: 20 },
       email: { type: 'string', email: true, max: 255 },
@@ -27,13 +28,13 @@ const companyValidation = {
       expected_followers_monthly: { required: true, type: 'number', min: 1 },
       admin_name: { required: true, type: 'string', min: 2, max: 100 },
       admin_email: { required: true, type: 'string', email: true },
-      admin_password: { type: 'string', min: 6, max: 100 }
+      admin_password: { required: true, type: 'string', min: 8, max: 100 }
     }
   },
   update: {
     body: {
       name: { type: 'string', min: 2, max: 255 },
-      industry: { type: 'string', max: 100 },
+      segmento: { type: 'string', max: 100 },
       website: { type: 'string', max: 255 },
       phone: { type: 'string', max: 20 },
       email: { type: 'string', email: true, max: 255 },
@@ -59,7 +60,7 @@ router.get('/',
       page: { type: 'number', min: 1 },
       limit: { type: 'number', min: 1, max: 100 },
       search: { type: 'string', max: 255 },
-      industry: { type: 'string', max: 100 },
+      segmento: { type: 'string', max: 100 },
       is_active: { type: 'boolean' }
     }
   }),
@@ -68,7 +69,7 @@ router.get('/',
       page = 1,
       limit = 20,
       search,
-      industry,
+      segmento,
       is_active
     } = req.query;
 
@@ -82,11 +83,11 @@ router.get('/',
 
     // 3. Aplicar filtros
     if (search) {
-      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,industry.ilike.%${search}%`);
+      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,segmento.ilike.%${search}%`);
     }
 
-    if (industry) {
-      query = query.eq('industry', industry);
+    if (segmento) {
+      query = query.eq('segmento', segmento);
     }
 
     if (is_active !== undefined) {
@@ -208,7 +209,7 @@ router.post('/',
   asyncHandler(async (req: Request, res: Response) => {
     const {
       name,
-      industry,
+      segmento,
       website,
       phone,
       email,
@@ -221,7 +222,7 @@ router.post('/',
       expected_followers_monthly,
       admin_name,
       admin_email,
-      admin_password = '123456'
+      admin_password
     } = req.body;
 
     // 1. Verificar se empresa já existe
@@ -246,182 +247,160 @@ router.post('/',
       throw new ConflictError('Email do administrador já está em uso');
     }
 
-    // 3. Criar empresa
+    // 3. ✅ CORREÇÃO CRÍTICA: Gerar UUID para usar como tenant_id com validação robusta
+    const companyId = randomUUID();
+    
+    // ✅ VALIDAÇÃO ROBUSTA: Verificar se UUID foi gerado corretamente
+    if (!companyId || typeof companyId !== 'string' || companyId.length !== 36) {
+      console.error('❌ [COMPANY-CREATE] Falha crítica na geração do UUID:', {
+        companyId,
+        type: typeof companyId,
+        length: companyId?.length
+      });
+      throw new Error('Falha na geração do identificador da empresa. Tente novamente.');
+    }
+    
+    console.log('✅ [COMPANY-CREATE] UUID gerado com sucesso:', {
+      companyId: companyId.substring(0, 8),
+      length: companyId.length,
+      isValid: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(companyId)
+    });
+    
+    // Preparar dados para inserção com validação adicional
+    const companyData = {
+      id: companyId,
+      name,
+      segmento: segmento, // ✅ UNIFICAÇÃO: Frontend e backend agora usam 'segmento' diretamente
+      website,
+      phone,
+      email,
+      address,
+      city,
+      state,
+      country: country || 'Brasil',
+      expected_leads_monthly,
+      expected_sales_monthly,
+      expected_followers_monthly,
+      tenant_id: companyId, // ✅ Self-referencing desde o início com validação
+      is_active: true
+    };
+    
+    // ✅ LOG DETALHADO: Verificar dados antes da inserção
+    console.log('📊 [COMPANY-CREATE] Dados preparados para inserção:', {
+      id: companyData.id?.substring(0, 8),
+      name: companyData.name,
+      tenant_id: companyData.tenant_id?.substring(0, 8),
+      tenant_id_valid: !!companyData.tenant_id && companyData.tenant_id.length === 36,
+      segmento: companyData.segmento
+    });
+    
+    // Criar empresa com tenant_id validado
     const { data: newCompany, error: companyError } = await supabase
       .from('companies')
-      .insert([{
-        name,
-        industry,
-        website,
-        phone,
-        email,
-        address,
-        city,
-        state,
-        country: country || 'Brasil',
-        expected_leads_monthly,
-        expected_sales_monthly,
-        expected_followers_monthly,
-        is_active: true
-      }])
+      .insert([companyData])
       .select()
       .single();
 
     if (companyError) {
+      console.error('❌ [COMPANY-CREATE] Erro na inserção da empresa:', {
+        error: companyError.message,
+        code: companyError.code,
+        details: companyError.details,
+        hint: companyError.hint,
+        companyId: companyId?.substring(0, 8),
+        tenant_id_sent: companyData.tenant_id?.substring(0, 8)
+      });
       throw new Error(`Erro ao criar empresa: ${companyError.message}`);
     }
 
-    // 4. 🔧 CORREÇÃO COMPLETA: Criar admin na tabela public.users E auth.users
+    // 4. ✅ CORREÇÃO CRÍTICA: Criar admin usando supabase.auth.admin.createUser()
     const adminNames = admin_name.trim().split(' ');
     const firstName = adminNames[0];
     const lastName = adminNames.slice(1).join(' ') || '';
 
-    // Importar função de hash do security.ts
-    const { hashPassword } = await import('../utils/security');
-    const hashedPassword = await hashPassword(admin_password);
-
     let newAdmin;
-    let authUserId;
+    let authUser;
 
     try {
-      // 🔧 CORREÇÃO TEMPORÁRIA: Criar admin apenas em public.users 
-      // TODO: Configurar Supabase para permitir auth.admin.createUser posteriormente
-      console.log('⚠️ [TEMPORARY] Criando admin apenas em public.users (sem auth.users)...');
+      console.log('🔧 [ADMIN-CREATE] Criando admin usando supabase.auth.admin.createUser()...');
       
-      // Gerar ID único para o admin
-      authUserId = crypto.randomUUID();
-      
-      // ✅ CORREÇÃO CRÍTICA: Criar admin como INATIVO para processo de ativação
+      // ✅ CORREÇÃO CRÍTICA: Usar API oficial do Supabase Auth
+      const { data: authUserData, error: authError } = await supabase.auth.admin.createUser({
+        email: admin_email,
+        password: admin_password,
+        user_metadata: {
+          tenant_id: newCompany.id,
+          role: 'admin',
+          first_name: firstName,
+          last_name: lastName
+        },
+        app_metadata: {
+          role: 'admin',
+          tenant_id: newCompany.id
+        },
+        email_confirm: true // ✅ Usuário criado como confirmado (ativo)
+      });
+
+      if (authError || !authUserData?.user) {
+        throw new Error(`Erro ao criar admin em auth.users: ${authError?.message || 'Usuário não retornado'}`);
+      }
+
+      authUser = authUserData.user;
+      console.log(`✅ [AUTH-USERS] Admin criado em auth.users: ${admin_email} (ID: ${authUser.id})`);
+
+      // ✅ SEGUNDO PASSO: Inserir na tabela public.users com referência correta
       const { data: publicUser, error: publicError } = await supabase
         .from('users')
         .insert([{
-          id: authUserId,
+          id: authUser.id, // ✅ Usar ID do auth.users
           email: admin_email,
           first_name: firstName,
           last_name: lastName,
           role: 'admin',
           tenant_id: newCompany.id,
-          is_active: false, // ✅ CORREÇÃO: Admin criado como INATIVO até ativação via email
-          password_hash: hashedPassword, // Senha temporária até ativação
-          auth_user_id: null // NULL até ativação completa
+          is_active: true,
+          auth_user_id: authUser.id // ✅ Referência para auth.users
         }])
         .select()
         .single();
 
       if (publicError) {
+        // ✅ ROLLBACK: Remover usuário de auth.users se public.users falhar
+        await supabase.auth.admin.deleteUser(authUser.id);
         throw new Error(`Erro ao criar admin na public.users: ${publicError.message}`);
       }
 
       newAdmin = publicUser;
-      console.log(`✅ [INACTIVE] Admin criado como INATIVO: ${admin_email} (ID: ${authUserId})`);
-      console.log(`📧 [ACTIVATION] Admin aguarda ativação via email para acessar sistema`);
+      console.log(`✅ [PUBLIC-USERS] Admin criado em public.users: ${admin_email}`);
+      console.log(`🎉 [SUCESSO] Admin completo criado - pode fazer login imediatamente`);
 
     } catch (error) {
-      // Rollback: remover empresa se criada
+      // ✅ ROLLBACK COMPLETO: Remover empresa E usuário de auth.users se criado
+      if (authUser) {
+        console.log('🔄 [ROLLBACK] Removendo usuário de auth.users...');
+        await supabase.auth.admin.deleteUser(authUser.id);
+      }
+      
+      console.log('🔄 [ROLLBACK] Removendo empresa...');
       await supabase.from('companies').delete().eq('id', newCompany.id);
+      
       throw new Error(`Erro ao criar admin: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    // 5. ✅ ENVIO AUTOMÁTICO DE EMAIL DE ATIVAÇÃO
-    console.log('📧 [ACTIVATION] Enviando convite de ativação automaticamente...');
+    // 5. ✅ RESPOSTA SIMPLES - SEM EMAIL DE ATIVAÇÃO
+    console.log(`✅ Empresa criada: ${name} com admin ${admin_email} (ATIVO) por ${req.user?.email}`);
     
-    try {
-      // Importar emailService
-      const { emailService } = await import('../services/emailService');
-      
-      // Gerar token de ativação único
-      const activationToken = `inv_${Date.now()}_${Math.random().toString(36).substr(2, 16)}`;
-      
-      // Armazenar token no campo segment da empresa (método alternativo)
-      const invitationSegment = `INVITATION:${activationToken}:${new Date().toISOString()}`;
-      const { error: updateError } = await supabase
-        .from('companies')
-        .update({
-          segment: `${newCompany.segment || ''} | ${invitationSegment}`.trim()
-        })
-        .eq('id', newCompany.id);
+    const response: ApiResponse = {
+      success: true,
+      data: {
+        company: newCompany,
+        admin: newAdmin
+      },
+      message: `Empresa "${name}" criada com sucesso. Admin pode fazer login com email e senha.`,
+      timestamp: new Date().toISOString()
+    };
 
-      if (updateError) {
-        console.warn('⚠️ [ACTIVATION] Erro ao salvar token de ativação:', updateError.message);
-      } else {
-        console.log('✅ [ACTIVATION] Token de ativação salvo no banco');
-      }
-
-      // Enviar email de ativação
-      const emailResult = await emailService.sendAdminInvitation({
-        companyName: name,
-        adminName: `${firstName} ${lastName}`.trim(),
-        adminEmail: admin_email,
-        activationToken,
-        expiresIn: '48 horas'
-      });
-
-      // 6. Log de auditoria + resultado email
-      if (emailResult.success) {
-        console.log(`✅ [ACTIVATION] Email enviado com sucesso para ${admin_email} (MessageID: ${emailResult.messageId})`);
-        console.log(`✅ Empresa criada: ${name} com admin ${admin_email} + convite enviado por ${req.user?.email}`);
-        
-        const response: ApiResponse = {
-          success: true,
-          data: {
-            company: newCompany,
-            admin: newAdmin,
-            activation: {
-              email_sent: true,
-              activation_token: activationToken,
-              activation_url: `${process.env.APP_URL || 'https://crm.renovedigital.com.br'}/activate?token=${activationToken}`,
-              expires_in: '48 horas',
-              message_id: emailResult.messageId
-            }
-          },
-          message: `Empresa "${name}" criada e convite de ativação enviado para ${admin_email}`,
-          timestamp: new Date().toISOString()
-        };
-
-        res.status(201).json(response);
-      } else {
-        console.error('❌ [ACTIVATION] Falha no envio do email:', emailResult.error);
-        console.log(`⚠️ Empresa criada: ${name} com admin ${admin_email}, mas email falhou por ${req.user?.email}`);
-        
-        const response: ApiResponse = {
-          success: true,
-          data: {
-            company: newCompany,
-            admin: newAdmin,
-            activation: {
-              email_sent: false,
-              error: emailResult.error,
-              manual_activation_required: true
-            }
-          },
-          message: `Empresa "${name}" criada, mas falha no envio do email de ativação`,
-          timestamp: new Date().toISOString()
-        };
-
-        res.status(201).json(response);
-      }
-      
-    } catch (emailError: any) {
-      console.error('❌ [ACTIVATION] Erro crítico no envio do email:', emailError);
-      console.log(`⚠️ Empresa criada: ${name} com admin ${admin_email}, mas erro crítico no email por ${req.user?.email}`);
-      
-      const response: ApiResponse = {
-        success: true,
-        data: {
-          company: newCompany,
-          admin: newAdmin,
-          activation: {
-            email_sent: false,
-            error: emailError.message,
-            manual_activation_required: true
-          }
-        },
-        message: `Empresa "${name}" criada, mas erro no sistema de email`,
-        timestamp: new Date().toISOString()
-      };
-
-      res.status(201).json(response);
-    }
+    res.status(201).json(response);
   })
 );
 
@@ -652,7 +631,7 @@ router.put('/update-info',
     console.log('✅ [UPDATE-COMPANY-INFO] Empresa encontrada:', existingCompany.name);
 
     // 3. Preparar dados para atualização (apenas campos permitidos)
-    const allowedFields = ['name', 'industry', 'website', 'phone', 'email', 'address', 'city', 'state', 'country'];
+    const allowedFields = ['name', 'segmento', 'website', 'phone', 'email', 'address', 'city', 'state', 'country'];
     const updateData: any = {
       updated_at: new Date().toISOString()
     };
@@ -660,6 +639,7 @@ router.put('/update-info',
     // Filtrar apenas campos permitidos e que tenham valor
     for (const field of allowedFields) {
       if (companyData[field] !== undefined && companyData[field] !== null) {
+        // ✅ UNIFICAÇÃO: Campo 'segmento' usado diretamente, sem mapeamento
         updateData[field] = companyData[field];
       }
     }

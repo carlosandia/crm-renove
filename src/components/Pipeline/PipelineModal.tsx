@@ -1,4 +1,4 @@
-import React, { memo, useCallback } from 'react';
+import React, { memo, useCallback, useRef } from 'react';
 import { Modal } from '../ui';
 import { Pipeline } from '../../types/Pipeline';
 import { User } from '../../types/User';
@@ -128,6 +128,7 @@ interface PipelineModalProps {
   onClose: () => void;
   pipeline?: Pipeline | null;
   members: User[];
+  membersLoading?: boolean;
   onSubmit: (data: any, shouldRedirect?: boolean, options?: any) => Promise<Pipeline | void>;
   isEdit?: boolean;
   onDuplicatePipeline?: () => Promise<void>;
@@ -144,6 +145,7 @@ const PipelineModal: React.FC<PipelineModalProps> = memo(({
   onClose,
   pipeline,
   members,
+  membersLoading = false,
   onSubmit,
   isEdit = false,
   onDuplicatePipeline,
@@ -154,6 +156,22 @@ const PipelineModal: React.FC<PipelineModalProps> = memo(({
 }) => {
   const title = isEdit ? 'Editar Pipeline' : 'Nova Pipeline';
   
+  // ✅ THROTTLING: Refs para controlar logs duplicados
+  const lastLogTime = useRef<number>(0);
+  const lastSyncLogTime = useRef<number>(0);
+  
+  // ✅ OTIMIZAÇÃO: Log com throttling para evitar spam (apenas uma vez por 5 segundos)
+  const now = Date.now();
+  if (process.env.NODE_ENV === 'development' && (now - lastLogTime.current >= 5000)) {
+    lastLogTime.current = now;
+    console.log('🔍 [PipelineModal] Props received:', {
+      pipeline_id: pipeline?.id,
+      pipeline_name: pipeline?.name,
+      isEdit,
+      isOpen
+    });
+  }
+  
   // ✅ NOVA: Estado local da pipeline para permitir atualizações instantâneas
   const [localPipeline, setLocalPipeline] = React.useState(pipeline);
   const [pipelineCreatorRef, setPipelineCreatorRef] = React.useState<any>(null);
@@ -162,16 +180,14 @@ const PipelineModal: React.FC<PipelineModalProps> = memo(({
   
   // ✅ NOVA: Sincronizar pipeline local quando prop muda
   React.useEffect(() => {
+    // ✅ CORREÇÃO: Remover log duplicado - sincronização é processo interno
     setLocalPipeline(pipeline);
   }, [pipeline]);
   
   // ✅ NOVA: Callback para atualizar pipeline local
   const handlePipelineUpdated = useCallback((updatedPipeline: Pipeline) => {
     setLocalPipeline(updatedPipeline);
-    console.log('🔄 [PipelineModal] Pipeline local atualizada:', {
-      name: updatedPipeline.name,
-      description: updatedPipeline.description
-    });
+    // ✅ CORREÇÃO: Remover log - atualização é processo interno esperado
   }, []);
 
   // ✅ NOVO: Callback para capturar o footer
@@ -179,10 +195,13 @@ const PipelineModal: React.FC<PipelineModalProps> = memo(({
     setFooterElement(footer);
   }, []);
   
-  // ✅ NOVO: Handler de fechamento simplificado
+  // ✅ CORREÇÃO: Handler de fechamento com cleanup
   const handleClose = useCallback(() => {
-    // O ModernPipelineCreatorRefactored agora gerencia internamente o AlertDialog
-    // para mudanças não salvas, então só precisamos chamar onClose
+    // ✅ CORREÇÃO: Cleanup de estados locais antes de fechar
+    setLocalPipeline(null);
+    setFooterElement(null);
+    
+    // Chamar o fechamento original
     onClose();
   }, [onClose]);
   
@@ -237,6 +256,7 @@ const PipelineModal: React.FC<PipelineModalProps> = memo(({
     >
       <ModernPipelineCreatorRefactored
         members={members}
+        membersLoading={membersLoading}
         pipeline={localPipeline}
         onSubmit={onSubmit}
         onCancel={handleClose}
@@ -250,16 +270,15 @@ const PipelineModal: React.FC<PipelineModalProps> = memo(({
     </Modal>
   );
 }, (prevProps, nextProps) => {
-  // ✅ CORREÇÃO FASE 2: Função de comparação customizada para React.memo evitar warning "Expected static flag was missing"
+  // ✅ CORREÇÃO: Comparação simplificada focando apenas no essencial
+  // Evita mudanças desnecessárias de isEdit que causam o duplo clique
   return (
     prevProps.isOpen === nextProps.isOpen &&
+    prevProps.isEdit === nextProps.isEdit &&
     prevProps.pipeline?.id === nextProps.pipeline?.id &&
-    prevProps.title === nextProps.title &&
+    prevProps.pipeline?.name === nextProps.pipeline?.name &&
     prevProps.members.length === nextProps.members.length &&
-    prevProps.onSubmit === nextProps.onSubmit &&
-    prevProps.onCancel === nextProps.onCancel &&
-    prevProps.onDuplicatePipeline === nextProps.onDuplicatePipeline &&
-    prevProps.onArchivePipeline === nextProps.onArchivePipeline
+    prevProps.loading === nextProps.loading
   );
 });
 

@@ -203,8 +203,11 @@ export function useCadenceManager({
     const timeSinceLastLog = now - lastSyncLogTimeRef.current;
     const MIN_LOG_INTERVAL = 3000; // 3 segundos entre logs de sincronização
     
-    // ✅ CORREÇÃO: Não sincronizar se estiver editando OU logo após exclusão
-    if (enableApiIntegration && apiData.data && !apiData.isLoading && !isEditing && !isPostDeletion) {
+    // ✅ CORREÇÃO: Guard de comparação para evitar atualizações desnecessárias
+    const hasApiDataChanged = JSON.stringify(apiData.data) !== JSON.stringify(cadenceConfigs);
+    
+    // ✅ CORREÇÃO: Não sincronizar se estiver editando OU logo após exclusão OU se dados não mudaram
+    if (enableApiIntegration && apiData.data && !apiData.isLoading && !isEditing && !isPostDeletion && hasApiDataChanged) {
       // Log throttleado de sincronização
       if (timeSinceLastLog > MIN_LOG_INTERVAL) {
         if (syncLogThrottleRef.current) {
@@ -212,10 +215,13 @@ export function useCadenceManager({
         }
         
         syncLogThrottleRef.current = setTimeout(() => {
-          console.log('🔄 [CadenceManager] Sincronização:', {
-            pipelineId: pipelineId?.substring(0, 8),
-            configs: apiData.data.length
-          });
+          // ✅ Log silenciado para reduzir poluição do console durante digitação
+          if (import.meta.env.VITE_ENABLE_COMPONENT_DEBUG === 'true') {
+            console.log('🔄 [CadenceManager] Sincronização:', {
+              pipelineId: pipelineId?.substring(0, 8),
+              configs: apiData.data.length
+            });
+          }
           lastSyncLogTimeRef.current = Date.now();
         }, 500);
       }
@@ -242,7 +248,7 @@ export function useCadenceManager({
       setCadenceConfigs(initialCadences || []);
       initialCadencesRef.current = initialCadences || [];
     }
-  }, [initialCadences, apiData.data, apiData.isLoading, enableApiIntegration, pipelineId, cadenceConfigs, isEditing, isPostDeletion]);
+  }, [initialCadences, apiData.data, apiData.isLoading, enableApiIntegration, pipelineId, isEditing, isPostDeletion]); // ✅ CORREÇÃO LOOP: Removido 'cadenceConfigs' das dependências
 
   // ✅ SUPER OTIMIZADO: Debug com throttling agressivo
   const prevConfigsLengthRef = useRef(0);
@@ -276,13 +282,30 @@ export function useCadenceManager({
   
   useEffect(() => {
     if (onCadencesChangeRef.current) {
-      // ✅ CORREÇÃO: Verificação simples por length ao invés de JSON.stringify
+      // ✅ CORREÇÃO CRÍTICA: Implementar comparação deep para detectar TODAS as mudanças
       const prevLength = prevCadenceConfigsRef.current.length;
       const currentLength = cadenceConfigs.length;
       
-      if (prevLength !== currentLength || prevCadenceConfigsRef.current !== cadenceConfigs) {
+      // 1. Verificar mudanças de length (criação/remoção de etapas)
+      const lengthChanged = prevLength !== currentLength;
+      
+      // 2. Verificar mudanças de conteúdo profundo (edição, toggle, modificação de tarefas)
+      const contentChanged = JSON.stringify(prevCadenceConfigsRef.current) !== JSON.stringify(cadenceConfigs);
+      
+      if (lengthChanged || contentChanged) {
+        // ✅ LOG CONDICIONAL: Apenas em desenvolvimento
+        if (import.meta.env.DEV) {
+          console.log('🔄 [CadenceManager] Mudança detectada:', {
+            lengthChanged,
+            contentChanged,
+            prevLength,
+            currentLength,
+            timestamp: new Date().toISOString()
+          });
+        }
+        
         onCadencesChangeRef.current(cadenceConfigs);
-        prevCadenceConfigsRef.current = [...cadenceConfigs]; // Clone shallow para evitar referência
+        prevCadenceConfigsRef.current = JSON.parse(JSON.stringify(cadenceConfigs)); // Deep clone
       }
     }
   }, [cadenceConfigs]); // ✅ CORREÇÃO: Remover onCadencesChange da dependency array
@@ -1217,8 +1240,8 @@ export function CadenceManagerRender({
       {/* ✅ MODAL UNIFICADO: Dialog responsivo para criar atividades */}
       <Dialog open={showUnifiedModal} onOpenChange={setShowUnifiedModal}>
         <DialogPortal>
-          <DialogOverlay className="!z-[99998]" />
-          <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto !z-[99999]">
+          <DialogOverlay />
+          <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Criar Atividade - {selectedStage}</DialogTitle>
             <DialogDescription>

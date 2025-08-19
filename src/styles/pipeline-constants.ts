@@ -24,7 +24,9 @@ export const PIPELINE_UI_CONSTANTS = {
       proposal: '#F59E0B',   // Amarelo - proposta
       negotiation: '#8B5CF6', // Roxo - negociação
       won: '#10B981',        // Verde - ganho
-      lost: '#EF4444'        // Vermelho - perdido
+      lost: '#EF4444',       // Vermelho - perdido (compatibilidade)
+      ganho: '#10B981',      // Verde - ganho (novo padrão)
+      perdido: '#EF4444'     // Vermelho - perdido (novo padrão)
     }
   },
 

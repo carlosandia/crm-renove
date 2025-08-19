@@ -10,8 +10,8 @@
     /* ============================================ */
     /* 🔧 CATEGORIA 7.1: STRICT MODE OTIMIZADO    */
     /* ============================================ */
-    "strict": false, // ✅ Relaxado para desenvolvimento mais rápido
-    "noImplicitAny": false, // ✅ Permite desenvolvimento mais flexível
+    "strict": true, // ✅ Habilitado seguindo CLAUDE.md para melhor type safety
+    "noImplicitAny": true, // ✅ Habilitado seguindo documentação oficial TypeScript
     "noImplicitReturns": false, // ✅ Menos rigidez durante desenvolvimento
     "noUncheckedIndexedAccess": false,
     
@@ -32,6 +32,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
+    "jsxImportSource": "react", // ✅ Configuração JSX otimizada seguindo documentação oficial
     
     /* Module Interop - Corrige problemas com imports */
     "esModuleInterop": true,

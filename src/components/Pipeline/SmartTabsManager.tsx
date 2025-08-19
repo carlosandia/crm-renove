@@ -26,7 +26,7 @@ const SmartTabsManager: React.FC<SmartTabsManagerProps> = ({
     { key: 'distribution', label: 'Distribuição', description: 'Regras de distribuição de leads' },
     { key: 'cadence', label: 'Cadência', description: 'Automações e follow-ups' },
     { key: 'qualification', label: 'Qualificação', description: 'Regras de qualificação MQL/SQL' },
-    { key: 'motives', label: 'Motivos', description: 'Motivos de ganho e perda' }
+    { key: 'motives', label: 'Motivos', description: 'Motivos de ganho e perdido' }
   ];
 
   const handleTabClick = async (tabKey: TabName) => {

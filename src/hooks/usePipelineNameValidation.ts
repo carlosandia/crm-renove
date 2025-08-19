@@ -64,11 +64,17 @@ export const usePipelineNameValidation = (initialName: string = '', pipelineId?:
         params.append('pipeline_id', pipelineId);
       }
 
+      // ✅ BÁSICO: Obter token do usuário autenticado
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Token de autenticação não disponível');
+      }
+
       // Fazer requisição usando URL relativa (proxy Vite)
       const response = await fetch(`/api/pipelines/validate-name?${params.toString()}`, {
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+          'Authorization': `Bearer ${session.access_token}`
         }
       });
 
@@ -124,13 +130,23 @@ export const usePipelineNameValidation = (initialName: string = '', pipelineId?:
       return;
     }
 
-    // Iniciar estado de validação
+    // ✅ CORREÇÃO: Não validar nomes muito curtos (menos de 2 caracteres)
+    if (nameToValidate.trim().length < 2) {
+      setValidationState({
+        isValidating: false,
+        validation: null,
+        hasChecked: false
+      });
+      return;
+    }
+
+    // Iniciar estado de validação apenas para nomes com 2+ caracteres
     setValidationState(prev => ({
       ...prev,
       isValidating: true
     }));
 
-    // Criar novo timer para debounce
+    // ✅ CORREÇÃO: Debounce aumentado para 1500ms (reduzir chamadas excessivas)
     const timer = setTimeout(async () => {
       try {
         const validation = await validateName(nameToValidate);
@@ -151,7 +167,7 @@ export const usePipelineNameValidation = (initialName: string = '', pipelineId?:
           hasChecked: true
         });
       }
-    }, 800); // 800ms de debounce
+    }, 1500); // ✅ CORREÇÃO: 1500ms de debounce (era 800ms)
 
     setDebounceTimer(timer);
   }, [debounceTimer, validateName]);
@@ -225,6 +241,16 @@ export const usePipelineNameValidation = (initialName: string = '', pipelineId?:
   }, [validationState.validation?.suggestion, validateWithDebounce]);
 
   /**
+   * ✅ NOVO: Cleanup do debounce (para quando modal fechar)
+   */
+  const cleanup = useCallback(() => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      setDebounceTimer(null);
+    }
+  }, [debounceTimer]);
+
+  /**
    * Reset completo
    */
   const reset = useCallback(() => {
@@ -234,12 +260,8 @@ export const usePipelineNameValidation = (initialName: string = '', pipelineId?:
       validation: null,
       hasChecked: false
     });
-    
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-      setDebounceTimer(null);
-    }
-  }, [debounceTimer]);
+    cleanup();
+  }, [cleanup]);
 
   /**
    * Cleanup on unmount
@@ -301,6 +323,7 @@ export const usePipelineNameValidation = (initialName: string = '', pipelineId?:
     validateImmediately,
     applySuggestion,
     reset,
+    cleanup, // ✅ NOVO: Função de cleanup
     
     // Dados da validação
     error: validationState.validation?.error,

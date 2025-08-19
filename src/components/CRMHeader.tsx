@@ -124,13 +124,13 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
   // AIDEV-NOTE: Menu items baseados em role com categorização para responsividade
   const getMenuItems = (): MenuItem[] => {
     if (user?.role === 'super_admin') {
+      // AIDEV-NOTE: Super Admin tem APENAS 4 itens específicos conforme CLAUDE.md
+      // Relatórios, Feedback, Clientes, Configurações - SEM Dashboard Admin e SEM Admin Notif.
       return [
-        { id: 'Dashboard Admin', label: 'Dashboard', icon: BarChart3, category: 'primary' },
         { id: 'Relatório', label: 'Relatórios', icon: BarChart3, category: 'primary' },
-        { id: 'Feedback', label: 'Feedback', icon: MessageSquare, category: 'secondary' },
-        { id: 'Clientes', label: 'Clientes', icon: Users, category: 'secondary' },
-        { id: 'Configurações da Plataforma', label: 'Configurações', icon: Cog, category: 'admin' },
-        { id: 'Notificações', label: 'Admin Notif.', icon: Bell, category: 'admin' }
+        { id: 'Feedback', label: 'Feedback', icon: MessageSquare, category: 'primary' },
+        { id: 'Clientes', label: 'Clientes', icon: Users, category: 'primary' },
+        { id: 'Configurações da Plataforma', label: 'Configurações', icon: Cog, category: 'primary' }
       ];
     }
     
@@ -151,8 +151,7 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
         { id: 'Pipeline', label: 'Negócios', icon: GitBranch, category: 'primary' },
         { id: 'Leads', label: 'Leads', icon: Users, category: 'primary' },
         { id: 'Acompanhamento', label: 'Tarefas', icon: Eye, category: 'secondary' },
-        { id: 'Calendário Público', label: 'Calendário', icon: Calendar, category: 'secondary' },
-        { id: 'Encurtador de URL', label: 'URLs', icon: Link, category: 'admin' }
+        { id: 'Integrações', label: 'Integrações', icon: Settings, category: 'secondary' }
       ];
     }
     
@@ -308,8 +307,8 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
 
   // AIDEV-NOTE: Renderizar submenu de Integrações
   const renderIntegrationsSubmenu = () => {
-    // Verificar se deve mostrar o submenu (apenas para roles que têm acesso)
-    if (user?.role !== 'admin' && user?.role !== 'super_admin') return null;
+    // Verificar se deve mostrar o submenu (para admin e member - Super Admin NÃO tem acesso)
+    if (user?.role !== 'admin' && user?.role !== 'member') return null;
     
     const integrationsSubmenuItems = [
       { 
@@ -343,8 +342,7 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
           <DropdownMenuTrigger asChild>
             <Button 
               variant={isIntegrationsActive ? "default" : "ghost"} 
-              size="sm" 
-              className={`gap-2 ${
+              className={`gap-2 h-8 px-3 text-sm ${
                 isIntegrationsActive 
                   ? 'bg-primary/10 text-primary border border-primary/20 shadow-sm' 
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted'
@@ -440,15 +438,14 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
       {/* Submenu de Integrações */}
       {renderIntegrationsSubmenu()}
       
-      {/* Menu secundário em dropdown se existir */}
-      {secondaryItems.length > 0 && (
+      {/* Menu secundário em dropdown se existir - OCULTO para Super Admin */}
+      {secondaryItems.length > 0 && user?.role !== 'super_admin' && (
         <BlurFade delay={0.2}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-2">
-                <LayoutGrid className="w-4 h-4" />
+              <Button variant="ghost" className="gap-2 h-8 px-3 text-sm">
+                <PlusCircle className="w-4 h-4" />
                 Mais
-                <ChevronDown className="w-3 h-3" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
@@ -496,7 +493,7 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
         <BlurFade delay={0.3}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-2">
+              <Button variant="ghost" className="gap-2 h-8 px-3 text-sm">
                 <Settings className="w-4 h-4" />
                 Admin
                 <ChevronDown className="w-3 h-3" />
@@ -548,7 +545,7 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
         <BlurFade delay={0.2}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-1">
+              <Button variant="ghost" className="gap-1 h-8 px-3 text-sm">
                 <LayoutGrid className="w-4 h-4" />
                 <ChevronDown className="w-3 h-3" />
               </Button>
@@ -666,8 +663,8 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
                 );
               })}
               
-              {/* Seção de Integrações no Mobile */}
-              {(user?.role === 'admin' || user?.role === 'super_admin') && (
+              {/* Seção de Integrações no Mobile - para Admin e Member */}
+              {(user?.role === 'admin' || user?.role === 'member') && (
                 <>
                   <div className="pt-2 pb-1">
                     <div className="px-2 text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -802,7 +799,10 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem 
-                      onClick={onLogout}
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        onLogout();
+                      }}
                       className="gap-2 text-destructive focus:text-destructive cursor-pointer"
                     >
                       <LogOut className="w-4 h-4" />

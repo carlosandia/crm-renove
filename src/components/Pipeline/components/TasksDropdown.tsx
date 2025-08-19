@@ -240,10 +240,17 @@ export const TasksDropdown: React.FC<TasksDropdownProps> = ({
   // ✅ NOVO: Handler para salvar atividade personalizada
   const handleSaveCustomActivity = useCallback(async (activity: any) => {
     try {
-      // ✅ CORREÇÃO: Usar autenticação básica Supabase diretamente via API
-      // AIDEV-NOTE: Migração para padrão básico - usar fetch direto com autenticação manual
+      // ✅ BÁSICO: Verificar autenticação (Basic Supabase Authentication)
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+      if (!currentUser || userError) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // ✅ BÁSICO: Obter token de autenticação
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Usuário não autenticado');
+      if (!session?.access_token) {
+        throw new Error('Token de autenticação não disponível');
+      }
 
       const response = await fetch('/api/activities/manual', {
         method: 'POST',

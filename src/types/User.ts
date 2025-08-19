@@ -8,7 +8,7 @@ export interface User {
   tenant_id: string;
   is_active: boolean;
   created_at: string;
-  token?: string;
+  // ✅ JWT token removido - usando apenas Basic Supabase Authentication
 }
 
 export interface Customer {

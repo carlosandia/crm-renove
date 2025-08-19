@@ -77,13 +77,13 @@ export const useOutcomeReasonsManager = (params: UseOutcomeReasonsManagerParams 
       }
     });
 
-    // Validar motivos de perda
+    // Validar motivos de perdido
     data.lost_reasons.forEach((reason, index) => {
       if (!reason.reason_text.trim()) {
-        newErrors.push(`Motivo de perda ${index + 1} não pode estar vazio`);
+        newErrors.push(`Motivo de perdido ${index + 1} não pode estar vazio`);
       }
       if (reason.reason_text.length > 200) {
-        newErrors.push(`Motivo de perda ${index + 1} deve ter no máximo 200 caracteres`);
+        newErrors.push(`Motivo de perdido ${index + 1} deve ter no máximo 200 caracteres`);
       }
     });
 
@@ -94,11 +94,11 @@ export const useOutcomeReasonsManager = (params: UseOutcomeReasonsManagerParams 
       newErrors.push('Existem motivos de ganho duplicados');
     }
 
-    // Verificar duplicatas em motivos de perda
+    // Verificar duplicatas em motivos de perdido
     const lostTexts = data.lost_reasons.map(r => r.reason_text.trim().toLowerCase());
     const lostDuplicates = lostTexts.filter((text, index) => lostTexts.indexOf(text) !== index);
     if (lostDuplicates.length > 0) {
-      newErrors.push('Existem motivos de perda duplicados');
+      newErrors.push('Existem motivos de perdido duplicados');
     }
 
     setErrors(newErrors);

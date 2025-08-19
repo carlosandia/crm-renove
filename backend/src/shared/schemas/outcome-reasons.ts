@@ -17,8 +17,8 @@ export const OutcomeReasonSchema = z.object({
   id: z.string().uuid('ID deve ser um UUID válido'),
   pipeline_id: z.string().uuid('Pipeline ID deve ser um UUID válido'),
   tenant_id: z.string().min(1, 'Tenant ID é obrigatório'), // text, não uuid
-  reason_type: z.enum(['won', 'lost', 'win', 'loss'], { // suporte aos formatos antigos
-    errorMap: () => ({ message: 'Tipo deve ser "won", "lost", "win" ou "loss"' })
+  reason_type: z.enum(['ganho', 'perdido', 'won', 'lost'], { // ganho/perdido são padrões portugueses, won/lost para compatibilidade
+    errorMap: () => ({ message: 'Tipo deve ser "ganho", "perdido", "won" ou "lost"' })
   }),
   reason_text: z.string()
     .min(1, 'Motivo não pode estar vazio')
@@ -41,8 +41,8 @@ export const LeadOutcomeHistorySchema = z.object({
   lead_id: z.string().uuid('Lead ID deve ser um UUID válido'),
   pipeline_id: z.string().uuid('Pipeline ID deve ser um UUID válido'),
   tenant_id: z.string().min(1, 'Tenant ID é obrigatório'), // text, não uuid
-  outcome_type: z.enum(['won', 'lost', 'win', 'loss'], { // suporte aos formatos antigos
-    errorMap: () => ({ message: 'Tipo deve ser "won", "lost", "win" ou "loss"' })
+  outcome_type: z.enum(['ganho', 'perdido', 'won', 'lost'], { // ganho/perdido são padrões portugueses, won/lost para compatibilidade
+    errorMap: () => ({ message: 'Tipo deve ser "ganho", "perdido", "won" ou "lost"' })
   }),
   reason_id: z.string().uuid('Reason ID deve ser um UUID válido').optional(),
   reason_text: z.string()
@@ -62,7 +62,7 @@ export const LeadOutcomeHistorySchema = z.object({
 
 export const CreateOutcomeReasonRequestSchema = z.object({
   pipeline_id: z.string().uuid(),
-  reason_type: z.enum(['won', 'lost', 'win', 'loss']),
+  reason_type: z.enum(['ganho', 'perdido', 'won', 'lost']), // ganho/perdido preferidos, won/lost para compatibilidade
   reason_text: z.string().min(1).max(200).trim(),
   display_order: z.number().int().min(0).optional()
 });
@@ -71,7 +71,7 @@ export const UpdateOutcomeReasonRequestSchema = CreateOutcomeReasonRequestSchema
 
 export const ApplyOutcomeRequestSchema = z.object({
   lead_id: z.string().uuid(),
-  outcome_type: z.enum(['won', 'lost', 'win', 'loss']),
+  outcome_type: z.enum(['ganho', 'perdido', 'won', 'lost']), // ganho/perdido preferidos, won/lost para compatibilidade
   reason_id: z.string().uuid().optional(),
   reason_text: z.string().min(1).trim(),
   notes: z.string().max(500).trim().optional()
@@ -79,7 +79,7 @@ export const ApplyOutcomeRequestSchema = z.object({
 
 export const GetOutcomeReasonsQuerySchema = z.object({
   pipeline_id: z.string().uuid(),
-  reason_type: z.enum(['won', 'lost', 'win', 'loss', 'all']).optional().default('all'),
+  reason_type: z.enum(['ganho', 'perdido', 'won', 'lost', 'all']).optional().default('all'), // ganho/perdido preferidos, won/lost para compatibilidade
   active_only: z.string().transform(val => val === 'true').optional().default('true')
 });
 
@@ -88,20 +88,23 @@ export const GetOutcomeReasonsQuerySchema = z.object({
 // ============================================
 
 export const DefaultOutcomeReasonsSchema = z.object({
-  won: z.array(z.string().min(1).max(200)).default([
+  ganho: z.array(z.string().min(1).max(200)).default([
     'Preço competitivo',
     'Melhor proposta técnica', 
     'Relacionamento/confiança',
     'Urgência do cliente',
     'Recomendação/indicação'
   ]),
-  lost: z.array(z.string().min(1).max(200)).default([
+  perdido: z.array(z.string().min(1).max(200)).default([
     'Preço muito alto',
     'Concorrente escolhido',
     'Não era o momento',
     'Não há orçamento',
     'Não era fit para o produto'
-  ])
+  ]),
+  // ✅ COMPATIBILIDADE: Manter formatos antigos para migration suave
+  won: z.array(z.string().min(1).max(200)).optional(),
+  lost: z.array(z.string().min(1).max(200)).optional()
 });
 
 // ============================================

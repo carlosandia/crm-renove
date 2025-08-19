@@ -3,7 +3,7 @@
  * 🎯 MODAL DE APLICAÇÃO DE MOTIVOS
  * ============================================
  * 
- * Modal para aplicar motivos de ganho/perda quando lead é movido
+ * Modal para aplicar motivos de ganho/perdido quando lead é movido
  * AIDEV-NOTE: Componente crítico que intercepta movimentação de leads
  */
 
@@ -123,7 +123,7 @@ const OutcomeReasonModal: React.FC<OutcomeModalProps> = ({
   const renderTitle = () => {
     return outcomeType === 'won' 
       ? 'Motivo do Ganho' 
-      : 'Motivo da Perda';
+      : 'Motivo da Perdido';
   };
 
   const renderDescription = () => {

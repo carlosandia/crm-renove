@@ -1,111 +1,99 @@
+#!/usr/bin/env node
+
+/**
+ * 🔧 APLICAR MIGRATION: Corrigir RLS para Basic Supabase Authentication
+ */
+
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://marajvabdwkpgopytvhh.supabase.co';
-const supabaseServiceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hcmFqdmFiZHdrcGdvcHl0dmhoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0OTc2NDAwOSwiZXhwIjoyMDY1MzQwMDA5fQ.mkQBVPvhM3OJndsyinoONRUHSDJMh1nFBbPPNH_6cYY';
+const SUPABASE_URL = 'https://marajvabdwkpgopytvhh.supabase.co';
+const SUPABASE_SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hcmFqdmFiZHdrcGdvcHl0dmhoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0OTc2NDAwOSwiZXhwIjoyMDY1MzQwMDA5fQ.mkQBVPvhM3OJndsyinoONRUHSDJMh1nFBbPPNH_6cYY';
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-console.log('🔧 Aplicando correção das etapas fantasma...');
+async function aplicarMigration() {
+  console.log('🔧 APLICANDO MIGRATION: Basic Supabase Authentication');
+  console.log('===================================================');
 
-// 1. Primeiro, vamos investigar quantas etapas cada pipeline tem
-console.log('📊 Verificando estado atual...');
-
-try {
-  // Buscar pipeline 'new13' especificamente
-  const { data: pipelineData, error: pipelineError } = await supabase
-    .from('pipelines')
-    .select('id, name')
-    .eq('name', 'new13')
-    .single();
-
-  if (pipelineError) {
-    console.error('❌ Erro ao buscar pipeline:', pipelineError);
-    process.exit(1);
-  }
-
-  console.log('📋 Pipeline encontrada:', pipelineData);
-
-  // Buscar todas as etapas desta pipeline
-  const { data: stages, error: stagesError } = await supabase
-    .from('pipeline_stages')
-    .select('id, name, order_index, is_system_stage, color, created_at')
-    .eq('pipeline_id', pipelineData.id)
-    .order('order_index');
-
-  if (stagesError) {
-    console.error('❌ Erro ao buscar etapas:', stagesError);
-    process.exit(1);
-  }
-
-  console.log(`📈 Total de etapas encontradas: ${stages.length}`);
-  console.log('📋 Lista de etapas:');
-  stages.forEach((stage, index) => {
-    console.log(`  ${index + 1}. ${stage.name} (ordem: ${stage.order_index}, sistema: ${stage.is_system_stage}, cor: ${stage.color})`);
-  });
-
-  // Identificar etapas a serem removidas (extras/fantasma)
-  const stagesToKeep = [];
-  const stagesToRemove = [];
-
-  // Manter apenas: Lead, teste, envio, Ganho, Perdido
-  const allowedStages = ['Lead', 'teste', 'envio', 'Ganho', 'Perdido'];
-  
-  stages.forEach(stage => {
-    if (allowedStages.includes(stage.name)) {
-      stagesToKeep.push(stage);
-    } else {
-      stagesToRemove.push(stage);
-    }
-  });
-
-  console.log(`\n🎯 Etapas a manter: ${stagesToKeep.length}`);
-  stagesToKeep.forEach(stage => {
-    console.log(`  ✅ ${stage.name}`);
-  });
-
-  console.log(`\n🗑️ Etapas a remover: ${stagesToRemove.length}`);
-  stagesToRemove.forEach(stage => {
-    console.log(`  ❌ ${stage.name}`);
-  });
-
-  // Remover etapas extras
-  if (stagesToRemove.length > 0) {
-    console.log('\n🔧 Removendo etapas extras...');
+  try {
+    // Verificar tabela existe
+    console.log('\n📋 Verificando tabela pipeline_outcome_reasons...');
     
-    for (const stage of stagesToRemove) {
-      const { error: deleteError } = await supabase
-        .from('pipeline_stages')
-        .delete()
-        .eq('id', stage.id);
-
-      if (deleteError) {
-        console.error(`❌ Erro ao remover etapa ${stage.name}:`, deleteError);
-      } else {
-        console.log(`✅ Etapa ${stage.name} removida`);
-      }
+    const { data: tableTest, error: tableError } = await supabase
+      .from('pipeline_outcome_reasons')
+      .select('id')
+      .limit(1);
+      
+    if (tableError) {
+      console.error('❌ Erro acessando tabela:', tableError.message);
+      return;
     }
+    
+    console.log('✅ Tabela pipeline_outcome_reasons acessível');
+    console.log(`📊 Teste de acesso: ${tableTest?.length || 0} registros visíveis`);
+
+    console.log('\n💡 MIGRATION DEVE SER APLICADA VIA SUPABASE DASHBOARD:');
+    console.log('=====================================================');
+    console.log('');
+    console.log('1. 🌐 Acesse: https://supabase.com/dashboard/project/marajvabdwkpgopytvhh');
+    console.log('2. 📊 Vá em: Database > SQL Editor');
+    console.log('3. 📝 Copie e execute o SQL abaixo:');
+    console.log('');
+    console.log('-- ============================================');
+    console.log('-- 🔧 MIGRATION: Basic Supabase Authentication');
+    console.log('-- ============================================');
+    console.log('');
+    console.log('-- ETAPA 1: Remover políticas antigas');
+    console.log('DROP POLICY IF EXISTS "Users can view outcome reasons for their tenant" ON pipeline_outcome_reasons;');
+    console.log('DROP POLICY IF EXISTS "Admins can manage outcome reasons for their tenant" ON pipeline_outcome_reasons;');
+    console.log('DROP POLICY IF EXISTS "Users can view outcome history for their tenant" ON lead_outcome_history;');
+    console.log('DROP POLICY IF EXISTS "Users can create outcome history for their tenant" ON lead_outcome_history;');
+    console.log('');
+    console.log('-- ETAPA 2: Criar políticas Basic Supabase Auth');
+    console.log('CREATE POLICY "basic_auth_view_outcome_reasons"');
+    console.log('  ON pipeline_outcome_reasons');
+    console.log('  FOR SELECT');
+    console.log('  USING (');
+    console.log('    auth.uid() IS NOT NULL');
+    console.log('    AND tenant_id = (');
+    console.log('      SELECT user_metadata->>\'tenant_id\'');
+    console.log('      FROM auth.users');
+    console.log('      WHERE id = auth.uid()');
+    console.log('    )');
+    console.log('  );');
+    console.log('');
+    console.log('CREATE POLICY "basic_auth_manage_outcome_reasons"');
+    console.log('  ON pipeline_outcome_reasons');
+    console.log('  FOR ALL');
+    console.log('  USING (');
+    console.log('    auth.uid() IS NOT NULL');
+    console.log('    AND tenant_id = (');
+    console.log('      SELECT user_metadata->>\'tenant_id\'');
+    console.log('      FROM auth.users');
+    console.log('      WHERE id = auth.uid()');
+    console.log('    )');
+    console.log('    AND (');
+    console.log('      SELECT user_metadata->>\'role\'');
+    console.log('      FROM auth.users');
+    console.log('      WHERE id = auth.uid()');
+    console.log('    ) IN (\'admin\', \'super_admin\', \'member\')');
+    console.log('  );');
+    console.log('');
+    console.log('-- ============================================');
+    
+    console.log('\n🎯 APÓS APLICAR A MIGRATION:');
+    console.log('1. ✅ RLS policies usarão auth.uid() + user_metadata');
+    console.log('2. ✅ Sistema compatível com Basic Supabase Authentication');
+    console.log('3. ✅ outcomeReasonsApi.ts já está atualizado');
+    console.log('4. 🧪 Teste a persistência dos motivos na interface');
+
+  } catch (error) {
+    console.error('💥 ERRO:', error.message);
   }
 
-  // Verificar resultado final
-  const { data: finalStages, error: finalError } = await supabase
-    .from('pipeline_stages')
-    .select('id, name, order_index, is_system_stage')
-    .eq('pipeline_id', pipelineData.id)
-    .order('order_index');
-
-  if (finalError) {
-    console.error('❌ Erro ao verificar resultado:', finalError);
-  } else {
-    console.log(`\n🎉 RESULTADO FINAL: ${finalStages.length} etapas`);
-    finalStages.forEach((stage, index) => {
-      console.log(`  ${index + 1}. ${stage.name} (ordem: ${stage.order_index})`);
-    });
-  }
-
-  console.log('\n✅ Limpeza concluída! A pipeline new13 agora deve mostrar a contagem correta.');
-
-} catch (error) {
-  console.error('❌ Erro geral:', error);
+  console.log('\n🏁 SCRIPT CONCLUÍDO');
 }
 
-process.exit(0);
+aplicarMigration().then(() => {
+  process.exit(0);
+}).catch(console.error);

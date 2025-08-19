@@ -16,7 +16,10 @@ router.get('/auth-url', authenticateToken, async (req: Request, res: Response) =
       return res.status(401).json({ success: false, error: 'Não autenticado' });
     }
 
-    console.log('🔗 [GMAIL-OAUTH] Solicitação de URL OAuth para usuário:', req.user.id.substring(0, 8));
+    // ✅ THROTTLING: Log apenas uma vez por minuto por usuário
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔗 [GMAIL-OAUTH] Solicitação de URL OAuth para usuário:', req.user.id.substring(0, 8));
+    }
 
     // ✅ SIMPLIFICADO: Usar credenciais diretas das variáveis de ambiente
     const clientId = process.env.GOOGLE_CLIENT_ID;

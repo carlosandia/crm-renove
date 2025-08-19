@@ -1,4 +1,5 @@
 import { api } from '../lib/api';
+import { supabase } from '../lib/supabase';
 
 // ================================================================================
 // TIPOS E INTERFACES
@@ -102,11 +103,15 @@ export class CadenceApiService {
     try {
       console.log('🔄 [CadenceApiService] Executando fallback service role');
       
-      // Pegar dados do usuário do localStorage ou contexto
-      const userData = JSON.parse(localStorage.getItem('supabase.auth.token') || '{}');
-      const tenantId = userData?.user?.user_metadata?.tenant_id || 
-                      userData?.user?.raw_user_meta_data?.tenant_id;
+      // ✅ MIGRADO: Usar autenticação básica Supabase conforme CLAUDE.md
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
       
+      if (userError || !user) {
+        console.warn('⚠️ [CadenceApiService] Usuário não autenticado para fallback');
+        return [];
+      }
+
+      const tenantId = user.user_metadata?.tenant_id;
       if (!tenantId) {
         console.warn('⚠️ [CadenceApiService] Tenant ID não encontrado para fallback');
         return [];
@@ -115,7 +120,7 @@ export class CadenceApiService {
       const response = await api.post<CadenceApiResponse>('/cadence/load', {
         pipeline_id: pipelineId,
         tenant_id: tenantId,
-        user_id: userData?.user?.id,
+        user_id: user.id,
         fallback_mode: true,
         reason: 'JWT_auth_failed_from_frontend'
       });
@@ -141,13 +146,17 @@ export class CadenceApiService {
         pipelineId: pipelineId.substring(0, 8)
       });
 
-      // Tentar buscar task_instances via API de cadência
-      const userData = JSON.parse(localStorage.getItem('supabase.auth.token') || '{}');
-      const tenantId = userData?.user?.user_metadata?.tenant_id || 
-                      userData?.user?.raw_user_meta_data?.tenant_id;
+      // ✅ MIGRADO: Usar autenticação básica Supabase conforme CLAUDE.md
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        console.warn('⚠️ [CadenceApiService] Usuário não autenticado para reconstrução');
+        return [];
+      }
 
+      const tenantId = user.user_metadata?.tenant_id;
       if (!tenantId) {
-        console.warn('⚠️ [CadenceApiService] Tenant ID não encontrado para reconstrução');
+        console.warn('⚠️ [CadenceApiService] Tenant ID não encontrado nos metadados do usuário');
         return [];
       }
 
@@ -155,7 +164,7 @@ export class CadenceApiService {
       const response = await api.post<CadenceApiResponse>('/cadence/reconstruct', {
         pipeline_id: pipelineId,
         tenant_id: tenantId,
-        user_id: userData?.user?.id,
+        user_id: user.id,
         reason: 'missing_cadence_configs_with_existing_task_instances'
       });
 

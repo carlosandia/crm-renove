@@ -58,6 +58,7 @@ export const UserMemberSchema = z.object({
   role: z.enum(['super_admin', 'admin', 'member']).or(z.string()), // ✅ CORREÇÃO: Aceitar qualquer role string
   is_active: z.boolean().nullable().optional(), // ✅ CORREÇÃO: Pode ser null no banco
   tenant_id: z.string().uuid().optional(),
+  auth_user_id: z.string().uuid().nullable().optional(), // ✅ CRÍTICO: Campo auth_user_id era obrigatório no banco mas ausente no schema
   created_at: z.string().optional() // Formato Supabase: "2025-06-30 01:14:13.34407"
 });
 
@@ -159,6 +160,41 @@ export const DealUpdateSchema = DealCreateSchema.partial();
 // ============================================
 
 /**
+ * 🔧 Simple Outcome Reason Schema - Motivo simples para campo JSON
+ */
+export const SimpleOutcomeReasonSchema = z.object({
+  reason_text: z.string().max(200, 'Motivo deve ter no máximo 200 caracteres').optional().default(''), // ✅ CORREÇÃO: Permitir texto vazio durante criação
+  reason_type: z.enum(['ganho', 'perdido']),
+  display_order: z.number().int().min(0, 'Ordem não pode ser negativa'),
+  is_active: z.boolean().default(true)
+});
+
+/**
+ * 🔧 Outcome Reasons Collection Schema - Coleção de motivos para pipeline
+ */
+export const OutcomeReasonsCollectionSchema = z.object({
+  ganho_reasons: z.array(SimpleOutcomeReasonSchema).default([]),
+  perdido_reasons: z.array(SimpleOutcomeReasonSchema).default([])
+});
+
+/**
+ * 🔧 Pipeline Stage Schema - Esquema de etapas do pipeline
+ */
+export const PipelineStageSchema = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().min(1), // ✅ OBRIGATÓRIO: usado em toda a aplicação
+  order_index: z.number().int().min(0), // ✅ OBRIGATÓRIO: usado para ordenação
+  color: z.string().min(1), // ✅ OBRIGATÓRIO: usado para visualização
+  is_system_stage: z.boolean().default(false).optional(),
+  is_system: z.boolean().default(false).optional(),
+  stage_type: z.enum(['default', 'ganho', 'perdido', 'custom', 'personalizado', 'contato_inicial', 'qualificado', 'agendado', 'proposta']).default('default').optional(),
+  description: z.string().optional(),
+  pipeline_id: z.string().uuid().optional(),
+  created_at: z.string().optional(), // Formato Supabase timestamp
+  updated_at: z.string().optional() // Formato Supabase timestamp
+});
+
+/**
  * 🔧 Pipeline Schema - Esquema de pipeline de vendas
  */
 export const PipelineSchema = z.object({
@@ -169,12 +205,18 @@ export const PipelineSchema = z.object({
   created_by: z.string().uuid(),
   is_active: z.boolean().default(true).optional(),
   
+  // ✅ Stages do pipeline
+  stages: z.array(PipelineStageSchema).optional(),
+  
   // Configurações
   settings: z.object({
     auto_progress: z.boolean().default(false),
     notification_enabled: z.boolean().default(true),
     required_fields: z.array(z.string()).default([])
   }).optional(),
+  
+  // ✅ NOVO: Motivos de ganho/perdido como JSON
+  outcome_reasons: OutcomeReasonsCollectionSchema.optional(),
   
   created_at: z.string().optional(), // Formato Supabase timestamp
   updated_at: z.string().optional() // Formato Supabase timestamp
@@ -193,6 +235,51 @@ export const PipelineCreateSchema = PipelineSchema.omit({
  * 🔧 Pipeline Update Schema
  */
 export const PipelineUpdateSchema = PipelineCreateSchema.partial();
+
+/**
+ * 🔧 Pipeline Stage Create Schema
+ */
+export const PipelineStageCreateSchema = PipelineStageSchema.omit({
+  id: true,
+  created_at: true,
+  updated_at: true
+});
+
+/**
+ * 🔧 Pipeline Stage Update Schema
+ */
+export const PipelineStageUpdateSchema = PipelineStageCreateSchema.partial();
+
+/**
+ * 🔧 Custom Field Schema - Esquema de campos customizados
+ */
+export const CustomFieldSchema = z.object({
+  id: z.string().uuid().optional(),
+  pipeline_id: z.string().uuid().nullable().optional(), // ✅ CORREÇÃO: aceitar null/undefined do backend
+  field_name: z.string().min(1), // ✅ OBRIGATÓRIO: nome do campo
+  field_label: z.string().min(1), // ✅ OBRIGATÓRIO: label exibido
+  field_type: z.enum(['text', 'email', 'phone', 'textarea', 'select', 'number', 'date', 'url', 'currency']), // ✅ ADICIONADO: url e currency
+  field_options: z.array(z.string()).nullable().optional(), // ✅ CORREÇÃO: aceitar null do backend
+  is_required: z.boolean().nullable().default(false).optional(), // ✅ CORREÇÃO: aceitar null/undefined do backend
+  field_order: z.number().int().min(0).nullable().default(0).optional(), // ✅ CORREÇÃO: aceitar null do backend
+  placeholder: z.string().nullable().optional(), // ✅ CORREÇÃO: aceitar null do backend
+  show_in_card: z.boolean().nullable().default(false).optional(), // ✅ CORREÇÃO: aceitar null do backend
+  // ✅ COMPATIBILIDADE: Campos adicionais que podem vir do backend
+  created_at: z.string().nullable().optional(), // ✅ CORREÇÃO: aceitar null do backend
+  updated_at: z.string().nullable().optional() // ✅ CORREÇÃO: aceitar null do backend
+});
+
+/**
+ * 🔧 Custom Field Create Schema
+ */
+export const CustomFieldCreateSchema = CustomFieldSchema.omit({
+  id: true
+});
+
+/**
+ * 🔧 Custom Field Update Schema
+ */
+export const CustomFieldUpdateSchema = CustomFieldCreateSchema.partial();
 
 // ============================================
 // CUSTOMER/CONTACT DOMAIN SCHEMAS

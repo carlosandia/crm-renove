@@ -3,14 +3,14 @@
  * 🎯 OUTCOME REASONS SCHEMAS
  * ============================================
  * 
- * Schemas Zod para sistema de motivos de ganho/perda
+ * Schemas Zod para sistema de motivos de ganho/perdido
  * AIDEV-NOTE: Source of truth para types - nunca editar types manualmente
  */
 
 import { z } from 'zod';
 
 // ============================================
-// SCHEMA BASE PARA MOTIVOS DE GANHO/PERDA
+// SCHEMA BASE PARA MOTIVOS DE GANHO/PERDIDO
 // ============================================
 
 export const OutcomeReasonSchema = z.object({

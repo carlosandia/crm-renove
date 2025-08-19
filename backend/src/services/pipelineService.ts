@@ -227,10 +227,19 @@ export class PipelineService {
     }
 
     // 🔧 CORREÇÃO: Buscar relacionamentos separadamente para evitar erro de schema cache
-    const { data: pipelineMembers } = await supabase
+    const { data: pipelineMembers, error: membersError } = await supabase
       .from('pipeline_members')
       .select('*')
       .eq('pipeline_id', id);
+
+    // ✅ ETAPA 4: Logs detalhados para rastrear problema de members_count
+    console.log('🔍 [ETAPA-4-DEBUG] Query pipeline_members result:', {
+      pipeline_id: id,
+      members_found: pipelineMembers?.length || 0,
+      members_data: pipelineMembers,
+      members_error: membersError?.message || 'nenhum',
+      query_timestamp: new Date().toISOString()
+    });
 
     const { data: pipelineStages } = await supabase
       .from('pipeline_stages')
@@ -245,27 +254,70 @@ export class PipelineService {
       .eq('pipeline_id', id)
       .order('field_order');
 
-    // Buscar dados dos membros se houver
+    // ✅ CORREÇÃO CRÍTICA: Buscar dados dos membros na tabela auth.users para consistência com frontend
     const membersWithUserData = await Promise.all(
       (pipelineMembers || []).map(async (pm) => {
-        const { data: userData } = await supabase
-          .from('users')
-          .select('id, first_name, last_name, email')
+        const { data: authUser } = await supabase
+          .from('auth.users')
+          .select('id, raw_user_meta_data, email')
           .eq('id', pm.member_id)
           .single();
 
+        // ✅ CORREÇÃO: Mapear dados de auth.users para formato compatível
+        const mappedUserData = authUser ? {
+          id: authUser.id,
+          first_name: authUser.raw_user_meta_data?.first_name || authUser.email?.split('@')[0] || 'Usuário',
+          last_name: authUser.raw_user_meta_data?.last_name || '',
+          email: authUser.email || ''
+        } : null;
+
         return {
           ...pm,
-          member: userData
+          member: mappedUserData
         };
       })
     );
+
+    // ✅ CORREÇÃO CRÍTICA: Buscar motivos de ganho/perda do campo JSON outcome_reasons
+    const outcomeReasonsData = pipeline?.outcome_reasons;
+    
+    console.log('🔍 [PipelineService] Dados brutos outcome_reasons do banco:', {
+      pipeline_id: id,
+      outcome_reasons_raw: outcomeReasonsData,
+      outcome_reasons_type: typeof outcomeReasonsData,
+      has_ganho: outcomeReasonsData?.ganho_reasons?.length || 0,
+      has_perdido: outcomeReasonsData?.perdido_reasons?.length || 0
+    });
+
+    // ✅ REFATORAÇÃO: Extrair motivos do campo JSON usando a estrutura correta
+    let outcomeReasons = {
+      ganho: [],
+      perdido: []
+    };
+
+    if (outcomeReasonsData && typeof outcomeReasonsData === 'object') {
+      // Estrutura nova: { ganho_reasons: [...], perdido_reasons: [...] }
+      outcomeReasons = {
+        ganho: outcomeReasonsData.ganho_reasons || [],
+        perdido: outcomeReasonsData.perdido_reasons || []
+      };
+    }
+
+    console.log('✅ [PipelineService] Pipeline carregada com outcome_reasons do campo JSON:', {
+      pipeline_id: id,
+      outcome_reasons_total: (outcomeReasons.ganho.length + outcomeReasons.perdido.length),
+      ganho_count: outcomeReasons.ganho.length,
+      perdido_count: outcomeReasons.perdido.length,
+      ganho_texts: outcomeReasons.ganho.map(r => r.reason_text).slice(0, 3),
+      perdido_texts: outcomeReasons.perdido.map(r => r.reason_text).slice(0, 3)
+    });
 
     return {
       ...pipeline,
       pipeline_members: membersWithUserData,
       pipeline_stages: pipelineStages || [],
-      pipeline_custom_fields: pipelineCustomFields || []
+      pipeline_custom_fields: pipelineCustomFields || [],
+      outcome_reasons: outcomeReasons
     };
   }
 

@@ -497,19 +497,31 @@ export function useApiCrud<T extends Record<string, unknown>>(config: ApiConfig)
 
   const baseUrl = config.baseUrl || process.env.REACT_APP_API_URL || import.meta.env.VITE_API_URL || (import.meta.env.VITE_ENVIRONMENT === 'production' ? 'https://crm.renovedigital.com.br/api' : 'http://127.0.0.1:3001/api');
 
-  // Headers padrão com autenticação
-  const getHeaders = useCallback(() => {
+  // ✅ BÁSICO: Headers com autenticação assíncrona (Basic Supabase Authentication)
+  const getHeadersWithAuth = useCallback(async () => {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...config.defaultHeaders
     };
 
-    if (user?.token) {
-      headers['Authorization'] = `Bearer ${user.token}`;
+    try {
+      // ✅ BÁSICO: Verificar usuário autenticado
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+      if (!currentUser || userError) {
+        return headers; // Retornar sem token se não autenticado
+      }
+
+      // ✅ BÁSICO: Obter token de autenticação
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch (error) {
+      console.warn('Erro ao obter token de autenticação:', error);
     }
 
     return headers;
-  }, [user?.token, config.defaultHeaders]);
+  }, [user?.id, config.defaultHeaders]);
 
   const buildUrl = useCallback((path = '', params?: Record<string, unknown>) => {
     const url = new URL(`${baseUrl}${config.endpoint}${path}`);
@@ -531,8 +543,9 @@ export function useApiCrud<T extends Record<string, unknown>>(config: ApiConfig)
     return fetchState.execute(async () => {
       console.log(`🔍 [useApiCrud] Buscando dados de ${config.endpoint}...`);
       
+      const headers = await getHeadersWithAuth();
       const response = await fetch(buildUrl('', params), {
-        headers: getHeaders(),
+        headers,
       });
 
       if (!response.ok) {
@@ -551,7 +564,7 @@ export function useApiCrud<T extends Record<string, unknown>>(config: ApiConfig)
       
       return items;
     });
-  }, [user, fetchState.execute, buildUrl, getHeaders, config.endpoint]);
+  }, [user, fetchState.execute, buildUrl, getHeadersWithAuth, config.endpoint]);
 
   const create = useCallback(async (item: Omit<T, 'id'>) => {
     if (!user) throw new Error('Usuário não autenticado');
@@ -559,9 +572,10 @@ export function useApiCrud<T extends Record<string, unknown>>(config: ApiConfig)
     return createState.execute(async () => {
       console.log(`🆕 [useApiCrud] Criando novo ${config.endpoint}...`);
       
+      const headers = await getHeadersWithAuth();
       const response = await fetch(buildUrl(), {
         method: 'POST',
-        headers: getHeaders(),
+        headers,
         body: JSON.stringify(item),
       });
 
@@ -578,7 +592,7 @@ export function useApiCrud<T extends Record<string, unknown>>(config: ApiConfig)
       
       return newItem;
     });
-  }, [user, createState.execute, buildUrl, getHeaders, config.endpoint]);
+  }, [user, createState.execute, buildUrl, getHeadersWithAuth, config.endpoint]);
 
   const update = useCallback(async (id: string, updates: Partial<T>) => {
     if (!user) throw new Error('Usuário não autenticado');
@@ -586,9 +600,10 @@ export function useApiCrud<T extends Record<string, unknown>>(config: ApiConfig)
     return updateState.execute(async () => {
       console.log(`📝 [useApiCrud] Atualizando ${config.endpoint}:`, id);
       
+      const headers = await getHeadersWithAuth();
       const response = await fetch(buildUrl(`/${id}`), {
         method: 'PUT',
-        headers: getHeaders(),
+        headers,
         body: JSON.stringify(updates),
       });
 
@@ -606,7 +621,7 @@ export function useApiCrud<T extends Record<string, unknown>>(config: ApiConfig)
       
       return updatedItem;
     });
-  }, [user, updateState.execute, buildUrl, getHeaders, config.endpoint]);
+  }, [user, updateState.execute, buildUrl, getHeadersWithAuth, config.endpoint]);
 
   const remove = useCallback(async (id: string) => {
     if (!user) throw new Error('Usuário não autenticado');
@@ -614,9 +629,10 @@ export function useApiCrud<T extends Record<string, unknown>>(config: ApiConfig)
     return deleteState.execute(async () => {
       console.log(`🗑️ [useApiCrud] Removendo ${config.endpoint}:`, id);
       
+      const headers = await getHeadersWithAuth();
       const response = await fetch(buildUrl(`/${id}`), {
         method: 'DELETE',
-        headers: getHeaders(),
+        headers,
       });
 
       if (!response.ok) {
@@ -628,7 +644,7 @@ export function useApiCrud<T extends Record<string, unknown>>(config: ApiConfig)
       
       console.log(`✅ [useApiCrud] ${config.endpoint} removido:`, id);
     });
-  }, [user, deleteState.execute, buildUrl, getHeaders, config.endpoint]);
+  }, [user, deleteState.execute, buildUrl, getHeadersWithAuth, config.endpoint]);
 
   const isLoading = useMemo(() => 
     fetchState.loading || createState.loading || updateState.loading || deleteState.loading,

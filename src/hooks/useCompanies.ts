@@ -33,17 +33,13 @@ export const useCompanies = () => {
   /**
    * 🔧 CORREÇÃO CRÍTICA: Busca de empresas corrigida para super_admin
    */
-  const fetchCompanies = useCallback(async (forceRefresh = false) => {
+  const fetchCompanies = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      console.log(`🔍 [useCompanies] Iniciando busca de empresas (forceRefresh: ${forceRefresh})...`);
-      
-      // 🔥 FORÇA BRUTA: Se for force refresh, adicionar timestamp para quebrar cache
-      const cacheBreaker = forceRefresh ? `?_cb=${Date.now()}` : '';
+      console.log('🔍 [useCompanies] Iniciando busca de empresas...');
 
-      let companiesData: any[] = [];
-      let usedBackendAPI = false;
+      let companiesData: Company[] = [];
 
       // ✅ CORREÇÃO: Usar Supabase direto com autenticação básica
       console.log('🔄 [useCompanies] Usando Supabase...');
@@ -66,7 +62,7 @@ export const useCompanies = () => {
 
       // 🔧 Processar empresas buscando admin via queries separadas
       const companiesWithAdmin = await Promise.all(
-        companiesData.map(async (company: any) => {
+        companiesData.map(async (company: Company) => {
           try {
             // Buscar admin da empresa via Supabase
             const { data: adminData, error: adminError } = await supabase
@@ -80,7 +76,7 @@ export const useCompanies = () => {
             
             if (!adminError && adminData) {
               // Determinar status de ativação
-              let activationStatus: 'pending' | 'sent' | 'activated' | 'expired' = 'pending';
+              let activationStatus: 'pending' | 'sent' | 'activated' | 'expired' | 'inactive' = 'pending';
               let invitationToken: string | undefined = undefined;
               let invitationSentAt: string | undefined = undefined;
               
@@ -88,7 +84,10 @@ export const useCompanies = () => {
               if (adminData.is_active) {
                 activationStatus = 'activated';
               } else {
-                // 2. Verificar convites na tabela admin_invitations
+                // 2. Se usuário está inativo, considerar como inativo (não pendente)
+                activationStatus = 'inactive';
+                
+                // OPCIONAL: Verificar se existe convite pendente apenas para casos especiais
                 try {
                   const { data: invitationData } = await supabase
                     .from('admin_invitations')
@@ -103,35 +102,16 @@ export const useCompanies = () => {
                     invitationToken = invitationData.invitation_token;
                     invitationSentAt = invitationData.sent_at;
                     
-                    if (invitationData.status === 'accepted') {
-                      activationStatus = 'activated';
-                    } else if (invitationData.status === 'expired') {
+                    // Só alterar status se há convite pendente/enviado (casos especiais)
+                    if (invitationData.status === 'expired') {
                       activationStatus = 'expired';
-                    } else {
-                      activationStatus = 'sent';
-                    }
-                  } else {
-                    // 3. FALLBACK: Verificar no campo segment da empresa
-                    if (company.segment && company.segment.includes('INVITATION:')) {
-                      const segments = company.segment.split('|');
-                      const invitationSegment = segments.find((s: string) => s.includes('INVITATION:'));
-                      if (invitationSegment) {
-                        const parts = invitationSegment.split(':');
-                        if (parts.length >= 3) {
-                          invitationToken = parts[1];
-                          invitationSentAt = parts[2];
-                          // ✅ CORREÇÃO: Reconhecer tanto ACCEPTED quanto ADMIN_ACTIVATED como ativado
-                          activationStatus = (invitationSegment.includes('ACCEPTED') || invitationSegment.includes('ADMIN_ACTIVATED')) ? 'activated' : 'sent';
-                        }
-                      }
+                    } else if (invitationData.status === 'pending' || invitationData.status === 'sent') {
+                      activationStatus = 'pending';
                     }
                   }
                 } catch (invitationError) {
                   console.warn(`⚠️ Erro ao buscar convite para "${adminData.email}":`, invitationError);
-                  // ✅ FALLBACK aprimorado para segment se tabela admin_invitations falhar
-                  if (company.segment && company.segment.includes('INVITATION:')) {
-                    activationStatus = (company.segment.includes('ACCEPTED') || company.segment.includes('ADMIN_ACTIVATED')) ? 'activated' : 'sent';
-                  }
+                  // Manter 'inactive' como padrão
                 }
               }
               
@@ -174,7 +154,7 @@ export const useCompanies = () => {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, []);
 
   const toggleCompanyStatus = useCallback(async (company: Company) => {
     const novoStatus = !company.is_active;
@@ -183,22 +163,106 @@ export const useCompanies = () => {
     try {
       logger.info(`${acao.charAt(0).toUpperCase() + acao.slice(1)}ando empresa:`, company.name);
 
-      const { error } = await supabase
-        .from('companies')
-        .update({
-          is_active: novoStatus,
-          segment: `${company.industry} | ${company.city}/${company.state} | Leads:${company.expected_leads_monthly} Vendas:${company.expected_sales_monthly} Seg:${company.expected_followers_monthly} | ATIVO:${novoStatus}`
-        })
-        .eq('id', company.id);
-
-      if (error) {
-        throw new Error(`Erro do banco de dados: ${error.message}`);
+      if (!novoStatus) {
+        // DESATIVAR: empresa + todos usuários
+        console.log(`🔐 [toggleCompanyStatus] SEGURANÇA: Desativando empresa e todos usuários "${company.name}" (tenant_id: ${company.id})`);
+        
+        // Executar operações em paralelo para melhor performance
+        const [companyResult, usersResult] = await Promise.all([
+          // Desativar empresa
+          supabase
+            .from('companies')
+            .update({
+              is_active: false,
+              segment: `${company.industry} | ${company.city}/${company.state} | Leads:${company.expected_leads_monthly} Vendas:${company.expected_sales_monthly} Seg:${company.expected_followers_monthly} | ATIVO:false`,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', company.id),
+          
+          // Desativar todos usuários (admin e member) da empresa
+          supabase
+            .from('users')
+            .update({ 
+              is_active: false,
+              updated_at: new Date().toISOString()
+            })
+            .eq('tenant_id', company.id)
+            .neq('role', 'super_admin') // Nunca desativar super_admin
+        ]);
+        
+        if (companyResult.error) {
+          throw new Error(`Erro ao desativar empresa: ${companyResult.error.message}`);
+        }
+        
+        if (usersResult.error) {
+          throw new Error(`Erro ao desativar usuários: ${usersResult.error.message}`);
+        }
+        
+        console.log(`✅ [toggleCompanyStatus] Empresa desativada e ${usersResult.count || 0} usuários desativados com sucesso`);
+        
+      } else {
+        // ATIVAR: empresa + usuários + convites
+        console.log(`🚀 [toggleCompanyStatus] ATIVAÇÃO AUTOMÁTICA: Ativando empresa e todos usuários "${company.name}" (tenant_id: ${company.id})`);
+        
+        // Executar operações em paralelo para melhor performance
+        const [companyResult, usersResult, invitationsResult] = await Promise.all([
+          // Ativar empresa
+          supabase
+            .from('companies')
+            .update({
+              is_active: true,
+              segment: `${company.industry} | ${company.city}/${company.state} | Leads:${company.expected_leads_monthly} Vendas:${company.expected_sales_monthly} Seg:${company.expected_followers_monthly} | ATIVO:true`,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', company.id),
+          
+          // Ativar todos usuários admin/member da empresa
+          supabase
+            .from('users')
+            .update({ 
+              is_active: true,
+              updated_at: new Date().toISOString()
+            })
+            .eq('tenant_id', company.id)
+            .neq('role', 'super_admin'), // super_admin já está sempre ativo
+          
+          // Marcar convites como aceitos/ativados
+          supabase
+            .from('admin_invitations')
+            .update({ 
+              status: 'accepted',
+              accepted_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('company_id', company.id)
+            .in('status', ['pending', 'sent', 'expired']) // Apenas convites não aceitos
+        ]);
+        
+        if (companyResult.error) {
+          throw new Error(`Erro ao ativar empresa: ${companyResult.error.message}`);
+        }
+        
+        if (usersResult.error) {
+          throw new Error(`Erro ao ativar usuários: ${usersResult.error.message}`);
+        }
+        
+        // Erro em convites não é crítico (pode não existir)
+        if (invitationsResult.error) {
+          console.warn(`⚠️ [toggleCompanyStatus] Aviso ao atualizar convites: ${invitationsResult.error.message}`);
+        }
+        
+        console.log(`✅ [toggleCompanyStatus] Empresa ativada, ${usersResult.count || 0} usuários ativados e ${invitationsResult.count || 0} convites marcados como aceitos`);
       }
 
       await fetchCompanies();
+      
+      const statusMessage = !novoStatus 
+        ? `✅ Empresa "${company.name}" foi desativada e todos usuários perderam acesso!`
+        : `✅ Empresa "${company.name}" foi ativada e todos usuários foram automaticamente ativados!`;
+      
       logger.success(`Empresa "${company.name}" ${acao === 'ativar' ? 'ativada' : 'desativada'} com sucesso`);
       
-      return { success: true, message: `✅ Empresa "${company.name}" foi ${acao === 'ativar' ? 'ativada' : 'desativada'} com sucesso!` };
+      return { success: true, message: statusMessage };
       
     } catch (error) {
       logger.error(`Erro ao ${acao} empresa:`, error);
@@ -252,12 +316,18 @@ export const useCompanies = () => {
         return { success: false, message: 'Acesso negado: apenas super_admin pode reenviar convites' };
       }
       
+      // ✅ BÁSICO: Obter token do usuário autenticado  
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        return { success: false, message: 'Token de autenticação não disponível' };
+      }
+      
       // Fazer requisição usando URL relativa (proxy Vite)
       const response = await fetch('/api/admin-invitations/send', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+          'Authorization': `Bearer ${session.access_token}`
         },
         body: JSON.stringify({
           adminEmail: company.admin.email,
@@ -303,59 +373,25 @@ export const useCompanies = () => {
       }, 1000);
     };
 
-    // 🔧 CORREÇÃO ROBUSTA: Listener para refresh automático após criação de empresa
+    // ✅ OTIMIZAÇÃO: Listener único e simplificado para criação de empresa
     const handleCompanyCreated = (event: CustomEvent) => {
-      const retry = event.detail?.retry || 0;
-      console.log(`🔄 [useCompanies] Empresa criada detectada (tentativa ${retry + 1}):`, event.detail);
-      console.log('📋 [useCompanies] Executando refresh FORÇADO da lista...');
+      console.log('🔄 [useCompanies] Empresa criada detectada:', event.detail);
+      console.log('📋 [useCompanies] Executando refresh da lista...');
       
-      // 🔥 FORÇA BRUTA: Limpar cache antes de fazer fetch
-      setCompanies([]); 
-      setLoading(true);
-      
-      // Fetch imediato com FORCE REFRESH
-      fetchCompanies(true).then(() => {
-        console.log(`✅ [useCompanies] Lista atualizada com sucesso (tentativa ${retry + 1})`);
-        
-        // 🔥 SUPER FORÇA BRUTA: Se for uma das primeiras tentativas, disparar um polling adicional
-        if (retry <= 1) {
-          setTimeout(() => {
-            console.log(`🔄 [useCompanies] Polling adicional (tentativa ${retry + 1})...`);
-            fetchCompanies(true);
-          }, 1000);
-        }
+      // ✅ OTIMIZAÇÃO: Refresh simples sem force clear
+      fetchCompanies().then(() => {
+        console.log('✅ [useCompanies] Lista atualizada com sucesso');
       }).catch(error => {
-        console.error(`❌ [useCompanies] Erro na atualização (tentativa ${retry + 1}):`, error);
-      });
-    };
-
-    // 🔥 SUPER FORÇA BRUTA: Listener adicional para force refresh
-    const handleForceRefresh = (event: CustomEvent) => {
-      const retry = event.detail?.retry || 0;
-      const source = event.detail?.source || 'unknown';
-      console.log(`🚨 [useCompanies] FORCE REFRESH detectado (${source} - tentativa ${retry + 1}):`, event.detail);
-      
-      // Limpar tudo e recarregar
-      setCompanies([]);
-      setLoading(true);
-      setError(null);
-      
-      // Force refresh com cache breaker
-      fetchCompanies(true).then(() => {
-        console.log(`✅ [useCompanies] FORCE REFRESH concluído (${source} - tentativa ${retry + 1})`);
-      }).catch(error => {
-        console.error(`❌ [useCompanies] FORCE REFRESH falhou (${source} - tentativa ${retry + 1}):`, error);
+        console.error('❌ [useCompanies] Erro na atualização:', error);
       });
     };
 
     window.addEventListener('admin-activated', handleAdminActivated as EventListener);
     window.addEventListener('company-created', handleCompanyCreated as EventListener);
-    window.addEventListener('force-refresh-companies', handleForceRefresh as EventListener);
     
     return () => {
       window.removeEventListener('admin-activated', handleAdminActivated as EventListener);
       window.removeEventListener('company-created', handleCompanyCreated as EventListener);
-      window.removeEventListener('force-refresh-companies', handleForceRefresh as EventListener);
     };
   }, [fetchCompanies]);
 
@@ -366,13 +402,13 @@ export const useCompanies = () => {
     const interval = setInterval(() => {
       console.log('🔄 [useCompanies] Polling - atualizando dados...');
       fetchCompanies();
-    }, 30000);
+    }, 45000); // ✅ OTIMIZADO: Intervalo aumentado para 45s (melhor performance)
     
     setTimeout(() => {
       clearInterval(interval);
       setIsPolling(false);
       console.log('⏹️ [useCompanies] Polling parado');
-    }, 5 * 60 * 1000);
+    }, 3 * 60 * 1000); // ✅ OTIMIZADO: Polling reduzido para 3min (economia de recursos)
     
     return () => clearInterval(interval);
   }, [fetchCompanies, isPolling]);

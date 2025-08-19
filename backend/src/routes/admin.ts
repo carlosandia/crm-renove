@@ -681,6 +681,167 @@ router.get('/admin-dashboard/team-performance', async (req, res) => {
 // ==========================================
 
 /**
+ * POST /admin/create-user
+ * Endpoint seguro para criação de usuários administradores usando service role
+ * MIGRADO de useMultipleAdmins.ts para eliminar 403 Forbidden no frontend
+ */
+router.post('/create-user', async (req, res) => {
+  console.log('🔧 [ADMIN-API] Recebendo solicitação de criação de usuário admin');
+  
+  try {
+    const {
+      email,
+      password,
+      first_name,
+      last_name,
+      tenant_id,
+      role = 'admin'
+    } = req.body;
+
+    // ✅ VALIDAÇÃO: Campos obrigatórios
+    if (!email || !password || !tenant_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'validation_error',
+        message: 'Email, senha e tenant_id são obrigatórios',
+        missing_fields: {
+          email: !email,
+          password: !password,
+          tenant_id: !tenant_id
+        }
+      });
+    }
+
+    // ✅ VALIDAÇÃO: Formato do email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'validation_error',
+        message: 'Formato de email inválido'
+      });
+    }
+
+    // ✅ VALIDAÇÃO: Força da senha
+    if (password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        error: 'validation_error',
+        message: 'Senha deve ter pelo menos 8 caracteres'
+      });
+    }
+
+    console.log('🔍 [ADMIN-API] Dados validados:', {
+      email,
+      tenant_id: tenant_id.substring(0, 8),
+      role,
+      has_name: !!(first_name || last_name)
+    });
+
+    // ✅ VERIFICAR EMAIL DUPLICADO: Usando service role
+    const { data: existingUsers, error: checkError } = await supabaseAdmin.getClient()
+      .from('users')
+      .select('id, email')
+      .eq('email', email);
+
+    if (checkError) {
+      console.error('❌ [ADMIN-API] Erro ao verificar email duplicado:', checkError);
+      return res.status(500).json({
+        success: false,
+        error: 'database_error',
+        message: 'Erro ao verificar disponibilidade do email'
+      });
+    }
+
+    if (existingUsers && existingUsers.length > 0) {
+      return res.status(409).json({
+        success: false,
+        error: 'duplicate_email',
+        message: 'Email já está em uso por outro usuário'
+      });
+    }
+
+    console.log('🚀 [ADMIN-API] Criando usuário com auth.admin.createUser (service role)');
+
+    // ✅ CRIAR USUÁRIO: Usando supabase.auth.admin.createUser com service role
+    const { data: authUser, error: authError } = await supabaseAdmin.getClient().auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true, // Confirmar email automaticamente
+      user_metadata: {
+        first_name: first_name || '',
+        last_name: last_name || '',
+        role,
+        tenant_id
+      }
+    });
+
+    if (authError || !authUser.user) {
+      console.error('❌ [ADMIN-API] Erro ao criar auth user:', authError);
+      return res.status(500).json({
+        success: false,
+        error: 'auth_creation_failed',
+        message: `Falha ao criar autenticação: ${authError?.message || 'Erro desconhecido'}`
+      });
+    }
+
+    console.log('✅ [ADMIN-API] Auth user criado:', authUser.user.id?.substring(0, 8));
+
+    // ✅ INSERIR NA TABELA USERS: Usando service role para bypass RLS
+    const userData = {
+      id: authUser.user.id,
+      first_name: first_name || '',
+      last_name: last_name || '',
+      email,
+      role,
+      tenant_id,
+      is_active: true,
+      created_at: new Date().toISOString()
+    };
+
+    const userResult = await supabaseAdmin.adminInsert('users', userData);
+
+    if (!userResult || (Array.isArray(userResult) && userResult.length === 0)) {
+      console.error('❌ [ADMIN-API] Service role retornou result vazio para users');
+      return res.status(500).json({
+        success: false,
+        error: 'user_creation_failed',
+        message: 'Falha ao criar registro de usuário'
+      });
+    }
+
+    const newUser = Array.isArray(userResult) ? userResult[0] : userResult;
+    console.log('✅ [ADMIN-API] Usuário criado com sucesso:', newUser.id?.substring(0, 8));
+
+    return res.status(201).json({
+      success: true,
+      message: 'Administrador criado com sucesso via service role backend',
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        first_name: newUser.first_name,
+        last_name: newUser.last_name,
+        role: newUser.role,
+        tenant_id: newUser.tenant_id,
+        is_active: newUser.is_active,
+        created_at: newUser.created_at
+      },
+      strategy_used: 'backend-service-role'
+    });
+
+  } catch (error: any) {
+    console.error('❌ [ADMIN-API] Erro na criação de usuário admin:', error);
+    
+    return res.status(500).json({
+      success: false,
+      error: 'internal_error',
+      message: 'Erro interno do servidor',
+      details: error?.message || 'Erro desconhecido'
+    });
+  }
+});
+
+/**
  * POST /admin/create-opportunity
  * Endpoint seguro para criação de oportunidades usando service role
  * MIGRADO de useCreateOpportunity.ts para eliminar service role no frontend

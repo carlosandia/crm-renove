@@ -291,16 +291,22 @@ export const usePipelineData = (): UsePipelineDataReturn => {
         throw new Error('Acesso negado: tenant não autorizado');
       }
       
-      // Buscar leads diretamente do Supabase usando RLS
-      const { data, error } = await supabase
+      // ✅ CONTROLE DE PERMISSÕES: Members só veem leads criados por eles ou atribuídos a eles
+      let query = supabase
         .from('pipeline_leads')
         .select(`
           *,
           pipeline_stages!inner(name, order_index)
         `)
         .eq('pipeline_id', pipelineId)
-        .eq('tenant_id', user.tenant_id)
-        .order('created_at', { ascending: false });
+        .eq('tenant_id', user.tenant_id);
+
+      // Aplicar filtro específico para members
+      if (user.role === 'member') {
+        query = query.or(`created_by.eq.${user.id},assigned_to.eq.${user.id},responsavel_oportunidade.eq.${user.id}`);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
       
       if (error) {
         throw new Error(`Erro Supabase: ${error.message}`);

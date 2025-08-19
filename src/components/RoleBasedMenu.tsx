@@ -67,6 +67,8 @@ interface RoleBasedMenuProps {
   cacheLoading?: boolean;
   // ✅ INTEGRAÇÃO: Prop para controle de aba ativa do IntegrationsModule
   integrationsActiveTab?: 'config' | 'calendar' | 'email';
+  // ✅ VENDEDORES: Prop para renderizar SubHeader do VendedoresModule
+  renderSubHeader?: (subHeaderContent: React.ReactNode) => void;
 }
 
 const RoleBasedMenu: React.FC<RoleBasedMenuProps> = ({ 
@@ -79,7 +81,9 @@ const RoleBasedMenu: React.FC<RoleBasedMenuProps> = ({
   onPipelineChange,
   cacheLoading = false,
   // ✅ INTEGRAÇÃO: Prop para aba ativa das integrações
-  integrationsActiveTab
+  integrationsActiveTab,
+  // ✅ VENDEDORES: Prop para renderizar SubHeader
+  renderSubHeader
 }) => {
   const { user } = useAuth();
 
@@ -233,7 +237,7 @@ const RoleBasedMenu: React.FC<RoleBasedMenuProps> = ({
             }
           >
             <Suspense fallback={<ModuleLoader moduleName="Vendedores" />}>
-              <VendedoresModule />
+              <VendedoresModule renderSubHeader={renderSubHeader} />
             </Suspense>
           </SafeErrorBoundary>
         );

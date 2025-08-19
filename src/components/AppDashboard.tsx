@@ -7,6 +7,7 @@ import { usePipelineSubHeader, useLeadsSubHeader } from '../hooks/useSubHeaderCo
 import { usePipelineData } from '../hooks/usePipelineData';
 import { usePipelineCache } from '../hooks/usePipelineCache'; // ✅ FASE 2: Importar cache inteligente
 import PipelineSpecificSubHeader from './SubHeader/PipelineSpecificSubHeader';
+import EmpresasSubHeader from './SubHeader/EmpresasSubHeader';
 import { logger } from '../utils/logger';
 import { CheckCircle, Users, BarChart3, Settings, X } from 'lucide-react';
 
@@ -23,10 +24,12 @@ const AppDashboard: React.FC = () => {
   const lastLoggedPipeline = useRef<string | null>(null);
   const lastSubHeaderLogTime = useRef<number>(0);
   
-  // 🔄 SINCRONIZAR: Estado local com dados do hook
+  // ✅ OTIMIZAÇÃO: useEffect otimizado com verificação de mudança real
   useEffect(() => {
-    setLocalPipelines(pipelines);
-  }, [pipelines]);
+    if (pipelines !== localPipelines) {
+      setLocalPipelines(pipelines);
+    }
+  }, [pipelines, localPipelines]);
   
   // 🎯 SUBHEADER: Pipelines reais filtradas por tenant do usuário (MOVIDO PARA CIMA)
   const userPipelines = useMemo(() => {
@@ -41,12 +44,15 @@ const AppDashboard: React.FC = () => {
     const handlePipelineArchiveUpdate = (event: CustomEvent) => {
       const { pipelineId, is_archived, archived_at } = event.detail;
       
-      console.log(`⚡ [AppDashboard] Recebeu atualização imediata:`, {
-        pipelineId,
-        is_archived,
-        archived_at,
-        localPipelinesLength: localPipelines?.length || 0
-      });
+      // ✅ CORREÇÃO: Log apenas em desenvolvimento com throttling
+      if (import.meta.env.DEV) {
+        console.log(`⚡ [AppDashboard] Recebeu atualização imediata:`, {
+          pipelineId,
+          is_archived,
+          archived_at,
+          localPipelinesLength: localPipelines?.length || 0
+        });
+      }
       
       // Atualizar pipeline específica no array local imediatamente
       setLocalPipelines(prevPipelines => {
@@ -61,11 +67,14 @@ const AppDashboard: React.FC = () => {
               is_active: !is_archived // Manter consistência
             };
             
-            console.log(`🎯 [AppDashboard] Pipeline atualizada no dropdown:`, {
-              name: pipeline.name,
-              before: { is_archived: pipeline.is_archived, archived_at: pipeline.archived_at },
-              after: { is_archived: updated.is_archived, archived_at: updated.archived_at }
-            });
+            // ✅ CORREÇÃO: Log apenas em desenvolvimento
+            if (import.meta.env.DEV) {
+              console.log(`🎯 [AppDashboard] Pipeline atualizada no dropdown:`, {
+                name: pipeline.name,
+                before: { is_archived: pipeline.is_archived, archived_at: pipeline.archived_at },
+                after: { is_archived: updated.is_archived, archived_at: updated.archived_at }
+              });
+            }
             
             return updated;
           }
@@ -138,7 +147,7 @@ const AppDashboard: React.FC = () => {
   const getDefaultModule = (userRole: string) => {
     switch (userRole) {
       case 'super_admin':
-        return 'Dashboard Admin';
+        return 'Relatório';
       case 'admin':
         return 'Dashboard Admin';
       case 'member':
@@ -152,7 +161,7 @@ const AppDashboard: React.FC = () => {
   const getValidModulesForRole = (userRole: string): string[] => {
     switch (userRole) {
       case 'super_admin':
-        return ['Dashboard Admin', 'Relatório', 'Feedback', 'Clientes', 'Configurações da Plataforma', 'Notificações'];
+        return ['Relatório', 'Feedback', 'Clientes', 'Configurações da Plataforma', 'Notificações'];
       case 'admin':
         return ['Dashboard Admin', 'Vendedores', 'Gestão de pipeline', 'Gestão de formulários', 'Acompanhamento', 'Leads', 'Integrações'];
       case 'member':
@@ -177,6 +186,20 @@ const AppDashboard: React.FC = () => {
 
   // 🎯 INTEGRAÇÕES: Estado para gerenciar aba ativa das integrações
   const [integrationsActiveTab, setIntegrationsActiveTab] = useState<'config' | 'calendar' | 'email'>('config');
+
+  // 🆕 VENDEDORES: Estado para SubHeader dinâmico renderizado por módulos
+  const [dynamicSubHeaderContent, setDynamicSubHeaderContent] = useState<React.ReactNode>(null);
+
+  // 🆕 VENDEDORES: Função para renderizar SubHeader dinamicamente
+  const renderSubHeader = useCallback((subHeaderContent: React.ReactNode) => {
+    console.log('🎯 [AppDashboard] renderSubHeader chamado:', {
+      hasContent: !!subHeaderContent,
+      contentType: typeof subHeaderContent,
+      isNull: subHeaderContent === null,
+      timestamp: new Date().toISOString()
+    });
+    setDynamicSubHeaderContent(subHeaderContent);
+  }, []);
 
   // 🔄 PERSISTÊNCIA: Salvar módulo ativo sempre que mudar (useCallback para evitar re-renders)
   const handleNavigateWithPersistence = useCallback((moduleName: string) => {
@@ -271,6 +294,15 @@ const AppDashboard: React.FC = () => {
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [leadsWithOpportunities, setLeadsWithOpportunities] = useState<Set<string>>(new Set());
 
+  // 🎯 SUBHEADER: Estados para módulo de Empresas/Clientes
+  const [empresasSearchTerm, setEmpresasSearchTerm] = useState('');
+  const [empresasFilters, setEmpresasFilters] = useState({ 
+    status: 'all', 
+    industry: 'all', 
+    adminStatus: 'all' 
+  });
+  const [empresasData, setEmpresasData] = useState<any[]>([]);
+
   // 🗑️ REMOVIDO: Declaração duplicada de integrationsActiveTab (já definida acima)
 
   // ✅ REMOVIDO: userPipelines já definido no topo do componente
@@ -347,6 +379,75 @@ const AppDashboard: React.FC = () => {
     });
     
     window.dispatchEvent(exportLeadsEvent);
+  }, []);
+
+  // 🎯 SUBHEADER: Handlers para módulo de Empresas/Clientes
+  const handleEmpresasSearchChange = useCallback((value: string) => {
+    setEmpresasSearchTerm(value);
+    
+    // ✅ COMUNICAÇÃO: Enviar mudança de busca para EmpresasModule
+    const empresasFiltersEvent = new CustomEvent('empresas-filters-updated', {
+      detail: {
+        searchTerm: value,
+        filters: empresasFilters, // Manter filtros atuais
+        timestamp: new Date().toISOString()
+      }
+    });
+    window.dispatchEvent(empresasFiltersEvent);
+  }, [empresasFilters]);
+
+  const handleEmpresasFiltersChange = useCallback((filters: any) => {
+    // ✅ CORREÇÃO: Separar searchTerm dos outros filtros
+    if (filters.searchTerm !== undefined) {
+      setEmpresasSearchTerm(filters.searchTerm);
+    }
+    
+    // Atualizar apenas os filtros (status, industry, adminStatus)
+    setEmpresasFilters({
+      status: filters.status || 'all',
+      industry: filters.industry || 'all', 
+      adminStatus: filters.adminStatus || 'all'
+    });
+    
+    // ✅ COMUNICAÇÃO: Enviar filtros para EmpresasModule via Custom Events
+    const empresasFiltersEvent = new CustomEvent('empresas-filters-updated', {
+      detail: {
+        searchTerm: filters.searchTerm || '',
+        filters: {
+          status: filters.status || 'all',
+          industry: filters.industry || 'all', 
+          adminStatus: filters.adminStatus || 'all'
+        },
+        timestamp: new Date().toISOString()
+      }
+    });
+    window.dispatchEvent(empresasFiltersEvent);
+  }, []);
+
+  const handleCreateCompany = useCallback(() => {
+    console.log('🎯 [AppDashboard] Solicitando criação de nova empresa via evento');
+    
+    const createCompanyEvent = new CustomEvent('company-create-requested', {
+      detail: {
+        timestamp: new Date().toISOString(),
+        source: 'subheader'
+      }
+    });
+    
+    window.dispatchEvent(createCompanyEvent);
+  }, []);
+
+  const handleRefreshCompanies = useCallback(() => {
+    console.log('🔄 [AppDashboard] Solicitando atualização de empresas via evento');
+    
+    const refreshCompaniesEvent = new CustomEvent('companies-refresh-requested', {
+      detail: {
+        timestamp: new Date().toISOString(),
+        source: 'subheader'
+      }
+    });
+    
+    window.dispatchEvent(refreshCompaniesEvent);
   }, []);
 
   // ✅ FASE 4: Handlers para pipeline management no subheader
@@ -436,6 +537,7 @@ const AppDashboard: React.FC = () => {
     onExportClick: handleExportLeads
   });
 
+
   // 🗑️ REMOVIDO: useIntegrationsSubHeader (controle de abas agora é via header dropdown)
   
 
@@ -451,7 +553,10 @@ const AppDashboard: React.FC = () => {
       return null;
     }
 
-    // ✅ FASE 2: LÓGICA UNIFICADA - Acesso direto ao pipeline com cache inteligente (Members E Admins)
+    // ✅ CORREÇÃO: LÓGICA UNIFICADA - Sempre mostrar SubHeader para admins, mesmo sem pipelines
+    // Para admins: sempre mostrar SubHeader para permitir criação da primeira pipeline
+    const isAdmin = user.role === 'admin' || user.role === 'super_admin';
+    
     if (userPipelines.length > 0) {
       // ✅ AGUARDAR: Cache deve estar completamente carregado
       if (cacheLoading) {
@@ -542,13 +647,46 @@ const AppDashboard: React.FC = () => {
       );
     }
     
-    // Caso sem pipeline disponível ou contexto inválido
+    // ✅ CORREÇÃO: Para admins sem pipelines, mostrar SubHeader vazio para permitir criação
+    if (isAdmin && userPipelines.length === 0) {
+      // ✅ OTIMIZAÇÃO: Log com throttling para evitar spam (apenas uma vez por 5 segundos)
+      const now = Date.now();
+      if (process.env.NODE_ENV === 'development' && (now - lastSubHeaderLogTime.current >= 5000)) {
+        lastSubHeaderLogTime.current = now;
+        console.log('🎯 [AppDashboard] Criando SubHeader vazio para admin sem pipelines:', {
+          activeModule,
+          userRole: user.role,
+          userPipelinesLength: userPipelines.length,
+          logic: 'admin-empty-state'
+        });
+      }
+      
+      return (
+        <PipelineSpecificSubHeader
+          selectedPipeline={null}
+          pipelines={[]}
+          isLoading={pipelinesLoading}
+          onPipelineChange={() => {}}
+          onCreateOpportunity={() => {}}
+          onCreatePipeline={handleCreatePipelineFromSubHeader}
+          onEditPipeline={handleEditPipelineFromSubHeader}
+          onArchivePipeline={handleArchivePipelineFromSubHeader}
+          onUnarchivePipeline={handleUnarchivePipelineFromSubHeader}
+          searchValue={pipelineSearchTerm}
+          searchPlaceholder="Buscar oportunidades, leads..."
+          showEmptyState={true}
+        />
+      );
+    }
+    
+    // Caso sem pipeline disponível ou contexto inválido (somente para members)
     console.log('🎯 [AppDashboard] SubHeader não será criado:', {
       activeModule,
       userPipelinesLength: userPipelines.length,
       cacheLoading,
       pipelinesLoading,
       hasUser: !!user,
+      userRole: user.role,
       logic: 'no-pipeline-context'
     });
     
@@ -570,34 +708,76 @@ const AppDashboard: React.FC = () => {
     handleUnarchivePipelineFromSubHeader
   ]);
 
-  // ✅ FASE 2: Selecionar o subheader correto com acesso direto ao pipeline
-  const subHeaderContent = useMemo(() => {
-    // ✅ OTIMIZAÇÃO: Log com throttling de 5 segundos para evitar spam
-    const now = Date.now();
-    if (process.env.NODE_ENV === 'development' && (now - lastSubHeaderLogTime.current >= 5000)) {
-      lastSubHeaderLogTime.current = now;
-      console.log('🔍 [AppDashboard] Selecionando SubHeader:', {
-        activeModule,
-        hasLeadsSubHeader: !!leadsSubHeaderContent,
-        hasPipelineSubHeader: !!pipelineSpecificSubHeader
-      });
-    }
+  // ✅ CORREÇÃO CRÍTICA: SubHeader estabilizado para resolver re-renders consecutivos
+  // PROBLEMA ORIGINAL: useMemo com muitas dependências instáveis causava re-renders
+  // SOLUÇÃO: Estabilizar dependências com useMemo individuais e useCallback otimizado
+  const empresasSubHeaderMemoized = useMemo(() => {
+    if (activeModule !== 'Clientes') return null;
     
-    switch (activeModule) {
-      case 'Gestão de pipeline':
-        // ✅ FASE 2: Sempre usar acesso direto ao pipeline (sem lista intermediária)
-        return pipelineSpecificSubHeader;
-      case 'Pipeline':
-        return pipelineSpecificSubHeader;
-      case 'Leads':
-        return leadsSubHeaderContent;
-      case 'Integrações':
-        // 🗑️ REMOVIDO: Integrações não tem mais subheader (controle via header dropdown)
-        return undefined;
-      default:
-        return undefined;
-    }
-  }, [activeModule, pipelineSpecificSubHeader, leadsSubHeaderContent]);
+    return React.createElement(EmpresasSubHeader, {
+      searchValue: empresasSearchTerm,
+      onSearchChange: handleEmpresasSearchChange,
+      filters: {
+        searchTerm: empresasSearchTerm,
+        status: empresasFilters.status,
+        industry: empresasFilters.industry,
+        adminStatus: empresasFilters.adminStatus
+      },
+      onFiltersChange: handleEmpresasFiltersChange,
+      onCreateCompany: handleCreateCompany,
+      onRefresh: handleRefreshCompanies,
+      loading: false
+    });
+  }, [
+    activeModule,
+    empresasSearchTerm,
+    empresasFilters.status,
+    empresasFilters.industry,
+    empresasFilters.adminStatus,
+    handleEmpresasSearchChange,
+    handleEmpresasFiltersChange,
+    handleCreateCompany,
+    handleRefreshCompanies
+  ]);
+
+  const subHeaderContent = useMemo(() => {
+    const result = (() => {
+      switch (activeModule) {
+        case 'Gestão de pipeline':
+          return pipelineSpecificSubHeader;
+        case 'Pipeline':
+          return pipelineSpecificSubHeader;
+        case 'Leads':
+          return leadsSubHeaderContent;
+        case 'Clientes':
+          return empresasSubHeaderMemoized;
+        case 'Vendedores':
+          return dynamicSubHeaderContent;
+        case 'Integrações':
+          return undefined;
+        default:
+          return undefined;
+      }
+    })();
+    
+    // 🚨 DEBUG TEMPORÁRIO: Logar resultado do subHeaderContent
+    console.log('📊 [AppDashboard] subHeaderContent calculated:', {
+      activeModule,
+      hasResult: !!result,
+      resultType: typeof result,
+      isDynamicContent: activeModule === 'Vendedores',
+      dynamicContent: !!dynamicSubHeaderContent,
+      timestamp: new Date().toISOString()
+    });
+    
+    return result;
+  }, [
+    activeModule,
+    pipelineSpecificSubHeader,
+    leadsSubHeaderContent,
+    empresasSubHeaderMemoized,
+    dynamicSubHeaderContent
+  ]);
 
   // 🎉 CORREÇÃO CRÍTICA #3: Detecção melhorada de admins recém-ativados
   useEffect(() => {
@@ -676,6 +856,27 @@ const AppDashboard: React.FC = () => {
     };
   }, []);
 
+  // 🎧 Listener para receber dados de empresas do EmpresasModule
+  useEffect(() => {
+    const handleEmpresasDataUpdated = (event: CustomEvent) => {
+      console.log('📊 [AppDashboard] Dados de empresas recebidos:', event.detail);
+      if (event.detail.companies) {
+        setEmpresasData(event.detail.companies);
+        console.log('🎯 [AppDashboard] empresasData atualizado:', event.detail.companies.length, 'empresas');
+      }
+    };
+
+    // Registrar listener
+    window.addEventListener('empresas-data-updated', handleEmpresasDataUpdated as EventListener);
+    console.log('🎧 [AppDashboard] Listener empresas-data-updated registrado');
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('empresas-data-updated', handleEmpresasDataUpdated as EventListener);
+      console.log('🧹 [AppDashboard] Listener empresas-data-updated removido');
+    };
+  }, []);
+
   // ✅ FASE 2: REMOVIDO - Listeners de pipeline-view-entered/exited causavam ciclo infinito
   // Agora usando apenas cache inteligente sem eventos conflitantes
 
@@ -694,25 +895,33 @@ const AppDashboard: React.FC = () => {
     }
   }, [leadsSearchTerm, leadsSelectedFilter, activeModule]);
 
+  // ✅ REMOVIDO: Custom Events desnecessários - agora temos comunicação direta via EmpresasSubHeader
+
   // 🔄 PERSISTÊNCIA: Sincronizar com mudanças de usuário (corrigido para evitar loop)
   useEffect(() => {
     if (user) {
       const savedModule = localStorage.getItem('crm_active_module');
       const defaultModule = getDefaultModule(user.role);
       
-      console.log(`🔄 Usuário disponível (${user.role})`);
-      console.log(`📦 Módulo salvo: ${savedModule || 'nenhum'}`);
-      console.log(`🎯 Módulo padrão para role: ${defaultModule}`);
+      if (import.meta.env.MODE === 'development') {
+        console.log(`🔄 Usuário disponível (${user.role})`);
+        console.log(`📦 Módulo salvo: ${savedModule || 'nenhum'}`);
+        console.log(`🎯 Módulo padrão para role: ${defaultModule}`);
+      }
       
       // Verificar se o módulo salvo é válido para o role atual
       if (savedModule && isModuleValidForRole(savedModule, user.role)) {
-        console.log(`✅ Módulo salvo '${savedModule}' é válido para role '${user.role}' - mantendo`);
+        if (import.meta.env.MODE === 'development') {
+          console.log(`✅ Módulo salvo '${savedModule}' é válido para role '${user.role}' - mantendo`);
+        }
         setActiveModule(savedModule);
       } else {
-        if (savedModule) {
+        if (savedModule && import.meta.env.MODE === 'development') {
           console.log(`⚠️ Módulo salvo '${savedModule}' não é válido para role '${user.role}' - usando padrão`);
         }
-        console.log(`🔄 Definindo módulo padrão: ${defaultModule}`);
+        if (import.meta.env.MODE === 'development') {
+          console.log(`🔄 Definindo módulo padrão: ${defaultModule}`);
+        }
         localStorage.setItem('crm_active_module', defaultModule);
         setActiveModule(defaultModule);
       }
@@ -737,6 +946,21 @@ const AppDashboard: React.FC = () => {
       window.location.href = '/login';
     }
   };
+
+  // ✅ CORREÇÃO: useEffect separado para logging do SubHeader (evita side effects em useMemo)
+  useEffect(() => {
+    const now = Date.now();
+    if (process.env.NODE_ENV === 'development' && (now - lastSubHeaderLogTime.current >= 5000)) {
+      lastSubHeaderLogTime.current = now;
+      console.log('🔍 [AppDashboard] Selecionando SubHeader:', {
+        activeModule,
+        hasLeadsSubHeader: !!leadsSubHeaderContent,
+        hasPipelineSubHeader: !!pipelineSpecificSubHeader,
+        hasEmpresasSubHeader: !!empresasSubHeaderMemoized,
+        hasDynamicSubHeader: !!dynamicSubHeaderContent
+      });
+    }
+  }, [activeModule, leadsSubHeaderContent, pipelineSpecificSubHeader, empresasSubHeaderMemoized, dynamicSubHeaderContent]);
 
   // 🎉 CORREÇÃO CRÍTICA #3: Modal de boas-vindas melhorado para novos admins
   const WelcomeModal = () => {
@@ -858,9 +1082,18 @@ const AppDashboard: React.FC = () => {
   };
 
   if (!user) {
+    // ✅ CORREÇÃO: Em desenvolvimento, não mostrar loading intrusivo
+    if (import.meta.env.DEV) {
+      return null;
+    }
+    
+    // Em produção: loading minimal no canto superior direito
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      <div className="fixed top-4 right-4 z-50">
+        <div className="bg-white shadow-lg rounded-lg p-3 flex items-center space-x-2">
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+          <span className="text-sm text-gray-700">Carregando...</span>
+        </div>
       </div>
     );
   }
@@ -885,6 +1118,8 @@ const AppDashboard: React.FC = () => {
         cacheLoading={cacheLoading}
         // ✅ INTEGRAÇÃO: Prop para controle de aba ativa das integrações
         integrationsActiveTab={integrationsActiveTab}
+        // 🆕 VENDEDORES: Prop para renderizar SubHeader dinamicamente
+        renderSubHeader={renderSubHeader}
       />
     </CRMLayout>
       

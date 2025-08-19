@@ -39,9 +39,9 @@ class MetricsSyncService {
 
   private setupNetworkListeners(): void {
     window.addEventListener('online', () => {
-      console.log('🌐 [MetricsSync] Conexão restaurada');
+      console.log('🌐 [MetricsSync] Conexão restaurada (sync automático DESABILITADO)');
       this.isOnline = true;
-      this.processSyncQueue();
+      // ✅ CRÍTICO: NÃO executar processSyncQueue() automaticamente
     });
 
     window.addEventListener('offline', () => {
@@ -51,13 +51,9 @@ class MetricsSyncService {
   }
 
   private setupPeriodicSync(): void {
-    // Sincronizar a cada 5 minutos se houver dados pendentes
-    setInterval(() => {
-      if (this.isOnline && this.syncQueue.length > 0) {
-        console.log('⏰ [MetricsSync] Sincronização periódica iniciada');
-        this.processSyncQueue();
-      }
-    }, 5 * 60 * 1000); // 5 minutos
+    // ✅ CRÍTICO: DESABILITAR sync periódico para eliminar requests automáticos
+    // Sync periódico removido para máxima performance e redução de requests
+    console.log('🔇 [MetricsSync] Sync periódico DESABILITADO para eliminar requests automáticos');
   }
 
   // ============================================
@@ -79,15 +75,13 @@ class MetricsSyncService {
 
     if (!isDuplicate) {
       this.syncQueue.push(payload);
-      console.log('📥 [MetricsSync] Adicionado à fila de sincronização:', {
+      console.log('📥 [MetricsSync] Adicionado à fila de sincronização (sync automático DESABILITADO):', {
         queueSize: this.syncQueue.length,
         metricsCount: payload.visible_metrics.length
       });
 
-      // Tentar sincronizar imediatamente se online
-      if (this.isOnline) {
-        this.processSyncQueue();
-      }
+      // ✅ CRÍTICO: NÃO tentar sincronizar automaticamente para evitar requests excessivos
+      // Sync só será executado mediante ação explícita do usuário
     }
   }
 

@@ -68,7 +68,7 @@ const getSystemStageTooltip = (stageName: string) => {
     case 'Ganho':
       return 'Etapa padrão para vendas ganhas. Facilita relatórios de conversão e ROI.';
     case 'Perdido':
-      return 'Etapa padrão para análise de perdas. Essencial para otimização do funil de vendas.';
+      return 'Etapa padrão para análise de perdidos. Essencial para otimização do funil de vendas.';
     default:
       return 'Etapa do sistema';
   }

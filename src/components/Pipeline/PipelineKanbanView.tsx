@@ -335,8 +335,16 @@ const PipelineKanbanView: React.FC<PipelineKanbanViewProps> = ({
         >
             <div className="flex px-0 py-2 min-w-max gap-2">
               {isLoading ? (
-                <div className="flex items-center justify-center w-full py-8">
-                </div>
+                // ✅ CORREÇÃO: Em desenvolvimento, não mostrar loading intrusivo
+                import.meta.env.DEV ? (
+                  <div className="flex items-center justify-center w-full py-8">
+                    <p className="text-sm text-gray-500">Carregando pipeline...</p>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center w-full py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  </div>
+                )
               ) : error ? (
                 <div className="flex items-center justify-center w-full py-8">
                   <p className="text-sm text-red-500">Erro ao carregar pipeline: {error.message}</p>

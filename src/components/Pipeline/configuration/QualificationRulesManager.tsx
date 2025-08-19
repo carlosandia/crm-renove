@@ -28,6 +28,8 @@ import { PIPELINE_UI_CONSTANTS } from '../../../styles/pipeline-constants';
 import { TemperatureConfigRender } from '../temperature';
 import { AnimatedCard } from '../../ui/animated-card';
 import { BlurFade } from '../../ui/blur-fade';
+// ✅ AIDEV-NOTE: Usando tipo derivado do schema Zod para garantir consistência
+import { CustomField } from '../../../types/Pipeline';
 
 // AIDEV-NOTE: Tipos para regras de qualificação
 interface QualificationCondition {
@@ -47,12 +49,6 @@ interface QualificationRule {
 interface QualificationRules {
   mql: QualificationRule[];
   sql: QualificationRule[];
-}
-
-interface CustomField {
-  field_name: string;
-  field_label: string;
-  field_type: string;
 }
 
 interface QualificationRulesManagerProps {

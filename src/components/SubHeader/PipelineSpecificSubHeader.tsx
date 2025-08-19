@@ -50,6 +50,8 @@ export interface PipelineSpecificSubHeaderProps {
   className?: string;
   // ✅ NOVO: Estado de carregamento
   isLoading?: boolean;
+  // ✅ CORREÇÃO: Estado vazio para admins sem pipelines
+  showEmptyState?: boolean;
 }
 
 // ============================================
@@ -72,6 +74,7 @@ const PipelineSpecificSubHeader: React.FC<PipelineSpecificSubHeaderProps> = ({
   isLoading = false,
   searchPlaceholder = "Buscar oportunidades...",
   showArchivedPipelines = false,
+  showEmptyState = false,
   className = ""
 }) => {
   // ============================================
@@ -263,6 +266,38 @@ const PipelineSpecificSubHeader: React.FC<PipelineSpecificSubHeaderProps> = ({
   // RENDERIZAÇÃO PRINCIPAL
   // ============================================
 
+  // ✅ CORREÇÃO: Estado vazio para admins sem pipelines
+  if (showEmptyState) {
+    return (
+      <div className={`
+        h-[50px] bg-gray-50/80 border-t border-gray-100 border-b border-gray-200 shadow-sm sticky top-[60px] z-[9999]
+        ${className}
+      `}>
+        <div className="flex items-center justify-between h-full px-4 lg:px-6">
+          
+          {/* LADO ESQUERDO: Título para estado vazio */}
+          <div className="flex items-center space-x-4 flex-shrink-0">
+            <h1 className="text-sm text-gray-700">
+              <span className="font-semibold">Negócios:</span>{" "}
+              <span className="font-normal text-gray-500">Nenhuma pipeline criada</span>
+            </h1>
+          </div>
+
+          {/* LADO DIREITO: Botão Criar Pipeline */}
+          <div className="flex items-center space-x-3 flex-shrink-0">
+            <Button 
+              onClick={onCreatePipeline}
+              className="h-8 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md shadow-sm transition-colors"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Criar Primeira Pipeline
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`
       h-[50px] bg-gray-50/80 border-t border-gray-100 border-b border-gray-200 shadow-sm sticky top-[60px] z-[9999]
@@ -273,7 +308,7 @@ const PipelineSpecificSubHeader: React.FC<PipelineSpecificSubHeaderProps> = ({
         {/* LADO ESQUERDO: Nome da Pipeline */}
         <div className="flex items-center space-x-4 flex-shrink-0">
           <h1 className="text-sm text-gray-700 truncate">
-            <span className="font-semibold">Negócio:</span>{" "}
+            <span className="font-semibold">Pipeline:</span>{" "}
             <span className="font-normal">{selectedPipeline?.name || "Sem nome"}</span>
           </h1>
         </div>
@@ -700,7 +735,7 @@ const PipelineSpecificSubHeader: React.FC<PipelineSpecificSubHeaderProps> = ({
             className="h-8 px-3 gap-2 bg-blue-600 hover:bg-blue-700 text-white"
           >
             <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Nova Oportunidade</span>
+            <span className="hidden sm:inline">Novo Negócio</span>
           </Button>
         </div>
       </div>

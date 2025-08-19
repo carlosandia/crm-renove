@@ -1,28 +1,9 @@
-export interface CustomField {
-  id: string;
-  field_name: string;
-  field_label: string;
-  field_type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number' | 'date';
-  field_options?: string[];
-  is_required: boolean;
-  field_order: number;
-  placeholder?: string;
-  show_in_card?: boolean;
-}
+// ✅ AIDEV-NOTE: Tipos agora são derivados dos schemas Zod para garantir consistência
+import { CustomFieldSchema, PipelineStageSchema } from '../shared/schemas/DomainSchemas';
+import { z } from 'zod';
 
-export interface PipelineStage {
-  id: string;
-  name: string;
-  order_index: number;
-  color: string;
-  is_system_stage?: boolean;
-  is_system?: boolean;
-  stage_type?: 'default' | 'ganho' | 'perdido' | 'custom' | 'personalizado' | 'contato_inicial' | 'qualificado' | 'agendado' | 'proposta';
-  description?: string;
-  pipeline_id?: string;
-  created_at?: string;
-  updated_at?: string;
-}
+export type CustomField = z.infer<typeof CustomFieldSchema>;
+export type PipelineStage = z.infer<typeof PipelineStageSchema>;
 
 export interface Lead {
   id: string;

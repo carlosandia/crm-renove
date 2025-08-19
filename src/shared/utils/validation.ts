@@ -119,8 +119,59 @@ export function validateArray<T>(
   itemSchema: z.ZodType<T>,
   data: unknown
 ): SafeParseResult<T[]> {
+  console.log('🔍 [validateArray] ENTRADA - Iniciando validação:', {
+    dataType: typeof data,
+    isArray: Array.isArray(data),
+    dataLength: Array.isArray(data) ? data.length : 'N/A',
+    schemaName: itemSchema._def?.typeName || 'unknown',
+    sampleData: Array.isArray(data) ? data.slice(0, 2).map(item => ({
+      hasId: item && typeof item === 'object' && 'id' in item,
+      hasEmail: item && typeof item === 'object' && 'email' in item,
+      hasAuthUserId: item && typeof item === 'object' && 'auth_user_id' in item,
+      authUserIdValue: item && typeof item === 'object' && 'auth_user_id' in item ? item.auth_user_id : 'MISSING'
+    })) : 'NOT_ARRAY'
+  });
+
   const arraySchema = z.array(itemSchema);
-  return parseSafe(arraySchema, data);
+  const result = parseSafe(arraySchema, data);
+  
+  console.log('🔍 [validateArray] RESULTADO - Validação concluída:', {
+    success: result.success,
+    dataPassedValidation: result.success ? result.data.length : 0,
+    validationErrors: !result.success ? result.error.issues.map(issue => ({
+      code: issue.code,
+      message: issue.message,
+      path: issue.path.join('.'),
+      itemIndex: issue.path[0]
+    })) : 'NONE'
+  });
+
+  if (!result.success) {
+    console.error('❌ [validateArray] ERRO DETALHADO - Falha na validação:', {
+      totalIssues: result.error.issues.length,
+      firstIssue: result.error.issues[0],
+      issuesByPath: result.error.issues.reduce((acc, issue) => {
+        const path = issue.path.join('.');
+        if (!acc[path]) acc[path] = [];
+        acc[path].push(issue.message);
+        return acc;
+      }, {} as Record<string, string[]>),
+      itemsBeingValidated: Array.isArray(data) ? data.map((item, index) => ({
+        index,
+        itemType: typeof item,
+        itemKeys: item && typeof item === 'object' ? Object.keys(item as Record<string, unknown>) : 'NOT_OBJECT',
+        hasRequiredFields: item && typeof item === 'object' ? {
+          id: 'id' in item,
+          email: 'email' in item,
+          first_name: 'first_name' in item,
+          auth_user_id: 'auth_user_id' in item,
+          auth_user_id_value: 'auth_user_id' in item ? (item as any).auth_user_id : 'MISSING'
+        } : 'ITEM_NOT_OBJECT'
+      })) : 'DATA_NOT_ARRAY'
+    });
+  }
+
+  return result;
 }
 
 /**

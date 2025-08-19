@@ -142,30 +142,8 @@ export function useMetricsPreferences() {
             timestamp: localData.updated_at
           };
           
-          // Buscar dados atualizados em background
-          setTimeout(() => {
-            api.get<UserPreferencesResponse>('/user-preferences')
-              .then(response => {
-                if (response.data.success) {
-                  logIfEnabled('ENABLE_HOOK_DEBUGGING', 'debug', 
-                    'Sincronizando dados do servidor em background', LogContext.HOOKS);
-                  queryClient.setQueryData(metricsPreferencesQueryKeys.user(), response.data);
-                  
-                  // Salvar dados atualizados localmente
-                  const serverMetrics = response.data.data.preferences?.metrics_visibility?.visible_metrics || [];
-                  metricsStorageService.saveLocal(
-                    validateMetricsSelection(serverMetrics),
-                    response.data.data.user_id,
-                    response.data.data.tenant_id,
-                    'server'
-                  );
-                }
-              })
-              .catch(error => {
-                logIfEnabled('ENABLE_HOOK_DEBUGGING', 'warn', 
-                  'Falha na sincronização em background', LogContext.HOOKS, error);
-              });
-          }, 100);
+          // ✅ CRÍTICO: Sync em background COMPLETAMENTE DESABILITADO
+          // Cache local é suficiente - não fazer requests automáticos
           
           return cachedResponse;
         }
@@ -237,22 +215,17 @@ export function useMetricsPreferences() {
         throw error;
       }
     },
-    staleTime: 5 * 60 * 1000,  // 5 minutos
-    gcTime: 10 * 60 * 1000,     // 10 minutos
-    retry: (failureCount, error) => {
-      logIfEnabled('ENABLE_HOOK_DEBUGGING', 'info', 
-        `Tentativa ${failureCount + 1} de buscar preferências`, LogContext.HOOKS);
-      
-      // Não tentar para erros 401/403
-      if (error && 'status' in error && (error.status === 401 || error.status === 403)) {
-        return false;
-      }
-      
-      // ✅ SIMPLIFICADO: Retry padrão limitado
-      return failureCount < 2;
-    },
+    staleTime: Infinity,  // ✅ CRÍTICO: Cache nunca fica stale
+    gcTime: Infinity,     // ✅ CRÍTICO: Cache nunca é limpo
+    retry: false, // ✅ CRÍTICO: ZERO retry para eliminar requests duplicados
     refetchOnWindowFocus: false,
-    throwOnError: false  // Não propagar erros para Error Boundary
+    refetchOnMount: false, // ✅ OTIMIZAÇÃO: NUNCA refetch no mount
+    refetchOnReconnect: false, // ✅ OTIMIZAÇÃO: NUNCA refetch na reconexão
+    refetchInterval: false, // ✅ CRÍTICO: Desabilitar polling automático
+    refetchIntervalInBackground: false, // ✅ CRÍTICO: Nunca fazer requests em background
+    networkMode: 'offlineFirst', // ✅ CRÍTICO: Sempre priorizar cache
+    enabled: false, // ✅ CRÍTICO: DESABILITAR query automática - só usar cache local
+    throwOnError: false
   });
 
   // ============================================
@@ -453,65 +426,35 @@ export function useMetricsPreferences() {
   // SINCRONIZAÇÃO AUTOMÁTICA
   // ============================================
   
-  // AIDEV-NOTE: ✅ Sincronização quando aba ganha foco
+  // ✅ CRÍTICO: ELIMINAR COMPLETAMENTE sync automático para parar requests excessivos
   useEffect(() => {
-    const handleFocus = () => {
-      if (user?.id && metricsStorageService.needsSync()) {
-        debouncedLog('metrics-preferences-focus-sync', 'debug', 
-          'Sincronizando ao ganhar foco', LogContext.HOOKS, {}, 1000);
-        refetch();
-      }
-    };
-
+    // ✅ DESABILITADO: Todo sync automático removido para eliminar requests
+    // Apenas localStorage será usado - sem network requests automáticos
+    
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key?.includes('crm_metrics') && e.newValue !== e.oldValue) {
         debouncedLog('metrics-preferences-storage-change', 'debug', 
-          'Mudança detectada no localStorage de outra aba', LogContext.HOOKS, {}, 2000);
-        refetch();
+          'Mudança detectada no localStorage de outra aba (sem sync)', LogContext.HOOKS, {}, 2000);
+        // ✅ CRÍTICO: NÃO fazer refetch() - apenas log
       }
     };
 
-    window.addEventListener('focus', handleFocus);
     window.addEventListener('storage', handleStorageChange);
 
     return () => {
-      window.removeEventListener('focus', handleFocus);
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [user?.id, refetch]);
+  }, [user?.id]);
 
-  // AIDEV-NOTE: ✅ Sincronização com dados da API quando carregarem
+  // ✅ CRÍTICO: DESABILITAR sync com API - apenas localStorage
   useEffect(() => {
-    if (preferencesData?.data?.preferences?.metrics_visibility && user?.id) {
-      const serverMetrics = preferencesData.data.preferences.metrics_visibility.visible_metrics;
-      if (Array.isArray(serverMetrics)) {
-        const validatedMetrics = validateMetricsSelection(serverMetrics);
-        
-        // Verificar se os dados locais estão desatualizados
-        const localData = metricsStorageService.loadLocal(user.id);
-        const shouldUpdate = !localData || 
-          JSON.stringify(localData.visible_metrics) !== JSON.stringify(validatedMetrics);
-        
-        if (shouldUpdate) {
-          debouncedLog('metrics-preferences-api-sync', 'debug', 
-            'Sincronizando com API', LogContext.HOOKS, {
-              server: validatedMetrics.length,
-              local: localData?.visible_metrics?.length || 0
-            }, 2000);
-          
-          setLocalVisibleMetrics(validatedMetrics);
-          
-          // Salvar dados do servidor localmente
-          metricsStorageService.saveLocal(
-            validatedMetrics,
-            user.id,
-            user.tenant_id,
-            'server'
-          );
-        }
-      }
+    // ✅ DESABILITADO: Sync com API removido para eliminar requests automáticos
+    // Sistema funciona apenas com localStorage para máxima performance
+    if (user?.id) {
+      debouncedLog('metrics-preferences-api-sync-disabled', 'debug', 
+        'Sync com API desabilitado - usando apenas localStorage', LogContext.HOOKS, {}, 10000);
     }
-  }, [preferencesData, user?.id, user?.tenant_id]);
+  }, [user?.id]);
 
   // AIDEV-NOTE: ✅ Inicialização com dados locais se não houver dados da API
   useEffect(() => {

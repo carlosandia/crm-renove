@@ -27,22 +27,12 @@ import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { BaseModalProps } from '../../types/CommonProps';
+// ✅ AIDEV-NOTE: Usando tipo derivado do schema Zod para garantir consistência
+import { CustomField } from '../../types/Pipeline';
 
 // ============================================
 // INTERFACES E TIPOS
 // ============================================
-
-interface CustomField {
-  id: string;
-  field_name: string;
-  field_label: string;
-  field_type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number' | 'date' | 'url' | 'currency';
-  field_options?: string[];
-  is_required: boolean;
-  field_order: number;
-  placeholder?: string;
-  show_in_card?: boolean;
-}
 
 // ✅ NOVA ARQUITETURA: Importar tipos do service
 import { ExistingLead, PipelineMember } from '../../services/leadOpportunityApiService';

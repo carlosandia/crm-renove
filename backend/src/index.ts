@@ -500,6 +500,13 @@ import opportunitiesRoutes from './routes/opportunities';
 import meetingsRoutes from './routes/meetings';
 import annotationsRoutes from './routes/annotations';
 import emailRoutes from './routes/email';
+import membersRoutes from './routes/members';
+// ✅ CORREÇÃO PRIORITY 2: Importar rotas de companies que estavam faltando
+import companiesRoutes from './routes/companies';
+// ✅ CORREÇÃO: Importar rotas de member tools
+import { memberToolsRoutes } from './routes/memberTools';
+// ✅ REMOVIDO: Sistema de email eliminado conforme solicitação do usuário
+// import adminInvitationsRoutes from './routes/adminInvitations';
 import { authenticateToken } from './middleware/auth';
 
 // Rota de teste para debug
@@ -515,6 +522,12 @@ app.get('/api/test-auth', authenticateToken, (req, res) => {
 app.use('/api/pipelines', pipelineRoutes);
 app.use('/api/test', testArchiveRoutes);
 
+// ✅ CORREÇÃO PRIORITY 2: Registrar rotas de companies com middleware de autenticação
+app.use('/api/companies', authenticateToken, companiesRoutes);
+
+// ✅ REMOVIDO: Sistema de email eliminado - sem convites de admin
+// app.use('/api/admin-invitations', authenticateToken, adminInvitationsRoutes);
+
 // Registrar rotas de autenticação
 app.use('/api/auth', authRoutes);
 
@@ -529,6 +542,10 @@ app.use('/api/platform-integrations', platformIntegrationsRoutes);
 
 // Registrar rotas de leads (Import/Export)
 app.use('/api/leads', leadsRoutes);
+// Registrar rotas de members/vendedores
+app.use('/api/members', authenticateToken, membersRoutes);
+// ✅ CORREÇÃO: Registrar rotas de member tools para dashboard member
+app.use('/api/member-tools', memberToolsRoutes);
 // Registrar rotas de oportunidades
 app.use('/api/opportunities', opportunitiesRoutes);
 
@@ -546,7 +563,8 @@ app.use('/api/email', suggestConfigRoutes); // Rotas de sugestão de configuraç
 app.use('/api/simple-email', simpleEmailRoutes);
 // app.use('/api/gmail-oauth', gmailOAuthRoutes);
 
-// Registrar rotas de outcome reasons (USANDO SIMPLE AUTH)
+// ✅ CORREÇÃO: Restaurar rotas outcome reasons para funcionalidade completa
+// ✅ CORREÇÃO CRÍTICA: Reabilitando rotas para resolver erros 404 na interface
 import outcomeReasonsRoutes from './routes/outcome-reasons';
 app.use('/api/outcome-reasons', outcomeReasonsRoutes);
 

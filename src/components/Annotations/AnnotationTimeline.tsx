@@ -376,7 +376,7 @@ export const AnnotationTimeline: React.FC<AnnotationTimelineProps> = ({
           </div>
         ) : (
           <>
-            {annotations.map((annotation, index) => (
+            {annotations.map((annotation: AnnotationWithRelations, index: number) => (
               <div key={annotation.id} className="relative">
                 {/* Timeline line */}
                 {index < annotations.length - 1 && (

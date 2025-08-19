@@ -3,18 +3,8 @@ import { Plus, Edit2, Trash2, Save, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showSuccessToast, showErrorToast, showWarningToast } from '../../hooks/useToast';
 import { BlurFade } from '../ui/blur-fade'; // ✅ Adicionado para animação de expansão inline
-
-interface CustomField {
-  id?: string;
-  pipeline_id: string;
-  field_name: string;
-  field_label: string;
-  field_type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number' | 'date';
-  field_options?: string[];
-  is_required: boolean;
-  field_order: number;
-  placeholder?: string;
-}
+// ✅ AIDEV-NOTE: Usando tipo derivado do schema Zod para garantir consistência
+import { CustomField } from '../../types/Pipeline';
 
 interface CustomFieldsManagerProps {
   pipelineId: string;

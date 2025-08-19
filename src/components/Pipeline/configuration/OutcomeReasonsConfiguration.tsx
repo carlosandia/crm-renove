@@ -1,16 +1,16 @@
 /**
  * ============================================
- * ⚙️ CONFIGURAÇÃO DE MOTIVOS DE GANHO/PERDA
+ * ⚙️ CONFIGURAÇÃO DE MOTIVOS DE GANHO/PERDIDO
  * ============================================
  * 
  * Componente para configurar motivos durante criação/edição de pipeline
  * AIDEV-NOTE: Integrado ao wizard de pipeline como 6ª aba
- * AIDEV-NOTE: Agora conectado diretamente à API para salvamento automático
+ * AIDEV-NOTE: Segue padrão das outras abas - salvamento apenas via botão do rodapé
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useFieldArray, useForm, Controller } from 'react-hook-form';
-import { Plus, Trash2, CheckCircle, XCircle, Lightbulb, AlertCircle, Save, Loader2, Target } from 'lucide-react';
+import { Plus, Trash2, CheckCircle, XCircle, Lightbulb, Target } from 'lucide-react';
 
 // Shared components
 import { SectionHeader } from '../shared/SectionHeader';
@@ -23,7 +23,7 @@ import { Label } from '../../ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { useDefaultReasons } from '../../../modules/outcome-reasons';
-import { useOutcomeReasonsApi } from '../../../hooks/useOutcomeReasonsApi';
+// Hook removido - seguindo padrão das outras abas sem auto-save
 import { toast } from 'sonner';
 import { OutcomeReason } from '../../../modules/outcome-reasons/types';
 
@@ -54,10 +54,12 @@ type FormOutcomeReason = Partial<OutcomeReason> & {
 
 interface FormOutcomeReasonsData {
   ganho_reasons: FormOutcomeReason[];
-  perdido_reasons: FormOutcomeReason[];
+  perdido_reasons: FormOutcomeReason[]; // ✅ REFATORAÇÃO: Atualizado para 'perdido'
   // ✅ COMPATIBILIDADE: Manter campos antigos durante transição
   won_reasons: FormOutcomeReason[];
   lost_reasons: FormOutcomeReason[];
+  // ✅ COMPATIBILIDADE: Manter campo antigo para migração (deprecated)
+  perda_reasons?: FormOutcomeReason[]; // ✅ DEPRECATED: Manter apenas para compatibilidade
 }
 
 interface OutcomeReasonsConfigurationProps {
@@ -71,17 +73,7 @@ interface OutcomeReasonsConfigurationProps {
 // UTILITY FUNCTIONS
 // ============================================
 
-// ✅ CORREÇÃO: Converter dados da API para formato do formulário
-const convertApiDataToFormData = (apiData: any): FormOutcomeReasonsData | undefined => {
-  if (!apiData) return undefined;
-  
-  return {
-    ganho_reasons: apiData.ganho_reasons || [],
-    perdido_reasons: apiData.perdido_reasons || [],
-    won_reasons: apiData.won_reasons || [],
-    lost_reasons: apiData.lost_reasons || []
-  };
-};
+// Funções utilitárias removidas - dados vêm diretamente via props
 
 // ============================================
 // COMPONENTE PRINCIPAL
@@ -99,27 +91,7 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
   
   const { data: defaultReasons, isLoading: isLoadingDefaults } = useDefaultReasons();
   
-  // ✅ NOVO: Hook para integração com API
-  const {
-    data: apiData,
-    isLoading: isLoadingReasons,
-    isMutating,
-    createReason,
-    updateReason,
-    deleteReason,
-    reorderReasons,
-    bulkSave
-  } = useOutcomeReasonsApi({ 
-    pipelineId, 
-    enabled: !!pipelineId && pipelineId !== 'temp-pipeline' && isEditMode
-  });
-
-  // Estado local para controle de edições
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [lastSaveTime, setLastSaveTime] = useState<Date | null>(null);
-  const [isDataLoaded, setIsDataLoaded] = useState(false);
-  
-  // ✅ CORREÇÃO: Usar padrão values para sincronização automática
+  // ✅ CORREÇÃO: Seguindo padrão das outras abas - sem auto-save, apenas notificação via onChange
   const defaultFormData = React.useMemo(() => {
     return value || { 
       ganho_reasons: [], 
@@ -129,20 +101,11 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
     };
   }, [value]);
 
-  // ✅ Dados para sincronização (apenas em modo edição)
-  const formValues = React.useMemo(() => {
-    if (isEditMode && apiData && !isLoadingReasons) {
-      return convertApiDataToFormData(apiData);
-    }
-    return undefined;
-  }, [isEditMode, apiData, isLoadingReasons]);
-
   const { control, watch, setValue, getValues, reset } = useForm<FormOutcomeReasonsData>({
-    defaultValues: defaultFormData,
-    values: formValues // ✅ Sincronização automática sem useEffect
+    defaultValues: defaultFormData
   });
 
-  // Field arrays para motivos de ganho e perda
+  // Field arrays para motivos de ganho e perdido
   const { 
     fields: ganhoFields, 
     append: appendGanho, 
@@ -184,53 +147,13 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
     name: 'lost_reasons'
   });
 
-  // ✅ NOVO: Salvamento automático direto na API
-  const saveChanges = React.useCallback(async () => {
-    if (!pipelineId || !hasUnsavedChanges) return;
-    
-    try {
-      const currentValues = getValues();
-      await bulkSave(currentValues);
-      
-      setHasUnsavedChanges(false);
-      setLastSaveTime(new Date());
-      
-      // Notificar componente pai se houver callback
-      if (onChange) {
-        onChange(currentValues);
-      }
-    } catch (error) {
-      console.error('Erro ao salvar motivos:', error);
-      toast.error('Erro ao salvar motivos');
-    }
-  }, [pipelineId, hasUnsavedChanges, getValues, bulkSave, onChange]);
-
-  // 🔧 PADRÃO CRM: Salvamento automático com debounce
-  const debouncedSave = React.useCallback(
-    React.useMemo(() => {
-      let timeoutId: NodeJS.Timeout;
-      return () => {
-        if (!isEditMode) return; // Só salvar em modo edição
-        
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => {
-          saveChanges();
-        }, 1000); // Debounce de 1 segundo
-      };
-    }, [saveChanges, isEditMode]),
-    [saveChanges, isEditMode]
-  );
-
-  // 🔧 PADRÃO CRM: Salvamento imediato no onBlur
-  const handleBlurSave = React.useCallback(() => {
-    if (isEditMode) {
-      saveChanges();
-    } else if (onChange) {
-      // Modo criação - apenas notificar pai
+  // ✅ CORREÇÃO: Apenas notifica o componente pai das mudanças (padrão das outras abas)
+  const handleChange = React.useCallback(() => {
+    if (onChange) {
       const currentValues = getValues();
       onChange(currentValues);
     }
-  }, [isEditMode, saveChanges, onChange, getValues]);
+  }, [onChange, getValues]);
 
   // ============================================
   // HANDLERS PARA REORDENAÇÃO
@@ -246,11 +169,7 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
     }
     
     updateDisplayOrder();
-    setHasUnsavedChanges(true);
-    
-    if (isEditMode) {
-      debouncedSave();
-    }
+    handleChange();
   };
 
   const moveReasonDown = (type: 'ganho' | 'perdido', index: number) => {
@@ -264,11 +183,7 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
     }
     
     updateDisplayOrder();
-    setHasUnsavedChanges(true);
-    
-    if (isEditMode) {
-      debouncedSave();
-    }
+    handleChange();
   };
 
   const updateDisplayOrder = () => {
@@ -280,7 +195,7 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
       display_order: index
     }));
 
-    // Atualizar ordem dos motivos de perda
+    // Atualizar ordem dos motivos de perdido
     const updatedPerdidoReasons = currentData.perdido_reasons.map((reason, index) => ({
       ...reason,
       display_order: index
@@ -294,8 +209,8 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
   // HANDLERS PARA CRUD
   // ============================================
 
-  // ✅ CORREÇÃO CRÍTICA: Criar funções específicas fora do useCallback para evitar hooks condicionais
-  const addGanhoReason = React.useCallback(async () => {
+  // ✅ CORREÇÃO: Funções simplificadas sem auto-save
+  const addGanhoReason = React.useCallback(() => {
     const newReason: FormOutcomeReason = {
       reason_text: '',
       display_order: ganhoFields.length,
@@ -303,14 +218,10 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
     };
 
     appendGanho(newReason);
-    setHasUnsavedChanges(true);
-    
-    if (isEditMode) {
-      debouncedSave();
-    }
-  }, [ganhoFields.length, appendGanho, isEditMode, debouncedSave]);
+    handleChange();
+  }, [ganhoFields.length, appendGanho, handleChange]);
 
-  const addPerdidoReason = React.useCallback(async () => {
+  const addPerdidoReason = React.useCallback(() => {
     const newReason: FormOutcomeReason = {
       reason_text: '',
       display_order: perdidoFields.length,
@@ -318,14 +229,10 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
     };
 
     appendPerdido(newReason);
-    setHasUnsavedChanges(true);
-    
-    if (isEditMode) {
-      debouncedSave();
-    }
-  }, [perdidoFields.length, appendPerdido, isEditMode, debouncedSave]);
+    handleChange();
+  }, [perdidoFields.length, appendPerdido, handleChange]);
 
-  const addDefaultReasons = React.useCallback(async () => {
+  const addDefaultReasons = React.useCallback(() => {
     if (!defaultReasons) return;
 
     // Adicionar motivos padrão de ganho
@@ -338,7 +245,7 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
       appendGanho(newReason);
     });
 
-    // Adicionar motivos padrão de perda
+    // Adicionar motivos padrão de perdido
     defaultReasons.perdido.forEach((reasonText, index) => {
       const newReason: FormOutcomeReason = {
         reason_text: reasonText,
@@ -348,21 +255,14 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
       appendPerdido(newReason);
     });
     
-    setHasUnsavedChanges(true);
-    
-    // Auto-save em modo edição
-    if (isEditMode) {
-      // Salvar imediatamente motivos padrão
-      setTimeout(() => saveChanges(), 100);
-    }
-  }, [defaultReasons, ganhoFields.length, perdidoFields.length, appendGanho, appendPerdido, isEditMode, saveChanges]);
+    handleChange();
+  }, [defaultReasons, ganhoFields.length, perdidoFields.length, appendGanho, appendPerdido, handleChange]);
 
   // ============================================
   // REASON ITEM COMPONENT
   // ============================================
 
-  // 🔧 CORREÇÃO SIMPLIFICADA: ReasonItem sem drag and drop
-  // AIDEV-NOTE: Implementa onBlur pattern para salvamento seguindo melhores práticas
+  // 🔧 CORREÇÃO SIMPLIFICADA: ReasonItem sem auto-save
   const ReasonItem: React.FC<{
     field: any;
     index: number;
@@ -370,7 +270,8 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
     removeFunction: (index: number) => void;
     canMoveUp: boolean;
     canMoveDown: boolean;
-  }> = React.memo(({ field, index, type, removeFunction, canMoveUp, canMoveDown }) => {
+    onChange: () => void;
+  }> = React.memo(({ field, index, type, removeFunction, canMoveUp, canMoveDown, onChange }) => {
     const fieldName = `${type === 'ganho' || type === 'won' ? 'ganho' : 'perdido'}_reasons.${index}.reason_text` as const;
 
     return (
@@ -418,16 +319,9 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
                   autoComplete="off"
                   onChange={(e) => {
                     controllerField.onChange(e);
-                    setHasUnsavedChanges(true);
-                    
-                    if (isEditMode) {
-                      debouncedSave();
-                    }
+                    onChange();
                   }}
-                  onBlur={(e) => {
-                    controllerField.onBlur();
-                    handleBlurSave();
-                  }}
+                  onBlur={controllerField.onBlur}
                 />
                 {error && (
                   <span className="text-xs text-red-500 mt-1">
@@ -443,15 +337,9 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
           type="button"
           variant="ghost"
           size="sm"
-          onClick={async () => {
+          onClick={() => {
             removeFunction(index);
-            setHasUnsavedChanges(true);
-            
-            if (isEditMode) {
-              setTimeout(() => saveChanges(), 50);
-            } else {
-              setTimeout(handleBlurSave, 50);
-            }
+            onChange();
           }}
           className="flex-shrink-0 text-red-500 hover:text-red-700 hover:bg-red-50"
         >
@@ -482,6 +370,7 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
       removeFunction={removeFunction}
       canMoveUp={index > 0}
       canMoveDown={index < fields.length - 1}
+      onChange={handleChange}
     />
   );
 
@@ -546,26 +435,23 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
   // EFFECTS
   // ============================================
   
-  // ✅ CORREÇÃO: Reset único quando dados chegam pela primeira vez
+  // ✅ CORREÇÃO: Resetar form quando dados mudarem
   useEffect(() => {
-    if (isEditMode && apiData && !isLoadingReasons && !isDataLoaded) {
-      setHasUnsavedChanges(false);
-      setIsDataLoaded(true);
+    if (value) {
+      reset(value);
     }
-  }, [isEditMode, apiData, isLoadingReasons, isDataLoaded]);
+  }, [value, reset]);
 
   // ============================================
   // RENDER PRINCIPAL
   // ============================================
 
-  if (isLoadingDefaults || (isEditMode && isLoadingReasons)) {
+  if (isLoadingDefaults) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3"></div>
-          <p className="text-sm text-gray-600">
-            {isLoadingDefaults ? 'Carregando configurações...' : 'Carregando motivos...'}
-          </p>
+          <p className="text-sm text-gray-600">Carregando configurações...</p>
         </div>
       </div>
     );
@@ -576,28 +462,6 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
       <SectionHeader
         icon={Target}
         title="Configuração de Motivos"
-        action={
-          isEditMode && (
-            <div className="flex items-center space-x-2">
-              {isMutating ? (
-                <div className="flex items-center space-x-1 text-blue-600">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-xs">Salvando...</span>
-                </div>
-              ) : hasUnsavedChanges ? (
-                <div className="flex items-center space-x-1 text-amber-600">
-                  <AlertCircle className="w-4 h-4" />
-                  <span className="text-xs">Mudanças não salvas</span>
-                </div>
-              ) : lastSaveTime ? (
-                <div className="flex items-center space-x-1 text-green-600">
-                  <CheckCircle className="w-4 h-4" />
-                  <span className="text-xs">Salvo automaticamente</span>
-                </div>
-              ) : null}
-            </div>
-          )
-        }
       />
 
       {/* BOTÃO MOTIVOS PADRÃO */}
@@ -636,9 +500,9 @@ const OutcomeReasonsConfiguration: React.FC<OutcomeReasonsConfigurationProps> = 
           removeGanho
         )}
 
-        {/* MOTIVOS DE PERDA */}
+        {/* MOTIVOS DE PERDIDO */}
         {renderSection(
-          'Motivos de Perda',
+          'Motivos de Perdido',
           'Configure os motivos quando um lead é perdido',
           <XCircle className="w-5 h-5 text-red-600" />,
           'perdido',

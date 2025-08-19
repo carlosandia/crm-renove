@@ -472,8 +472,7 @@ const ReportsModule: React.FC = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredCompanies.map((company, index) => (
-                <BlurFade key={company.company_id} delay={index * 0.05}>
-                  <tr className="hover:bg-gray-50 transition-colors duration-200">
+                <BlurFade key={company.company_id} delay={index * 0.05} as="tr" className="hover:bg-gray-50 transition-colors duration-200">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="flex-shrink-0 w-10 h-10">
@@ -557,7 +556,6 @@ const ReportsModule: React.FC = () => {
                         Detalhes
                       </ShimmerButton>
                     </td>
-                  </tr>
                 </BlurFade>
               ))}
             </tbody>

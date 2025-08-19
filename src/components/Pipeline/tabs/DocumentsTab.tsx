@@ -272,8 +272,24 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({ lead, pipelineId }) => {
 
   const logger = useUploadLogger('DocumentsTab');
 
-  // ✅ CORREÇÃO FASE 3: Usar token diretamente do AuthProvider, sem estado adicional
-  const currentToken = user?.token || '';
+  // ✅ BÁSICO: Obter token via Basic Supabase Authentication
+  const [currentToken, setCurrentToken] = useState<string>('');
+  
+  useEffect(() => {
+    const getAuthToken = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setCurrentToken(session?.access_token || '');
+      } catch (error) {
+        console.error('Erro ao obter token de autenticação:', error);
+        setCurrentToken('');
+      }
+    };
+    
+    if (user) {
+      getAuthToken();
+    }
+  }, [user]);
 
   // ✅ CONFIGURAÇÃO DE UPLOAD otimizada e segura - token direto do AuthProvider
   const uploadDestination = useMemo(() => {

@@ -1,6 +1,16 @@
 // AIDEV-NOTE: Sistema de Logger Centralizado Frontend seguindo Winston Best Practices
 // Implementa níveis inteligentes, throttling eficiente e structured logging otimizado
 
+import { 
+  LOGGING_CONFIG, 
+  shouldLog, 
+  shouldLogPerformance, 
+  shouldLogComponentDebug,
+  getThrottleThreshold,
+  COMPONENT_LOGGING_CONFIG,
+  type LogLevel as ConfigLogLevel
+} from '../config/logging';
+
 // ✅ WINSTON-STYLE LEVELS (RFC5424 ascending severity order)
 type LogLevel = 'error' | 'warn' | 'info' | 'http' | 'debug' | 'silly' | 'none';
 
@@ -67,24 +77,35 @@ class StructuredLogger {
   private flushInterval: NodeJS.Timeout | null = null;
 
   constructor() {
-    this.isDev = import.meta.env.DEV;
-    this.environment = import.meta.env.VITE_ENVIRONMENT || 'development';
+    this.isDev = LOGGING_CONFIG.IS_DEVELOPMENT;
+    this.environment = LOGGING_CONFIG.IS_PRODUCTION ? 'production' : 'development';
     
-    // ✅ CORREÇÃO: Usar variável temporária para evitar referência circular
-    const logLevel = (import.meta.env.VITE_LOG_LEVEL as LogLevel) || this.getDefaultLogLevel();
+    // ✅ Mapear ConfigLogLevel para LogLevel interno
+    const mapLogLevel = (configLevel: ConfigLogLevel): LogLevel => {
+      switch (configLevel) {
+        case 'debug': return 'debug';
+        case 'info': return 'info';
+        case 'warn': return 'warn';
+        case 'error': return 'error';
+        case 'none': return 'none';
+        default: return this.getDefaultLogLevel();
+      }
+    };
+    
+    const logLevel = mapLogLevel(LOGGING_CONFIG.LOG_LEVEL);
     
     this.config = {
       level: logLevel,
       enableColors: this.isDev,
       enableTimestamp: this.isDev,
-      enableDataMasking: this.environment === 'production',
+      enableDataMasking: LOGGING_CONFIG.IS_PRODUCTION,
       enableCorrelationId: true,
       environment: this.environment as 'development' | 'production' | 'test',
-      throttleInterval: this.environment === 'production' ? 10000 : 5000,
+      throttleInterval: getThrottleThreshold(),
       enableStructuredLogging: true,
-      performanceTracking: this.isDev,
-      includeStack: this.isDev && logLevel === 'debug', // ✅ Usar variável local
-      clientFactoryLogging: this.isDev
+      performanceTracking: shouldLogPerformance(),
+      includeStack: shouldLogComponentDebug() && logLevel === 'debug',
+      clientFactoryLogging: shouldLogComponentDebug()
     };
 
     // ✅ WINSTON-STYLE: Configurar flush automático otimizado
@@ -137,20 +158,28 @@ class StructuredLogger {
       'KanbanColumn::render',
       'PipelineKanbanView::drag-drop',
       'LeadCardPresentation::task-count',
-      'ModernPipelineCreatorRefactored::validation'
+      'ModernPipelineCreatorRefactored::validation',
+      // ✅ NOVOS: Componentes com 75+ logs identificados  
+      'ModernPipelineCreatorRefactored::form-dirty',
+      'ModernPipelineCreatorRefactored::initialization',
+      'ModernPipelineCreatorRefactored::data-loading',
+      'ModernPipelineCreatorRefactored::effect-running',
+      'ModernPipelineCreatorRefactored::state-update'
     ];
     
-    // ✅ THROTTLING ESCALADO: Progressivo por frequência
+    // ✅ THROTTLING ESCALADO: Ultra-agressivo para ModernPipelineCreatorRefactored
     let adjustedThrottleMs = throttleMs;
     
-    if (spamComponents.includes(key)) {
+    if (key.startsWith('ModernPipelineCreatorRefactored::')) {
+      adjustedThrottleMs = Math.max(throttleMs, 20000); // 20s para resolver spam crítico
+    } else if (spamComponents.includes(key)) {
       adjustedThrottleMs = Math.max(throttleMs, 8000); // 8s para componentes problemáticos
     }
     
     // ✅ DETECÇÃO DE SPAM: Se logou muito recentemente, aumentar throttle
     const timeSinceLastLog = now - lastLog;
     if (timeSinceLastLog < 500) { // Menos de 500ms
-      adjustedThrottleMs = Math.max(adjustedThrottleMs, 15000); // 15s de throttle
+      adjustedThrottleMs = Math.max(adjustedThrottleMs, 25000); // 25s de throttle
     }
     
     if (timeSinceLastLog < adjustedThrottleMs) {
@@ -704,7 +733,7 @@ export const loggers = {
     saveOperation: (pipelineId: string, changes: { created: number; updated: number; removed: number }, duration: number, retries: number = 0) => {
       logger.consolidated({
         level: 'info',
-        message: 'Motivos de ganho/perda salvos',
+        message: 'Motivos de ganho/perdido salvos',
         operation: 'saveOutcomeReasons',
         context: {
           domain: 'motives',
@@ -877,6 +906,158 @@ export const loggers = {
           ...context
         });
       }
+    }
+  },
+
+  // ✅ DISTRIBUTION: Logger específico para gerenciamento de distribuição
+  distribution: {
+    info: (message: string, context?: any) => {
+      logger.info(`[Distribution] ${message}`, context);
+    },
+    warn: (message: string, context?: any) => {
+      logger.warn(`[Distribution] ${message}`, context);
+    },
+    error: (message: string, context?: any) => {
+      logger.error(`[Distribution] ${message}`, context);
+    },
+    debug: (message: string, context?: any) => {
+      logger.debug(`[Distribution] ${message}`, context);
+    }
+  },
+
+  // ✅ PIPELINE FORM: Logger específico para formulários de pipeline
+  pipelineForm: {
+    info: (message: string, context?: any) => {
+      logger.info(`[PipelineForm] ${message}`, context);
+    },
+    warn: (message: string, context?: any) => {
+      logger.warn(`[PipelineForm] ${message}`, context);
+    },
+    error: (message: string, context?: any) => {
+      logger.error(`[PipelineForm] ${message}`, context);
+    },
+    debug: (message: string, context?: any) => {
+      logger.debug(`[PipelineForm] ${message}`, context);
+    }
+  },
+
+  // ✅ OTIMIZADO: Logger ModernPipelineCreatorRefactored usando configurações de ambiente
+  modernPipelineCreator: {
+    // ✅ REACT BEST PRACTICE: Logging condicional com useRef tracking
+    formDirty: (message: string, context?: any) => {
+      if (!COMPONENT_LOGGING_CONFIG.PIPELINE_CREATOR.enabled) return;
+      
+      // ✅ THROTTLING INTELIGENTE: Usa configuração de ambiente
+      if (!logger.shouldThrottle('ModernPipelineCreatorRefactored', 'form-dirty', COMPONENT_LOGGING_CONFIG.PIPELINE_CREATOR.throttleMs * 3)) {
+        logger.debug(`📝 [Form] ${message}`, { domain: 'pipeline-form', ...context });
+      }
+    },
+    
+    initialization: (message: string, context?: any) => {
+      if (!COMPONENT_LOGGING_CONFIG.PIPELINE_CREATOR.enabled) return;
+      
+      // ✅ REACT BEST PRACTICE: Apenas mudanças significativas de inicialização
+      if (!logger.shouldThrottle('ModernPipelineCreatorRefactored', 'initialization', COMPONENT_LOGGING_CONFIG.PIPELINE_CREATOR.throttleMs * 4.5)) {
+        logger.info(`🔄 [Init] ${message}`, { domain: 'pipeline-init', ...context });
+      }
+    },
+    
+    dataLoading: (message: string, context?: any) => {
+      if (!COMPONENT_LOGGING_CONFIG.PIPELINE_CREATOR.enabled) return;
+      
+      // ✅ PERFORMANCE MEASUREMENT: Só loggar se demorar mais que threshold
+      const duration = context?.performance?.duration;
+      if (!duration || duration > 1000) { // Só se > 1s ou sem duração
+        if (!logger.shouldThrottle('ModernPipelineCreatorRefactored', 'data-loading', COMPONENT_LOGGING_CONFIG.PIPELINE_CREATOR.throttleMs * 2)) {
+          logger.debug(`📊 [Data] ${message}`, { domain: 'pipeline-data', ...context });
+        }
+      }
+    },
+    
+    effectRunning: (message: string, context?: any) => {
+      // ✅ REACT RULES: useEffect logs apenas para debugging específico
+      if (!shouldLogComponentDebug()) return;
+      
+      if (!logger.shouldThrottle('ModernPipelineCreatorRefactored', 'effect-running', COMPONENT_LOGGING_CONFIG.PIPELINE_CREATOR.throttleMs * 6)) {
+        logger.silly(`⚙️ [Effect] ${message}`, { domain: 'pipeline-effect', ...context });
+      }
+    },
+    
+    stateUpdate: (message: string, context?: any) => {
+      if (!COMPONENT_LOGGING_CONFIG.PIPELINE_CREATOR.enabled) return;
+      
+      // ✅ REACT STATE: Apenas mudanças de estado significativas
+      if (context?.hasRealChange !== false) { // Só loggar se há mudança real
+        if (!logger.shouldThrottle('ModernPipelineCreatorRefactored', 'state-update', COMPONENT_LOGGING_CONFIG.PIPELINE_CREATOR.throttleMs * 4)) {
+          logger.silly(`🔄 [State] ${message}`, { domain: 'pipeline-state', ...context });
+        }
+      }
+    },
+
+    // ✅ REACT BEST PRACTICE: useCallback/useMemo dependency debugging
+    dependencyChange: (hookType: 'useCallback' | 'useMemo' | 'useEffect', dependencies: any[], message?: string) => {
+      if (!shouldLogComponentDebug()) return;
+      
+      logger.debug(`🔍 [${hookType}] Dependencies: ${message || 'changed'}`, { 
+        domain: 'pipeline-deps', 
+        dependencies,
+        hookType 
+      });
+    },
+
+    // ✅ PERFORMANCE TRACKING: console.time/timeEnd pattern
+    performanceMeasurement: (operation: string, duration: number, threshold: number = 100) => {
+      if (!COMPONENT_LOGGING_CONFIG.PIPELINE_CREATOR.trackPerformance) return;
+      
+      if (duration > threshold) {
+        logger.warn(`⏱️ [Performance] ${operation} took ${duration}ms (threshold: ${threshold}ms)`, {
+          domain: 'pipeline-perf',
+          operation,
+          duration,
+          threshold,
+          isSlowOperation: true
+        });
+      }
+    },
+
+    // ✅ MÉTODO INTELIGENTE: Auto-detecção de padrões de log problemáticos
+    smartLog: (message: string, context?: any) => {
+      if (!COMPONENT_LOGGING_CONFIG.PIPELINE_CREATOR.enabled) return;
+      
+      const msg = String(message).toLowerCase();
+      
+      // ✅ PATTERN DETECTION: Detectar tipos de log automaticamente
+      if (msg.includes('aba ativa mudou') || msg.includes('tab changed')) {
+        if (!COMPONENT_LOGGING_CONFIG.PIPELINE_CREATOR.trackTabChanges) return;
+        
+        // Só loggar se realmente mudou (verificar context)
+        if (context?.previousTab !== context?.currentTab) {
+          if (!logger.shouldThrottle('ModernPipelineCreatorRefactored', 'tab-change', COMPONENT_LOGGING_CONFIG.PIPELINE_CREATOR.throttleMs)) {
+            logger.debug(`📑 [Tab] ${message}`, { domain: 'pipeline-tabs', ...context });
+          }
+        }
+      } else if (msg.includes('erro') || msg.includes('error') || msg.includes('falha')) {
+        // Sempre loggar erros
+        logger.error(`🚨 [Error] ${message}`, { domain: 'pipeline-error', ...context });
+      } else if (msg.includes('carregando') || msg.includes('loading')) {
+        // Performance-aware loading logs
+        loggers.modernPipelineCreator.dataLoading(message, context);
+      } else if (msg.includes('effect') || msg.includes('useeffect')) {
+        // Effect logs controlados
+        loggers.modernPipelineCreator.effectRunning(message, context);
+      } else {
+        // ✅ FALLBACK INTELIGENTE: Throttling baseado em conteúdo
+        const throttleTime = msg.includes('render') || msg.includes('update') ? 45000 : 20000;
+        if (!logger.shouldThrottle('ModernPipelineCreatorRefactored', 'general', throttleTime)) {
+          logger.debug(`📋 [General] ${message}`, { domain: 'pipeline-general', ...context });
+        }
+      }
+    },
+
+    // ✅ COMPATIBILIDADE: Método que substitui console.log direto
+    log: (message: string, ...args: any[]) => {
+      // Usar smartLog para processamento inteligente
+      loggers.modernPipelineCreator.smartLog(message, args.length > 0 ? { args } : undefined);
     }
   }
 };

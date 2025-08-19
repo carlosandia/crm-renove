@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../providers/AuthProvider';
+import { supabase } from '../lib/supabase';
 
 const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.VITE_ENVIRONMENT === 'production' ? 'https://crm.renovedigital.com.br/api' : 'http://127.0.0.1:3001/api');
 
@@ -195,21 +196,39 @@ export function useMemberTools(): UseMemberToolsResult {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Helper function to get auth headers
-  const getAuthHeaders = useCallback(() => {
-    const token = localStorage.getItem('token');
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': token ? `Bearer ${token}` : '',
-    };
+  // Helper function to get auth headers with Supabase token
+  const getAuthHeaders = useCallback(async () => {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (error || !session?.access_token) {
+        console.warn('❌ [MEMBER-TOOLS] Sem token de acesso válido:', error?.message);
+        return {
+          'Content-Type': 'application/json',
+          'Authorization': '',
+        };
+      }
+      
+      return {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      };
+    } catch (error) {
+      console.error('❌ [MEMBER-TOOLS] Erro ao obter headers de auth:', error);
+      return {
+        'Content-Type': 'application/json',
+        'Authorization': '',
+      };
+    }
   }, []);
 
   // Fetch tasks
   const fetchTasks = useCallback(async () => {
     try {
       const apiBase = await getApiBase();
-      const response = await fetch(`${apiBase}/api/member-tools/tasks`, {
-        headers: getAuthHeaders(),
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/tasks`, {
+        headers,
       });
 
       if (!response.ok) {
@@ -232,8 +251,10 @@ export function useMemberTools(): UseMemberToolsResult {
   // Fetch task summary
   const fetchTaskSummary = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/tasks/summary`, {
-        headers: getAuthHeaders(),
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/tasks/summary`, {
+        headers,
       });
 
       if (!response.ok) {
@@ -256,8 +277,10 @@ export function useMemberTools(): UseMemberToolsResult {
   // Fetch calendar integrations
   const fetchCalendarIntegrations = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/calendar/integrations`, {
-        headers: getAuthHeaders(),
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/calendar/integrations`, {
+        headers,
       });
 
       if (!response.ok) {
@@ -280,8 +303,10 @@ export function useMemberTools(): UseMemberToolsResult {
   // Fetch email templates
   const fetchEmailTemplates = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/email/templates`, {
-        headers: getAuthHeaders(),
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/email/templates`, {
+        headers,
       });
 
       if (!response.ok) {
@@ -304,8 +329,10 @@ export function useMemberTools(): UseMemberToolsResult {
   // Fetch WhatsApp integrations
   const fetchWhatsAppIntegrations = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/whatsapp/integrations`, {
-        headers: getAuthHeaders(),
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/whatsapp/integrations`, {
+        headers,
       });
 
       if (!response.ok) {
@@ -328,8 +355,10 @@ export function useMemberTools(): UseMemberToolsResult {
   // Fetch member performance
   const fetchMemberPerformance = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/performance`, {
-        headers: getAuthHeaders(),
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/performance`, {
+        headers,
       });
 
       if (!response.ok) {
@@ -352,8 +381,10 @@ export function useMemberTools(): UseMemberToolsResult {
   // Fetch dashboard config
   const fetchDashboardConfig = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/dashboard/config`, {
-        headers: getAuthHeaders(),
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/dashboard/config`, {
+        headers,
       });
 
       if (!response.ok) {
@@ -407,9 +438,11 @@ export function useMemberTools(): UseMemberToolsResult {
   // Create task
   const createTask = useCallback(async (task: Omit<MemberTask, 'id' | 'created_at' | 'updated_at'>): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/tasks`, {
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/tasks`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers,
         body: JSON.stringify(task),
       });
 
@@ -436,9 +469,11 @@ export function useMemberTools(): UseMemberToolsResult {
   // Update task
   const updateTask = useCallback(async (taskId: string, updates: Partial<MemberTask>): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/tasks/${taskId}`, {
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/tasks/${taskId}`, {
         method: 'PUT',
-        headers: getAuthHeaders(),
+        headers,
         body: JSON.stringify(updates),
       });
 
@@ -465,9 +500,11 @@ export function useMemberTools(): UseMemberToolsResult {
   // Complete task
   const completeTask = useCallback(async (taskId: string, completionNotes?: string): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/tasks/${taskId}/complete`, {
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/tasks/${taskId}/complete`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers,
         body: JSON.stringify({ completion_notes: completionNotes }),
       });
 
@@ -494,9 +531,11 @@ export function useMemberTools(): UseMemberToolsResult {
   // Create calendar integration
   const createCalendarIntegration = useCallback(async (integration: Omit<CalendarIntegration, 'id' | 'created_at' | 'updated_at'>): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/calendar/integrations`, {
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/calendar/integrations`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers,
         body: JSON.stringify(integration),
       });
 
@@ -522,9 +561,11 @@ export function useMemberTools(): UseMemberToolsResult {
   // Sync calendar event
   const syncCalendarEvent = useCallback(async (integrationId: string, eventData: any): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/calendar/integrations/${integrationId}/sync-event`, {
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/calendar/integrations/${integrationId}/sync-event`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers,
         body: JSON.stringify(eventData),
       });
 
@@ -549,9 +590,11 @@ export function useMemberTools(): UseMemberToolsResult {
   // Create email template
   const createEmailTemplate = useCallback(async (template: Omit<EmailTemplate, 'id' | 'created_at' | 'updated_at' | 'usage_count'>): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/email/templates`, {
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/email/templates`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers,
         body: JSON.stringify(template),
       });
 
@@ -577,9 +620,11 @@ export function useMemberTools(): UseMemberToolsResult {
   // Update email template
   const updateEmailTemplate = useCallback(async (templateId: string, updates: Partial<EmailTemplate>): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/email/templates/${templateId}`, {
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/email/templates/${templateId}`, {
         method: 'PUT',
-        headers: getAuthHeaders(),
+        headers,
         body: JSON.stringify(updates),
       });
 
@@ -605,9 +650,11 @@ export function useMemberTools(): UseMemberToolsResult {
   // Send email
   const sendEmail = useCallback(async (templateId: string, recipientEmail: string, variables: Record<string, string>): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/email/send`, {
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/email/send`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers,
         body: JSON.stringify({
           template_id: templateId,
           recipient_email: recipientEmail,
@@ -636,9 +683,11 @@ export function useMemberTools(): UseMemberToolsResult {
   // Create WhatsApp integration
   const createWhatsAppIntegration = useCallback(async (integration: Omit<WhatsAppIntegration, 'id' | 'created_at' | 'updated_at'>): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/whatsapp/integrations`, {
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/whatsapp/integrations`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers,
         body: JSON.stringify(integration),
       });
 
@@ -664,9 +713,11 @@ export function useMemberTools(): UseMemberToolsResult {
   // Calculate performance
   const calculatePerformance = useCallback(async (periodStart: string, periodEnd: string, periodType: string): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/performance/${user?.id}/calculate`, {
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/performance/${user?.id}/calculate`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers,
         body: JSON.stringify({
           period_start: periodStart,
           period_end: periodEnd,
@@ -696,9 +747,11 @@ export function useMemberTools(): UseMemberToolsResult {
   // Update dashboard config
   const updateDashboardConfig = useCallback(async (config: Partial<MemberDashboardConfig>): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/dashboard/config`, {
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/dashboard/config`, {
         method: 'PUT',
-        headers: getAuthHeaders(),
+        headers,
         body: JSON.stringify(config),
       });
 
@@ -724,9 +777,11 @@ export function useMemberTools(): UseMemberToolsResult {
   // Record activity
   const recordActivity = useCallback(async (activityData: any): Promise<boolean> => {
     try {
-      const response = await fetch(`${API_BASE}/api/member-tools/activity/record`, {
+      const apiBase = await getApiBase();
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${apiBase}/member-tools/activity/record`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers,
         body: JSON.stringify(activityData),
       });
 

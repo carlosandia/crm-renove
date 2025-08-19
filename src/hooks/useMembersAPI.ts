@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useAuth } from '../providers/AuthProvider';
-import { showSuccessToast, showErrorToast } from '../lib/toast';
+import { showErrorToast } from '../lib/toast';
 import { logger } from '../lib/logger';
 import { supabase } from '../lib/supabase';
 
@@ -20,6 +20,7 @@ interface Member {
   is_active: boolean;
   created_at: string;
   auth_user_id: string | null;
+  last_login?: string | null;
   role: 'member';
   tenant_id: string;
 }
@@ -67,10 +68,16 @@ export const useMembersAPI = () => {
         hasCustomPassword: !!memberData.password
       });
 
-      // ✅ Fazer requisição autenticada usando Supabase tokens
+      // ✅ BÁSICO: Verificar autenticação (Basic Supabase Authentication)
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+      if (!currentUser || userError) {
+        throw new Error('Usuário não autenticado');
+      }
+      
+      // ✅ BÁSICO: Obter session para token
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
-        throw new Error('Usuário não autenticado');
+        throw new Error('Token de autenticação não disponível');
       }
 
       const response = await fetch(`${import.meta.env.VITE_API_URL}/members`, {
@@ -95,11 +102,7 @@ export const useMembersAPI = () => {
 
       console.log('✅ [ENTERPRISE-MEMBER] Member criado com sucesso:', result.data.member.email);
 
-      // Mostrar mensagem de sucesso
-      showSuccessToast(
-        'Member criado com sucesso!',
-        `${result.data.member.first_name} ${result.data.member.last_name} foi adicionado à equipe. Senha: ${result.data.credentials.password}`
-      );
+      // ✅ CORREÇÃO: Hook não deve disparar toast - deixar para o componente pai controlar
 
       return { 
         success: true, 
@@ -133,10 +136,16 @@ export const useMembersAPI = () => {
     setIsLoading(true);
 
     try {
-      // ✅ Fazer requisição autenticada usando Supabase tokens
+      // ✅ BÁSICO: Verificar autenticação (Basic Supabase Authentication)
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+      if (!currentUser || userError) {
+        throw new Error('Usuário não autenticado');
+      }
+      
+      // ✅ BÁSICO: Obter session para token
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
-        throw new Error('Usuário não autenticado');
+        throw new Error('Token de autenticação não disponível');
       }
 
       const response = await fetch(`${import.meta.env.VITE_API_URL}/members`, {
@@ -187,10 +196,16 @@ export const useMembersAPI = () => {
     setIsLoading(true);
 
     try {
-      // ✅ Fazer requisição autenticada usando Supabase tokens
+      // ✅ BÁSICO: Verificar autenticação (Basic Supabase Authentication)
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+      if (!currentUser || userError) {
+        throw new Error('Usuário não autenticado');
+      }
+      
+      // ✅ BÁSICO: Obter session para token
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
-        throw new Error('Usuário não autenticado');
+        throw new Error('Token de autenticação não disponível');
       }
 
       const response = await fetch(`${import.meta.env.VITE_API_URL}/members/${memberId}`, {
@@ -215,10 +230,7 @@ export const useMembersAPI = () => {
 
       console.log('✅ [ENTERPRISE-MEMBER] Member atualizado:', result.data.email);
 
-      showSuccessToast(
-        'Member atualizado',
-        `${result.data.first_name} ${result.data.last_name} foi atualizado com sucesso`
-      );
+      // ✅ CORREÇÃO: Hook não deve disparar toast - deixar para o componente pai controlar
 
       return { 
         success: true, 
@@ -252,10 +264,16 @@ export const useMembersAPI = () => {
     setIsLoading(true);
 
     try {
-      // ✅ Fazer requisição autenticada usando Supabase tokens
+      // ✅ BÁSICO: Verificar autenticação (Basic Supabase Authentication)
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+      if (!currentUser || userError) {
+        throw new Error('Usuário não autenticado');
+      }
+      
+      // ✅ BÁSICO: Obter session para token
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
-        throw new Error('Usuário não autenticado');
+        throw new Error('Token de autenticação não disponível');
       }
 
       const response = await fetch(`${import.meta.env.VITE_API_URL}/members/${memberId}`, {
@@ -279,10 +297,7 @@ export const useMembersAPI = () => {
 
       console.log('✅ [ENTERPRISE-MEMBER] Member removido com sucesso');
 
-      showSuccessToast(
-        'Member removido',
-        'Member foi removido da equipe com sucesso'
-      );
+      // ✅ CORREÇÃO: Hook não deve disparar toast - deixar para o componente pai controlar
 
       return { success: true };
 

@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Company } from '../../types/Company';
 import { 
   X, Building, User, Mail, Phone, Globe, MapPin, Calendar, 
-  Edit, Save, Eye, EyeOff, Users, Target, TrendingUp, CheckCircle, XCircle, Lock
+  Edit, Save, Users, Target, TrendingUp, Plus
 } from 'lucide-react';
 import { useAuth } from '../../providers/AuthProvider';
-import { usePasswordManager } from '../../hooks/usePasswordManager';
+import { useMultipleAdmins } from '../../hooks/useMultipleAdmins';
 import { formatPhone } from '../../utils/formatUtils';
 import CityAutocomplete from '../CityAutocomplete';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { supabase } from '../../lib/supabase';
+import AddAdminForm from './AddAdminForm';
+import AdminListItem from './AdminListItem';
 
 // Lista de nichos/segmentos baseada em CRMs enterprise (igual ao formulário de criação)
 const INDUSTRY_SEGMENTS = [
@@ -72,18 +75,19 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
 }) => {
   const { user } = useAuth();
   
-  // 🚀 REFACTOR: Usar hook especializado para gerenciamento de senhas
-  const passwordManager = usePasswordManager();
-  
-  const [isEditingPassword, setIsEditingPassword] = useState(false);
+  // 🚀 NOVA FUNCIONALIDADE: Hook para gerenciar múltiplos administradores
+  const multipleAdminsManager = useMultipleAdmins({
+    companyId: company.id,
+    initialAdmins: company.admin ? [company.admin] : (company.admins || []),
+    onRefetch
+  });
   const [isEditingExpectations, setIsEditingExpectations] = useState(false);
   const [isEditingCompany, setIsEditingCompany] = useState(false);
-  const [isEditingAdmin, setIsEditingAdmin] = useState(false);
   
   // Estados para edição da empresa
   const [companyData, setCompanyData] = useState({
     name: company.name || '',
-    industry: company.industry || '',
+    segmento: company.segmento || '',
     city: company.city || '',
     state: company.state || '',
     website: company.website || '',
@@ -92,11 +96,7 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
     address: company.address || ''
   });
   
-  // Estados para edição do admin - corrigindo estrutura de dados
-  const [adminData, setAdminData] = useState({
-    name: company.admin ? `${company.admin.first_name || ''} ${company.admin.last_name || ''}`.trim() : '',
-    email: company.admin?.email || ''
-  });
+  // AIDEV-NOTE: Estados para admin removidos - agora gerenciados pelo useMultipleAdmins
   
   const [expectations, setExpectations] = useState({
     expected_leads_monthly: company.expected_leads_monthly || 0,
@@ -113,10 +113,10 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
     return acc;
   }, {} as Record<string, typeof INDUSTRY_SEGMENTS>);
 
-  // Função para encontrar o label do nicho
-  const getIndustryLabel = (value: string) => {
-    const industry = INDUSTRY_SEGMENTS.find(segment => segment.value === value);
-    return industry ? industry.label : value;
+  // Função para encontrar o label do segmento
+  const getSegmentoLabel = (value: string) => {
+    const segment = INDUSTRY_SEGMENTS.find(segment => segment.value === value);
+    return segment ? segment.label : value;
   };
 
   // Handler para mudança de cidade com autocomplete
@@ -136,28 +136,6 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
     setCompanyData(prev => ({ ...prev, phone: formattedPhone }));
   };
 
-  // 🚀 REFACTOR: Handler simplificado usando o hook especializado
-  const handlePasswordUpdate = async () => {
-    try {
-      const result = await passwordManager.updateAdminPassword(company.id);
-      
-      if (result.success) {
-        alert(`✅ ${result.message}`);
-        setIsEditingPassword(false);
-      } else {
-        alert(`❌ ${result.message}`);
-      }
-    } catch (error: any) {
-      console.error('❌ Erro inesperado:', error);
-      alert(`❌ Erro inesperado: ${error.message}`);
-    }
-  };
-
-  // Handler para cancelar edição de senha
-  const handleCancelPasswordEdit = () => {
-    passwordManager.resetForm();
-    setIsEditingPassword(false);
-  };
 
   const handleExpectationsUpdate = async () => {
     try {
@@ -201,8 +179,8 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
         return;
       }
 
-      if (!companyData.name || !companyData.industry) {
-        alert('❌ Preencha todos os campos obrigatórios (Nome e Nicho)');
+      if (!companyData.name || !companyData.segmento) {
+        alert('❌ Preencha todos os campos obrigatórios (Nome e Segmento)');
         return;
       }
 
@@ -224,7 +202,7 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
         .from('companies')
         .update({
           name: requestPayload.companyData.name,
-          industry: requestPayload.companyData.industry,
+          segmento: requestPayload.companyData.segmento,
           website: requestPayload.companyData.website,
           phone: requestPayload.companyData.phone,
           city: requestPayload.companyData.city,
@@ -252,82 +230,7 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
     }
   };
 
-  // Handler para atualizar informações do admin
-  const handleAdminUpdate = async () => {
-    try {
-      // Validações prévia dos dados
-      if (!company?.id) {
-        console.error('❌ [COMPANY-VIEW] Company ID está vazio ou inválido:', company);
-        alert('❌ Erro interno: ID da empresa não encontrado');
-        return;
-      }
-
-      if (!adminData.name || !adminData.email) {
-        alert('❌ Preencha todos os campos obrigatórios (Nome e Email)');
-        return;
-      }
-
-      console.log('🔧 [COMPANY-VIEW] === INICIANDO ATUALIZAÇÃO ADMIN ===');
-      console.log('🔧 [COMPANY-VIEW] Company Object:', company);
-      console.log('🔧 [COMPANY-VIEW] Company ID:', company.id);
-      console.log('🔧 [COMPANY-VIEW] Company ID Type:', typeof company.id);
-      console.log('🔧 [COMPANY-VIEW] Admin Data:', adminData);
-
-      const requestPayload = {
-        companyId: company.id,
-        adminData: adminData
-      };
-
-      console.log('🔧 [COMPANY-VIEW] Request Payload:', requestPayload);
-
-      // ✅ CORREÇÃO: Primeiro buscar usuário admin, depois atualizar
-      const { data: adminUser, error: adminQueryError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('role', 'admin')
-        .eq('tenant_id', company.id)
-        .single();
-
-      if (adminQueryError || !adminUser) {
-        console.error('❌ [COMPANY-VIEW] Admin não encontrado:', adminQueryError);
-        alert('❌ Erro: Admin não encontrado para esta empresa');
-        return;
-      }
-
-      // Atualizar informações do admin - separar nome completo
-      const fullName = requestPayload.adminData.name.trim();
-      const nameParts = fullName.split(' ');
-      const firstName = nameParts[0] || '';
-      const lastName = nameParts.slice(1).join(' ') || '';
-
-      const { data, error } = await supabase
-        .from('users')
-        .update({
-          first_name: firstName,
-          last_name: lastName,
-          email: requestPayload.adminData.email
-        })
-        .eq('id', adminUser.id)
-        .select()
-        .single();
-
-      console.log('🔧 [COMPANY-VIEW] Resposta Supabase Admin:', { data, error });
-
-      if (!error && data) {
-        console.log('✅ [COMPANY-VIEW] Sucesso Admin:', data);
-        alert('✅ Informações do administrador atualizadas com sucesso!');
-        setIsEditingAdmin(false);
-        onRefetch();
-      } else {
-        console.error('❌ [COMPANY-VIEW] Erro Admin:', error);
-        alert(`❌ Erro ao atualizar admin: ${error?.message || 'Erro desconhecido'}`);
-      }
-    } catch (error: any) {
-      console.error('❌ [COMPANY-VIEW] Exception Admin:', error);
-      console.error('❌ [COMPANY-VIEW] Error Stack Admin:', error.stack);
-      alert(`❌ Erro ao atualizar admin: ${error.message || 'Network Error'}`);
-    }
-  };
+  // AIDEV-NOTE: handleAdminUpdate removido - agora gerenciado pelo useMultipleAdmins
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('pt-BR', {
@@ -341,11 +244,9 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
 
   if (!isOpen) return null;
 
-  const passwordStrength = passwordManager.getPasswordStrength();
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+  const modalContent = (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
+      <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center space-x-3">
@@ -403,8 +304,8 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-2">Nicho de Atuação *</label>
-                    <Select value={companyData.industry} onValueChange={(value) => setCompanyData(prev => ({ ...prev, industry: value }))}>
+                    <label className="block text-sm font-medium text-slate-600 mb-2">Segmento de Atuação *</label>
+                    <Select value={companyData.segmento} onValueChange={(value) => setCompanyData(prev => ({ ...prev, segmento: value }))}>
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Selecione o segmento" />
                       </SelectTrigger>
@@ -480,9 +381,9 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
                 <div className="flex gap-2">
                   <button
                     onClick={handleCompanyUpdate}
-                    disabled={!companyData.name || !companyData.industry}
+                    disabled={!companyData.name || !companyData.segmento}
                     className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center ${
-                      companyData.name && companyData.industry
+                      companyData.name && companyData.segmento
                         ? 'bg-blue-600 text-white hover:bg-blue-700'
                         : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                     }`}
@@ -495,7 +396,7 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
                       setIsEditingCompany(false);
                       setCompanyData({
                         name: company.name || '',
-                        industry: company.industry || '',
+                        segmento: company.segmento || '',
                         city: company.city || '',
                         state: company.state || '',
                         website: company.website || '',
@@ -517,8 +418,8 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
                   <p className="text-slate-900 font-medium">{company.name || 'Não informado'}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-slate-600">Nicho de Atuação</label>
-                  <p className="text-slate-900">{getIndustryLabel(company.industry) || 'Não informado'}</p>
+                  <label className="text-sm font-medium text-slate-600">Segmento de Atuação</label>
+                  <p className="text-slate-900">{getSegmentoLabel(company.segmento) || 'Não informado'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-slate-600">Localização</label>
@@ -577,273 +478,70 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
             )}
           </div>
 
-          {/* Informações do Administrador */}
+          {/* 🚀 NOVA SEÇÃO: Gerenciamento de Múltiplos Administradores */}
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-slate-900 flex items-center">
-                <User className="w-5 h-5 mr-2 text-slate-600" />
-                Administrador
+                <Users className="w-5 h-5 mr-2 text-slate-600" />
+                Administradores ({multipleAdminsManager.admins.length})
               </h3>
-              {company.admin && (
-                <button
-                  onClick={() => setIsEditingAdmin(!isEditingAdmin)}
-                  className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center"
-                >
-                  <Edit className="w-4 h-4 mr-1" />
-                  {isEditingAdmin ? 'Cancelar' : 'Editar Info'}
-                </button>
-              )}
+              <button
+                onClick={multipleAdminsManager.toggleAddForm}
+                disabled={multipleAdminsManager.isLoading}
+                className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Adicionar Admin
+              </button>
             </div>
-            {company.admin ? (
-              <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
-                {isEditingAdmin ? (
-                  <div className="space-y-4 mb-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-600 mb-2">Nome *</label>
-                        <input
-                          type="text"
-                          value={adminData.name}
-                          onChange={(e) => setAdminData(prev => ({ ...prev, name: e.target.value }))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="Nome do administrador"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-600 mb-2">Email *</label>
-                        <input
-                          type="email"
-                          value={adminData.email}
-                          onChange={(e) => setAdminData(prev => ({ ...prev, email: e.target.value }))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="email@empresa.com"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleAdminUpdate}
-                        disabled={!adminData.name || !adminData.email}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center ${
-                          adminData.name && adminData.email
-                            ? 'bg-blue-600 text-white hover:bg-blue-700'
-                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        }`}
-                      >
-                        <Save className="w-4 h-4 mr-1" />
-                        Salvar Alterações
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsEditingAdmin(false);
-                          setAdminData({
-                            name: company.admin?.name || '',
-                            email: company.admin?.email || ''
-                          });
-                        }}
-                        className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 border border-gray-300 hover:bg-gray-50"
-                      >
-                        Cancelar
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                                  <div className="grid grid-cols-2 gap-6 mb-4">
-                  <div>
-                    <label className="text-sm font-medium text-slate-600">Nome</label>
-                    <p className="text-slate-900 font-medium">
-                      {company.admin.name || 
-                       `${company.admin.first_name || ''} ${company.admin.last_name || ''}`.trim() ||
-                       'Nome não informado'
-                      }
-                    </p>
-                  </div>
-                    <div>
-                      <label className="text-sm font-medium text-slate-600">Email</label>
-                      <p className="text-slate-900 flex items-center">
-                        <Mail className="w-4 h-4 mr-1 text-slate-400" />
-                        {company.admin.email}
-                      </p>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Edição de Senha Enterprise */}
-                <div className="border-t border-blue-200 pt-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <label className="text-sm font-medium text-slate-600">Senha de Acesso</label>
-                    <button
-                      onClick={() => {
-                        if (isEditingPassword) {
-                          handleCancelPasswordEdit();
-                        } else {
-                          setIsEditingPassword(true);
-                        }
-                      }}
-                      className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center"
-                    >
-                      <Edit className="w-4 h-4 mr-1" />
-                      {isEditingPassword ? 'Cancelar' : 'Alterar Senha'}
-                    </button>
-                  </div>
-                  
-                  {isEditingPassword ? (
-                    <div className="space-y-4 bg-white rounded-lg p-4 border border-blue-200">
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                        <h5 className="font-medium text-blue-900 text-sm mb-1">🔐 Alteração de Senha Enterprise</h5>
-                        <p className="text-blue-700 text-xs">
-                          Configure uma nova senha segura para o administrador da empresa.
-                        </p>
-                      </div>
 
-                      {/* Nova Senha */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Nova Senha *
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={passwordManager.showPassword ? 'text' : 'password'}
-                            value={passwordManager.newPassword}
-                            onChange={(e) => passwordManager.setNewPassword(e.target.value)}
-                            placeholder="Digite a nova senha"
-                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors pr-12"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => passwordManager.setShowPassword(!passwordManager.showPassword)}
-                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                          >
-                            {passwordManager.showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                          </button>
-                        </div>
-                        
-                        {/* Password Strength */}
-                        {passwordManager.newPassword && (
-                          <div className="mt-2">
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="text-xs text-gray-600">Força da senha:</span>
-                              <span className={`text-xs font-medium ${
-                                passwordStrength.strength === 'Forte' ? 'text-green-600' :
-                                passwordStrength.strength === 'Boa' ? 'text-yellow-600' :
-                                passwordStrength.strength === 'Fraca' ? 'text-orange-600' : 'text-red-600'
-                              }`}>
-                                {passwordStrength.strength}
-                              </span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div 
-                                className={`h-2 rounded-full transition-all duration-300 ${passwordStrength.color}`}
-                                style={{ width: passwordStrength.width }}
-                              ></div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Confirmar Senha */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Confirmar Senha *
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={passwordManager.showConfirmPassword ? 'text' : 'password'}
-                            value={passwordManager.confirmPassword}
-                            onChange={(e) => passwordManager.setConfirmPassword(e.target.value)}
-                            placeholder="Confirme a nova senha"
-                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors pr-12"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => passwordManager.setShowConfirmPassword(!passwordManager.showConfirmPassword)}
-                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                          >
-                            {passwordManager.showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                          </button>
-                        </div>
-                        
-                        {/* Password Match Indicator */}
-                        {passwordManager.confirmPassword && (
-                          <div className="mt-2 flex items-center space-x-2">
-                            {passwordManager.newPassword === passwordManager.confirmPassword ? (
-                              <>
-                                <CheckCircle className="w-4 h-4 text-green-500" />
-                                <span className="text-sm text-green-600">Senhas conferem</span>
-                              </>
-                            ) : (
-                              <>
-                                <XCircle className="w-4 h-4 text-red-500" />
-                                <span className="text-sm text-red-600">Senhas não conferem</span>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Password Requirements */}
-                      <div className="bg-gray-50 rounded-xl p-4">
-                        <h4 className="text-sm font-medium text-gray-700 mb-3">Requisitos da senha:</h4>
-                        <div className="space-y-2">
-                          {[
-                            { key: 'length', text: 'Pelo menos 8 caracteres' },
-                            { key: 'hasLetter', text: 'Pelo menos 1 letra' },
-                            { key: 'hasNumber', text: 'Pelo menos 1 número' },
-                            { key: 'hasSpecialChar', text: 'Pelo menos 1 caractere especial (!@#$%^&*)' }
-                          ].map(req => (
-                            <div key={req.key} className="flex items-center space-x-2">
-                              {passwordManager.passwordRequirements[req.key as keyof typeof passwordManager.passwordRequirements] ? (
-                                <CheckCircle className="w-4 h-4 text-green-500" />
-                              ) : (
-                                <XCircle className="w-4 h-4 text-gray-400" />
-                              )}
-                              <span className={`text-sm ${
-                                passwordManager.passwordRequirements[req.key as keyof typeof passwordManager.passwordRequirements] 
-                                  ? 'text-green-600' 
-                                  : 'text-gray-500'
-                              }`}>
-                                {req.text}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={handlePasswordUpdate}
-                        disabled={!passwordManager.isPasswordValid() || passwordManager.isChangingPassword}
-                        className={`w-full py-3 rounded-lg text-sm font-medium flex items-center justify-center space-x-2 transition-all ${
-                          passwordManager.isPasswordValid() && !passwordManager.isChangingPassword
-                            ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg'
-                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        }`}
-                      >
-                        {passwordManager.isChangingPassword ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            <span>Alterando...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Save className="w-4 h-4" />
-                            <span>Salvar Nova Senha</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between">
-                      <p className="text-slate-500 text-sm">••••••••</p>
-                      <span className="text-xs text-slate-400">Senha protegida</span>
-                    </div>
-                  )}
+            <div className="space-y-4">
+              {/* Lista de administradores existentes */}
+              {multipleAdminsManager.admins.length > 0 ? (
+                <div className="space-y-3">
+                  {multipleAdminsManager.admins.map((admin) => (
+                    <AdminListItem
+                      key={admin.id}
+                      admin={admin}
+                      isEditing={multipleAdminsManager.editingAdminId === admin.id}
+                      canRemove={multipleAdminsManager.admins.length > 1}
+                      onEdit={() => multipleAdminsManager.startEditingAdmin(admin.id)}
+                      onCancelEdit={multipleAdminsManager.stopEditingAdmin}
+                      onSave={(adminData) => multipleAdminsManager.updateAdmin(admin.id, adminData)}
+                      onRemove={() => multipleAdminsManager.removeAdmin(admin.id)}
+                      isLoading={multipleAdminsManager.isLoading}
+                    />
+                  ))}
                 </div>
-              </div>
-            ) : (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <p className="text-amber-800 text-sm font-medium">Nenhum administrador cadastrado</p>
-              </div>
-            )}
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <p className="text-amber-800 text-sm font-medium">Nenhum administrador cadastrado</p>
+                  <p className="text-amber-700 text-xs mt-1">
+                    Clique em "Adicionar Admin" para criar o primeiro administrador desta empresa.
+                  </p>
+                </div>
+              )}
+
+              {/* Formulário para adicionar novo admin */}
+              {multipleAdminsManager.showAddForm && (
+                <AddAdminForm
+                  onSave={multipleAdminsManager.addAdmin}
+                  onCancel={multipleAdminsManager.toggleAddForm}
+                  isLoading={multipleAdminsManager.isAdding}
+                />
+              )}
+
+              {/* Loading state */}
+              {multipleAdminsManager.isLoading && !multipleAdminsManager.isAdding && (
+                <div className="flex items-center justify-center py-4">
+                  <div className="flex items-center gap-2 text-slate-600">
+                    <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
+                    <span className="text-sm">Carregando administradores...</span>
+                  </div>
+                </div>
+              )}
+
+            </div>
           </div>
 
           {/* Expectativas Mensais */}
@@ -955,6 +653,9 @@ const CompanyViewModal: React.FC<CompanyViewModalProps> = ({
       </div>
     </div>
   );
+
+  // AIDEV-NOTE: Usar portal para renderizar modal fora da hierarquia de componentes
+  return createPortal(modalContent, document.body);
 };
 
 export default CompanyViewModal; 

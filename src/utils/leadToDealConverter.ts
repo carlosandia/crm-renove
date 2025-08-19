@@ -32,7 +32,7 @@ export const convertLeadToDeal = (lead: Lead): Deal => {
     // Campos adicionais
     source: leadData.origem || leadData.source || leadData.traffic_source || undefined,
     campaign_id: leadData.campaign_id || undefined,
-    lost_reason: leadData.motivo_perda || leadData.lost_reason || undefined,
+    lost_reason: leadData.motivo_perdido || leadData.lost_reason || undefined,
     won_reason: leadData.motivo_ganho || leadData.won_reason || undefined,
     forecast_category: 'pipeline' as const,
     expected_revenue: leadData.valor ? Number(leadData.valor) : undefined,

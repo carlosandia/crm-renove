@@ -23,22 +23,12 @@ import { Separator } from '../ui/separator';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+// ✅ AIDEV-NOTE: Usando tipo derivado do schema Zod para garantir consistência
+import { CustomField } from '../../types/Pipeline';
 
 // ============================================
 // INTERFACES E TIPOS
 // ============================================
-
-interface CustomField {
-  id: string;
-  field_name: string;
-  field_label: string;
-  field_type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number' | 'date';
-  field_options?: string[];
-  is_required: boolean;
-  field_order: number;
-  placeholder?: string;
-  show_in_card?: boolean;
-}
 
 interface ExistingLead {
   id: string;

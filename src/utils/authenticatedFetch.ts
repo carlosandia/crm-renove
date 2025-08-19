@@ -8,7 +8,14 @@ import { supabase } from '../lib/supabase';
  */
 export async function authenticatedFetch(url: string, options: RequestInit = {}): Promise<Response> {
   try {
-    // Obter sessão atual do Supabase
+    // ✅ BÁSICO: Verificar usuário autenticado (Basic Supabase Authentication)
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (!user || userError) {
+      throw new Error('User not authenticated');
+    }
+    
+    // ✅ BÁSICO: Obter session token do usuário autenticado
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session?.access_token) {

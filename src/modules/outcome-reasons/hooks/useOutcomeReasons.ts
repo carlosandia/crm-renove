@@ -3,7 +3,7 @@
  * 🪝 HOOK: USE OUTCOME REASONS
  * ============================================
  * 
- * Hook TanStack Query para gestão de motivos de ganho/perda
+ * Hook TanStack Query para gestão de motivos de ganho/perdido
  * AIDEV-NOTE: Centraliza lógica de data fetching e cache
  */
 

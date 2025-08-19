@@ -15,7 +15,7 @@ export interface OutcomeModalProps {
   isOpen: boolean;
   onClose: () => void;
   leadId: string;
-  outcomeType: 'won' | 'lost';
+  outcomeType: 'ganho' | 'perdido' | 'won' | 'lost'; // ✅ REFATORAÇÃO: ganho/perdido preferidos, won/lost para compatibilidade
   pipelineId: string;
   onSuccess: () => void;
 }
@@ -35,7 +35,7 @@ export interface OutcomeHistoryProps {
 // ✅ AIDEV-NOTE: Types para hooks customizados
 export interface UseOutcomeReasonsParams {
   pipelineId: string;
-  reasonType?: 'won' | 'lost' | 'all';
+  reasonType?: 'ganho' | 'perdido' | 'won' | 'lost' | 'all'; // ✅ REFATORAÇÃO: ganho/perdido preferidos, won/lost para compatibilidade
   activeOnly?: boolean;
 }
 

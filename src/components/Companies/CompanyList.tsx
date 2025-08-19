@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { Company, CompanyAdmin } from '../../types/Company';
 import { showSuccessToast, showErrorToast } from '../../hooks/useToast';
-import { modernAlerts } from '../../utils/modernAlerts';
 import { 
-  Eye, User, Calendar, Mail, 
+  Eye, User, Calendar, Mail,
   ToggleRight, ToggleLeft, CheckCircle, Clock, AlertTriangle, XCircle 
 } from 'lucide-react';
 import CompanyViewModal from './CompanyViewModal';
+import { ConfirmationDialog } from '../ui/confirmation-dialog';
 
 // UI Components
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
@@ -19,38 +19,115 @@ interface CompanyListProps {
   companies: Company[];
   onToggleStatus: (company: Company) => Promise<void>;
   onRefetch: () => void;
-  onResendEmail?: (company: Company) => Promise<{ success: boolean; message: string; }>;
 }
 
 const CompanyList: React.FC<CompanyListProps> = ({ 
   companies, 
   onToggleStatus,
-  onRefetch,
-  onResendEmail
+  onRefetch
 }) => {
   const [viewingCompany, setViewingCompany] = useState<Company | null>(null);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [confirmData, setConfirmData] = useState<{
+    company: Company | null;
+    action: 'activate' | 'deactivate';
+  }>({ company: null, action: 'activate' });
 
-  const handleToggleClick = async (company: Company) => {
-    const acao = company.is_active ? 'desativar' : 'ativar';
-    const confirmMessage = `Tem certeza que deseja ${acao} a empresa "${company.name}"?`;
+  // ✅ CORREÇÃO: Cache para evitar warnings repetitivos no console
+  const warnedCompanies = useRef<Set<string>>(new Set());
+
+  // ✅ MEMOIZAÇÃO: Callback memoizado para toggle de status
+  const handleToggleClick = useCallback((company: Company) => {
+    const action = company.is_active ? 'deactivate' : 'activate';
+    setConfirmData({ company, action });
+    setShowConfirmDialog(true);
+  }, []);
+
+  // ✅ NOVA FUNÇÃO: Confirmar ação de toggle via dialog
+  const handleConfirmToggle = useCallback(async () => {
+    if (!confirmData.company) return;
     
-    const confirmed = await modernAlerts.confirm(confirmMessage, `Confirmar ${acao}`);
-    if (confirmed) {
-      await onToggleStatus(company);
-      modernAlerts.success(`Empresa ${acao}da com sucesso!`, 'Status Atualizado');
+    try {
+      await onToggleStatus(confirmData.company);
+      const successMessage = confirmData.action === 'deactivate'
+        ? `Empresa desativada e todos usuários perderam acesso!`
+        : `Empresa ativada e todos usuários foram automaticamente ativados!`;
+      showSuccessToast('Status Atualizado', successMessage);
+    } catch (error) {
+      showErrorToast('Erro', 'Erro ao atualizar status da empresa');
     }
-  };
+  }, [confirmData, onToggleStatus]);
 
-  const handleViewCompany = (company: Company) => {
+  // ✅ MEMOIZAÇÃO: Callback memoizado para visualização
+  const handleViewCompany = useCallback((company: Company) => {
     setViewingCompany(company);
-  };
+  }, []);
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
-  };
+  // ✅ MEMOIZAÇÃO: Função de formatação de data memoizada com validação
+  const formatDate = useCallback((dateString: string) => {
+    try {
+      if (!dateString) return 'Data não informada';
+      
+      const date = new Date(dateString);
+      
+      // Verificar se a data é válida
+      if (isNaN(date.getTime())) {
+        console.warn(`[CompanyList] Data inválida fornecida: ${dateString}`);
+        return 'Data inválida';
+      }
+      
+      return date.toLocaleDateString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+    } catch (error) {
+      console.error(`[CompanyList] Erro ao formatar data: ${dateString}`, error);
+      return 'Erro na data';
+    }
+  }, []);
 
-  // Função para renderizar status de ativação
-  const renderActivationStatus = (admin: CompanyAdmin) => {
+  // ✅ CORREÇÃO: Função para validar e formatar nome do administrador
+  const getAdminDisplayName = useCallback((admin: CompanyAdmin | undefined) => {
+    if (!admin) return 'Sem admin';
+    
+    // Priorizar campo 'name' se disponível, senão compor first_name + last_name
+    if (admin.name && admin.name.trim() !== '') {
+      return admin.name.trim();
+    }
+    
+    if (admin.first_name || admin.last_name) {
+      const firstName = admin.first_name?.trim() || '';
+      const lastName = admin.last_name?.trim() || '';
+      const fullName = `${firstName} ${lastName}`.trim();
+      return fullName || 'Nome não definido';
+    }
+    
+    return 'Dados incompletos';
+  }, []);
+
+  // ✅ CORREÇÃO: Função para validar e formatar segmento da empresa com logging inteligente
+  const getSegmentoDisplay = useCallback((company: Company) => {
+    if (!company.segmento || company.segmento.trim() === '') {
+      // ✅ CORREÇÃO: Log apenas uma vez por empresa para evitar spam no console
+      if (!warnedCompanies.current.has(company.id)) {
+        console.warn(`[CompanyList] Empresa "${company.name}" sem segmento definido`);
+        warnedCompanies.current.add(company.id);
+      }
+      return 'Não definido';
+    }
+    
+    // ✅ LIMPEZA: Remover do cache se segmento foi corrigido
+    if (warnedCompanies.current.has(company.id)) {
+      warnedCompanies.current.delete(company.id);
+    }
+    
+    return company.segmento.trim();
+  }, []);
+
+  // ✅ MEMOIZAÇÃO: Função de renderização de status memoizada
+  const renderActivationStatus = useCallback((admin: CompanyAdmin) => {
     if (!admin.activation_status || admin.activation_status === 'activated') {
       return (
         <Badge variant="default" className="bg-green-100 text-green-800 hover:bg-green-100">
@@ -79,6 +156,12 @@ const CompanyList: React.FC<CompanyListProps> = ({
         className: 'bg-green-100 text-green-800 hover:bg-green-100',
         text: 'Ativado' 
       },
+      inactive: { 
+        icon: XCircle, 
+        variant: 'destructive' as const,
+        className: 'bg-red-100 text-red-800 hover:bg-red-100',
+        text: 'Inativo' 
+      },
       expired: { 
         icon: AlertTriangle, 
         variant: 'destructive' as const,
@@ -96,10 +179,10 @@ const CompanyList: React.FC<CompanyListProps> = ({
         {config.text}
       </Badge>
     );
-  };
+  }, []);
 
-  // Função para renderizar célula da empresa
-  const renderCompanyCell = (company: Company) => (
+  // ✅ MEMOIZAÇÃO: Função de renderização de célula da empresa memoizada
+  const renderCompanyCell = useCallback((company: Company) => (
     <div className="flex items-center space-x-3">
       <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-700 font-semibold text-sm flex-shrink-0">
         {company.name.charAt(0)}
@@ -119,24 +202,24 @@ const CompanyList: React.FC<CompanyListProps> = ({
         </Badge>
       </div>
     </div>
-  );
+  ), []);
 
-  // Função para renderizar célula do admin
-  const renderAdminCell = (company: Company) => (
+  // ✅ MEMOIZAÇÃO: Função de renderização de célula do admin memoizada
+  const renderAdminCell = useCallback((company: Company) => (
     <div className="flex items-center space-x-2">
       <User className="w-4 h-4 text-slate-400" />
       <div className="flex flex-col space-y-1">
         <span className="text-sm font-medium text-slate-700">
-          {company.admin ? company.admin.name : 'Sem admin'}
+          {getAdminDisplayName(company.admin)}
         </span>
         {company.admin && renderActivationStatus(company.admin)}
       </div>
     </div>
-  );
+  ), [renderActivationStatus, getAdminDisplayName]);
 
-  // Função para renderizar ações
-  const renderActionsCell = (company: Company) => (
-    <div className="flex items-center space-x-1">
+  // ✅ MEMOIZAÇÃO: Função de renderização de ações memoizada
+  const renderActionsCell = useCallback((company: Company) => (
+    <div className="flex items-center justify-end space-x-1">
       <ActionButton
         icon={Eye}
         onClick={() => handleViewCompany(company)}
@@ -145,32 +228,6 @@ const CompanyList: React.FC<CompanyListProps> = ({
         size="sm"
       />
       
-      {/* Botão de reenvio de email para admins não ativados */}
-      {company.admin && 
-       company.admin.activation_status && 
-       company.admin.activation_status !== 'activated' && onResendEmail && (
-        <ActionButton
-          icon={Mail}
-          onClick={async () => {
-            try {
-              const result = await onResendEmail(company);
-              if (result.success) {
-                showSuccessToast('Email reenviado', result.message.replace('✅ ', ''));
-                onRefetch(); // Atualizar lista após reenvio
-              } else {
-                showErrorToast('Erro ao reenviar', result.message.replace('❌ ', ''));
-              }
-            } catch (error) {
-              showErrorToast('Erro ao reenviar', 'Erro ao reenviar email de ativação');
-              console.error('Erro ao reenviar email:', error);
-            }
-          }}
-          tooltip="Reenviar email de ativação"
-          variant="ghost"
-          size="sm"
-          className="hover:text-orange-600 hover:bg-orange-50"
-        />
-      )}
       
       <ActionButton
         icon={company.is_active ? ToggleRight : ToggleLeft}
@@ -184,7 +241,41 @@ const CompanyList: React.FC<CompanyListProps> = ({
         }
       />
     </div>
-  );
+  ), [handleToggleClick, handleViewCompany, onRefetch]);
+
+  // ✅ MEMOIZAÇÃO: Renderização das linhas da tabela otimizada
+  const renderedTableRows = useMemo(() => {
+    return companies.map((company) => (
+      <TableRow key={company.id} className="hover:bg-slate-50">
+        <TableCell>
+          {renderCompanyCell(company)}
+        </TableCell>
+        
+        <TableCell>
+          {renderAdminCell(company)}
+        </TableCell>
+        
+        <TableCell>
+          <Badge variant="secondary" className="bg-slate-100 text-slate-700 hover:bg-slate-100">
+            {getSegmentoDisplay(company)}
+          </Badge>
+        </TableCell>
+        
+        <TableCell>
+          <div className="flex items-center space-x-2 text-slate-600">
+            <Calendar className="w-4 h-4" />
+            <span className="text-sm">
+              {formatDate(company.created_at)}
+            </span>
+          </div>
+        </TableCell>
+        
+        <TableCell className="text-right">
+          {renderActionsCell(company)}
+        </TableCell>
+      </TableRow>
+    ));
+  }, [companies, renderCompanyCell, renderAdminCell, renderActionsCell, formatDate, getSegmentoDisplay]);
 
   if (companies.length === 0) {
     return (
@@ -206,42 +297,13 @@ const CompanyList: React.FC<CompanyListProps> = ({
             <TableRow>
               <TableHead>Empresa</TableHead>
               <TableHead>Administrador</TableHead>
-              <TableHead>Nicho</TableHead>
+              <TableHead>Segmento</TableHead>
               <TableHead>Criado em</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {companies.map((company) => (
-              <TableRow key={company.id} className="hover:bg-slate-50">
-                <TableCell>
-                  {renderCompanyCell(company)}
-                </TableCell>
-                
-                <TableCell>
-                  {renderAdminCell(company)}
-                </TableCell>
-                
-                <TableCell>
-                  <Badge variant="secondary" className="bg-slate-100 text-slate-700 hover:bg-slate-100">
-                    {company.industry}
-                  </Badge>
-                </TableCell>
-                
-                <TableCell>
-                  <div className="flex items-center space-x-2 text-slate-600">
-                    <Calendar className="w-4 h-4" />
-                    <span className="text-sm">
-                      {formatDate(company.created_at)}
-                    </span>
-                  </div>
-                </TableCell>
-                
-                <TableCell className="text-right">
-                  {renderActionsCell(company)}
-                </TableCell>
-              </TableRow>
-            ))}
+            {renderedTableRows}
           </TableBody>
         </Table>
       </div>
@@ -255,6 +317,22 @@ const CompanyList: React.FC<CompanyListProps> = ({
           onRefetch={onRefetch}
         />
       )}
+
+      {/* Dialog de Confirmação */}
+      <ConfirmationDialog
+        isOpen={showConfirmDialog}
+        onClose={() => setShowConfirmDialog(false)}
+        onConfirm={handleConfirmToggle}
+        title={confirmData.action === 'deactivate' ? 'Desativar Empresa' : 'Ativar Empresa'}
+        description={
+          confirmData.action === 'deactivate'
+            ? `Tem certeza que deseja desativar a empresa "${confirmData.company?.name}"?\n\n⚠️ ATENÇÃO: Todos os usuários (admin e member) desta empresa perderão o acesso ao sistema!`
+            : `Tem certeza que deseja ativar a empresa "${confirmData.company?.name}"?`
+        }
+        confirmText={confirmData.action === 'deactivate' ? 'Desativar' : 'Ativar'}
+        cancelText="Cancelar"
+        variant={confirmData.action === 'deactivate' ? 'destructive' : 'default'}
+      />
     </>
   );
 };

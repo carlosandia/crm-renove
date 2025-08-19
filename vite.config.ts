@@ -105,7 +105,18 @@ export default defineConfig(({ command, mode }) => {
         '**/dist/**', 
         '**/.git/**',
         '**/.vite/**', // ✅ Ignorar cache do Vite
-        '**/coverage/**' // ✅ Ignorar coverage de testes
+        '**/coverage/**', // ✅ Ignorar coverage de testes
+        '**/test-*.html', // ✅ CORREÇÃO: Ignorar arquivos HTML de teste
+        '**/debug-*.html', // ✅ CORREÇÃO: Ignorar arquivos HTML de debug
+        '**/*.log', // ✅ CORREÇÃO: Ignorar arquivos de log
+        '**/backend/**', // ✅ ESTABILIZAÇÃO: Ignorar pasta backend completa
+        '**/scripts/**', // ✅ ESTABILIZAÇÃO: Ignorar scripts de desenvolvimento
+        '**/.env*', // ✅ ESTABILIZAÇÃO: Ignorar arquivos de ambiente
+        '**/migrations/**', // ✅ ESTABILIZAÇÃO: Ignorar migrations do Supabase
+        '**/uploads/**', // ✅ ESTABILIZAÇÃO: Ignorar uploads temporários
+        '**/.DS_Store', // ✅ ESTABILIZAÇÃO: Ignorar arquivos macOS
+        '**/tmp/**', // ✅ ESTABILIZAÇÃO: Ignorar arquivos temporários
+        '**/temp/**' // ✅ ESTABILIZAÇÃO: Ignorar arquivos temporários
       ]
     }
   },
@@ -154,10 +165,14 @@ export default defineConfig(({ command, mode }) => {
     include: [
       // ✅ Manter apenas dependências que realmente precisam de force pre-bundling
       '@hello-pangea/dnd', // Dependency com muitos deep imports
+      '@supabase/supabase-js', // ✅ ESTABILIZAÇÃO: Force pre-bundle do Supabase
+      '@tanstack/react-query', // ✅ ESTABILIZAÇÃO: React Query estável
     ],
     exclude: [], // Vazio - deixar Vite detectar automaticamente
     // ✅ Usar nova estratégia de otimização do Vite 6.x
-    holdUntilCrawlEnd: false // Melhora cold start em projetos grandes
+    holdUntilCrawlEnd: false, // Melhora cold start em projetos grandes
+    // ✅ ESTABILIZAÇÃO: Force dependency re-bundling em desenvolvimento
+    force: isDevelopment && process.env.VITE_FORCE_DEPS === 'true'
   },
   
   // ✅ CORREÇÃO PROBLEMA #22: Configurar Vite Preview Server

@@ -279,4 +279,70 @@ export const useIntegrationsSubHeader = ({
   return useSubHeaderContent(config);
 };
 
+/**
+ * Hook específico para o módulo de Empresas
+ */
+export const useEmpresasSubHeader = ({
+  companies = [],
+  searchTerm = '',
+  selectedFilters = { status: 'all', industry: 'all', adminStatus: 'all' },
+  onSearchChange,
+  onFiltersChange,
+  onCreateCompany,
+  onRefresh
+}: {
+  companies?: any[];
+  searchTerm?: string;
+  selectedFilters?: {
+    status: string;
+    industry: string;
+    adminStatus: string;
+  };
+  onSearchChange?: (value: string) => void;
+  onFiltersChange?: (filters: any) => void;
+  onCreateCompany?: () => void;
+  onRefresh?: () => void;
+}) => {
+  const config: SubHeaderConfig = useMemo(() => {
+    // Contadores baseados nos dados reais das empresas
+    const totalCompanies = companies.length;
+    
+    const activeCompanies = companies.filter(c => c.status === 'active').length;
+    const inactiveCompanies = companies.filter(c => c.status === 'inactive').length;
+    const pendingAdmins = companies.filter(c => c.admin_status === 'pending').length;
+
+    const filters: FilterOption[] = [
+      { id: 'all', label: 'Todas', count: totalCompanies },
+      { id: 'active', label: 'Ativas', count: activeCompanies },
+      { id: 'inactive', label: 'Inativas', count: inactiveCompanies },
+      { id: 'pending_admin', label: 'Admin Pendente', count: pendingAdmins }
+    ];
+
+    // Criar botão de nova empresa
+    const newCompanyButton = onCreateCompany ? React.createElement(
+      Button,
+      {
+        onClick: onCreateCompany,
+        className: "h-8 px-2.5 gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors duration-200"
+      },
+      React.createElement(Plus, { className: "h-4 w-4" }),
+      "Nova Empresa"
+    ) : undefined;
+
+    return {
+      title: 'Gestão de Clientes',
+      searchPlaceholder: 'Buscar por nome da empresa ou email do admin...',
+      searchValue: searchTerm,
+      onSearchChange,
+      filters,
+      activeFilter: 'all', // Empresas usa sistema de filtros customizado
+      onFilterChange: undefined, // Filtros customizados via onFiltersChange
+      actions: newCompanyButton,
+      showSearch: true
+    };
+  }, [companies, searchTerm, selectedFilters, onSearchChange, onFiltersChange, onCreateCompany, onRefresh]);
+
+  return useSubHeaderContent(config);
+};
+
 export default useSubHeaderContent;

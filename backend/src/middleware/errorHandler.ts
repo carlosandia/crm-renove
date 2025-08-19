@@ -2,8 +2,9 @@ import { Request, Response, NextFunction } from 'express';
 import { ApiResponse } from '../types/express';
 
 /**
- * Error Handler Global
- * Captura e padroniza todos os erros da aplicação
+ * ✅ ENHANCED ERROR HANDLER BASEADO EM CONTEXT7 EXPRESS.JS DOCS
+ * Middleware com 4-argument signature conforme padrões oficiais Express.js
+ * Captura e padroniza todos os erros da aplicação com tratamento específico para APIs
  */
 export function errorHandler(
   err: any,
@@ -11,8 +12,12 @@ export function errorHandler(
   res: Response,
   next: NextFunction
 ): void {
-  // Log do erro para monitoramento
-  console.error('🚨 Erro capturado:', {
+  // ✅ CORREÇÃO ESPECÍFICA: Detectar erros de distribuição e cadência
+  const isDistributionAPI = req.path.includes('/distribution-stats') || req.path.includes('/pipelines');
+  const isCadenceAPI = req.path.includes('/cadence');
+  
+  // Log do erro para monitoramento com contexto específico
+  console.error('🚨 [ErrorHandler] Erro capturado:', {
     error: err.message,
     stack: err.stack,
     url: req.url,
@@ -21,7 +26,14 @@ export function errorHandler(
     timestamp: new Date().toISOString(),
     body: req.body,
     query: req.query,
-    params: req.params
+    params: req.params,
+    // ✅ NOVO: Contexto específico para debugging
+    errorContext: {
+      isDistributionAPI,
+      isCadenceAPI,
+      apiPath: req.path,
+      statusCodeHint: err.statusCode || err.status || 500
+    }
   });
 
   // Resposta padrão de erro
@@ -30,10 +42,39 @@ export function errorHandler(
     timestamp: new Date().toISOString()
   };
 
-  // Determinar status code e mensagem baseado no tipo de erro
+  // ✅ MELHORADO: Determinar status code e mensagem com tratamento específico para APIs
   let statusCode = 500;
 
-  if (err.name === 'ValidationError') {
+  // ✅ NOVO: Tratamento específico para APIs de distribuição
+  if (isDistributionAPI) {
+    console.log('🔥 [ErrorHandler] Tratando erro específico de Distribution API');
+    statusCode = err.statusCode || err.status || 500;
+    response.error = 'Distribution API Error';
+    response.message = err.message || 'Erro ao calcular estatísticas de distribuição';
+    
+    // Adicionar dicas de correção para erros comuns
+    if (statusCode === 400) {
+      response.message = 'Parâmetros inválidos para cálculo de distribuição. Verifique pipeline_id.';
+    } else if (statusCode === 404) {
+      response.message = 'Pipeline não encontrado para cálculo de distribuição.';
+    }
+  }
+  // ✅ NOVO: Tratamento específico para APIs de cadência
+  else if (isCadenceAPI) {
+    console.log('🔄 [ErrorHandler] Tratando erro específico de Cadence API');
+    statusCode = err.statusCode || err.status || 500;
+    response.error = 'Cadence API Error';
+    response.message = err.message || 'Erro no sistema de cadência';
+    
+    // Adicionar dicas de correção para erros comuns
+    if (statusCode === 400) {
+      response.message = 'Dados de cadência inválidos. Verifique estrutura de tasks e configuração.';
+    } else if (statusCode === 404) {
+      response.message = 'Configuração de cadência não encontrada.';
+    }
+  }
+  // ✅ MANTIDO: Tratamento padrão para outros erros
+  else if (err.name === 'ValidationError') {
     statusCode = 400;
     response.error = 'Dados inválidos';
     response.message = err.message;

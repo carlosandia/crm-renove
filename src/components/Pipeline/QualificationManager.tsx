@@ -20,11 +20,12 @@ export interface QualificationRules {
   sql: QualificationRule[];
 }
 
-// ✅ NOVO: Interface para campos disponíveis (sistema + customizados)
+// ✅ NOVO: Interface para campos disponíveis (sistema + customizados + draft)
 export interface FieldOption {
   value: string;
   label: string;
-  type?: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number' | 'date';
+  type?: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number' | 'date' | 'url' | 'currency';
+  isDraft?: boolean; // ✅ NOVO: Flag para identificar campos draft (não salvos no banco)
 }
 
 interface QualificationManagerProps {

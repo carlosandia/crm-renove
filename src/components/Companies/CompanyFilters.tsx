@@ -24,10 +24,10 @@ const CompanyFilters: React.FC<CompanyFiltersProps> = ({
   };
 
   const handleReset = () => {
-    onFiltersChange({ searchTerm: '', status: '', industry: '', adminStatus: '' });
+    onFiltersChange({ searchTerm: '', status: '', segmento: '', adminStatus: '' });
   };
 
-  const hasActiveFilters = filters.searchTerm || filters.status || filters.industry || filters.adminStatus;
+  const hasActiveFilters = filters.searchTerm || filters.status || filters.segmento || filters.adminStatus;
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-6 mb-6">
@@ -63,7 +63,7 @@ const CompanyFilters: React.FC<CompanyFiltersProps> = ({
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Buscar por nome da empresa, nicho, cidade ou administrador..."
+              placeholder="Buscar por nome da empresa, segmento, cidade ou administrador..."
               value={filters.searchTerm}
               onChange={(e) => handleSearchChange(e.target.value)}
               className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-gray-50 focus:bg-white"

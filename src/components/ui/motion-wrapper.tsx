@@ -126,6 +126,8 @@ export function MotionWrapper({
     ease: "easeOut" as const, // explicitly typed
   };
 
+  // ✅ CORREÇÃO DOM NESTING: MotionWrapper sempre usa motion.div para evitar problemas
+  // motion.div é semanticamente seguro e não causa problemas de nesting
   return (
     <motion.div
       variants={variants}

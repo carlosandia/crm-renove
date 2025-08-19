@@ -8,6 +8,16 @@ import { cacheMiddlewares } from '../middleware/cacheMiddleware';
 import { authenticateToken } from '../middleware/auth';
 // ✅ IMPORTAR SISTEMA DE DISTRIBUIÇÃO UNIFICADO
 import { LeadDistributionService } from '../services/leadDistributionService';
+// ✅ NOVO: Importar serviço de distribuição round-robin otimizado
+import { DistributionService } from '../services/distributionService';
+// ✅ NOVO: Importar middleware de error handling robusto para distribuição
+import { distributionMiddlewares } from '../middleware/distributionErrorHandler';
+// ✅ NOVO: Importar schemas Zod para validação
+import { 
+  validateDistributionParams, 
+  validateDistributionRule, 
+  validateStatsQuery 
+} from '../shared/schemas/distributionSchemas';
 
 const supabaseAdmin = supabase;
 const router = express.Router();
@@ -182,7 +192,7 @@ router.get('/:id', authenticateToken, PipelineController.getPipelineById);
 router.post('/', PipelineController.createPipeline);
 
 // POST /api/pipelines/complete - Criar pipeline com etapas e campos customizados  
-router.post('/complete', PipelineController.createPipelineWithStagesAndFields);
+router.post('/complete', authenticateToken, PipelineController.createPipelineWithStagesAndFields);
 
 // POST /api/pipelines/complete-old - BACKUP da implementação inline anterior
 router.post('/complete-old', async (req, res) => {
@@ -1349,347 +1359,188 @@ router.post('/create-lead-from-form', async (req, res) => {
 
 // 🆕 ENDPOINT PARA GERENCIAR REGRAS DE DISTRIBUIÇÃO
 // POST /api/pipelines/:pipelineId/distribution-rule - Salvar regra de distribuição
-router.post('/:pipelineId/distribution-rule', authenticateToken, async (req: Request, res: Response) => {
-  try {
-    const { pipelineId } = req.params;
-    // ✅ NOVO: Incluir campos de horários específicos
-    const { 
-      mode, 
-      is_active, 
-      working_hours_only, 
-      working_hours_start, 
-      working_hours_end, 
-      working_days,
-      skip_inactive_members, 
-      fallback_to_manual 
-    } = req.body;
-
-    console.log('💾 Salvando regra de distribuição:', {
-      pipelineId,
-      mode,
-      is_active,
-      working_hours_only,
-      // ✅ NOVO: Log dos campos de horários específicos
-      working_hours_start,
-      working_hours_end,
-      working_days,
-      skip_inactive_members,
-      fallback_to_manual
-    });
-
-    // Validar dados obrigatórios
-    if (!pipelineId || !mode) {
+router.post('/:pipelineId/distribution-rule', 
+  authenticateToken, 
+  distributionMiddlewares.asyncHandler(async (req: Request, res: Response) => {
+    // ✅ VALIDAÇÃO ZOD: Validar parâmetros da URL
+    const paramsValidation = validateDistributionParams(req.params);
+    if (!paramsValidation.success) {
       return res.status(400).json({
         success: false,
-        error: 'Pipeline ID e modo são obrigatórios'
+        error: 'Parâmetros inválidos',
+        details: paramsValidation.error
       });
     }
 
-    // Verificar se a pipeline existe e o usuário tem permissão
-    const { data: pipeline, error: pipelineError } = await supabase
-      .from('pipelines')
-      .select('id, name, tenant_id')
-      .eq('id', pipelineId)
-      .single();
-
-    if (pipelineError || !pipeline) {
-      console.error('Pipeline não encontrada:', pipelineError);
-      return res.status(404).json({
+    // ✅ VALIDAÇÃO ZOD: Validar dados do corpo da requisição
+    const bodyValidation = validateDistributionRule(req.body);
+    if (!bodyValidation.success) {
+      return res.status(400).json({
         success: false,
-        error: 'Pipeline não encontrada'
+        error: 'Dados de entrada inválidos',
+        details: bodyValidation.error
       });
     }
 
-    // Preparar dados para inserção/atualização
-    const distributionRuleData = {
-      pipeline_id: pipelineId,
-      tenant_id: pipeline.tenant_id, // ✅ BUGFIX: Incluir tenant_id para multi-tenant
-      mode: mode || 'manual',
-      is_active: is_active ?? true,
-      working_hours_only: working_hours_only ?? false,
-      // ✅ NOVO: Campos de horários específicos
-      working_hours_start: working_hours_start || '09:00:00',
-      working_hours_end: working_hours_end || '18:00:00',
-      working_days: working_days || [2, 3, 4, 5, 6], // Segunda a Sexta por padrão
-      skip_inactive_members: skip_inactive_members ?? true,
-      fallback_to_manual: fallback_to_manual ?? true,
-      updated_at: new Date().toISOString()
-    };
+    const { pipelineId } = paramsValidation.data;
 
-    // Tentar atualizar regra existente primeiro
-    const { data: updatedRule, error: updateError } = await supabase
-      .from('pipeline_distribution_rules')
-      .upsert(distributionRuleData, { 
-        onConflict: 'pipeline_id',
-        ignoreDuplicates: false 
-          })
-          .select()
-          .single();
+    console.log('💾 [DistributionRoute] Salvando regra de distribuição:', {
+      pipelineId: pipelineId.substring(0, 8),
+      mode: req.body.mode
+    });
 
-    if (updateError) {
-      console.error('Erro ao salvar regra de distribuição:', updateError);
-      return res.status(500).json({
-        success: false,
-        error: 'Erro ao salvar regra de distribuição',
-        details: updateError.message
-      });
-    }
-
-    console.log('✅ Regra de distribuição salva:', updatedRule);
+    // ✅ NOVO: Usar DistributionService otimizado com error handling robusto
+    const savedRule = await DistributionService.saveDistributionRule(req, pipelineId, bodyValidation.data);
 
     res.status(200).json({
       success: true,
-      data: updatedRule,
-      message: `Regra de distribuição ${mode} configurada com sucesso`
+      data: savedRule,
+      message: `Regra de distribuição ${savedRule.mode} configurada com sucesso`
     });
-
-  } catch (error) {
-    console.error('Erro ao salvar regra de distribuição:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Erro interno do servidor'
-    });
-  }
-});
+  })
+);
 
 // GET /api/pipelines/:pipelineId/distribution-rule - Buscar regra de distribuição
-router.get('/:pipelineId/distribution-rule', authenticateToken, async (req: Request, res: Response) => {
-  try {
-    const { pipelineId } = req.params;
-
-    console.log('🔍 Buscando regra de distribuição para pipeline:', pipelineId);
-
-    // Buscar regra existente
-    const { data: distributionRule, error: ruleError } = await supabase
-      .from('pipeline_distribution_rules')
-      .select('*')
-      .eq('pipeline_id', pipelineId)
-      .single();
-
-    if (ruleError && ruleError.code !== 'PGRST116') { // PGRST116 = not found
-      console.error('Erro ao buscar regra de distribuição:', ruleError);
-      return res.status(500).json({
+router.get('/:pipelineId/distribution-rule', 
+  authenticateToken, 
+  distributionMiddlewares.asyncHandler(async (req: Request, res: Response) => {
+    // ✅ VALIDAÇÃO ZOD: Validar parâmetros da URL
+    const paramsValidation = validateDistributionParams(req.params);
+    if (!paramsValidation.success) {
+      return res.status(400).json({
         success: false,
-        error: 'Erro ao buscar regra de distribuição'
+        error: 'Parâmetros inválidos',
+        details: paramsValidation.error
       });
     }
 
-    // Se não encontrou, retornar regra padrão
+    const { pipelineId } = paramsValidation.data;
+
+    console.log('🔍 [DistributionRoute] Buscando regra de distribuição:', pipelineId.substring(0, 8));
+
+    // ✅ NOVO: Usar DistributionService otimizado com error handling robusto
+    const distributionRule = await DistributionService.getDistributionRule(req, pipelineId);
+
     if (!distributionRule) {
+      // Retornar regra padrão se não existe
       const defaultRule = {
         pipeline_id: pipelineId,
-        mode: 'manual',
+        tenant_id: (req as any).user?.user_metadata?.tenant_id,
+        mode: 'manual' as const,
         is_active: true,
         working_hours_only: false,
         skip_inactive_members: true,
         fallback_to_manual: true
       };
 
-      console.log('📋 Retornando regra padrão para pipeline:', pipelineId);
+      console.log('📋 [DistributionRoute] Retornando regra padrão');
 
       return res.status(200).json({
-      success: true,
+        success: true,
         data: defaultRule,
         message: 'Regra de distribuição padrão (não configurada ainda)'
       });
     }
-
-    console.log('✅ Regra de distribuição encontrada:', distributionRule);
 
     res.status(200).json({
       success: true,
       data: distributionRule,
       message: 'Regra de distribuição carregada com sucesso'
     });
-
-  } catch (error) {
-    console.error('Erro ao buscar regra de distribuição:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Erro interno do servidor'
-    });
-  }
-});
+  })
+);
 
 // GET /api/pipelines/:pipelineId/distribution-stats - Estatísticas de distribuição
-router.get('/:pipelineId/distribution-stats', authenticateToken, async (req: Request, res: Response) => {
-  try {
-    const { pipelineId } = req.params;
+router.get('/:pipelineId/distribution-stats', 
+  authenticateToken, 
+  distributionMiddlewares.asyncHandler(async (req: Request, res: Response) => {
+    // ✅ VALIDAÇÃO ZOD: Validar parâmetros da URL
+    const paramsValidation = validateDistributionParams(req.params);
+    if (!paramsValidation.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Parâmetros inválidos',
+        details: paramsValidation.error
+      });
+    }
 
-    console.log('📊 Buscando estatísticas de distribuição para pipeline:', pipelineId);
+    // ✅ VALIDAÇÃO ZOD: Validar query parameters
+    const queryValidation = validateStatsQuery(req.query);
+    if (!queryValidation.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Query parameters inválidos',
+        details: queryValidation.error
+      });
+    }
 
-    // Buscar estatísticas da regra de distribuição
-    const { data: distributionRule, error: ruleError } = await supabase
-      .from('pipeline_distribution_rules')
-      .select('*')
-      .eq('pipeline_id', pipelineId)
-      .single();
+    const { pipelineId } = paramsValidation.data;
 
-    // Buscar histórico de atribuições
-    const { data: assignmentHistory, error: historyError } = await supabase
-      .from('lead_assignment_history')
-      .select(`
-        id,
-        assigned_to,
-        assignment_method,
-        round_robin_position,
-        total_eligible_members,
-        status,
-        created_at,
-        users!assigned_to (
-          first_name,
-          last_name,
-          email
-        )
-      `)
-      .eq('pipeline_id', pipelineId)
-      .order('created_at', { ascending: false })
-      .limit(50);
+    console.log('📊 [DistributionRoute] Buscando estatísticas:', pipelineId.substring(0, 8));
 
-    // Calcular estatísticas
-    const stats = {
-      rule: distributionRule || null,
-      total_assignments: distributionRule?.total_assignments || 0,
-      successful_assignments: distributionRule?.successful_assignments || 0,
-      failed_assignments: distributionRule?.failed_assignments || 0,
-      last_assignment_at: distributionRule?.last_assignment_at || null,
-      recent_assignments: assignmentHistory || [],
-      assignment_success_rate: distributionRule?.total_assignments > 0 
-        ? Math.round((distributionRule.successful_assignments / distributionRule.total_assignments) * 100)
-        : 0
-    };
-
-    console.log('✅ Estatísticas de distribuição:', {
-      pipelineId,
-      totalAssignments: stats.total_assignments,
-      successRate: stats.assignment_success_rate
-    });
+    // ✅ NOVO: Usar DistributionService otimizado com error handling robusto
+    const stats = await DistributionService.getDistributionStats(req, pipelineId);
 
     res.status(200).json({
       success: true,
       data: stats,
       message: 'Estatísticas de distribuição carregadas com sucesso'
     });
-
-  } catch (error) {
-    console.error('Erro ao buscar estatísticas de distribuição:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Erro interno do servidor'
-    });
-  }
-});
+  })
+);
 
 // POST /api/pipelines/:pipelineId/distribution-test - Testar distribuição
 router.post('/:pipelineId/distribution-test', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { pipelineId } = req.params;
 
-    console.log('🧪 Testando distribuição para pipeline:', pipelineId);
+    console.log('🧪 [DistributionRoute] Testando distribuição:', pipelineId.substring(0, 8));
 
-    // Buscar regra de distribuição
-    const { data: distributionRule, error: ruleError } = await supabase
-      .from('pipeline_distribution_rules')
-      .select('*')
-      .eq('pipeline_id', pipelineId)
-      .single();
+    // ✅ NOVO: Usar DistributionService otimizado
+    const testResult = await DistributionService.testDistribution(req, pipelineId);
 
-    if (ruleError || !distributionRule) {
-      return res.status(404).json({
-        success: false,
-        error: 'Regra de distribuição não encontrada'
-      });
-    }
+    const statusCode = testResult.success ? 200 : 400;
 
-    if (!distributionRule.is_active) {
-      return res.status(400).json({
-        success: false,
-        message: 'Distribuição não está ativa para esta pipeline'
-      });
-    }
+    res.status(statusCode).json({
+      success: testResult.success,
+      assigned_to: testResult.assigned_to,
+      member_name: testResult.member_name,
+      method: testResult.method,
+      round_robin_position: testResult.round_robin_position,
+      total_eligible_members: testResult.total_eligible_members,
+      message: testResult.message,
+      error: testResult.error
+    });
 
-    if (distributionRule.mode === 'manual') {
-      return res.status(200).json({
-        success: false,
-        message: 'Distribuição está em modo manual - teste não aplicável'
-      });
-    }
+  } catch (error: any) {
+    console.error('❌ [DistributionRoute] Erro no teste:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Erro interno do servidor'
+    });
+  }
+});
 
-    // Buscar membros da pipeline para rodízio
-    const { data: pipelineMembers, error: membersError } = await supabase
-      .from('pipeline_members')
-      .select(`
-        member_id,
-        users!member_id (
-          id,
-          first_name,
-          last_name,
-          email,
-          is_active
-        )
-      `)
-      .eq('pipeline_id', pipelineId);
+// POST /api/pipelines/:pipelineId/distribution-reset - Resetar distribuição (limpar último membro)
+router.post('/:pipelineId/distribution-reset', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { pipelineId } = req.params;
 
-    if (membersError || !pipelineMembers || pipelineMembers.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Nenhum membro encontrado na pipeline'
-      });
-    }
+    console.log('🔄 [DistributionRoute] Resetando distribuição:', pipelineId.substring(0, 8));
 
-    // Filtrar membros ativos se configurado
-    const eligibleMembers = distributionRule.skip_inactive_members 
-      ? pipelineMembers.filter(pm => {
-          const user = pm.users as any;
-          return user?.is_active !== false;
-        })
-      : pipelineMembers;
-
-    if (eligibleMembers.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Nenhum membro elegível encontrado para distribuição'
-      });
-    }
-
-    // Simular próxima atribuição
-    const lastAssignedIndex = distributionRule.last_assigned_member_id 
-      ? eligibleMembers.findIndex(m => m.member_id === distributionRule.last_assigned_member_id)
-      : -1;
-    
-    const nextIndex = (lastAssignedIndex + 1) % eligibleMembers.length;
-    const nextMember = eligibleMembers[nextIndex];
-
-    // Registrar teste no histórico
-    await supabase
-      .from('lead_assignment_history')
-      .insert({
-        pipeline_id: pipelineId,
-        assigned_to: nextMember.member_id,
-        assignment_method: 'test_simulation',
-        round_robin_position: nextIndex,
-        total_eligible_members: eligibleMembers.length,
-        status: 'test'
-      });
+    // ✅ NOVO: Usar DistributionService otimizado
+    await DistributionService.resetDistribution(req, pipelineId);
 
     res.status(200).json({
       success: true,
-      assigned_to: nextMember.member_id,
-      member_name: `${(nextMember.users as any)?.first_name || ''} ${(nextMember.users as any)?.last_name || ''}`.trim(),
-      message: `Teste realizado: próximo lead seria atribuído a ${(nextMember.users as any)?.first_name || 'Membro'}`
+      message: 'Distribuição resetada com sucesso'
     });
 
-    console.log('✅ Teste de distribuição realizado com sucesso:', {
-      pipelineId,
-      nextMember: nextMember.member_id,
-      position: nextIndex
-    });
-
-  } catch (error) {
-    console.error('Erro no teste de distribuição:', error);
+  } catch (error: any) {
+    console.error('❌ [DistributionRoute] Erro ao resetar:', error);
     res.status(500).json({
       success: false,
-      error: 'Erro interno do servidor'
+      error: error.message || 'Erro interno do servidor'
     });
   }
 });

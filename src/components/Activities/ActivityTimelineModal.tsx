@@ -390,11 +390,11 @@ export const ActivityTimelineModal: React.FC<ActivityTimelineModalProps> = ({
               <h3 className="text-lg font-medium text-gray-900 mb-2">
                 Nenhuma atividade encontrada
               </h3>
-              <p className="text-gray-500 text-center max-w-md">
+              <div className="text-gray-500 text-center max-w-md">
                 {searchTerm || sourceFilter !== 'all' || statusFilter !== 'all' 
                   ? 'Nenhuma atividade corresponde aos filtros aplicados.'
                   : 'Este lead ainda não possui atividades registradas.'}
-              </p>
+              </div>
               {onAddManualActivity && (
                 <Button
                   onClick={onAddManualActivity}

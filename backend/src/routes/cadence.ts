@@ -660,13 +660,15 @@ router.delete('/config/:id', authenticateToken, async (req, res) => {
       });
     }
 
-    // ✅ NOVO: Validar que o usuário tem permissão para deletar (tenant_id)
-    if (req.user?.tenant_id !== tenant_id) {
+    // ✅ NOVO: Validar que o usuário tem permissão para deletar (tenant_id) - suportar estrutura padronizada
+    const userTenantId = req.user?.tenant_id || req.user?.user_metadata?.tenant_id;
+    if (userTenantId !== tenant_id) {
       console.log('❌ [DELETE /config/:id] Acesso negado - tenant_id mismatch:', {
         configId: id.substring(0, 8),
-        userTenantId: req.user?.tenant_id?.substring(0, 8),
+        userTenantId: userTenantId?.substring(0, 8) || 'unknown',
         requestTenantId: (tenant_id as string).substring(0, 8),
-        userRole: req.user?.role
+        userRole: req.user?.role || req.user?.user_metadata?.role || 'unknown',
+        auth_structure: req.user?.tenant_id ? 'direct' : 'nested'
       });
       
       return res.status(403).json({
@@ -811,6 +813,312 @@ router.get('/stage/:pipeline_id/:stage_name', authenticateToken, async (req, res
 
 
 /**
+ * ✅ NOVO: POST /api/cadence/reconstruct
+ * Reconstrói configurações de cadência baseado em task_instances existentes
+ * Usado quando cadence_configs não existem mas há task_instances no banco
+ */
+router.post('/reconstruct', authenticateToken, async (req, res) => {
+  try {
+    const {
+      pipeline_id,
+      tenant_id,
+      user_id,
+      reason
+    } = req.body;
+
+    // ✅ ETAPA 4: Logs estruturados melhorados
+    console.log('🛠️ [CADENCE-RECONSTRUCT] Iniciando reconstrução:', {
+      pipeline_id: pipeline_id.substring(0, 8) + '...',
+      tenant_id: tenant_id.substring(0, 8) + '...',
+      user_id: user_id ? user_id.substring(0, 8) + '...' : 'anonymous',
+      reason: reason || 'frontend_request',
+      auth_method: req.user?.tenant_id ? 'direct_auth' : 'metadata_auth',
+      user_role: req.user?.role || req.user?.user_metadata?.role || 'unknown',
+      timestamp: new Date().toISOString()
+    });
+
+    // ✅ ETAPA 3: Validação melhorada com detalhes específicos
+    const validationErrors = [];
+    
+    if (!pipeline_id) validationErrors.push('pipeline_id é obrigatório');
+    if (!tenant_id) validationErrors.push('tenant_id é obrigatório');
+    if (pipeline_id && typeof pipeline_id !== 'string') validationErrors.push('pipeline_id deve ser uma string');
+    if (tenant_id && typeof tenant_id !== 'string') validationErrors.push('tenant_id deve ser uma string');
+    
+    if (validationErrors.length > 0) {
+      console.error('❌ [CADENCE-RECONSTRUCT] Validação de entrada falhou:', {
+        errors: validationErrors,
+        received: {
+          pipeline_id: pipeline_id ? pipeline_id.substring(0, 8) + '...' : 'missing',
+          tenant_id: tenant_id ? tenant_id.substring(0, 8) + '...' : 'missing',
+          user_id: user_id ? user_id.substring(0, 8) + '...' : 'missing',
+          reason: reason || 'no_reason'
+        }
+      });
+      return res.status(400).json({
+        success: false,
+        error: 'Erro de validação',
+        details: validationErrors.join(', '),
+        required_fields: ['pipeline_id', 'tenant_id']
+      });
+    }
+
+    // ✅ CORREÇÃO: Validar que usuário tem permissão para acessar tenant - suportar estrutura padronizada
+    const userTenantId = req.user?.tenant_id || req.user?.user_metadata?.tenant_id;
+    if (userTenantId !== tenant_id) {
+      console.warn('⚠️ [CADENCE-RECONSTRUCT] Acesso negado - tenant_id mismatch:', {
+        user_tenant_id: userTenantId?.substring(0, 8) || 'unknown',
+        request_tenant_id: tenant_id.substring(0, 8),
+        user_role: req.user?.role || req.user?.user_metadata?.role || 'unknown',
+        auth_structure: req.user?.tenant_id ? 'direct' : 'nested'
+      });
+      return res.status(403).json({
+        success: false,
+        error: 'Acesso negado: tenant_id não autorizado para este usuário'
+      });
+    }
+
+    const correlationId = logger.generateCorrelationId();
+    
+    logger.api('Iniciando reconstrução de cadence configs', {
+      correlationId,
+      tenantId: tenant_id,
+      userId: user_id,
+      operation: 'reconstruct_cadence_configs',
+      pipeline_id: pipeline_id.substring(0, 8),
+      reason
+    });
+
+    // ✅ IMPLEMENTAÇÃO: Buscar task_instances existentes para reconstrução
+    console.log('🔍 [CADENCE-RECONSTRUCT] Buscando task_instances para reconstrução...');
+    
+    const { data: taskInstances, error: taskInstancesError } = await supabase
+      .from('cadence_task_instances')
+      .select(`
+        id,
+        pipeline_id,
+        stage_id,
+        day_offset,
+        task_order,
+        channel,
+        task_description,
+        template_content,
+        is_active,
+        created_at
+      `)
+      .eq('pipeline_id', pipeline_id)
+      .eq('tenant_id', tenant_id)
+      .order('stage_id')
+      .order('day_offset')
+      .order('task_order');
+
+    if (taskInstancesError) {
+      console.error('❌ [CADENCE-RECONSTRUCT] Erro ao buscar task_instances:', {
+        error: taskInstancesError,
+        error_code: taskInstancesError.code,
+        error_message: taskInstancesError.message,
+        pipeline_id: pipeline_id.substring(0, 8),
+        tenant_id: tenant_id.substring(0, 8),
+        timestamp: new Date().toISOString()
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao acessar task_instances no banco de dados',
+        details: taskInstancesError.message,
+        error_code: taskInstancesError.code,
+        troubleshooting: 'Verifique se a tabela cadence_task_instances existe e se há permissões adequadas'
+      });
+    }
+
+    console.log('📋 [CADENCE-RECONSTRUCT] Task instances encontradas:', {
+      total: taskInstances?.length || 0,
+      pipeline_id: pipeline_id.substring(0, 8)
+    });
+
+    // ✅ ETAPA 1: Validação melhorada - verificar se há cadence_configs existentes antes de falhar
+    if (!taskInstances || taskInstances.length === 0) {
+      console.warn('⚠️ [CADENCE-RECONSTRUCT] Nenhuma task_instance encontrada, verificando cadence_configs existentes...');
+      
+      // ✅ ETAPA 2: Fallback inteligente - tentar carregar configurações existentes de cadence_configs
+      const { data: existingConfigs, error: configsError } = await supabase
+        .from('cadence_configs')
+        .select(`
+          id,
+          pipeline_id,
+          stage_name,
+          stage_order,
+          tasks,
+          is_active,
+          created_at,
+          updated_at
+        `)
+        .eq('pipeline_id', pipeline_id)
+        .eq('tenant_id', tenant_id)
+        .order('stage_order');
+      
+      if (configsError) {
+        console.error('❌ [CADENCE-RECONSTRUCT] Erro ao buscar cadence_configs como fallback:', {
+          error: configsError,
+          error_code: configsError.code,
+          error_message: configsError.message,
+          pipeline_id: pipeline_id.substring(0, 8),
+          tenant_id: tenant_id.substring(0, 8),
+          fallback_attempt: true,
+          timestamp: new Date().toISOString()
+        });
+        return res.status(500).json({
+          success: false,
+          error: 'Erro ao acessar configurações de cadência como fallback',
+          details: configsError.message,
+          error_code: configsError.code,
+          troubleshooting: 'Verifique se a tabela cadence_configs existe e se há permissões adequadas'
+        });
+      }
+      
+      if (existingConfigs && existingConfigs.length > 0) {
+        console.log('✅ [CADENCE-RECONSTRUCT] Encontradas configurações existentes como fallback:', {
+          total: existingConfigs.length,
+          pipeline_id: pipeline_id.substring(0, 8)
+        });
+        
+        // Reformatar configurações existentes para o formato esperado pelo frontend
+        const formattedConfigs = existingConfigs.map(config => ({
+          id: config.id,
+          pipeline_id: config.pipeline_id,
+          stage_name: config.stage_name,
+          stage_order: config.stage_order || 0,
+          tasks: Array.isArray(config.tasks) ? config.tasks : [],
+          is_active: config.is_active ?? true,
+          tenant_id: tenant_id
+        }));
+        
+        return res.json({
+          success: true,
+          message: `Configurações carregadas (${existingConfigs.length} encontradas)`,
+          configs: formattedConfigs,
+          source: 'existing_cadence_configs'
+        });
+      }
+      
+      console.warn('⚠️ [CADENCE-RECONSTRUCT] Nenhuma configuração encontrada - nem task_instances nem cadence_configs');
+      return res.json({
+        success: true,
+        message: 'Nenhuma configuração de cadência encontrada para esta pipeline',
+        configs: [],
+        source: 'empty_database'
+      });
+    }
+
+    // ✅ IMPLEMENTAÇÃO: Agrupar por stage_id e reconstruir configurações
+    const stageGroups = new Map();
+    
+    for (const instance of taskInstances) {
+      const stageKey = instance.stage_id;
+      
+      if (!stageGroups.has(stageKey)) {
+        stageGroups.set(stageKey, {
+          pipeline_id: instance.pipeline_id,
+          stage_id: instance.stage_id,
+          stage_name: `Etapa ${stageKey.substring(0, 8)}`, // Nome genérico - será melhorado
+          stage_order: 0, // Será determinado depois
+          tasks: [],
+          is_active: true,
+          tenant_id: tenant_id
+        });
+      }
+      
+      const stageConfig = stageGroups.get(stageKey);
+      stageConfig.tasks.push({
+        day_offset: instance.day_offset,
+        task_order: instance.task_order,
+        channel: instance.channel,
+        action_type: 'mensagem', // Valor padrão se não existir
+        task_description: instance.task_description,
+        template_content: instance.template_content,
+        is_active: instance.is_active
+      });
+    }
+
+    const reconstructedConfigs = Array.from(stageGroups.values());
+    
+    console.log('✅ [CADENCE-RECONSTRUCT] Configurações reconstruídas:', {
+      stages_count: reconstructedConfigs.length,
+      total_tasks: reconstructedConfigs.reduce((acc, config) => acc + config.tasks.length, 0),
+      pipeline_id: pipeline_id.substring(0, 8)
+    });
+
+    logger.info('Reconstrução de cadence configs concluída', {
+      correlationId,
+      tenantId: tenant_id,
+      operation: 'reconstruct_success',
+      configs_count: reconstructedConfigs.length,
+      pipeline_id: pipeline_id.substring(0, 8)
+    });
+
+    res.json({
+      success: true,
+      message: `${reconstructedConfigs.length} configurações reconstruídas com sucesso`,
+      configs: reconstructedConfigs,
+      source: 'reconstructed_from_task_instances',
+      reason
+    });
+
+  } catch (error: any) {
+    const correlationId = logger.generateCorrelationId();
+    
+    // ✅ ETAPA 4: Logs estruturados detalhados para debugging
+    console.error('❌ [CADENCE-RECONSTRUCT] Erro crítico durante reconstrução:', {
+      correlationId,
+      error_type: error.constructor.name,
+      error_message: error.message,
+      error_code: error.code,
+      pipeline_id: req.body.pipeline_id?.substring(0, 8),
+      tenant_id: req.body.tenant_id?.substring(0, 8),
+      user_id: req.body.user_id?.substring(0, 8),
+      timestamp: new Date().toISOString(),
+      stack_preview: error.stack?.split('\n').slice(0, 5).join('\n')
+    });
+    
+    logger.error('Erro na reconstrução de cadence configs', {
+      correlationId,
+      operation: 'reconstruct_error',
+      error: error.message,
+      errorType: error.constructor.name,
+      stack: error.stack?.split('\n').slice(0, 3),
+      request_data: {
+        pipeline_id: req.body.pipeline_id?.substring(0, 8),
+        tenant_id: req.body.tenant_id?.substring(0, 8),
+        has_auth: !!req.user
+      }
+    });
+    
+    // Determinar tipo de erro e status code apropriado
+    let statusCode = 500;
+    let errorMessage = 'Erro interno do servidor';
+    
+    if (error.message?.includes('permission') || error.message?.includes('auth')) {
+      statusCode = 403;
+      errorMessage = 'Erro de autorização';
+    } else if (error.message?.includes('not found') || error.message?.includes('404')) {
+      statusCode = 404;
+      errorMessage = 'Recurso não encontrado';
+    } else if (error.message?.includes('validation') || error.message?.includes('invalid')) {
+      statusCode = 400;
+      errorMessage = 'Erro de validação';
+    }
+    
+    res.status(statusCode).json({
+      success: false,
+      error: errorMessage,
+      details: error.message || 'Erro desconhecido durante reconstrução',
+      correlationId,
+      source: 'reconstruct_error',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
  * POST /api/cadence/test
  * Endpoint para testar a funcionalidade
  */
@@ -829,7 +1137,6 @@ router.post('/test', async (req, res) => {
               task_order: 1,
               channel: 'email' as const,
               action_type: 'mensagem' as const,
-              task_title: 'E-mail de boas-vindas',
               task_description: 'Enviar e-mail de boas-vindas para o lead',
               template_content: 'Olá {{nome}}, bem-vindo!',
               is_active: true
@@ -839,7 +1146,6 @@ router.post('/test', async (req, res) => {
               task_order: 1,
               channel: 'whatsapp' as const,
               action_type: 'mensagem' as const,
-              task_title: 'WhatsApp follow-up',
               task_description: 'Fazer contato via WhatsApp',
               template_content: 'Oi {{nome}}, vamos conversar?',
               is_active: true

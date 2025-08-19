@@ -10,17 +10,8 @@ import {
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-
-interface CustomField {
-  id: string;
-  field_name: string;
-  field_label: string;
-  field_type: string;
-  is_required: boolean;
-  field_order: number;
-  show_in_card?: boolean;
-  field_options?: any[];
-}
+// ✅ AIDEV-NOTE: Usando tipo derivado do schema Zod para garantir consistência
+import { CustomField } from '../../types/Pipeline';
 
 interface Lead {
   id: string;

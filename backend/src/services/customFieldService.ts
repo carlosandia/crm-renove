@@ -5,7 +5,7 @@ export interface CustomField {
   pipeline_id: string;
   field_name: string;
   field_label: string;
-  field_type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number' | 'date';
+  field_type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number' | 'date' | 'url' | 'currency';
   field_options?: string[]; // Para campos select
   is_required: boolean;
   field_order: number;
@@ -46,7 +46,7 @@ export class CustomFieldService {
               pipeline_id UUID NOT NULL REFERENCES pipelines(id) ON DELETE CASCADE,
               field_name VARCHAR(100) NOT NULL,
               field_label VARCHAR(200) NOT NULL,
-              field_type VARCHAR(50) NOT NULL CHECK (field_type IN ('text', 'email', 'phone', 'textarea', 'select', 'number', 'date')),
+              field_type VARCHAR(50) NOT NULL CHECK (field_type IN ('text', 'email', 'phone', 'textarea', 'select', 'number', 'date', 'url', 'currency')),
               field_options JSONB,
               is_required BOOLEAN DEFAULT false,
               field_order INTEGER DEFAULT 0,
@@ -110,7 +110,7 @@ export class CustomFieldService {
             pipeline_id UUID NOT NULL,
             field_name VARCHAR(100) NOT NULL,
             field_label VARCHAR(200) NOT NULL,
-            field_type VARCHAR(50) NOT NULL,
+            field_type VARCHAR(50) NOT NULL CHECK (field_type IN ('text', 'email', 'phone', 'textarea', 'select', 'number', 'date', 'url', 'currency')),
             field_options JSONB,
             is_required BOOLEAN DEFAULT false,
             field_order INTEGER DEFAULT 0,
@@ -159,7 +159,15 @@ export class CustomFieldService {
       ...field,
       field_options: field.field_options ? 
         (typeof field.field_options === 'string' ? JSON.parse(field.field_options) : field.field_options) : 
-        undefined
+        undefined,
+      // ✅ CORREÇÃO: Garantir que field_label sempre tenha valor válido (necessário para Zod)
+      field_label: field.field_label || field.field_name || 'Campo Customizado',
+      // ✅ CORREÇÃO: Garantir que field_order sempre tenha valor válido
+      field_order: field.field_order !== null && field.field_order !== undefined ? field.field_order : 0,
+      // ✅ CORREÇÃO: Garantir que is_required sempre tenha valor válido
+      is_required: field.is_required !== null && field.is_required !== undefined ? field.is_required : false,
+      // ✅ CORREÇÃO: Garantir que show_in_card sempre tenha valor válido
+      show_in_card: field.show_in_card !== null && field.show_in_card !== undefined ? field.show_in_card : false
     }));
   }
 

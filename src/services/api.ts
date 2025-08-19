@@ -68,27 +68,32 @@ class ApiService {
       ...(options.headers as Record<string, string>),
     };
     
-    // Buscar token Supabase automaticamente
+    // ✅ BÁSICO: Buscar user autenticado (Basic Supabase Authentication)
     try {
       const { supabase } = await import('../lib/supabase');
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { user }, error } = await supabase.auth.getUser();
       
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`;
-        console.log('🔑 [API] Token Supabase incluído automaticamente');
+      if (user && !error) {
+        // ✅ Basic Supabase Authentication: usar session token atual
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+          console.log('🔑 [API] Basic Auth Supabase - Token incluído para:', user.email);
+        }
       } else {
-        console.warn('⚠️ [API] Nenhum token Supabase encontrado - requisição sem autenticação');
+        console.warn('⚠️ [API] Usuário não autenticado - requisição sem autorização');
       }
     } catch (authError) {
-      console.error('❌ [API] Erro ao obter token Supabase:', authError);
+      console.error('❌ [API] Erro ao verificar autenticação:', authError);
     }
     
-    // ✅ TIMEOUT ESPECÍFICO: Validação SMTP vs outras operações SMTP
+    // ✅ TIMEOUT ESPECÍFICO: SMTP, Pipeline e outras operações
     const isSmtpValidation = endpoint.includes('/simple-email/validate-config');
     const isSmtpOperation = endpoint.includes('/simple-email/') && !isSmtpValidation;
+    const isPipelineOperation = endpoint.includes('/pipelines') || endpoint.includes('/pipeline');
     
     // ✅ TIMEOUT CONFIGURADO para cada tipo de operação
-    let timeoutDuration = API.TIMEOUT; // 30s padrão
+    let timeoutDuration: number = API.TIMEOUT; // 30s padrão
     if (isSmtpValidation) {
       // ✅ BASEADO EM DIAGNÓSTICO: 3 tentativas x 7min cada = 21min total
       // Adicionando margem de segurança: 25 minutos
@@ -97,10 +102,14 @@ class ApiService {
     } else if (isSmtpOperation) {
       // Outras operações SMTP: sem timeout (controlado pelo Nodemailer)
       console.log('📧 [API-SMTP] Operação SMTP: sem timeout de frontend');
+    } else if (isPipelineOperation) {
+      // Operações de pipeline: timeout estendido para salvar dados complexos
+      timeoutDuration = API.TIMEOUT_PIPELINE; // 60s para pipelines
+      console.log('🔧 [API-TIMEOUT] Operação Pipeline: timeout estendido 60s para salvamento complexo');
     }
     
     // ✅ CRIAR CONTROLLER baseado no tipo de operação
-    const shouldCreateController = !options.signal && !isSmtpOperation; // Validação ainda precisa de controller
+    const shouldCreateController = !options.signal && !isSmtpOperation; // SMTP operations excluded, pipeline operations included
     const controller = shouldCreateController ? new AbortController() : null;
     const signal = options.signal || controller?.signal;
     
@@ -113,7 +122,9 @@ class ApiService {
     // ✅ TIMEOUT APLICADO baseado no tipo de operação
     const timeoutId = shouldCreateController ? setTimeout(() => {
       if (controller) {
-        const operationType = isSmtpValidation ? 'Validação SMTP' : 'Operação padrão';
+        const operationType = isSmtpValidation ? 'Validação SMTP' : 
+                            isPipelineOperation ? 'Pipeline' : 
+                            'Operação padrão';
         console.log(`⏰ [API] ${operationType} - Timeout atingido (${timeoutDuration}ms) - abortando requisição`);
         controller.abort();
       }
@@ -200,6 +211,39 @@ class ApiService {
     return this.request<T>(endpoint, {
       method: 'DELETE',
     });
+  }
+
+  /**
+   * Criar administrador via backend API
+   * ✅ CORREÇÃO: Migrado de useMultipleAdmins.ts para eliminar 403 Forbidden
+   */
+  async createAdmin(adminData: {
+    email: string;
+    password: string;
+    first_name?: string;
+    last_name?: string;
+    tenant_id: string;
+    role?: string;
+  }): Promise<ApiResponse<{
+    id: string;
+    email: string;
+    first_name: string;
+    last_name: string;
+    role: string;
+    tenant_id: string;
+    is_active: boolean;
+    created_at: string;
+  }>> {
+    return this.post<{
+      id: string;
+      email: string;
+      first_name: string;
+      last_name: string;
+      role: string;
+      tenant_id: string;
+      is_active: boolean;
+      created_at: string;
+    }>('/admin/create-user', adminData);
   }
 
   /**

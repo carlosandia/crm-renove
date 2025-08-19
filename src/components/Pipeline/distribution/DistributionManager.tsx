@@ -27,6 +27,24 @@ import { PIPELINE_UI_CONSTANTS } from '../../../styles/pipeline-constants';
 import { useDistributionManager } from '../../../hooks/useDistributionApi';
 import { toast } from 'sonner';
 
+// ✅ OTIMIZAÇÃO: Importar configurações de logging
+import { COMPONENT_LOGGING_CONFIG } from '../../../config/logging';
+
+// ================================================================================
+// LOGGER CONSTANTE (FORA DO HOOK PARA EVITAR WARNING EXHAUSTIVE-DEPS)
+// ================================================================================
+// AIDEV-NOTE: Logger movido para fora do hook para eliminar warning react-hooks/exhaustive-deps
+const logger = {
+  debug: (operation: string, data?: any) => {
+    if (import.meta.env.DEV) {
+      console.log(`🔧 [DistributionManager.${operation}]`, data);
+    }
+  },
+  error: (operation: string, error: any) => {
+    console.error(`❌ [DistributionManager.${operation}]`, error);
+  }
+};
+
 // ================================================================================
 // INTERFACES E TIPOS
 // ================================================================================
@@ -84,6 +102,8 @@ export function useLocalDistributionManager({
   onRuleChange 
 }: UseLocalDistributionManagerProps): UseLocalDistributionManagerReturn {
   
+  // ✅ CORREÇÃO: Logger movido para constante externa para eliminar warning exhaustive-deps
+  
   // 🔧 CORREÇÃO: Verificar se já foi inicializado para evitar logs excessivos
   const [initialized, setInitialized] = useState(false);
   // ✅ NOVO: Estado para controlar inicialização e evitar callback prematuro
@@ -91,11 +111,14 @@ export function useLocalDistributionManager({
   const isCreationMode = !pipelineId || pipelineId.length === 0;
   const hasValidPipelineId = !!(pipelineId && pipelineId.length > 0);
   
-  // ============================================
-  // OTIMIZADO: Logs removidos para evitar HMR excessivo
-  // ============================================
+  // 🔧 OTIMIZAÇÃO: Log inicial simplificado
   React.useEffect(() => {
     if (!initialized) {
+      logger.debug('initialization', {
+        pipelineId: pipelineId?.substring(0, 8) + '...' || 'new',
+        hasValidPipelineId,
+        isCreationMode
+      });
       setInitialized(true);
     }
   }, [pipelineId, hasValidPipelineId, isCreationMode, initialized]);
@@ -104,9 +127,10 @@ export function useLocalDistributionManager({
   const apiData = useDistributionManager(hasValidPipelineId ? pipelineId : undefined);
   
   // 🔧 CORREÇÃO: Memoizar defaultRule para evitar re-criação constante
+  // AIDEV-NOTE: SEMPRE usar modo 'manual' como padrão para novas pipelines
   const defaultRule = React.useMemo<DistributionRule>(() => ({
     pipeline_id: '', // Será preenchido quando houver pipelineId válido
-    mode: 'manual',
+    mode: 'manual', // ✅ PADRÃO OBRIGATÓRIO: sempre manual inicialmente
     is_active: true,
     working_hours_only: false,
     skip_inactive_members: true,
@@ -127,7 +151,10 @@ export function useLocalDistributionManager({
   // ✅ CRÍTICO: Correção para modo criação - marcar como não inicializando após estado estar pronto
   useEffect(() => {
     if (isCreationMode && localRule && isInitializing) {
-      console.log('🔄 [useLocalDistributionManager] Modo criação detectado - finalizando inicialização');
+      logger.debug('finalizando-inicializacao', {
+        mode: 'creation',
+        localRule: localRule.mode
+      });
       setIsInitializing(false);
     }
   }, [isCreationMode, localRule, isInitializing]);
@@ -135,26 +162,21 @@ export function useLocalDistributionManager({
   // 🔧 CORREÇÃO: Inicializar com dados da API quando disponível (modo edição)
   useEffect(() => {
     if (hasValidPipelineId && apiData.rule) {
-      // ✅ CORREÇÃO: Sempre sincronizar com dados da API quando disponíveis, especialmente após refresh
+      // ✅ CORREÇÃO: Sempre sincronizar com dados da API quando disponíveis
       if (!localRule) {
-        console.log('🔄 [useLocalDistributionManager] Carregando dados da API (inicialização)');
+        logger.debug('carregando-dados-api', { hasApiRule: !!apiData.rule });
         setLocalRule(apiData.rule);
         setIsInitializing(false);
       } else {
         // ✅ NOVO: Sincronizar dados salvos da API com estado local após refresh
         const shouldForceSync = !localRule.working_hours_start && apiData.rule.working_hours_start;
         if (shouldForceSync) {
-          console.log('🔄 [useLocalDistributionManager] Sincronizando dados salvos após refresh:', {
-            apiStart: apiData.rule.working_hours_start,
-            apiEnd: apiData.rule.working_hours_end,
-            apiDays: apiData.rule.working_days,
-            localStart: localRule.working_hours_start
-          });
+          logger.debug('sincronizando-dados-salvos', { hasWorkingHours: !!apiData.rule.working_hours_start });
           setLocalRule(apiData.rule);
         }
       }
     }
-  }, [apiData.rule, localRule, hasValidPipelineId]);
+  }, [apiData.rule, localRule, hasValidPipelineId, pipelineId]);
 
   // ✅ CORREÇÃO: Sincronizar apenas quando há salvamento bem-sucedido, não automaticamente
   useEffect(() => {
@@ -164,10 +186,9 @@ export function useLocalDistributionManager({
       const shouldSync = sessionStorage.getItem(`sync-pending-${hasValidPipelineId ? pipelineId : 'temp'}`);
       
       if (shouldSync) {
-        console.log('🔄 [useLocalDistributionManager] Sincronizando após salvamento:', {
+        logger.debug('sincronizando-apos-salvamento', {
           apiMode: apiData.rule.mode,
-          localMode: localRule.mode,
-          timestamp: new Date().toISOString()
+          localMode: localRule.mode
         });
         setLocalRule(apiData.rule);
         sessionStorage.removeItem(`sync-pending-${hasValidPipelineId ? pipelineId : 'temp'}`);
@@ -234,7 +255,7 @@ export function useLocalDistributionManager({
                                    lastModeNotified !== localRule.mode && 
                                    lastNotifiedRule !== null;
         
-        console.log('📤 [useLocalDistributionManager] Notificando mudança (pós-inicialização)', {
+        logger.debug('notificando-mudanca-pos-inicializacao', {
           isNavigationChange,
           lastMode: lastModeNotified,
           currentMode: localRule.mode
@@ -257,7 +278,11 @@ export function useLocalDistributionManager({
   const handleModeChange = (e: React.MouseEvent, mode: 'manual' | 'rodizio') => {
     e.preventDefault();
     e.stopPropagation();
-    console.log('🔄 [handleModeChange] Mudando modo:', { from: localRule?.mode, to: mode });
+    
+    logger.debug('mudando-modo', { 
+      from: localRule?.mode, 
+      to: mode 
+    });
     
     if (localRule) {
       setLocalRule(prev => prev ? { ...prev, mode } : null);
@@ -307,9 +332,9 @@ export function useLocalDistributionManager({
     if (!localRule) return;
     
     try {
-      console.log('🔄 [handleSave] Salvando regra local:', {
+      logger.debug('salvando-regra-local', {
         currentMode: localRule.mode,
-        localRule
+        hasWorkingHours: !!localRule.working_hours_start
       });
       
       // AIDEV-NOTE: Marcar que sincronização deve ocorrer após salvamento
@@ -329,13 +354,25 @@ export function useLocalDistributionManager({
       };
       
       await apiData.saveRule(saveData);
-      console.log('✅ [handleSave] Regra salva com sucesso');
+      logger.debug('regra-salva-com-sucesso', { 
+        mode: localRule.mode 
+      });
+      
+      // ✅ MELHORIA: Notificar sucesso via toast
+      toast.success('Regra de distribuição salva', {
+        description: `Modo ${localRule.mode} configurado com sucesso`
+      });
       
     } catch (error) {
-      console.error('❌ [handleSave] Erro ao salvar:', error);
+      logger.error('erro-ao-salvar', error);
       // Remover flag de sincronização em caso de erro
       const syncKey = `sync-pending-${hasValidPipelineId ? pipelineId : 'temp'}`;
       sessionStorage.removeItem(syncKey);
+      
+      // ✅ MELHORIA: Notificar erro via toast
+      toast.error('Erro ao salvar regra', {
+        description: 'Não foi possível salvar as configurações de distribuição'
+      });
     }
   };
 
@@ -348,17 +385,23 @@ export function useLocalDistributionManager({
 
   const handleTest = async () => {
     try {
-      await apiData.testDistribution();
+      const result = await apiData.testDistribution();
+      logger.debug('teste-distribuicao-concluido', { 
+        success: result?.success 
+      });
     } catch (error) {
-      // Erro já tratado no hook da API
+      logger.error('erro-no-teste', error);
     }
   };
 
   const handleResetDistribution = async () => {
     try {
       await apiData.resetDistribution();
+      logger.debug('distribuicao-resetada', { 
+        success: true
+      });
     } catch (error) {
-      // Erro já tratado no hook da API
+      logger.error('erro-no-reset', error);
     }
   };
 
@@ -432,17 +475,15 @@ export function DistributionManagerRender({ distributionManager }: DistributionM
     );
   }
 
-  // ✅ NOVO: Log de debug para verificar estado no render
-  console.log('🎨 [DistributionManagerRender] Estado atual:', {
-    localRuleMode: localRule.mode,
-    apiRuleMode: apiData.rule?.mode,
-    hasUnsavedChanges,
-    isLoading,
-    isSaving,
-    modesMatch: localRule.mode === apiData.rule?.mode,
-    shouldShowSaveButton: hasUnsavedChanges && !isLoading && !isSaving,
-    timestamp: new Date().toISOString()
-  });
+  // ✅ SIMPLIFICADO: Log básico de render apenas em desenvolvimento
+  if (import.meta.env.DEV) {
+    console.log('🎨 [DistributionRender]', {
+      mode: localRule.mode,
+      hasUnsavedChanges,
+      isLoading,
+      isSaving
+    });
+  }
 
   return (
     <div className="space-y-6">

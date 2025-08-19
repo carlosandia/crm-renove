@@ -3,314 +3,150 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🧪 Teste Final: Multiple GoTrueClient Warning ELIMINADO</title>
+    <title>Teste da Correção de Warnings</title>
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            padding: 20px; 
-            background: #f5f5f5;
-        }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .test-section { 
-            margin: 20px 0; 
-            padding: 15px; 
-            border: 1px solid #ddd; 
-            border-radius: 5px; 
-        }
-        .success { background: #d4edda; border-color: #c3e6cb; }
-        .warning { background: #fff3cd; border-color: #ffeaa7; }
-        .error { background: #f8d7da; border-color: #f5c6cb; }
-        .info { background: #d1ecf1; border-color: #bee5eb; }
-        pre { 
-            background: #f4f4f4; 
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-container { border: 1px solid #ccc; padding: 20px; margin: 10px 0; }
+        .warning { color: red; }
+        .success { color: green; }
+        button { padding: 10px 20px; margin: 5px; }
+        #console-output { 
+            background: #f0f0f0; 
             padding: 10px; 
-            border-radius: 3px; 
-            overflow-x: auto;
-            font-size: 12px;
+            margin: 10px 0; 
+            border: 1px solid #ccc; 
+            height: 200px; 
+            overflow-y: scroll; 
+            font-family: monospace;
         }
-        button { 
-            padding: 10px 20px; 
-            margin: 10px 5px; 
-            cursor: pointer;
-            border: none;
-            border-radius: 5px;
-            font-weight: bold;
-        }
-        .btn-primary { background: #007bff; color: white; }
-        .btn-success { background: #28a745; color: white; }
-        .btn-warning { background: #ffc107; color: black; }
-        .btn-danger { background: #dc3545; color: white; }
-        .status-ok { color: #28a745; font-weight: bold; }
-        .status-error { color: #dc3545; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🎯 Teste Final: Correção Multiple GoTrueClient Warning</h1>
+    <h1>🧪 Teste da Correção de Warnings Repetitivos - CompanyList</h1>
+    
+    <div class="test-container">
+        <h2>Simulação da Função getIndustryDisplay Corrigida</h2>
+        <p>Este teste simula o comportamento da função <code>getIndustryDisplay</code> corrigida no <code>CompanyList.tsx</code>:</p>
         
-        <div class="test-section info">
-            <h3>🧬 Arquitetura Implementada</h3>
-            <ul>
-                <li><strong>✅ Singleton Único:</strong> UM único client Supabase</li>
-                <li><strong>✅ Parâmetros Consistentes:</strong> createClient() sem configurações customizadas</li>
-                <li><strong>✅ Compatibilidade Mantida:</strong> getAnonymousClient() e getServiceRoleClient() funcionam</li>
-                <li><strong>✅ Documentação Oficial:</strong> Seguindo boas práticas Supabase</li>
-            </ul>
-        </div>
-
-        <div class="test-section">
-            <h3>🔍 Testes Disponíveis</h3>
-            <div>
-                <button class="btn-primary" onclick="testSingletonBehavior()">
-                    🧪 Testar Singleton Pattern
-                </button>
-                <button class="btn-success" onclick="testOpportunityCreation()">
-                    🚀 Simular Criação de Oportunidade
-                </button>
-                <button class="btn-warning" onclick="showMetrics()">
-                    📊 Ver Métricas
-                </button>
-                <button class="btn-danger" onclick="clearConsole()">
-                    🧹 Limpar Console
-                </button>
-            </div>
-        </div>
-
-        <div class="test-section" id="results">
-            <h3>📊 Resultados dos Testes</h3>
-            <div id="testOutput">
-                <p>Clique nos botões acima para executar os testes...</p>
-            </div>
-        </div>
-
-        <div class="test-section success">
-            <h3>✅ Critérios de Sucesso</h3>
-            <ul>
-                <li><strong>Zero warnings</strong> de "Multiple GoTrueClient instances detected"</li>
-                <li><strong>Singleton hits > 0</strong> após múltiplas chamadas</li>
-                <li><strong>Total creations = 1</strong> para confirmar singleton</li>
-                <li><strong>Funcionalidade mantida</strong> - todas as operações funcionando</li>
-            </ul>
-        </div>
-
-        <div class="test-section warning">
-            <h3>⚠️ Instruções de Uso</h3>
-            <ol>
-                <li>Abra o <strong>Console do Browser</strong> (F12)</li>
-                <li>Clique em <strong>"Testar Singleton Pattern"</strong></li>
-                <li>Observe se aparecem warnings no console</li>
-                <li>Verifique as métricas - devem mostrar reutilização</li>
-                <li>Teste criação de oportunidade para validar funcionalidade</li>
-            </ol>
-        </div>
+        <button onclick="testSingleWarning()">Teste 1: Uma empresa sem nicho (deve alertar 1x)</button>
+        <button onclick="testMultipleCallsSameCompany()">Teste 2: Múltiplas chamadas mesma empresa (deve alertar 1x)</button>
+        <button onclick="testDifferentCompanies()">Teste 3: Empresas diferentes (deve alertar para cada)</button>
+        <button onclick="testIndustryFixed()">Teste 4: Empresa corrigida (deve limpar cache)</button>
+        <button onclick="clearConsole()">Limpar Console</button>
+        
+        <div id="console-output"></div>
     </div>
 
     <script>
-        console.log('🧪 [TESTE-FINAL] Página de teste carregada - preparando validação...');
+        // ✅ SIMULAÇÃO: Implementação da correção realizada no CompanyList.tsx
+        const warnedCompanies = new Set(); // Simula useRef<Set<string>>(new Set())
         
-        // Função para atualizar resultados na página
-        function updateResults(html) {
-            document.getElementById('testOutput').innerHTML = html;
-        }
-        
-        async function testSingletonBehavior() {
-            console.log('🚀 [TESTE-FINAL] Iniciando teste de singleton pattern...');
-            
-            try {
-                updateResults('<p class="status-ok">⏳ Executando teste de singleton...</p>');
-                
-                const results = [];
-                const startTime = Date.now();
-                
-                // Fazer múltiplas chamadas para testar singleton
-                for (let i = 1; i <= 5; i++) {
-                    console.log(`🔄 [TESTE-FINAL] Chamada ${i}/5 - Obtendo client...`);
-                    
-                    // Importar e usar a função do singleton
-                    const module = await import('./src/lib/supabaseClientFactory.ts');
-                    const client1 = module.getAnonymousClient();
-                    const client2 = module.getServiceRoleClient();
-                    const client3 = module.getSupabaseClientSingleton();
-                    
-                    results.push({
-                        attempt: i,
-                        clients: {
-                            anonymous: !!client1,
-                            serviceRole: !!client2,
-                            singleton: !!client3,
-                            sameInstance: client1 === client2 && client2 === client3
-                        }
-                    });
-                    
-                    // Pequena pausa
-                    await new Promise(resolve => setTimeout(resolve, 50));
-                }
-                
-                const duration = Date.now() - startTime;
-                console.log('✅ [TESTE-FINAL] Teste singleton concluído:', { results, duration });
-                
-                updateResults(`
-                    <div class="success">
-                        <h4>✅ Teste Singleton Concluído</h4>
-                        <p><strong>Duracao:</strong> ${duration}ms</p>
-                        <p><strong>Chamadas realizadas:</strong> ${results.length}</p>
-                        <p><strong>Instâncias iguais:</strong> ${results[0]?.clients?.sameInstance ? 'SIM ✅' : 'NÃO ❌'}</p>
-                        <pre>${JSON.stringify(results, null, 2)}</pre>
-                    </div>
-                `);
-                
-                // Mostrar métricas automaticamente
-                setTimeout(showMetrics, 500);
-                
-            } catch (error) {
-                console.error('❌ [TESTE-FINAL] Erro no teste:', error);
-                updateResults(`
-                    <div class="error">
-                        <h4>❌ Erro no Teste</h4>
-                        <p>${error.message}</p>
-                    </div>
-                `);
-            }
-        }
-        
-        async function testOpportunityCreation() {
-            console.log('🚀 [TESTE-FINAL] Simulando criação de oportunidade...');
-            
-            try {
-                updateResults('<p class="status-ok">⏳ Simulando criação de oportunidade...</p>');
-                
-                // Simular dados de oportunidade
-                const mockOpportunity = {
-                    pipeline_id: '12345678-1234-1234-1234-123456789012',
-                    stage_id: '87654321-4321-4321-4321-210987654321',
-                    nome_oportunidade: 'Teste Singleton Fix',
-                    valor: '10000',
-                    nome_lead: 'Lead Teste',
-                    email: 'teste@exemplo.com',
-                    telefone: '+55 11 99999-9999',
-                    lead_source: 'new_lead'
-                };
-                
-                console.log('📋 [TESTE-FINAL] Dados mock preparados:', mockOpportunity);
-                
-                // Obter client e simular operação
-                const module = await import('./src/lib/supabaseClientFactory.ts');
-                const client = module.getSupabaseClientSingleton();
-                
-                console.log('✅ [TESTE-FINAL] Client obtido com sucesso:', !!client);
-                
-                updateResults(`
-                    <div class="success">
-                        <h4>✅ Simulação de Criação Concluída</h4>
-                        <p><strong>Client obtido:</strong> SIM ✅</p>
-                        <p><strong>Dados preparados:</strong> SIM ✅</p>
-                        <p><strong>Funcionalidade:</strong> MANTIDA ✅</p>
-                        <pre>${JSON.stringify(mockOpportunity, null, 2)}</pre>
-                        <p><em>Nota: Esta é uma simulação. A criação real requer autenticação.</em></p>
-                    </div>
-                `);
-                
-            } catch (error) {
-                console.error('❌ [TESTE-FINAL] Erro na simulação:', error);
-                updateResults(`
-                    <div class="error">
-                        <h4>❌ Erro na Simulação</h4>
-                        <p>${error.message}</p>
-                    </div>
-                `);
-            }
-        }
-        
-        async function showMetrics() {
-            console.log('📊 [TESTE-FINAL] Obtendo métricas...');
-            
-            try {
-                if (window.supabaseClientFactory) {
-                    const metrics = window.supabaseClientFactory.getMetrics();
-                    const status = window.supabaseClientFactory.getSingletonStatus();
-                    
-                    console.log('📊 [MÉTRICAS-FINAL]:', { metrics, status });
-                    
-                    const warningFixed = status.warningFixed ? '✅ SIM' : '❌ NÃO';
-                    const singletonActive = status.active ? '✅ ATIVO' : '❌ INATIVO';
-                    const reuseWorking = metrics.singletonHits > 0 ? '✅ FUNCIONANDO' : '❌ SEM REUTILIZAÇÃO';
-                    
-                    updateResults(`
-                        <div class="success">
-                            <h4>📊 Métricas do Singleton</h4>
-                            <table style="width: 100%; border-collapse: collapse;">
-                                <tr style="background: #f8f9fa;">
-                                    <td style="padding: 8px; border: 1px solid #ddd;"><strong>Warning Corrigido</strong></td>
-                                    <td style="padding: 8px; border: 1px solid #ddd;">${warningFixed}</td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 8px; border: 1px solid #ddd;"><strong>Singleton Ativo</strong></td>
-                                    <td style="padding: 8px; border: 1px solid #ddd;">${singletonActive}</td>
-                                </tr>
-                                <tr style="background: #f8f9fa;">
-                                    <td style="padding: 8px; border: 1px solid #ddd;"><strong>Reutilização</strong></td>
-                                    <td style="padding: 8px; border: 1px solid #ddd;">${reuseWorking}</td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 8px; border: 1px solid #ddd;"><strong>Total Criações</strong></td>
-                                    <td style="padding: 8px; border: 1px solid #ddd;">${metrics.totalCreations}</td>
-                                </tr>
-                                <tr style="background: #f8f9fa;">
-                                    <td style="padding: 8px; border: 1px solid #ddd;"><strong>Singleton Hits</strong></td>
-                                    <td style="padding: 8px; border: 1px solid #ddd;">${metrics.singletonHits}</td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 8px; border: 1px solid #ddd;"><strong>Implementação</strong></td>
-                                    <td style="padding: 8px; border: 1px solid #ddd;">${status.implementation}</td>
-                                </tr>
-                            </table>
-                            
-                            <h4>🔍 Dados Completos:</h4>
-                            <pre>${JSON.stringify({ metrics, status }, null, 2)}</pre>
-                        </div>
-                    `);
+        // Função que simula a getIndustryDisplay corrigida
+        function getIndustryDisplay(company) {
+            if (!company.industry || company.industry.trim() === '') {
+                // ✅ CORREÇÃO: Log apenas uma vez por empresa para evitar spam no console
+                if (!warnedCompanies.has(company.id)) {
+                    console.warn(`[CompanyList] Empresa "${company.name}" sem nicho definido`);
+                    logToOutput(`⚠️ WARNING: [CompanyList] Empresa "${company.name}" sem nicho definido`);
+                    warnedCompanies.add(company.id);
                 } else {
-                    updateResults(`
-                        <div class="warning">
-                            <h4>⚠️ Debug Interface Não Disponível</h4>
-                            <p>A interface de debug não está disponível. Certifique-se que:</p>
-                            <ul>
-                                <li>O frontend está em modo desenvolvimento</li>
-                                <li>O supabaseClientFactory foi carregado</li>
-                                <li>Não há erros de importação</li>
-                            </ul>
-                        </div>
-                    `);
+                    logToOutput(`🔇 SILENCIADO: Warning para empresa "${company.name}" já foi mostrado`);
                 }
-            } catch (error) {
-                console.error('❌ [TESTE-FINAL] Erro ao obter métricas:', error);
-                updateResults(`
-                    <div class="error">
-                        <h4>❌ Erro ao Obter Métricas</h4>
-                        <p>${error.message}</p>
-                    </div>
-                `);
+                return 'Não definido';
             }
+            
+            // ✅ LIMPEZA: Remover do cache se industry foi corrigido
+            if (warnedCompanies.has(company.id)) {
+                warnedCompanies.delete(company.id);
+                logToOutput(`🧹 CACHE LIMPO: Empresa "${company.name}" teve industry corrigido`);
+            }
+            
+            return company.industry.trim();
+        }
+        
+        // Função auxiliar para log visual
+        function logToOutput(message) {
+            const output = document.getElementById('console-output');
+            const timestamp = new Date().toLocaleTimeString();
+            output.innerHTML += `[${timestamp}] ${message}\n`;
+            output.scrollTop = output.scrollHeight;
         }
         
         function clearConsole() {
-            console.clear();
-            console.log('🧹 [TESTE-FINAL] Console limpo - pronto para novos testes');
-            updateResults('<p>Console limpo. Execute os testes novamente...</p>');
+            document.getElementById('console-output').innerHTML = '';
+            warnedCompanies.clear();
+            logToOutput('🧽 Console e cache limpos');
         }
         
-        // Mostrar métricas iniciais após carregamento
-        setTimeout(() => {
-            console.log('🔄 [TESTE-FINAL] Carregando métricas iniciais...');
-            showMetrics();
-        }, 2000);
+        // ✅ TESTE 1: Uma empresa sem nicho (deve alertar apenas 1x)
+        function testSingleWarning() {
+            logToOutput('\n🧪 TESTE 1: Uma empresa sem nicho');
+            const company = { id: 'test-1', name: 'teste1', industry: '' };
+            
+            const result = getIndustryDisplay(company);
+            logToOutput(`📋 Resultado: "${result}"`);
+        }
+        
+        // ✅ TESTE 2: Múltiplas chamadas para a mesma empresa (deve alertar apenas 1x)
+        function testMultipleCallsSameCompany() {
+            logToOutput('\n🧪 TESTE 2: Múltiplas chamadas mesma empresa');
+            const company = { id: 'test-2', name: 'teste2', industry: null };
+            
+            // Simular múltiplas renderizações do mesmo componente (o problema original)
+            for (let i = 1; i <= 5; i++) {
+                logToOutput(`🔄 Chamada ${i}:`);
+                const result = getIndustryDisplay(company);
+                logToOutput(`   📋 Resultado: "${result}"`);
+            }
+        }
+        
+        // ✅ TESTE 3: Empresas diferentes (deve alertar para cada uma)
+        function testDifferentCompanies() {
+            logToOutput('\n🧪 TESTE 3: Empresas diferentes');
+            const companies = [
+                { id: 'test-3a', name: 'EmpresaA', industry: '' },
+                { id: 'test-3b', name: 'EmpresaB', industry: null },
+                { id: 'test-3c', name: 'EmpresaC', industry: '   ' }
+            ];
+            
+            companies.forEach((company, index) => {
+                logToOutput(`🔄 Testando empresa ${index + 1}:`);
+                const result = getIndustryDisplay(company);
+                logToOutput(`   📋 Resultado: "${result}"`);
+            });
+        }
+        
+        // ✅ TESTE 4: Empresa com industry corrigido (deve limpar cache)
+        function testIndustryFixed() {
+            logToOutput('\n🧪 TESTE 4: Empresa corrigida');
+            
+            // Primeiro: empresa sem industry (gera warning)
+            let company = { id: 'test-4', name: 'teste4', industry: '' };
+            logToOutput('🔄 Primeira chamada (sem industry):');
+            let result = getIndustryDisplay(company);
+            logToOutput(`   📋 Resultado: "${result}"`);
+            
+            // Segundo: mesma empresa, ainda sem industry (não deve alertar novamente)
+            logToOutput('🔄 Segunda chamada (ainda sem industry):');
+            result = getIndustryDisplay(company);
+            logToOutput(`   📋 Resultado: "${result}"`);
+            
+            // Terceiro: empresa corrigida com industry (deve limpar cache)
+            company = { id: 'test-4', name: 'teste4', industry: 'Tecnologia' };
+            logToOutput('🔄 Terceira chamada (industry corrigido):');
+            result = getIndustryDisplay(company);
+            logToOutput(`   📋 Resultado: "${result}"`);
+            
+            // Quarto: empresa volta a ficar sem industry (deve alertar novamente)
+            company = { id: 'test-4', name: 'teste4', industry: '' };
+            logToOutput('🔄 Quarta chamada (sem industry novamente):');
+            result = getIndustryDisplay(company);
+            logToOutput(`   📋 Resultado: "${result}"`);
+        }
+        
+        // Inicializar página
+        logToOutput('✅ Sistema de teste carregado - CompanyList warning fix');
+        logToOutput('📋 Cache de warnings iniciado');
     </script>
 </body>
 </html>

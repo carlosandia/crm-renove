@@ -1,9 +1,11 @@
+// ✅ AIDEV-NOTE: CustomField agora vem do tipo centralizado
 export { 
   CustomFieldsManager, 
   useCustomFieldsManager, 
   CustomFieldsManagerRender as default,
   CustomFieldsManagerRender,
-  type CustomField,
   type CustomFieldsManagerProps,
   type CustomFieldsManagerReturn
-} from './CustomFieldsManager'; 
+} from './CustomFieldsManager';
+
+export { type CustomField } from '../../../types/Pipeline'; 

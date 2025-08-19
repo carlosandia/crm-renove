@@ -191,7 +191,7 @@ const CadenceModuleRefactored: React.FC = () => {
       }
 
       // Transformar dados para o formato esperado
-      const transformedConfigs = (configsData || []).map(config => ({
+      const transformedConfigs = (configsData || []).map((config: any) => ({
         ...config,
         tasks: config.cadence_tasks || []
       }));

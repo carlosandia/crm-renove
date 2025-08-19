@@ -21,6 +21,8 @@ import { Textarea } from '../ui/textarea';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+// ✅ AIDEV-NOTE: Usando tipo derivado do schema Zod para garantir consistência
+import { CustomField } from '../../types/Pipeline';
 
 // ============================================
 // INTERFACES E TIPOS
@@ -51,18 +53,6 @@ interface LeadMaster {
   utm_source?: string;
   utm_medium?: string;
   utm_campaign?: string;
-}
-
-interface CustomField {
-  id: string;
-  field_name: string;
-  field_label: string;
-  field_type: 'text' | 'email' | 'phone' | 'textarea' | 'select' | 'number' | 'date' | 'url' | 'currency';
-  field_options?: string[];
-  is_required: boolean;
-  field_order: number;
-  placeholder?: string;
-  show_in_card?: boolean;
 }
 
 interface Pipeline {

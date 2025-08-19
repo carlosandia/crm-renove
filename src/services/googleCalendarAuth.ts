@@ -69,6 +69,15 @@ export class GoogleCalendarAuth {
     // Constructor simplificado
   }
 
+  // ✅ BÁSICO: Método auxiliar estático para obter token de autenticação
+  private static async getAuthToken(): Promise<string> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('Token de autenticação não disponível');
+    }
+    return `Bearer ${session.access_token}`;
+  }
+
   private async makeRequest(endpoint: string, options: RequestInit = {}) {
     // ✅ MIGRAÇÃO CONCLUÍDA: Verificar autenticação básica Supabase
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -82,7 +91,7 @@ export class GoogleCalendarAuth {
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        'Authorization': await GoogleCalendarAuth.getAuthToken(),
         ...options.headers
       }
     });
@@ -99,7 +108,7 @@ export class GoogleCalendarAuth {
       
       const response = await fetch('/api/platform-integrations/tenant/available', {
         headers: {
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          'Authorization': await GoogleCalendarAuth.getAuthToken(),
           'Content-Type': 'application/json'
         }
       });
@@ -112,7 +121,7 @@ export class GoogleCalendarAuth {
         
         const directCredentialsResponse = await fetch('/api/platform-integrations/credentials/google', {
           headers: {
-            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+            'Authorization': await GoogleCalendarAuth.getAuthToken(),
             'Content-Type': 'application/json'
           }
         });
@@ -151,7 +160,7 @@ export class GoogleCalendarAuth {
       // Buscar credenciais detalhadas
       const credentialsResponse = await fetch(`/api/platform-integrations/credentials/google`, {
         headers: {
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          'Authorization': await GoogleCalendarAuth.getAuthToken(),
           'Content-Type': 'application/json'
         }
       });
@@ -381,7 +390,7 @@ export class GoogleCalendarAuth {
       const response = await fetch('/api/platform-integrations/connect', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          'Authorization': await GoogleCalendarAuth.getAuthToken(),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({

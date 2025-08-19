@@ -1,9 +1,9 @@
 /**
  * ============================================
- * 📊 ANALYTICS DE MOTIVOS DE GANHO/PERDA
+ * 📊 ANALYTICS DE MOTIVOS DE GANHO/PERDIDO
  * ============================================
  * 
- * Dashboard analytics para motivos de ganho e perda usando Recharts
+ * Dashboard analytics para motivos de ganho e perdido usando Recharts
  * AIDEV-NOTE: Segue padrões dos grandes CRMs como HubSpot e Pipedrive
  */
 
@@ -182,10 +182,10 @@ const OutcomeReasonsAnalytics: React.FC<OutcomeReasonAnalyticsProps> = ({
         </CardContent>
       </Card>
 
-      {/* Total Perdas */}
+      {/* Total Perdidos */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Total Perdas</CardTitle>
+          <CardTitle className="text-sm font-medium">Total Perdidos</CardTitle>
           <XCircle className="h-4 w-4 text-red-600" />
         </CardHeader>
         <CardContent>
@@ -280,7 +280,7 @@ const OutcomeReasonsAnalytics: React.FC<OutcomeReasonAnalyticsProps> = ({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <XCircle className="h-5 w-5 text-red-600" />
-          Principais Motivos de Perda
+          Principais Motivos de Perdido
         </CardTitle>
         <CardDescription>
           Razões mais comuns para leads perdidos
@@ -301,7 +301,7 @@ const OutcomeReasonsAnalytics: React.FC<OutcomeReasonAnalyticsProps> = ({
         <div className="mt-4 p-3 bg-red-50 rounded-lg">
           <p className="text-sm text-red-800">
             <strong>Insight:</strong> {mockData.summary.topPerdidoReason} é responsável por{' '}
-            {mockData.perdidoReasons[0]?.percentage}% das perdas. 
+            {mockData.perdidoReasons[0]?.percentage}% dos perdidos. 
             Considere revisar estratégia de precificação.
           </p>
         </div>
@@ -319,7 +319,7 @@ const OutcomeReasonsAnalytics: React.FC<OutcomeReasonAnalyticsProps> = ({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Analytics de Motivos</h2>
-          <p className="text-gray-600">Análise detalhada de ganhos e perdas</p>
+          <p className="text-gray-600">Análise detalhada de ganhos e perdidos</p>
         </div>
         <Badge variant="outline" className="flex items-center gap-1">
           <BarChart3 className="h-3 w-3" />
@@ -357,7 +357,7 @@ const OutcomeReasonsAnalytics: React.FC<OutcomeReasonAnalyticsProps> = ({
               <div>
                 <p className="font-medium text-red-800">Oportunidade de Melhoria</p>
                 <p className="text-sm text-gray-600">
-                  45.2% das perdas são por preço alto. Considere estratégias de valor agregado.
+                  45.2% dos perdidos são por preço alto. Considere estratégias de valor agregado.
                 </p>
               </div>
             </div>

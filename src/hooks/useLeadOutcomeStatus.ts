@@ -3,7 +3,7 @@
  * 🪝 HOOK: USE LEAD OUTCOME STATUS
  * ============================================
  * 
- * Hook para verificar se um lead tem motivos de ganho/perda aplicados
+ * Hook para verificar se um lead tem motivos de ganho/perdido aplicados
  * AIDEV-NOTE: Usado para mostrar indicadores visuais nos cards
  */
 

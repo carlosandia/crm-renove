@@ -65,12 +65,13 @@ export class PipelineController {
         return res.status(400).json({ error: 'Usuário deve pertencer a uma empresa' });
       }
 
-      console.log('🔍 [getPipelines] Buscando pipelines para tenant:', {
-        tenant_id: user.tenant_id,
-        user_id: user.id,
-        user_email: user.email,
-        user_role: user.role
-      });
+      // ✅ THROTTLING: Log apenas em development e menos frequente
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 [getPipelines] Buscando pipelines para tenant:', {
+          tenant_id: user.tenant_id,
+          user_role: user.role
+        });
+      }
 
       // ✅ CORREÇÃO 4: Implementar sistema de permissões baseado em role
       let pipelines;
@@ -78,14 +79,14 @@ export class PipelineController {
       if (user.role === 'admin' || user.role === 'super_admin') {
         // Admins veem todas as pipelines do tenant
         pipelines = await PipelineService.getPipelinesByTenant(user.tenant_id);
-        console.log('👨‍💼 [getPipelines] Admin - todas as pipelines do tenant');
+        // ✅ CORREÇÃO: Remover log redundante - já logado acima
       } else if (user.role === 'member') {
         // Members veem apenas pipelines onde estão vinculados
         pipelines = await PipelineService.getPipelinesByMember(user.id);
-        console.log('👤 [getPipelines] Member - apenas pipelines vinculadas:', {
-          member_id: user.id,
-          pipelines_count: pipelines?.length || 0
-        });
+        // ✅ CORREÇÃO: Log apenas se necessário em development
+        if (process.env.NODE_ENV === 'development') {
+          console.log('👤 [getPipelines] Member - pipelines encontradas:', pipelines?.length || 0);
+        }
       } else {
         // Role desconhecida - negar acesso
         console.warn('⚠️ [getPipelines] Role desconhecida:', user.role);
@@ -95,11 +96,13 @@ export class PipelineController {
         });
       }
       
-      console.log('✅ [getPipelines] Pipelines encontradas:', {
-        count: pipelines?.length || 0,
-        tenant_id: user.tenant_id,
-        user_role: user.role
-      });
+      // ✅ CORREÇÃO: Log simplificado apenas em development
+      if (process.env.NODE_ENV === 'development') {
+        console.log('✅ [getPipelines] Completed:', {
+          count: pipelines?.length || 0,
+          role: user.role
+        });
+      }
 
       res.json({ 
         success: true,
@@ -146,7 +149,10 @@ export class PipelineController {
         has_stages: !!pipeline.pipeline_stages,
         stages_count: pipeline.pipeline_stages?.length || 0,
         has_members: !!pipeline.pipeline_members,
-        members_count: pipeline.pipeline_members?.length || 0
+        members_count: pipeline.pipeline_members?.length || 0,
+        has_outcome_reasons: !!pipeline.outcome_reasons,
+        won_reasons_count: pipeline.outcome_reasons?.won?.length || 0,
+        lost_reasons_count: pipeline.outcome_reasons?.lost?.length || 0
       });
 
       // ✅ CORREÇÃO 4: Verificar permissões de acesso à pipeline específica
@@ -255,6 +261,16 @@ export class PipelineController {
 
   static async createPipelineWithStagesAndFields(req: Request, res: Response) {
     try {
+      // ✅ DIAGNÓSTICO: Logs detalhados do início da execução
+      console.log('🔄 [createPipelineWithStagesAndFields] INICIADO - Recebendo requisição:', {
+        url: req.url,
+        method: req.method,
+        body_keys: Object.keys(req.body || {}),
+        body_size: JSON.stringify(req.body || {}).length,
+        user_exists: !!(req as any).user,
+        timestamp: new Date().toISOString()
+      });
+
       const { 
         name, 
         description, 
@@ -263,9 +279,30 @@ export class PipelineController {
         member_ids = [], 
         stages = [], 
         custom_fields = [],
-        cadence_configs = [] // ✅ BUGFIX: Adicionar suporte a cadências
+        cadence_configs = [], // ✅ BUGFIX: Adicionar suporte a cadências
+        outcome_reasons = { ganho_reasons: [], perdido_reasons: [] }, // ✅ NOVO: Suporte a motivos como JSONB
+        qualification_rules = { mql: [], sql: [] } // ✅ CORREÇÃO: Campo obrigatório com valor padrão
       } = req.body;
       const user = (req as any).user;
+
+      // ✅ DIAGNÓSTICO: Log detalhado do payload recebido
+      console.log('📋 [createPipelineWithStagesAndFields] Payload completo recebido:', {
+        name: name || '[AUSENTE]',
+        description: description || '[AUSENTE]',
+        tenant_id: tenant_id || '[AUSENTE]',
+        created_by: created_by || '[AUSENTE]',
+        member_ids_count: member_ids?.length || 0,
+        stages_count: stages?.length || 0,
+        custom_fields_count: custom_fields?.length || 0,
+        cadence_configs_count: cadence_configs?.length || 0,
+        has_outcome_reasons: !!outcome_reasons,
+        has_qualification_rules: !!qualification_rules,
+        qualification_rules_format: qualification_rules,
+        outcome_reasons_format: outcome_reasons,
+        user_email: user?.email || '[AUSENTE]',
+        user_tenant_id: user?.tenant_id || '[AUSENTE]',
+        user_role: user?.role || '[AUSENTE]'
+      });
       
       // ✅ CONTROLE DE PERMISSÕES: Apenas admin pode criar pipelines
       if (!user?.tenant_id) {
@@ -306,7 +343,8 @@ export class PipelineController {
           name,
           description,
           tenant_id,
-          created_by
+          created_by,
+          outcome_reasons // ✅ NOVO: Incluir motivos como JSONB
         })
         .select()
         .single();
@@ -329,7 +367,8 @@ export class PipelineController {
       if (member_ids.length > 0) {
         const memberInserts = member_ids.map((member_id: string) => ({
           pipeline_id: pipelineId,
-          member_id
+          member_id,
+          tenant_id: tenant_id // ✅ BUGFIX: Adicionar tenant_id obrigatório
         }));
 
         const { error: membersError } = await supabaseAdmin
@@ -347,7 +386,8 @@ export class PipelineController {
           pipeline_id: pipelineId,
           name: stage.name,
           color: stage.color,
-          order_index: stage.order_index !== undefined ? stage.order_index : index
+          order_index: stage.order_index !== undefined ? stage.order_index : index,
+          tenant_id: tenant_id // ✅ BUGFIX: Adicionar tenant_id obrigatório
         }));
 
         const { error: stagesError } = await supabaseAdmin
@@ -371,7 +411,8 @@ export class PipelineController {
           is_required: field.is_required,
           field_order: field.field_order,
           placeholder: field.placeholder,
-          show_in_card: field.show_in_card ?? false
+          show_in_card: field.show_in_card ?? false,
+          tenant_id: tenant_id // ✅ BUGFIX: Adicionar tenant_id obrigatório
         }));
 
         const { error: fieldsError } = await supabaseAdmin
@@ -557,15 +598,17 @@ export class PipelineController {
 
       // ✅ CORREÇÃO: Processar member_ids se fornecido
       if (member_ids !== undefined) {
-        console.log('🔄 [updatePipeline] Processando member_ids - DEBUG DETALHADO:', {
-          pipeline_id: id,
+        console.log('🔄 [BACKEND-MEMBER-TRACKING] Recebendo member_ids do frontend:', {
+          pipeline_id: id.substring(0, 8),
           member_ids,
           member_ids_type: typeof member_ids,
           member_ids_count: member_ids?.length || 0,
           member_ids_isArray: Array.isArray(member_ids),
-          member_ids_sample: member_ids?.slice(0, 3) || [],
+          member_ids_sample: member_ids?.slice(0, 3)?.map((id: string) => id.substring(0, 8)) || [],
           request_body_keys: Object.keys(req.body),
-          full_request_body: req.body
+          timestamp: new Date().toISOString(),
+          user_email: user.email,
+          tenant_id: user.tenant_id?.substring(0, 8)
         });
 
         try {
@@ -595,10 +638,21 @@ export class PipelineController {
               .insert(memberInserts);
 
             if (insertError) {
-              console.error('❌ [updatePipeline] Erro ao inserir novos membros:', insertError);
+              console.error('❌ [BACKEND-MEMBER-TRACKING] Erro ao inserir novos membros:', {
+                error: insertError,
+                member_ids_tentando_inserir: member_ids,
+                count: member_ids.length,
+                timestamp: new Date().toISOString()
+              });
               throw new Error(`Erro ao vincular vendedores: ${insertError.message}`);
             } else {
-              console.log('✅ [updatePipeline] Novos membros vinculados:', member_ids.length);
+              console.log('✅ [BACKEND-MEMBER-TRACKING] Novos membros vinculados COM SUCESSO:', {
+                member_ids_inseridos: member_ids,
+                count_inseridos: member_ids.length,
+                member_ids_sample: member_ids.slice(0, 3).map((id: string) => id.substring(0, 8)),
+                pipeline_id: id.substring(0, 8),
+                timestamp: new Date().toISOString()
+              });
             }
           }
         } catch (memberError) {

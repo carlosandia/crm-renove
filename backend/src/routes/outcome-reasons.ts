@@ -9,7 +9,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { supabase } from '../config/supabase';
+import supabase from '../config/supabase';
 import { simpleAuth } from '../middleware/simpleAuth';
 
 const router = Router();
@@ -20,16 +20,18 @@ const router = Router();
 
 const CreateOutcomeReasonSchema = z.object({
   pipeline_id: z.string().uuid(),
-  reason_type: z.enum(['won', 'lost']),
+  reason_type: z.enum(['ganho', 'perdido', 'won', 'lost']), // ganho/perdido preferidos, won/lost para compatibilidade
   reason_text: z.string().min(1).max(200).trim(),
-  display_order: z.number().int().min(0).optional()
+  display_order: z.number().int().min(0).optional(),
+  created_by: z.string().uuid(), // ✅ CORREÇÃO: Incluir created_by para RLS
+  tenant_id: z.string().uuid() // ✅ CORREÇÃO: Incluir tenant_id explicitamente
 });
 
 const UpdateOutcomeReasonSchema = CreateOutcomeReasonSchema.partial();
 
 const ApplyOutcomeRequestSchema = z.object({
   lead_id: z.string().uuid(),
-  outcome_type: z.enum(['won', 'lost']),
+  outcome_type: z.enum(['ganho', 'perdido', 'won', 'lost']), // ganho/perdido preferidos, won/lost para compatibilidade
   reason_id: z.string().uuid().optional(),
   reason_text: z.string().min(1).trim(),
   notes: z.string().max(500).trim().optional()
@@ -37,7 +39,7 @@ const ApplyOutcomeRequestSchema = z.object({
 
 const GetOutcomeReasonsQuerySchema = z.object({
   pipeline_id: z.string().uuid(),
-  reason_type: z.enum(['won', 'lost', 'all']).optional().default('all'),
+  reason_type: z.enum(['ganho', 'perdido', 'won', 'lost', 'all']).optional().default('all'), // ganho/perdido preferidos, won/lost para compatibilidade
   active_only: z.string().transform(val => val === 'true').optional().default('true')
 });
 
@@ -46,6 +48,21 @@ const GetOutcomeReasonsQuerySchema = z.object({
 // ============================================
 
 const DEFAULT_REASONS = {
+  ganho: [
+    'Preço competitivo',
+    'Melhor proposta técnica', 
+    'Relacionamento/confiança',
+    'Urgência do cliente',
+    'Recomendação/indicação'
+  ],
+  perdido: [
+    'Preço muito alto',
+    'Concorrente escolhido',
+    'Não era o momento',
+    'Não há orçamento',
+    'Não era fit para o produto'
+  ],
+  // ✅ COMPATIBILIDADE: Manter formatos antigos para migration suave
   won: [
     'Preço competitivo',
     'Melhor proposta técnica', 
@@ -134,9 +151,14 @@ router.get('/', simpleAuth, async (req: any, res: any) => {
       });
     }
 
-    // Filtrar por tipo se especificado
+    // ✅ REFATORAÇÃO: Mapear valores antigos para novos e filtrar por tipo se especificado
     if (query.reason_type !== 'all') {
-      queryBuilder = queryBuilder.eq('reason_type', query.reason_type);
+      let mappedType = query.reason_type;
+      // Mapear valores antigos para novos
+      if (query.reason_type === 'won') mappedType = 'ganho';
+      if (query.reason_type === 'lost') mappedType = 'perdido';
+      
+      queryBuilder = queryBuilder.eq('reason_type', mappedType);
     }
 
     // Filtrar apenas ativos se solicitado
@@ -150,9 +172,36 @@ router.get('/', simpleAuth, async (req: any, res: any) => {
       throw error;
     }
 
+    // ✅ CORREÇÃO: Normalizar tipos para ganho/perdido antes de retornar
+    const normalizedReasons = (reasons || []).map(reason => ({
+      ...reason,
+      reason_type: reason.reason_type === 'won' || reason.reason_type === 'win' ? 'ganho' :
+                   reason.reason_type === 'lost' || reason.reason_type === 'loss' || reason.reason_type === 'perda' ? 'perdido' :
+                   reason.reason_type // manter ganho/perdido como estão
+    }));
+
+    // ✅ CORREÇÃO: Logs detalhados para debugging
+    console.log(`🔍 [GET /outcome-reasons] RESPOSTA DETALHADA:`, {
+      pipelineId: query.pipeline_id.substring(0, 8),
+      rawReasonsCount: (reasons || []).length,
+      normalizedReasonsCount: normalizedReasons.length,
+      ganhoCount: normalizedReasons.filter(r => r.reason_type === 'ganho').length,
+      perdidoCount: normalizedReasons.filter(r => r.reason_type === 'perdido').length,
+      firstRaw: (reasons || [])[0] ? {
+        id: (reasons || [])[0].id?.substring(0, 8),
+        type: (reasons || [])[0].reason_type,
+        text: (reasons || [])[0].reason_text?.substring(0, 30)
+      } : null,
+      firstNormalized: normalizedReasons[0] ? {
+        id: normalizedReasons[0].id?.substring(0, 8),
+        type: normalizedReasons[0].reason_type,
+        text: normalizedReasons[0].reason_text?.substring(0, 30)
+      } : null
+    });
+
     res.json({
       success: true,
-      data: reasons || []
+      data: normalizedReasons
     });
 
   } catch (error: any) {
@@ -170,22 +219,116 @@ router.post('/', simpleAuth, validateTenantAccess, async (req: any, res: any) =>
     const data = CreateOutcomeReasonSchema.parse(req.body);
     const { tenant_id } = req.user;
 
-    const { data: newReason, error } = await supabase
+    // ✅ CORREÇÃO CRÍTICA: Log detalhado dos dados que serão inseridos
+    // Usar created_by e tenant_id do payload (já validados pelo schema)
+    const insertData = {
+      ...data,
+      is_active: true,
+      display_order: data.display_order || 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    console.log(`🚀 [POST /outcome-reasons] INICIANDO INSERÇÃO:`, {
+      pipelineId: data.pipeline_id.substring(0, 8),
+      tenantId: data.tenant_id.substring(0, 8),
+      createdBy: data.created_by.substring(0, 8),
+      reasonType: data.reason_type,
+      reasonText: data.reason_text.substring(0, 50),
+      displayOrder: insertData.display_order,
+      timestamp: new Date().toISOString()
+    });
+
+    // ✅ CORREÇÃO CRÍTICA: Usar supabaseAdmin para bypass RLS e garantir persistência
+    console.log('🔄 [POST /outcome-reasons] EXECUTANDO INSERÇÃO COM SERVICE ROLE:', {
+      table: 'pipeline_outcome_reasons',
+      insertData: {
+        ...insertData,
+        tenant_id: insertData.tenant_id.substring(0, 8),
+        pipeline_id: insertData.pipeline_id.substring(0, 8),
+        created_by: insertData.created_by.substring(0, 8)
+      },
+      usingServiceRole: true
+    });
+
+    const { data: insertedData, error } = await supabaseAdmin
       .from('pipeline_outcome_reasons')
-      .insert({
-        ...data,
-        tenant_id,
-        is_active: true,
-        display_order: data.display_order || 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .select()
-      .single();
+      .insert(insertData)
+      .select();
+
+    console.log('📡 [POST /outcome-reasons] RESPOSTA SUPABASE SERVICE ROLE:', {
+      success: !error,
+      insertedCount: insertedData?.length || 0,
+      hasError: !!error,
+      errorCode: error?.code,
+      errorMessage: error?.message,
+      serviceRoleUsed: true,
+      bypassRLS: true
+    });
 
     if (error) {
+      console.error(`❌ [POST /outcome-reasons] ERRO CRÍTICO SUPABASE:`, {
+        pipelineId: data.pipeline_id.substring(0, 8),
+        tenantId: data.tenant_id.substring(0, 8),
+        createdBy: data.created_by.substring(0, 8),
+        error: error.message,
+        errorCode: error.code,
+        errorDetails: error.details,
+        code: error.code,
+        hint: error.hint,
+        details: error.details,
+        insertData: insertData
+      });
       throw error;
     }
+
+    // ✅ CORREÇÃO CRÍTICA: Validar se dados foram realmente inseridos
+    if (!insertedData || insertedData.length === 0) {
+      console.error(`❌ [POST /outcome-reasons] FALHA CRÍTICA - Inserção não retornou dados:`, {
+        pipelineId: data.pipeline_id.substring(0, 8),
+        tenantId: data.tenant_id.substring(0, 8),
+        createdBy: data.created_by.substring(0, 8),
+        insertedData: insertedData,
+        insertedDataType: typeof insertedData,
+        insertedDataLength: insertedData?.length || 0,
+        originalPayload: {
+          pipeline_id: data.pipeline_id.substring(0, 8),
+          tenant_id: data.tenant_id.substring(0, 8),
+          created_by: data.created_by.substring(0, 8),
+          reason_type: data.reason_type,
+          reason_text: data.reason_text.substring(0, 50)
+        },
+        possibleCauses: [
+          'RLS policy blocking insert',
+          'Missing tenant_id validation',
+          'Database constraints failed',
+          'Invalid data format'
+        ]
+      });
+      
+      return res.status(500).json({
+        success: false,
+        error: 'Falha ao inserir motivo - operação não retornou dados',
+        details: 'Possível problema com RLS ou constraints do banco',
+        debug: {
+          insertedData,
+          insertedDataLength: insertedData?.length || 0
+        }
+      });
+    }
+
+    const newReason = insertedData[0]; // Pegar primeiro item do array retornado
+
+    console.log(`🎉 [POST /outcome-reasons] MOTIVO CRIADO COM SUCESSO (SERVICE ROLE):`, {
+      id: newReason.id.substring(0, 8),
+      reasonType: newReason.reason_type,
+      reasonText: newReason.reason_text.substring(0, 50),
+      displayOrder: newReason.display_order,
+      isActive: newReason.is_active,
+      createdAt: newReason.created_at,
+      persistedSuccessfully: true,
+      serviceRoleBypass: true
+    });
 
     res.status(201).json({
       success: true,
@@ -223,13 +366,14 @@ router.put('/:id', simpleAuth, async (req: any, res: any) => {
       });
     }
 
-    const { data: updatedReason, error } = await supabase
+    const { data: updatedReason, error } = await supabaseAdmin
       .from('pipeline_outcome_reasons')
       .update({
         ...data,
         updated_at: new Date().toISOString()
       })
       .eq('id', reasonId)
+      .eq('tenant_id', tenant_id)
       .select()
       .single();
 
@@ -272,10 +416,11 @@ router.delete('/:id', simpleAuth, async (req: any, res: any) => {
       });
     }
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('pipeline_outcome_reasons')
       .delete()
-      .eq('id', reasonId);
+      .eq('id', reasonId)
+      .eq('tenant_id', tenant_id);
 
     if (error) {
       throw error;
@@ -406,12 +551,13 @@ router.post('/defaults', simpleAuth, validateTenantAccess, async (req: any, res:
 
     const reasons: any[] = [];
 
+    // ✅ REFATORAÇÃO: Criar motivos usando nova nomenclatura
     // Criar motivos de ganho
-    DEFAULT_REASONS.won.forEach((reasonText, index) => {
+    DEFAULT_REASONS.ganho.forEach((reasonText, index) => {
       reasons.push({
         pipeline_id,
         tenant_id,
-        reason_type: 'won',
+        reason_type: 'ganho', // ✅ Usar novo valor
         reason_text: reasonText,
         display_order: index,
         is_active: true,
@@ -420,12 +566,12 @@ router.post('/defaults', simpleAuth, validateTenantAccess, async (req: any, res:
       });
     });
 
-    // Criar motivos de perda
-    DEFAULT_REASONS.lost.forEach((reasonText, index) => {
+    // Criar motivos de perdido
+    DEFAULT_REASONS.perdido.forEach((reasonText, index) => {
       reasons.push({
         pipeline_id,
         tenant_id,
-        reason_type: 'lost',
+        reason_type: 'perdido', // ✅ Usar novo valor
         reason_text: reasonText,
         display_order: index,
         is_active: true,
@@ -434,7 +580,7 @@ router.post('/defaults', simpleAuth, validateTenantAccess, async (req: any, res:
       });
     });
 
-    const { data: createdReasons, error } = await supabase
+    const { data: createdReasons, error } = await supabaseAdmin
       .from('pipeline_outcome_reasons')
       .insert(reasons)
       .select();

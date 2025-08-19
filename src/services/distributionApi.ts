@@ -101,18 +101,37 @@ export class DistributionApiService {
         status: error.response?.status
       });
       
-      // Retornar regra padrão em caso de erro
-      const defaultRule: DistributionRule = {
-        pipeline_id: pipelineId,
-        mode: 'manual',
-        is_active: true,
-        working_hours_only: false,
-        skip_inactive_members: true,
-        fallback_to_manual: true
-      };
+      // ✅ CORREÇÃO: Não mascarar erros de autenticação - propagar para React Query
+      if (error.response?.status === 401) {
+        throw new Error('Usuário não autenticado');
+      }
       
-      console.log('📋 [DistributionApiService] Usando regra padrão devido ao erro:', defaultRule);
-      return defaultRule;
+      if (error.response?.status === 403) {
+        throw new Error('Acesso negado para esta pipeline');
+      }
+      
+      // ✅ CORREÇÃO: Só usar fallback para erro de "não encontrado" (404)
+      if (error.response?.status === 404) {
+        // AIDEV-NOTE: SEMPRE usar modo 'manual' como padrão para novas pipelines
+        const defaultRule: DistributionRule = {
+          pipeline_id: pipelineId,
+          mode: 'manual', // ✅ PADRÃO OBRIGATÓRIO: sempre manual inicialmente
+          is_active: true,
+          working_hours_only: false,
+          skip_inactive_members: true,
+          fallback_to_manual: true
+        };
+        
+        console.log('📋 [DistributionApiService] Usando regra padrão MANUAL para pipeline nova:', {
+          pipelineId: pipelineId.substring(0, 8),
+          mode: defaultRule.mode,
+          is_active: defaultRule.is_active
+        });
+        return defaultRule;
+      }
+      
+      // Para outros erros, propagar
+      throw error;
     }
   }
   
@@ -182,18 +201,37 @@ export class DistributionApiService {
     } catch (error: any) {
       console.error('❌ Erro ao buscar estatísticas:', error);
       
-      // Retornar estatísticas vazias em caso de erro
-      const emptyStats: DistributionStats = {
-        rule: null,
-        total_assignments: 0,
-        successful_assignments: 0,
-        failed_assignments: 0,
-        last_assignment_at: null,
-        recent_assignments: [],
-        assignment_success_rate: 0
-      };
+      // ✅ CORREÇÃO: Não mascarar erros de autenticação - propagar para React Query
+      if (error.response?.status === 401) {
+        throw new Error('Usuário não autenticado');
+      }
       
-      return emptyStats;
+      if (error.response?.status === 403) {
+        throw new Error('Acesso negado para estatísticas desta pipeline');
+      }
+      
+      // ✅ CORREÇÃO: Só usar fallback para erro de "não encontrado" (404)
+      if (error.response?.status === 404) {
+        const emptyStats: DistributionStats = {
+          rule: null,
+          total_assignments: 0,
+          successful_assignments: 0,
+          failed_assignments: 0,
+          last_assignment_at: null,
+          recent_assignments: [],
+          assignment_success_rate: 0
+        };
+        
+        console.log('📋 [DistributionApiService] Usando stats vazias para pipeline nova:', {
+          pipelineId: pipelineId.substring(0, 8),
+          total_assignments: emptyStats.total_assignments,
+          success_rate: emptyStats.assignment_success_rate
+        });
+        return emptyStats;
+      }
+      
+      // Para outros erros, propagar
+      throw error;
     }
   }
   
@@ -224,11 +262,25 @@ export class DistributionApiService {
     } catch (error: any) {
       console.error('❌ Erro ao testar distribuição:', error);
       
-      // Retornar resultado de teste simulado
-      return {
-        success: false,
-        message: 'Teste de distribuição não disponível no momento'
-      };
+      // ✅ CORREÇÃO: Não mascarar erros de autenticação
+      if (error.response?.status === 401) {
+        throw new Error('Usuário não autenticado');
+      }
+      
+      if (error.response?.status === 403) {
+        throw new Error('Acesso negado para testar distribuição');
+      }
+      
+      // ✅ CORREÇÃO: Para funcionalidade não implementada (404), retornar simulado
+      if (error.response?.status === 404) {
+        return {
+          success: false,
+          message: 'Funcionalidade de teste ainda não implementada no backend'
+        };
+      }
+      
+      // Para outros erros, propagar
+      throw error;
     }
   }
   

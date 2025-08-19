@@ -165,6 +165,7 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         const createData: CreateAnnotation = {
           content,
           content_plain: plainText,
+          content_type: 'text', // ✅ CORRIGIDO: Campo obrigatório adicionado
           ...(leadType === 'pipeline_lead' 
             ? { pipeline_lead_id: leadId } 
             : { lead_master_id: leadId }
