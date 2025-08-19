@@ -62,6 +62,16 @@ export const supabase = new Proxy({} as any, {
   }
 });
 
+// ✅ NOVO: Cliente administrativo dedicado que SEMPRE usa Service Role
+export const supabaseAdmin = new Proxy({} as any, {
+  get(target, prop) {
+    const client = getSupabaseServiceClient();
+    const value = client[prop];
+    // Se for uma função, fazer bind para manter o contexto
+    return typeof value === 'function' ? value.bind(client) : value;
+  }
+});
+
 // Função para criar cliente Supabase com JWT do usuário (respeitará RLS)
 export const createUserSupabaseClient = (userJWT: string) => {
   const { supabaseUrl, supabaseAnonKey } = ensureConfig(); // ✅ Usar lazy initialization
