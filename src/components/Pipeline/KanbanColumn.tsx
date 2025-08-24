@@ -93,7 +93,25 @@ const KanbanColumn: React.FC<KanbanColumnProps> = memo(({
     }
     
     const totalValue = leads.reduce((sum, lead) => {
-      return sum + (Number(lead.custom_data?.valor || 0));
+      // ✅ CORREÇÃO CRÍTICA: Tratar valores monetários brasileiros corretamente
+      const valorRaw = lead.custom_data?.valor;
+      
+      // Se não tem valor, contribui com 0
+      if (!valorRaw || valorRaw === '' || valorRaw === null || valorRaw === undefined) {
+        return sum;
+      }
+      
+      // Converter string formatada (R$ 0,12) para número
+      let numericValue = 0;
+      if (typeof valorRaw === 'string') {
+        // Remover símbolos monetários e converter vírgula para ponto
+        const cleanValue = valorRaw.replace(/[R$\s]/g, '').replace(',', '.');
+        numericValue = parseFloat(cleanValue) || 0;
+      } else {
+        numericValue = Number(valorRaw) || 0;
+      }
+      
+      return sum + numericValue;
     }, 0);
     
     const uniqueLeadIds = new Set(
@@ -115,13 +133,19 @@ const KanbanColumn: React.FC<KanbanColumnProps> = memo(({
   // Formatação
   
   const formatCurrency = (value: number): string => {
+    // ✅ CORREÇÃO: Tratar NaN e mostrar precisão decimal quando necessário
+    if (!value || isNaN(value)) return 'R$ 0';
     if (value === 0) return 'R$ 0';
+    
+    // Para valores menores que R$ 10, mostrar sempre 2 decimais
+    // Para valores maiores, mostrar sem decimais se for valor inteiro
+    const shouldShowDecimals = value < 10 || (value % 1 !== 0);
     
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
+      minimumFractionDigits: shouldShowDecimals ? 2 : 0,
+      maximumFractionDigits: 2
     }).format(value);
   };
 

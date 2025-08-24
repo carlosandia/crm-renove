@@ -247,6 +247,7 @@ const LeadCardPresentation: React.FC<LeadCardPresentationProps> = React.memo(({
   const customDataChanged = (
     prevProps.lead.custom_data?.valor !== nextProps.lead.custom_data?.valor ||
     prevProps.lead.custom_data?.empresa !== nextProps.lead.custom_data?.empresa ||
+    prevProps.lead.custom_data?.nome !== nextProps.lead.custom_data?.nome || // ✅ CORREÇÃO: Detectar mudança no campo principal
     prevProps.lead.custom_data?.nome_oportunidade !== nextProps.lead.custom_data?.nome_oportunidade ||
     prevProps.lead.custom_data?.titulo !== nextProps.lead.custom_data?.titulo ||
     prevProps.lead.custom_data?.email !== nextProps.lead.custom_data?.email ||

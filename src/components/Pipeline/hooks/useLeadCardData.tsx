@@ -39,9 +39,10 @@ export const useLeadCardData = ({ lead, pipelineId }: UseLeadCardDataProps) => {
     // PROBLEMA IDENTIFICADO: Ambos usavam custom_data.nome como fallback
     
     // ✅ OPPORTUNITY NAME: Priorizar campos específicos de oportunidade/negócio
-    const opportunityName = lead.custom_data?.nome_oportunidade || 
+    // 🔧 CORREÇÃO CRÍTICA: Seguir mesma lógica do LeadDetailsModal - priorizar 'nome' (onde salva)
+    const opportunityName = lead.custom_data?.nome ||  // ✅ PRIORIDADE: Campo onde LeadDetailsModal salva
+      lead.custom_data?.nome_oportunidade || 
       lead.custom_data?.titulo || 
-      lead.custom_data?.nome ||  // ✅ RESTAURADO: necessário para registros que só têm este campo
       `Oportunidade #${lead.id?.substring(0, 8) || 'nova'}`;
     
     // ✅ LEAD NAME: Priorizar dados reais da pessoa/empresa do leads_master
@@ -92,9 +93,9 @@ export const useLeadCardData = ({ lead, pipelineId }: UseLeadCardDataProps) => {
   }, [
     // ✅ DEPENDÊNCIAS ESPECÍFICAS: Só recalcular quando campos relevantes mudarem
     lead.id,
+    lead.custom_data?.nome,  // ✅ PRIORIDADE: Campo principal para opportunityName (onde LeadDetailsModal salva)
     lead.custom_data?.nome_oportunidade,
     lead.custom_data?.titulo, 
-    lead.custom_data?.nome,  // ✅ RESTAURADO: usado para opportunityName
     lead.first_name,
     lead.last_name,
     lead.email,
