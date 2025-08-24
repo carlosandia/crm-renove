@@ -247,7 +247,7 @@
   width: 90%;
   max-width: 500px;
   max-height: 90vh;
-  overflow-y: auto;
+  /* overflow-y: auto; ✅ COMENTADO: Evitar nested scroll container que interfere com @hello-pangea/dnd */
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
 }
 
@@ -328,7 +328,7 @@
   }
 
   .vendedores-table {
-    overflow-x: auto;
+    /* overflow-x: auto; ✅ COMENTADO: Evitar nested scroll container que interfere com @hello-pangea/dnd */
   }
 
   .actions {

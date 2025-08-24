@@ -187,10 +187,12 @@ const corsOptions = {
     
     // Lista de origins permitidos por ambiente
     const allowedOrigins = isDevelopment ? [
-      process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : process.env.FRONTEND_URL || 'http://127.0.0.1:8080',  // Frontend principal
-      process.env.NODE_ENV === 'production' ? 'https://crm.renovedigital.com.br' : process.env.FRONTEND_URL || 'http://localhost:8080',  // Frontend principal (localhost)
-      process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:5173',  // Vite dev server fallback
-      process.env.VITE_DEV_SERVER_URL_LOCALHOST || 'http://localhost:5173'   // Vite dev server fallback (localhost)
+      'http://127.0.0.1:8080',               // ✅ Frontend Vite dev server principal
+      'http://localhost:8080',               // ✅ Frontend Vite dev server localhost
+      'http://127.0.0.1:5173',               // ✅ Vite dev server fallback
+      'http://localhost:5173',               // ✅ Vite dev server fallback localhost
+      process.env.FRONTEND_URL || 'http://127.0.0.1:8080',  // ✅ Variável ambiente
+      process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:5173'  // ✅ Vite URL ambiente
     ] : [
       'https://crm.renovedigital.com.br',    // ✅ PRODUÇÃO CORRETO
       'https://www.crm.renovedigital.com.br', // ✅ PRODUÇÃO COM WWW
@@ -505,6 +507,8 @@ import membersRoutes from './routes/members';
 import companiesRoutes from './routes/companies';
 // ✅ CORREÇÃO: Importar rotas de member tools
 import { memberToolsRoutes } from './routes/memberTools';
+// ✅ CORREÇÃO: Importar rotas de métricas para useEnterpriseMetrics
+import metricsRoutes from './routes/metrics';
 // ✅ REMOVIDO: Sistema de email eliminado conforme solicitação do usuário
 // import adminInvitationsRoutes from './routes/adminInvitations';
 import { authenticateToken } from './middleware/auth';
@@ -546,6 +550,10 @@ app.use('/api/leads', leadsRoutes);
 app.use('/api/members', authenticateToken, membersRoutes);
 // ✅ CORREÇÃO: Registrar rotas de member tools para dashboard member
 app.use('/api/member-tools', memberToolsRoutes);
+
+// ✅ CORREÇÃO: Registrar rotas de métricas para useEnterpriseMetrics
+app.use('/api/metrics', metricsRoutes);
+
 // Registrar rotas de oportunidades
 app.use('/api/opportunities', opportunitiesRoutes);
 
@@ -579,6 +587,10 @@ app.use('/api/webhook', webhooksUniversalRoutes);
 // Registrar rotas de qualificação
 import qualificationRoutes from './routes/qualification';
 app.use('/api/qualification', qualificationRoutes);
+
+// ✅ NOVO: Registrar rotas de migração de autenticação (user_metadata → app_metadata)
+import authMigrationRoutes from './routes/auth-migration';
+app.use('/api/auth', authMigrationRoutes);
 
 // Registrar rotas de preferências de métricas por pipeline
 import pipelineMetricsPreferencesRoutes from './routes/pipelineMetricsPreferences';
@@ -2174,9 +2186,20 @@ app.use('*', (req, res) => {
   });
 });
 
-// Error handler básico
+// ✅ CORREÇÃO ERRO 500: Error handler melhorado para capturar detalhes
 app.use((error: any, req: any, res: any, next: any) => {
-  console.error('❌ Erro não tratado:', error);
+  console.error('❌ [ERROR HANDLER] Erro não tratado capturado:', {
+    errorName: error.name,
+    errorMessage: error.message,
+    errorStack: error.stack?.split('\n').slice(0, 5),
+    url: req.url,
+    method: req.method,
+    body: req.body ? Object.keys(req.body) : 'no body',
+    timestamp: new Date().toISOString(),
+    isZodError: error.name === 'ZodError',
+    zodIssues: error.name === 'ZodError' ? error.issues : undefined
+  });
+  
   res.status(500).json({
     success: false,
     error: 'Erro interno do servidor',

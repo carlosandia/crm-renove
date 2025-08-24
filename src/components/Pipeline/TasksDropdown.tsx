@@ -168,7 +168,7 @@ export const TasksDropdown: React.FC<TasksDropdownProps> = ({
       {/* Dropdown de tarefas */}
       {isOpen && (
         <div 
-          className="absolute top-full right-0 mt-1 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto"
+          className="absolute top-full right-0 mt-1 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-80 overflow-visible"
           role="menu"
           aria-label="Lista de tarefas e atividades"
         >

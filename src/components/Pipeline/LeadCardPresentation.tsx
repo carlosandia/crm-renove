@@ -143,12 +143,17 @@ const LeadCardPresentation: React.FC<LeadCardPresentationProps> = React.memo(({
   
   // Log removido para evitar spam - cards otimistas são normais durante operações
 
+  // ✅ FASE 2: OPTIMISTIC STATE - Detectar se lead foi movido otimisticamente
+  const isOptimisticMove = (lead as any)._isOptimistic || false;
+  const optimisticTimestamp = (lead as any)._optimisticTimestamp || 0;
+  const isRecentOptimistic = optimisticTimestamp > 0 && (Date.now() - optimisticTimestamp) < 3000; // 3 segundos
+
   return (
     <EnhancedLeadCard
       leadId={lead.id}
       className={`
-        rounded-lg transition-all duration-200 group h-[120px] cursor-pointer overflow-hidden
-        ${leadData.optimisticState.isOptimistic 
+        h-[120px] rounded-lg transition-all duration-200 group cursor-pointer overflow-visible scrollbar-hidden
+        ${leadData.optimisticState.isOptimistic || isOptimisticMove
           ? 'bg-green-50 ring-1 ring-green-200' 
           : 'bg-white'
         }
@@ -156,14 +161,24 @@ const LeadCardPresentation: React.FC<LeadCardPresentationProps> = React.memo(({
           ? 'opacity-80 animate-pulse' 
           : ''
         }
+        ${isRecentOptimistic 
+          ? 'ring-2 ring-blue-300 shadow-lg transform scale-[1.02]' 
+          : ''
+        }
       `}
+      style={{
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none',
+        overflowX: 'visible',
+        overflowY: 'visible'
+      }}
       enableAnimations={true}
       showTasksDropdown={false}  // TasksDropdown integrado no badge - não mostrar separadamente
       showProgressBadge={false}  // Badge integrado customizado - não usar o padrão
     >
       {/* Conteúdo Principal - Sem área de drag handle */}
       <div 
-        className="w-full h-full p-3 flex flex-col justify-between overflow-hidden"
+        className="w-full h-full px-3 py-2 flex flex-col justify-between"
         onClick={actions.handleCardClick}
       >
         {/* HEADER: Nome da Oportunidade + Badge + Nome do Lead */}
@@ -185,11 +200,11 @@ const LeadCardPresentation: React.FC<LeadCardPresentationProps> = React.memo(({
           progressBadge={progressBadge}
         />
 
-        {/* BODY: Data + Tempo + Temperatura */}
+        {/* BODY: Data + Tempo + Qualificação */}
         <LeadCardBody
           leadCreatedAt={lead.created_at}
           daysInCard={leadData.daysInCard}
-          temperatureBadge={leadData.temperatureBadge}
+          qualificationBadge={leadData.qualificationBadge}
         />
 
         {/* FOOTER: Valor + Ícones de Ação */}
@@ -214,7 +229,6 @@ const LeadCardPresentation: React.FC<LeadCardPresentationProps> = React.memo(({
   const leadDataChanged = (
     prevProps.lead.id !== nextProps.lead.id ||
     prevProps.lead.stage_id !== nextProps.lead.stage_id ||
-    prevProps.lead.temperature_level !== nextProps.lead.temperature_level ||
     prevProps.lead.email !== nextProps.lead.email ||
     prevProps.lead.created_at !== nextProps.lead.created_at
   );

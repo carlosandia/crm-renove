@@ -121,7 +121,7 @@ export const usePipelineCache = ({
     setLastViewedPipelineState(pipeline);
     setPipelineCache(pipeline);
     
-    console.log(`📌 Pipeline '${pipeline.name}' (${pipeline.id}) salva no cache para tenant ${tenantId}`);
+    // ✅ ETAPA 4: Log de save cache removido (verboso durante seleção)
   }, [setPipelineCache, tenantId]);
 
   /**
@@ -130,7 +130,7 @@ export const usePipelineCache = ({
   const clearCache = useCallback(() => {
     localStorage.removeItem(CACHE_KEY);
     setLastViewedPipelineState(null);
-    console.log(`🧹 Cache de pipeline limpo para tenant ${tenantId}`);
+    // ✅ ETAPA 4: Log de clear cache removido (verboso)
   }, [CACHE_KEY, tenantId]);
 
   /**
@@ -165,7 +165,7 @@ export const usePipelineCache = ({
       setLastViewedPipelineState(bestPipeline);
       // Atualizar cache apenas se não for do cache
       if (!cached || cached.id !== bestPipeline.id) {
-        console.log(`🔄 [usePipelineCache] Atualizando cache inicial: ${bestPipeline.name} (${bestPipeline.id})`);
+        // ✅ ETAPA 4: Log de atualização cache inicial removido (verboso durante startup)
         setPipelineCache(bestPipeline);
       } else {
         // AIDEV-NOTE: Log reduzido para evitar spam - apenas quando necessário
@@ -198,10 +198,7 @@ export const usePipelineCache = ({
       }
       
       syncThrottleRef.current = setTimeout(() => {
-        console.log('🔄 [usePipelineCache] Sincronizando mudanças da pipeline:', {
-          from: { name: lastViewedPipeline.name, updated: lastViewedPipeline.updated_at },
-          to: { name: updatedPipeline.name, updated: updatedPipeline.updated_at }
-        });
+        // ✅ ETAPA 4: Log de sincronização removido (verboso durante updates)
       }, 1500);
       
       setLastViewedPipelineState(updatedPipeline);
@@ -232,10 +229,7 @@ export const usePipelineCache = ({
           // ✅ CORREÇÃO: Log apenas quando há mudanças reais de dados
           const freshPipelines = queryClient.getQueryData(['pipelines', tenantId]) as Pipeline[] | undefined;
           if (freshPipelines && freshPipelines.length !== pipelines.length) {
-            console.log('🔄 [usePipelineCache] Cache atualizado:', {
-              pipelinesCount: freshPipelines.length,
-              change: freshPipelines.length > pipelines.length ? 'adição' : 'remoção'
-            });
+            // ✅ ETAPA 4: Log de cache atualizado removido (verboso durante invalidation)
           }
         }, 5000); // Aumentado de 2s para 5s
         

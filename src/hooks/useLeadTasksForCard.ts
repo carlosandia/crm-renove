@@ -159,7 +159,7 @@ export const useLeadTasksForCard = (leadId: string, isVisible: boolean = true) =
         // ✅ CORREÇÃO: Usar loggers.apiError para erros de API
         loggers.apiError('useLeadTasksForCard', error, {
           leadId: leadId.substring(0, 8),
-          tenantId: user?.tenant_id?.substring(0, 8) || 'undefined'
+          tenantId: user?.tenant_id?.substring(0, 8) || 'N/A'
         });
         
         throw error;

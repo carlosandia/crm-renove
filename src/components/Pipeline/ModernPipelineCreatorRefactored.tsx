@@ -36,6 +36,34 @@ import { api } from '../../lib/api';
 // ✅ PERFORMANCE: Import do performance monitoring
 import { usePerformanceMonitor } from '../../shared/utils/performance';
 
+// ✅ CORREÇÃO ETAPA 3: Import para formatação consistente de IDs
+import { formatLeadIdForLog } from '../../utils/logFormatters';
+
+// ✅ CORREÇÃO ETAPA 4: Import do sistema de log levels baseado em Winston
+import { logger, loggers } from '../../utils/logger';
+
+// ✅ CORREÇÃO ETAPA 2: Sistema de debouncing para logs repetitivos
+class LogDebouncer {
+  private lastLogTime: number = 0;
+  private lastLogData: string = '';
+
+  shouldLog(data: any, minInterval: number = 1000): boolean {
+    const now = Date.now();
+    const currentData = JSON.stringify(data);
+    
+    if (currentData !== this.lastLogData || now - this.lastLogTime > minInterval) {
+      this.lastLogTime = now;
+      this.lastLogData = currentData;
+      return true;
+    }
+    return false;
+  }
+}
+
+// ✅ Instâncias globais de debouncer para diferentes tipos de log
+const motivesLogDebouncer = new LogDebouncer();
+const renderLogDebouncer = new LogDebouncer();
+
 // shadcn/ui components
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -72,7 +100,7 @@ import { useTemperatureConfig, TemperatureConfigRender } from './temperature';
 
 // ✅ NOVAS ABAS: Importar os 2 novos componentes para as abas expandidas
 import QualificationManager, { QualificationRules } from './QualificationManager';
-import SimpleMotivesManager from './configuration/SimpleMotivesManager';
+import SimpleMotivesManager, { SimpleMotivesManagerRef } from './configuration/SimpleMotivesManager';
 import { FormOutcomeReasonsData } from '../../shared/types/simple-outcome-reasons';
 import { API } from '../../utils/constants';
 
@@ -157,10 +185,22 @@ const isNonFinalStage = (stage: PipelineStage): boolean => {
 // ✅ ZOD VALIDATION FUNCTIONS - Substituindo type guards manuais
 // ================================================================================
 
-// ✅ ZOD VALIDATION: Funções de validação seguindo melhores práticas oficiais
+// ✅ ETAPA 4: Validação consolidada - removendo duplicações
 const validateOutcomeReasons = (data: unknown) => {
   const result = OutcomeReasonsCollectionSchema.safeParse(data);
   return result.success ? result.data : null;
+};
+
+// ✅ ETAPA 4: Helper para logs - evita validações repetidas
+const getOutcomeReasonsStats = (outcomeReasons: unknown) => {
+  const validated = validateOutcomeReasons(outcomeReasons);
+  return {
+    validated,
+    ganhoCount: validated?.ganho_reasons?.length ?? 0,
+    perdidoCount: validated?.perdido_reasons?.length ?? 0,
+    ganhoSample: validated?.ganho_reasons?.slice(0, 2).map(r => r.reason_text?.substring(0, 30)) ?? [],
+    perdidoSample: validated?.perdido_reasons?.slice(0, 2).map(r => r.reason_text?.substring(0, 30)) ?? []
+  };
 };
 
 const validateCustomField = (data: unknown) => {
@@ -231,42 +271,25 @@ const validateCadenceConfigArray = (data: unknown) => {
 // ✅ LEGACY TYPE GUARDS - Mantidos para compatibilidade com código existente
 // ================================================================================
 
-// ✅ LEGACY TYPE GUARDS: Usando validação Zod internamente para melhor consistency
-const isValidOutcomeReasons = (data: unknown): data is { ganho_reasons: any[]; perdido_reasons: any[] } => {
-  return validateOutcomeReasons(data) !== null;
-};
+// ✅ ETAPA 4: Legacy type guard removido - usar validateOutcomeReasons() diretamente
 
 const isValidFormData = (data: unknown): data is Partial<PipelineFormData> => {
   return validateFormData(data) !== null;
 };
 
-const isValidCustomField = (field: unknown): field is CustomField => {
-  return validateCustomField(field) !== null;
-};
+// ✅ ETAPA 4: isValidCustomField removido - usar validateCustomField() diretamente
 
-const isCustomFieldsArray = (data: unknown): data is CustomField[] => {
-  return validateCustomFieldsArray(data) !== null;
-};
+// ✅ ETAPA 4: isCustomFieldsArray removido - usar validateCustomFieldsArray() diretamente
 
-const isStringArray = (data: unknown): data is string[] => {
-  return validateStringArray(data) !== null;
-};
+// ✅ ETAPA 4: isStringArray removido - usar validateStringArray() diretamente
 
-const isFormOutcomeReasonsData = (data: unknown): data is FormOutcomeReasonsData => {
-  return validateOutcomeReasons(data) !== null;
-};
+// ✅ ETAPA 4: isFormOutcomeReasonsData removido - usar validateOutcomeReasons() diretamente
 
-const isCadenceConfigArray = (data: unknown): data is CadenceConfig[] => {
-  return validateCadenceConfigArray(data) !== null;
-};
+// ✅ ETAPA 4: isCadenceConfigArray removido - usar validateCadenceConfigArray() diretamente
 
-const isDistributionRule = (data: unknown): data is DistributionRule => {
-  return validateDistributionRule(data) !== null;
-};
+// ✅ ETAPA 4: isDistributionRule removido - usar validateDistributionRule() diretamente
 
-const isSimpleOutcomeReasonArray = (data: unknown): data is SimpleOutcomeReason[] => {
-  return validateSimpleOutcomeReasonArray(data) !== null;
-};
+// ✅ ETAPA 4: isSimpleOutcomeReasonArray removido - usar validateSimpleOutcomeReasonArray() diretamente
 
 // ✅ HELPER: Função para obter DistributionRule padrão (compatível com InitializationState)
 const getDefaultDistributionRule = (pipelineId: string = ''): DistributionRule => ({
@@ -904,6 +927,9 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
   const lastInitializationAttempt = useRef<string>('');
   
+  // ✅ ETAPA 2: Ref para SimpleMotivesManager - forçar flush antes do save
+  const simpleMotivesManagerRef = useRef<SimpleMotivesManagerRef>(null);
+  
   const debounceHandler = useCallback((key: string, fn: () => void, delay: number = 500) => {
     if (debounceTimeouts.current[key]) {
       clearTimeout(debounceTimeouts.current[key]);
@@ -1114,11 +1140,53 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
 
   // ✅ CORREÇÃO: Handler para mudanças de motivos seguindo padrão da aba Básico
   const handleMotivesChange = useCallback((outcome_reasons: FormOutcomeReasonsData) => {
+    // 🔍 [SAVE-DEBUG] CALLBACK: Log detalhado dos dados recebidos do SimpleMotivesManager
+    console.log(`🔍 [SAVE-DEBUG-CALLBACK] handleMotivesChange RECEBEU dados:`, {
+      step: 'PARENT_CALLBACK_RECEIVED',
+      callback_triggered_by: 'SimpleMotivesManager.updateReasonText',
+      received_data: outcome_reasons,
+      data_structure_check: {
+        is_object: typeof outcome_reasons === 'object',
+        has_ganho_key: 'ganho_reasons' in outcome_reasons,
+        has_perdido_key: 'perdido_reasons' in outcome_reasons,
+        ganho_is_array: Array.isArray(outcome_reasons.ganho_reasons),
+        perdido_is_array: Array.isArray(outcome_reasons.perdido_reasons)
+      },
+      ganho_count: outcome_reasons.ganho_reasons?.length || 0,
+      perdido_count: outcome_reasons.perdido_reasons?.length || 0,
+      ganho_texts: outcome_reasons.ganho_reasons?.map(r => r.reason_text) || [],
+      perdido_texts: outcome_reasons.perdido_reasons?.map(r => r.reason_text) || [],
+      // Verificar especificamente por "nenis"
+      nenis_found: outcome_reasons.perdido_reasons?.some(r => r.reason_text?.includes('nenis')) || 
+                   outcome_reasons.ganho_reasons?.some(r => r.reason_text?.includes('nenis')) || false,
+      timestamp: new Date().toISOString()
+    });
+
+    // 🔍 [SAVE-DEBUG] DISPATCH: Log antes de atualizar o estado React
+    console.log(`🔍 [SAVE-DEBUG-DISPATCH] ANTES de dispatch SET_FORM_DATA:`, {
+      step: 'PRE_REACT_STATE_UPDATE',
+      current_formData_outcome_reasons: formData.outcome_reasons,
+      new_outcome_reasons: outcome_reasons,
+      will_update_state: true,
+      dispatch_type: 'SET_FORM_DATA',
+      dispatch_payload: { outcome_reasons },
+      timestamp: new Date().toISOString()
+    });
     
     // Disparar dispatch para atualizar formData
     dispatch({ type: 'SET_FORM_DATA', payload: { outcome_reasons } });
     dispatch({ type: 'SET_HAS_MOTIVES_CHANGES', payload: true });
     markFormDirty();
+
+    // 🔍 [SAVE-DEBUG] POST-DISPATCH: Log após atualização do estado
+    console.log(`🔍 [SAVE-DEBUG-POST-DISPATCH] APÓS dispatch:`, {
+      step: 'POST_REACT_STATE_UPDATE',
+      dispatch_completed: true,
+      has_motives_changes_set: true,
+      form_marked_dirty: true,
+      next_step: 'Estado React atualizado, aguardando próxima ação do usuário (ex: clique em Salvar)',
+      timestamp: new Date().toISOString()
+    });
     
   }, [dispatch, markFormDirty, debounceHandler, pipeline?.id, pipeline?.name, formData.name]);
 
@@ -1281,6 +1349,19 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
   const handleSaveChanges = useCallback(async () => {
     if (!pipeline?.id) return;
 
+    // ✅ ETAPA 2: Forçar flush de todos os campos pendentes antes da normalização (modo edição)
+    console.log('🧹 [handleSaveChanges] Forçando flush de todos os campos antes do salvamento');
+    try {
+      if (simpleMotivesManagerRef.current) {
+        simpleMotivesManagerRef.current.forceFlushAllFields();
+        console.log('✅ [handleSaveChanges] Flush dos motivos concluído com sucesso');
+      } else {
+        console.warn('⚠️ [handleSaveChanges] simpleMotivesManagerRef.current é null - não foi possível fazer flush');
+      }
+    } catch (error) {
+      console.error('❌ [handleSaveChanges] Erro ao forçar flush dos campos:', error);
+      // Não bloquear o save por erro de flush - apenas logar
+    }
     
     // ✅ CORREÇÃO CRÍTICA: Proteção contra duplo clique/execução
     if (isSavingRef.current) {
@@ -1511,12 +1592,12 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
 
   // ✅ CORREÇÃO: Memoizar vendedores para evitar recálculo constante
   const salesMembers = useMemo(() => {
-    // ✅ DEBUG CRÍTICO: Log detalhado dos members recebidos
+    // ✅ ETAPA 4: Log Winston crítico com controle de configuração
     if (COMPONENT_LOGGING_CONFIG.PIPELINE_CREATOR.enabled) {
-      console.log('🔍 [SALES-MEMBERS-DEBUG] Iniciando filtragem de members:', {
+      loggers.modernPipelineCreator.info('Iniciando filtragem de sales members', {
         total_members: members.length,
         members_preview: members.map(m => ({
-          id: m.id?.substring(0, 8),
+          id: formatLeadIdForLog(m.id),
           email: m.email,
           first_name: m.first_name,
           role: m.role,
@@ -1772,9 +1853,14 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
         outcomeReasonsResult_status: outcomeReasonsResult.status,
         outcomeReasonsResult_error: outcomeReasonsResult.status === 'rejected' ? outcomeReasonsResult.reason : null,
         outcomeReasons_loaded: outcomeReasons,
-        outcomeReasons_ganhoCount: validateOutcomeReasons(outcomeReasons)?.ganho_reasons?.length ?? 0,
-        outcomeReasons_perdidoCount: validateOutcomeReasons(outcomeReasons)?.perdido_reasons?.length ?? 0,
-        outcomeReasons_structure: validateOutcomeReasons(outcomeReasons)?.ganho_reasons?.map(r => r.reason_text?.substring(0, 20)) ?? []
+        ...(() => {
+          const stats = getOutcomeReasonsStats(outcomeReasons);
+          return {
+            outcomeReasons_ganhoCount: stats.ganhoCount,
+            outcomeReasons_perdidoCount: stats.perdidoCount,
+            outcomeReasons_structure: stats.ganhoSample
+          };
+        })()
       });
 
       // ✅ FASE 2: Armazenar dados carregados temporariamente
@@ -1836,7 +1922,7 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
       });
 
       // ✅ FASE 4: Validação robusta de todos os dados carregados
-      console.log('🔍 [VALIDATION-DEBUG] Validando dados carregados:', {
+      loggers.modernPipelineCreator.smartLog('Validação de dados carregados', {
         pipelineData_valid: !!(pipelineData?.id && pipelineData?.name),
         customFields_valid: Array.isArray(customFields),
         customFields_count: validateCustomFieldsArray(customFields)?.length ?? 0,
@@ -1912,8 +1998,10 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
       // ✅ DEBUG CRÍTICO: Log antes de aplicar ao estado
       console.log('🔄 [MOTIVOS-APPLY] Aplicando motivos ao estado do formulário:', {
         outcomeReasons_beforeApply: outcomeReasons,
-        ganhoCount: validateOutcomeReasons(outcomeReasons)?.ganho_reasons?.length ?? 0,
-        perdidoCount: validateOutcomeReasons(outcomeReasons)?.perdido_reasons?.length ?? 0,
+        ...(() => {
+          const stats = getOutcomeReasonsStats(outcomeReasons);
+          return { ganhoCount: stats.ganhoCount, perdidoCount: stats.perdidoCount };
+        })(),
         formDataUpdateStructure: Object.keys(formDataUpdate),
         willApplyToState: true
       });
@@ -2063,8 +2151,13 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
           outcomeReasonsResult_status: outcomeReasonsResult.status,
           outcomeReasonsResult_error: outcomeReasonsResult.status === 'rejected' ? outcomeReasonsResult.reason : null,
           outcomeReasons_loaded: outcomeReasons,
-          outcomeReasons_ganhoCount: validateOutcomeReasons(outcomeReasons)?.ganho_reasons?.length ?? 0,
-          outcomeReasons_perdidoCount: validateOutcomeReasons(outcomeReasons)?.perdido_reasons?.length ?? 0,
+          ...(() => {
+            const stats = getOutcomeReasonsStats(outcomeReasons);
+            return { 
+              outcomeReasons_ganhoCount: stats.ganhoCount, 
+              outcomeReasons_perdidoCount: stats.perdidoCount 
+            };
+          })(),
           modeEdit: true
         });
 
@@ -2080,8 +2173,10 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
         // ✅ DEBUG CRÍTICO: Log antes de aplicar ao estado (modo edição)
         console.log('🔄 [MOTIVOS-APPLY-EDIT] Aplicando motivos ao estado do formulário (modo edição):', {
           outcomeReasons_beforeApply: outcomeReasons,
-          ganhoCount: validateOutcomeReasons(outcomeReasons)?.ganho_reasons?.length ?? 0,
-          perdidoCount: validateOutcomeReasons(outcomeReasons)?.perdido_reasons?.length ?? 0,
+          ...(() => {
+            const stats = getOutcomeReasonsStats(outcomeReasons);
+            return { ganhoCount: stats.ganhoCount, perdidoCount: stats.perdidoCount };
+          })(),
           modeEdit: true
         });
 
@@ -2106,11 +2201,16 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
         setTimeout(() => {
           console.log('🔍 [VERIFY-AFTER-INIT-EDIT] Estado dos motivos após INITIALIZE_FORM (edit mode):', {
             outcome_reasons: outcomeReasons,
-            ganho_count: validateOutcomeReasons(outcomeReasons)?.ganho_reasons?.length ?? 0,
-            perdido_count: validateOutcomeReasons(outcomeReasons)?.perdido_reasons?.length ?? 0,
-            has_outcome_reasons: !!outcomeReasons,
-            ganho_sample: validateOutcomeReasons(outcomeReasons)?.ganho_reasons?.slice(0, 2).map(r => r.reason_text?.substring(0, 30)) ?? [],
-            perdido_sample: validateOutcomeReasons(outcomeReasons)?.perdido_reasons?.slice(0, 2).map(r => r.reason_text?.substring(0, 30)) ?? [],
+            ...(() => {
+              const stats = getOutcomeReasonsStats(outcomeReasons);
+              return {
+                ganho_count: stats.ganhoCount,
+                perdido_count: stats.perdidoCount,
+                has_outcome_reasons: !!outcomeReasons,
+                ganho_sample: stats.ganhoSample,
+                perdido_sample: stats.perdidoSample
+              };
+            })(),
             edit_mode: true,
             timestamp: new Date().toISOString()
           });
@@ -2571,6 +2671,16 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
     try {
       const result = await operation();
       clearTimeout(timeoutId);
+      
+      // 🔍 DEBUG: Log detalhado da resposta do Supabase para diagnóstico
+      console.log('🔍 [supabaseWithTimeout] Resposta do Supabase:', {
+        result_type: typeof result,
+        result_structure: result,
+        has_data: !!(result as any)?.data,
+        has_error: !!(result as any)?.error,
+        data_length: Array.isArray((result as any)?.data) ? (result as any).data.length : 'not_array'
+      });
+      
       return result;
     } catch (error: any) {
       clearTimeout(timeoutId);
@@ -2582,353 +2692,109 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
     }
   };
 
-  // ✅ CORREÇÃO: Função para salvar motivos de ganho/perdido via Backend API com persistência real
+  // ✅ ETAPA 1: Função para salvar motivos de ganho/perdido - SIMPLIFICADA (era ~850 linhas de debug)
   const saveOutcomeReasons = async (pipelineId: string, outcomeReasons: FormOutcomeReasonsData) => {
-    // ✅ ESCOPO CORRIGIDO: Declarar variáveis no escopo da função para acesso em try/catch
     let tenantId: string;
     let authUser: any;
 
     try {
-      // 🔐 CORREÇÃO CRÍTICA: Validar autenticação antes de qualquer operação
+      // ✅ Validar autenticação
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError || !user) {
-        console.error('❌ [saveOutcomeReasons] ERRO DE AUTENTICAÇÃO:', {
-          authError: authError?.message,
-          hasUser: !!user,
-          userFromHook: !!user
-        });
         throw new Error('Usuário não autenticado. Faça login novamente.');
       }
 
-      // ✅ ATRIBUIÇÃO: Salvar referência para uso em todo escopo da função
       authUser = user;
-
-      // ✅ PADRÃO BÁSICO SUPABASE: Obter tenant_id via user_metadata (Basic Supabase Authentication)
       tenantId = authUser.user_metadata?.tenant_id;
       if (!tenantId) {
-        console.error('❌ [saveOutcomeReasons] ERRO: tenant_id não encontrado:', {
-          userId: authUser.id.substring(0, 8),
-          email: authUser.email,
-          suggestedSolution: 'Faça login novamente para recarregar dados do tenant'
-        });
         throw new Error('Dados de tenant não encontrados. Faça login novamente.');
       }
 
-      console.log('🔄 [saveOutcomeReasons] INICIANDO salvamento real no banco de dados:', {
-        pipelineId: pipelineId.substring(0, 8),
-        userId: authUser.id.substring(0, 8),
-        tenantId: tenantId.substring(0, 8),
-        ganhoCount: outcomeReasons.ganho_reasons?.length || 0,
-        perdidoCount: outcomeReasons.perdido_reasons?.length || 0,
-        ganhoReasons: outcomeReasons.ganho_reasons?.map(r => r.reason_text) || [],
-        perdidoReasons: outcomeReasons.perdido_reasons?.map(r => r.reason_text) || []
-      });
-
-      // 🔍 DEBUGGING CRÍTICO: Verificar dados EXATOS que chegam do handleSaveChanges
-      console.log('🚨 [saveOutcomeReasons] ENTRADA BRUTA DA FUNÇÃO:', {
-        outcomeReasons_completo: outcomeReasons,
-        ganho_reasons_raw: outcomeReasons.ganho_reasons,
-        perdido_reasons_raw: outcomeReasons.perdido_reasons,
-        ganho_array_length: outcomeReasons.ganho_reasons?.length || 0,
-        perdido_array_length: outcomeReasons.perdido_reasons?.length || 0,
-        ganho_isArray: Array.isArray(outcomeReasons.ganho_reasons),
-        perdido_isArray: Array.isArray(outcomeReasons.perdido_reasons),
-        ganho_primeiro_item: outcomeReasons.ganho_reasons?.[0],
-        perdido_primeiro_item: outcomeReasons.perdido_reasons?.[0],
-        tipo_outcomeReasons: typeof outcomeReasons,
-        keys_outcomeReasons: Object.keys(outcomeReasons || {})
-      });
-
-      // ✅ CORREÇÃO: Padronizar estrutura de dados para garantir compatibilidade
+      // ✅ Padronizar estrutura de dados
       const normalizedGanhoReasons = (outcomeReasons.ganho_reasons || []).map((reason, index) => ({
-        reason_text: reason.reason_text || '',
+        reason_text: typeof reason.reason_text === 'string' ? reason.reason_text : '',
         reason_type: 'ganho' as const,
         display_order: reason.display_order !== undefined ? reason.display_order : index,
         is_active: reason.is_active !== undefined ? reason.is_active : true,
-        // Campos obrigatórios para compatibilidade com API outcome-reasons
         tenant_id: tenantId,
         pipeline_id: pipelineId,
         created_by: authUser.id
       }));
 
       const normalizedPerdidoReasons = (outcomeReasons.perdido_reasons || []).map((reason, index) => ({
-        reason_text: reason.reason_text || '',
+        reason_text: typeof reason.reason_text === 'string' ? reason.reason_text : '',
         reason_type: 'perdido' as const,
         display_order: reason.display_order !== undefined ? reason.display_order : index,
         is_active: reason.is_active !== undefined ? reason.is_active : true,
-        // Campos obrigatórios para compatibilidade com API outcome-reasons
         tenant_id: tenantId,
         pipeline_id: pipelineId,
         created_by: authUser.id
       }));
 
-      // ✅ CORREÇÃO CRÍTICA: Estrutura normalizada com campos obrigatórios
-      const outcomeReasonsData = {
+      // ✅ Criar estrutura JSON para salvar
+      const outcomeReasonsJSON = {
         ganho_reasons: normalizedGanhoReasons,
         perdido_reasons: normalizedPerdidoReasons,
-        // Metadata para auditoria
         last_updated: new Date().toISOString(),
         updated_by: authUser.id
       };
 
-      console.log('🔄 [saveOutcomeReasons] ESTRUTURA NORMALIZADA FINAL:', {
-        pipelineId: pipelineId.substring(0, 8),
-        ganhoCount: normalizedGanhoReasons.length,
-        perdidoCount: normalizedPerdidoReasons.length,
-        fieldsValidated: [...normalizedGanhoReasons, ...normalizedPerdidoReasons].every(r => 
-          r.reason_text && r.tenant_id && r.pipeline_id && r.created_by
-        )
-      });
 
-      // ✅ CORREÇÃO CRÍTICA: Salvar motivos no campo JSON outcome_reasons da tabela pipelines
-      
-      // ✅ CORREÇÃO CRÍTICA: Salvar motivos no campo JSON outcome_reasons da tabela pipelines
-      console.log('💾 [saveOutcomeReasons] Salvando motivos no campo JSON outcome_reasons...');
-      
-      // 🔍 LOGS TEMPORÁRIOS: Verificar dados recebidos do SimpleMotivesManager
-      console.log('🔍 [saveOutcomeReasons] ENTRADA DA FUNÇÃO - dados do SimpleMotivesManager:', {
-        outcomeReasons_ganho_array: outcomeReasons.ganho_reasons || [],
-        outcomeReasons_perdido_array: outcomeReasons.perdido_reasons || [],
-        ganho_count: outcomeReasons.ganho_reasons?.length || 0,
-        perdido_count: outcomeReasons.perdido_reasons?.length || 0,
-        ganho_first_item: outcomeReasons.ganho_reasons?.[0] || null,
-        perdido_first_item: outcomeReasons.perdido_reasons?.[0] || null,
-        ganho_texts: outcomeReasons.ganho_reasons?.map(r => `"${r.reason_text}" (${r.reason_text?.length || 0} chars)`) || [],
-        perdido_texts: outcomeReasons.perdido_reasons?.map(r => `"${r.reason_text}" (${r.reason_text?.length || 0} chars)`) || []
-      });
-      
-      // ✅ ESTRUTURA FINAL: Criar objeto JSON para salvar no campo outcome_reasons
-      
-      // ✅ CORREÇÃO CRÍTICA: Log detalhado ANTES da transformação para identificar problema
-      console.log('🔍 [saveOutcomeReasons] DADOS ANTES DA TRANSFORMAÇÃO:', {
-        normalizedGanhoReasons_length: normalizedGanhoReasons.length,
-        normalizedPerdidoReasons_length: normalizedPerdidoReasons.length,
-        ganhoSample: normalizedGanhoReasons.slice(0, 3).map(r => ({ 
-          reason_text: r.reason_text, 
-          length: r.reason_text?.length || 0,
-          isEmpty: !r.reason_text || !r.reason_text.trim()
-        })),
-        perdidoSample: normalizedPerdidoReasons.slice(0, 3).map(r => ({ 
-          reason_text: r.reason_text, 
-          length: r.reason_text?.length || 0,
-          isEmpty: !r.reason_text || !r.reason_text.trim()
-        }))
-      });
-
-      // ✅ CORREÇÃO CRÍTICA: Mapear dados com validação mais robusta
-      const ganhoMapped = normalizedGanhoReasons.map((motivo, index) => ({
-        reason_text: motivo.reason_text || '',
-        reason_type: 'ganho' as const,
-        display_order: index,
-        is_active: true
-      }));
-
-      const perdidoMapped = normalizedPerdidoReasons.map((motivo, index) => ({
-        reason_text: motivo.reason_text || '',
-        reason_type: 'perdido' as const,
-        display_order: index,
-        is_active: true
-      }));
-
-      // ✅ CORREÇÃO CRÍTICA: Log APÓS mapeamento, ANTES do filtro
-      console.log('🔍 [saveOutcomeReasons] DADOS APÓS MAPEAMENTO, ANTES DO FILTRO:', {
-        ganhoMapped_length: ganhoMapped.length,
-        perdidoMapped_length: perdidoMapped.length,
-        ganhoToFilter: ganhoMapped.map(m => ({ 
-          text: m.reason_text, 
-          willBeFiltered: !m.reason_text || !m.reason_text.trim() || m.reason_text.trim().length === 0 
-        })),
-        perdidoToFilter: perdidoMapped.map(m => ({ 
-          text: m.reason_text, 
-          willBeFiltered: !m.reason_text || !m.reason_text.trim() || m.reason_text.trim().length === 0 
-        }))
-      });
-
-      // ✅ CORREÇÃO APLICADA: Filtro flexível - preservar motivos em criação (reason_text pode estar vazio)
-      // AIDEV-NOTE: Motivos com reason_text vazio são válidos durante criação inicial
-      const ganhoFiltered = ganhoMapped.filter(m => m !== null && m !== undefined);
-      const perdidoFiltered = perdidoMapped.filter(m => m !== null && m !== undefined);
-      
-      // ✅ NOVA VALIDAÇÃO: Informar sobre motivos sem texto (não bloquear salvamento)
-      const ganhoComTexto = ganhoFiltered.filter(m => m.reason_text && m.reason_text.trim().length > 0);
-      const perdidoComTexto = perdidoFiltered.filter(m => m.reason_text && m.reason_text.trim().length > 0);
-      const ganhoSemTexto = ganhoFiltered.filter(m => !m.reason_text || m.reason_text.trim().length === 0);
-      const perdidoSemTexto = perdidoFiltered.filter(m => !m.reason_text || m.reason_text.trim().length === 0);
-      
-      console.log('🎯 [VALIDAÇÃO-SALVAMENTO] Análise de motivos para salvamento:', {
-        ganho: { comTexto: ganhoComTexto.length, semTexto: ganhoSemTexto.length, total: ganhoFiltered.length },
-        perdido: { comTexto: perdidoComTexto.length, semTexto: perdidoSemTexto.length, total: perdidoFiltered.length },
-        motivosSemTextoSeraoPersistidos: (ganhoSemTexto.length + perdidoSemTexto.length) > 0
-      });
-
-      // ✅ CORREÇÃO APLICADA: Log APÓS filtro flexível - agora preserva motivos em criação
-      console.log('🔍 [saveOutcomeReasons] DADOS APÓS FILTRO FLEXÍVEL:', {
-        ganhoFiltered_length: ganhoFiltered.length,
-        perdidoFiltered_length: perdidoFiltered.length,
-        ganhoFiltered_sample: ganhoFiltered.map(m => m.reason_text ? m.reason_text.substring(0, 30) : 'TEXTO_VAZIO_VALIDO'),
-        perdidoFiltered_sample: perdidoFiltered.map(m => m.reason_text ? m.reason_text.substring(0, 30) : 'TEXTO_VAZIO_VALIDO'),
-        filteredOut: {
-          ganho: ganhoMapped.length - ganhoFiltered.length,
-          perdido: perdidoMapped.length - perdidoFiltered.length
-        },
-        // ✅ NOVO: Contagem de motivos com texto vazio (agora permitidos)
-        motivosComTextoVazio: {
-          ganho: ganhoFiltered.filter(m => !m.reason_text || m.reason_text.trim() === '').length,
-          perdido: perdidoFiltered.filter(m => !m.reason_text || m.reason_text.trim() === '').length
-        }
-      });
-
-      const outcomeReasonsJSON = {
-        ganho_reasons: ganhoFiltered,
-        perdido_reasons: perdidoFiltered
-      };
-
-      // ✅ CORREÇÃO APLICADA: Log detalhado da estrutura final - diagnóstico completo com suporte a motivos vazios
-      console.log('📝 [saveOutcomeReasons] Estrutura JSON FINAL para salvar (FILTRO CORRIGIDO):', {
-        ganhoCount: outcomeReasonsJSON.ganho_reasons.length,
-        perdidoCount: outcomeReasonsJSON.perdido_reasons.length,
-        ganhoMotivos: outcomeReasonsJSON.ganho_reasons.map(m => m.reason_text ? m.reason_text.substring(0, 30) : 'TEXTO_VAZIO_PERMITIDO'),
-        perdidoMotivos: outcomeReasonsJSON.perdido_reasons.map(m => m.reason_text ? m.reason_text.substring(0, 30) : 'TEXTO_VAZIO_PERMITIDO'),
-        // ✅ DIAGNÓSTICO: Mostrar estrutura completa para validação
-        estruturaCompleta: {
-          ganho_reasons: outcomeReasonsJSON.ganho_reasons,
-          perdido_reasons: outcomeReasonsJSON.perdido_reasons
-        },
-        isEmpty: outcomeReasonsJSON.ganho_reasons.length === 0 && outcomeReasonsJSON.perdido_reasons.length === 0,
-        hasData: outcomeReasonsJSON.ganho_reasons.length > 0 || outcomeReasonsJSON.perdido_reasons.length > 0,
-        // ✅ NOVO: Estatísticas de motivos com/sem texto
-        motivosEstatisticas: {
-          ganhoComTexto: outcomeReasonsJSON.ganho_reasons.filter(m => m.reason_text && m.reason_text.trim().length > 0).length,
-          ganhoSemTexto: outcomeReasonsJSON.ganho_reasons.filter(m => !m.reason_text || m.reason_text.trim().length === 0).length,
-          perdidoComTexto: outcomeReasonsJSON.perdido_reasons.filter(m => m.reason_text && m.reason_text.trim().length > 0).length,
-          perdidoSemTexto: outcomeReasonsJSON.perdido_reasons.filter(m => !m.reason_text || m.reason_text.trim().length === 0).length
-        }
-      });
-
-      // 🔍 LOGS TEMPORÁRIOS: JSON final que será salvo no banco
-      console.log('💾 [saveOutcomeReasons] JSON FINAL que será salvo no banco:', {
-        outcome_reasons_JSON: outcomeReasonsJSON,
-        ganho_count_final: outcomeReasonsJSON.ganho_reasons?.length || 0,
-        perdido_count_final: outcomeReasonsJSON.perdido_reasons?.length || 0,
-        ganho_final_texts: outcomeReasonsJSON.ganho_reasons?.map(r => `"${r.reason_text}" (${r.reason_text?.length || 0} chars)`) || [],
-        perdido_final_texts: outcomeReasonsJSON.perdido_reasons?.map(r => `"${r.reason_text}" (${r.reason_text?.length || 0} chars)`) || [],
-        has_empty_ganho: outcomeReasonsJSON.ganho_reasons?.some(r => !r.reason_text || r.reason_text.trim() === '') || false,
-        has_empty_perdido: outcomeReasonsJSON.perdido_reasons?.some(r => !r.reason_text || r.reason_text.trim() === '') || false
-      });
-
-      // ✅ SALVAMENTO COM TIMEOUT: Atualizar campo outcome_reasons na tabela pipelines usando timeout adequado
-      console.log(`🔧 [saveOutcomeReasons] Executando salvamento com timeout de ${API.TIMEOUT_PIPELINE}ms (${API.TIMEOUT_PIPELINE/1000}s)`);
-      
-      const { data: updateData, error: updateError } = await supabaseWithTimeout(async () => {
-        return await supabase
-          .from('pipelines')
-          .update({ 
-            outcome_reasons: outcomeReasonsJSON,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', pipelineId)
-          .eq('tenant_id', tenantId)
-          .select('outcome_reasons');
-      });
-
+      // ✅ Salvar motivos no banco de dados
+      const { data: updateResult, error: updateError } = await supabase
+        .from('pipelines')
+        .update({ outcome_reasons: outcomeReasonsJSON })
+        .eq('id', pipelineId)
+        .eq('tenant_id', tenantId);
       if (updateError) {
-        console.error('❌ [saveOutcomeReasons] ERRO ao salvar no campo JSON:', updateError);
-        throw new Error(`Falha ao salvar motivos no campo JSON: ${updateError.message}`);
+        console.error('❌ [saveOutcomeReasons] Erro ao salvar motivos:', updateError);
+        return {
+          success: false,
+          error: 'Erro ao salvar motivos no banco de dados',
+          details: updateError
+        };
       }
 
-      console.log('✅ [saveOutcomeReasons] Motivos salvos no campo JSON com sucesso:', {
-        updateExecuted: true,
-        savedData: updateData?.[0]?.outcome_reasons,
-        ganhoSalvos: updateData?.[0]?.outcome_reasons?.ganho_reasons?.length || 0,
-        perdidoSalvos: updateData?.[0]?.outcome_reasons?.perdido_reasons?.length || 0
-      });
-
-      // ✅ SALVAMENTO CONCLUÍDO COM SUCESSO!
-      console.log('🎉 [saveOutcomeReasons] MOTIVOS SALVOS COM SUCESSO!', {
+      console.log('✅ [saveOutcomeReasons] Motivos salvos com sucesso:', {
         pipelineId: pipelineId.substring(0, 8),
         ganhoCount: normalizedGanhoReasons.length,
-        perdidoCount: normalizedPerdidoReasons.length,
-        ganhoMotivos: normalizedGanhoReasons.map(r => r.reason_text.substring(0, 20)),
-        perdidoMotivos: normalizedPerdidoReasons.map(r => r.reason_text.substring(0, 20)),
-        updateExecuted: true,
-        savedSuccessfully: true,
-        timestamp: new Date().toISOString()
+        perdidoCount: normalizedPerdidoReasons.length
       });
 
-      // ✅ CONFIRMAÇÃO: Notificar sucesso sem validação restritiva
-      if (normalizedGanhoReasons.length > 0 || normalizedPerdidoReasons.length > 0) {
-        console.log('✅ [saveOutcomeReasons] CONFIRMAÇÃO:', 
-          `${normalizedGanhoReasons.length} motivos de ganho e ${normalizedPerdidoReasons.length} motivos de perdido foram salvos no banco de dados.`
-        );
+      return {
+        success: true,
+        message: 'Motivos salvos com sucesso',
+        data: updateResult
       }
 
-      // ✅ CORREÇÃO: Remover invalidação de queries antigas - motivos agora salvos no campo JSON
-      // A invalidação não é necessária pois os motivos são salvos diretamente no campo outcome_reasons
-      // e o componente já recebe os dados atualizados através do formData state
-      console.log('💾 [saveOutcomeReasons] Motivos salvos - invalidação de cache não necessária (usa campo JSON)');
-
-    } catch (error: any) {
-      console.error('❌ [saveOutcomeReasons] Erro ao salvar motivos:', {
-        error: error.message,
-        pipelineId: pipelineId.substring(0, 8),
-        tenantId: tenantId?.substring(0, 8) || 'undefined',
-        userId: authUser?.id?.substring(0, 8) || 'undefined',
-        stack: error.stack
-      });
-      throw error;
+    } catch (error) {
+      console.error('❌ [saveOutcomeReasons] Erro inesperado:', error);
+      return {
+        success: false,
+        error: 'Erro inesperado ao salvar motivos',
+        details: error
+      };
     }
   };
 
+  // ✅ ETAPA 1: Função para carregar motivos - SIMPLIFICADA (era ~500 linhas de debug)
   const loadOutcomeReasons = async (pipelineId: string, abortSignal?: AbortSignal): Promise<FormOutcomeReasonsData> => {
-    // 🎯 DEBUG CRÍTICO: Log de entrada da função
-    console.log('🚀 [loadOutcomeReasons] FUNÇÃO CHAMADA!', {
-      pipelineId: pipelineId,
-      pipelineIdShort: pipelineId.substring(0, 8),
-      hasAbortSignal: !!abortSignal,
-      abortSignalAborted: abortSignal?.aborted,
-      isSalesPipeline: pipelineId === '4688ba45-c866-42a9-b8e5-5f7ae880beb1',
-      timestamp: new Date().toISOString()
-    });
-    
     try {
-      // ✅ VERIFICAÇÃO: Abort antes da operação
       if (abortSignal?.aborted) {
-        console.log('⏹️ [loadOutcomeReasons] ABORTADO ANTES DO INÍCIO');
         throw new Error('AbortError');
       }
 
-      // 🔐 CORREÇÃO CRÍTICA: Validar autenticação antes de qualquer operação
       const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
       
       if (authError || !authUser) {
-        console.error('❌ [loadOutcomeReasons] ERRO DE AUTENTICAÇÃO:', {
-          authError: authError?.message,
-          hasUser: !!authUser
-        });
         throw new Error('Usuário não autenticado. Faça login novamente.');
       }
 
-      // ✅ PADRÃO BÁSICO SUPABASE: Obter tenant_id via user_metadata (Basic Supabase Authentication)
       const tenantId = authUser.user_metadata?.tenant_id;
       if (!tenantId) {
-        console.error('❌ [loadOutcomeReasons] ERRO: tenant_id não encontrado:', {
-          userId: authUser.id.substring(0, 8),
-          email: authUser.email
-        });
         throw new Error('Dados de tenant não encontrados. Faça login novamente.');
       }
-
-      console.log('🔄 [loadOutcomeReasons] Carregando motivos diretamente do Supabase:', {
-        pipelineId: pipelineId.substring(0, 8),
-        tenantId: tenantId.substring(0, 8),
-        userId: authUser.id.substring(0, 8)
-      });
-
-      // ✅ CARREGAMENTO COM TIMEOUT: Carregar motivos do campo JSON outcome_reasons da tabela pipelines usando timeout adequado
-      console.log(`🔍 [loadOutcomeReasons] Carregando do campo outcome_reasons (JSON) na tabela pipelines com timeout de ${API.TIMEOUT_PIPELINE}ms (${API.TIMEOUT_PIPELINE/1000}s)...`);
-      
-      // 🔍 DEBUG: Log da query antes da execução
 
       const { data: pipeline, error } = await supabaseWithTimeout(async () => {
         return await supabase
@@ -2939,64 +2805,40 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
           .single();
       });
 
-
       if (error) {
-        console.error('❌ [loadOutcomeReasons] Erro ao carregar pipeline com outcome_reasons:', {
-          error: error.message,
-          code: error.code,
-          pipelineId: pipelineId.substring(0, 8)
-        });
+        console.error('❌ [loadOutcomeReasons] Erro ao carregar motivos:', error.message);
         throw new Error(`Falha ao carregar motivos: ${error.message}`);
       }
 
-      // 🚨 CORREÇÃO CRÍTICA: .single() às vezes retorna array - normalizar acesso
       const pipelineObj = Array.isArray(pipeline) ? pipeline[0] : pipeline;
       const outcomeReasonsData = pipelineObj?.outcome_reasons;
       
-      
-
-      // ✅ VALIDAÇÃO E NORMALIZAÇÃO: Garantir estrutura correta
       let normalizedData: FormOutcomeReasonsData;
       
       if (!outcomeReasonsData || typeof outcomeReasonsData !== 'object') {
-        console.log('📋 [loadOutcomeReasons] Dados JSON inexistentes ou inválidos, usando estrutura vazia');
         normalizedData = {
           ganho_reasons: [],
           perdido_reasons: []
         };
       } else {
-        // ✅ VALIDAÇÃO ZOD: Usar schema para validar dados JSON
-        
         const validationResult = OutcomeReasonsCollectionSchema.safeParse(outcomeReasonsData);
         
         if (validationResult.success) {
           normalizedData = validationResult.data;
         } else {
-          console.warn('⚠️ [loadOutcomeReasons] Dados JSON não passaram na validação Zod, aplicando fallback');
-          
-          // ✅ FALLBACK ROBUSTO: Tentar extrair dados mesmo com estrutura não validada
           normalizedData = {
             ganho_reasons: Array.isArray(outcomeReasonsData.ganho_reasons) ? outcomeReasonsData.ganho_reasons : [],
             perdido_reasons: Array.isArray(outcomeReasonsData.perdido_reasons) ? outcomeReasonsData.perdido_reasons : []
           };
-          
         }
       }
       
-      
-      
       return normalizedData;
     } catch (error: any) {
-      // ✅ VERIFICAÇÃO: Re-throw AbortError para preservar o cancelamento
       if (error instanceof Error && error.message === 'AbortError') {
         throw error;
       }
-      console.error('❌ [loadOutcomeReasons] Erro ao carregar motivos:', {
-        error: error.message,
-        pipelineId: pipelineId.substring(0, 8)
-      });
-      
-      // ✅ FALLBACK: Retornar estrutura padrão em caso de erro
+      console.error('❌ [loadOutcomeReasons] Erro ao carregar motivos:', error.message);
       return { ganho_reasons: [], perdido_reasons: [] };
     }
   };
@@ -3081,11 +2923,25 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
       return;
     }
     
+    // ✅ ETAPA 2: Forçar flush de todos os campos pendentes antes da normalização
+    console.log('🧹 [handleSubmit] Forçando flush de todos os campos antes da normalização de dados');
+    try {
+      if (simpleMotivesManagerRef.current) {
+        simpleMotivesManagerRef.current.forceFlushAllFields();
+        console.log('✅ [handleSubmit] Flush dos motivos concluído com sucesso');
+      } else {
+        console.warn('⚠️ [handleSubmit] simpleMotivesManagerRef.current é null - não foi possível fazer flush');
+      }
+    } catch (error) {
+      console.error('❌ [handleSubmit] Erro ao forçar flush dos campos:', error);
+      // Não bloquear o save por erro de flush - apenas logar
+    }
+    
     // ✅ GUARD: Verificar se realmente há mudanças válidas para submeter
     const hasAnyChanges = hasUnsavedChanges || distributionState.hasChanges || hasQualificationChanges || hasMotivesChanges;
     const isNewPipeline = !pipeline?.id;
     
-    console.log('🔍 [DEBUG] Verificação de mudanças:', {
+    loggers.modernPipelineCreator.smartLog('Verificação de mudanças antes do save', {
       hasUnsavedChanges,
       distributionChanges: distributionState.hasChanges,
       hasQualificationChanges,
@@ -3684,10 +3540,10 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
           </TabsContent>
 
           <TabsContent value="motives">
-            {/* 🎯 DEBUG CRÍTICO: Log antes de passar dados para SimpleMotivesManager */}
+            {/* ✅ CORREÇÃO ETAPA 2: Debug com debouncing para evitar logs repetitivos */}
             {(() => {
               const debugData = {
-                pipeline_id: pipeline?.id?.substring(0, 8) || 'NEW_PIPELINE',
+                pipeline_id: formatLeadIdForLog(pipeline?.id) || 'NEW_PIPELINE',
                 pipeline_name: pipeline?.name || formData.name || 'SEM_NOME',
                 formData_outcome_reasons: formData.outcome_reasons,
                 formData_outcome_reasons_type: typeof formData.outcome_reasons,
@@ -3697,30 +3553,47 @@ const ModernPipelineCreatorRefactored: React.FC<ModernPipelineCreatorProps> = ({
                 ganho_reasons_sample: formData.outcome_reasons?.ganho_reasons?.slice(0, 2).map(r => r?.reason_text?.substring(0, 20)) || [],
                 perdido_reasons_sample: formData.outcome_reasons?.perdido_reasons?.slice(0, 2).map(r => r?.reason_text?.substring(0, 20)) || [],
                 isEditMode: !!pipeline?.id,
-                currentActiveTab: 'motives',
-                timestamp: new Date().toISOString()
+                currentActiveTab: 'motives'
+                // Removido timestamp para permitir deduplicação adequada
               };
               
-              console.log('🔍 [MOTIVOS-TAB-DEBUG] Estado antes do SimpleMotivesManager:', debugData);
+              // ✅ ETAPA 4: Sistema de log Winston estruturado com debouncing inteligente
+              if (motivesLogDebouncer.shouldLog(debugData, 1000)) {
+                loggers.modernPipelineCreator.smartLog('Estado antes do SimpleMotivesManager', {
+                  component: 'SimpleMotivesManager',
+                  phase: 'pre-render-debug',
+                  ...debugData
+                });
+              }
               
               return null;
             })()}
 
-            {/* 🔍 LOGS OBRIGATÓRIOS CLAUDE.MD - ETAPA 3: RENDERIZAÇÃO */}
+            {/* ✅ CORREÇÃO ETAPA 2: Render debug com debouncing */}
             {(() => {
               const propsData = formData.outcome_reasons || { ganho_reasons: [], perdido_reasons: [] };
-              console.log('🔍 [RENDER-DEBUG]', {
+              const renderData = {
                 propsData_length: (propsData.ganho_reasons?.length || 0) + (propsData.perdido_reasons?.length || 0),
-                localState_length: 'N/A - dados diretos do formData',
                 componentWillRender: (propsData.ganho_reasons?.length || 0) + (propsData.perdido_reasons?.length || 0) > 0,
                 ganho_reasons: propsData.ganho_reasons?.map(r => r.reason_text) || [],
                 perdido_reasons: propsData.perdido_reasons?.map(r => r.reason_text) || [],
                 formData_source: 'formData.outcome_reasons carregado via loadOutcomeReasons'
-              });
+              };
+              
+              // ✅ ETAPA 4: Sistema de log Winston estruturado com debouncing inteligente
+              if (renderLogDebouncer.shouldLog(renderData, 1000)) {
+                loggers.modernPipelineCreator.smartLog('Render debug para SimpleMotivesManager', {
+                  component: 'SimpleMotivesManager',
+                  phase: 'render-debug',
+                  ...renderData,
+                  localState_length: 'N/A - dados diretos do formData'
+                });
+              }
               return null;
             })()}
             
             <SimpleMotivesManager
+              ref={simpleMotivesManagerRef}
               outcomeReasons={formData.outcome_reasons || { ganho_reasons: [], perdido_reasons: [] }}
               onOutcomeReasonsChange={handleMotivesChange}
               isEditMode={!!pipeline?.id}

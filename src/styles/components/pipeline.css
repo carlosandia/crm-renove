@@ -352,7 +352,8 @@ body.dragging-active * {
   max-width: 500px;
   width: 90%;
   max-height: 80vh;
-  overflow-y: auto;
+  /* overflow-y: auto; ✅ COMENTADO: Evitar nested scroll */
+  overflow-y: visible;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
 }
 

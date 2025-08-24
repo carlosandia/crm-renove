@@ -19,13 +19,18 @@ import type {
 
 /**
  * Formata valores monetários em Real brasileiro
+ * ✅ CORREÇÃO: Preservar decimais para valores pequenos como R$ 0,99
  */
 export const formatCurrency = (value: number): string => {
+  // Para valores menores que R$ 10, mostrar sempre 2 decimais
+  // Para valores maiores, mostrar sem decimais se for valor inteiro
+  const shouldShowDecimals = value < 10 || (value % 1 !== 0);
+  
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
+    minimumFractionDigits: shouldShowDecimals ? 2 : 0,
+    maximumFractionDigits: 2
   }).format(value);
 };
 

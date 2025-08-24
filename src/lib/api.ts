@@ -13,6 +13,7 @@ import type {
   HealthCheckResponse
 } from '../types/api'
 import { environmentConfig } from '../config/environment'
+import { batchRequest, dedupeRequest, requestBatcher } from '../utils/requestBatcher'
 
 // ✅ CORREÇÃO DEFINITIVA: Forçar proxy em desenvolvimento
 // PROBLEMA IDENTIFICADO: environmentConfig.urls.api estava sobrepondo DEV mode
@@ -57,6 +58,19 @@ const TIMEOUT_CONFIG = {
   heavy: 12000   // Uploads, reports, bulk operations (reduzido de 25s para 12s)
 };
 
+// ✅ BATCHING: Configurações para tipos de request
+const BATCH_CONFIG = {
+  // Requests que podem ser agrupados (GET similares)
+  batchable: ['/pipelines', '/leads', '/stages', '/members'],
+  
+  // Requests que devem ser deduplicados (evitar duplicatas)
+  dedupable: ['/health', '/user-preferences', '/analytics'],
+  
+  // Janelas de tempo para batching/dedup
+  batchDelay: 100,    // 100ms para agrupar
+  dedupWindow: 2000   // 2s para deduplicação
+};
+
 export const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: TIMEOUT_CONFIG.standard, // Padrão 6s (otimizado)
@@ -85,6 +99,41 @@ const determineTimeout = (config: any) => {
   
   // Padrão para tudo o resto (incluindo user-preferences)
   return TIMEOUT_CONFIG.standard;
+};
+
+// ✅ HELPERS: Verificar se request deve usar batching/deduplicação
+const shouldBatch = (url: string, method: string): boolean => {
+  if (method.toLowerCase() !== 'get') return false;
+  return BATCH_CONFIG.batchable.some(path => url.includes(path));
+};
+
+const shouldDedupe = (url: string, method: string): boolean => {
+  if (method.toLowerCase() !== 'get') return false;
+  return BATCH_CONFIG.dedupable.some(path => url.includes(path));
+};
+
+// ✅ WRAPPER: Aplicar batching/deduplicação quando apropriado
+const optimizedRequest = async (config: any) => {
+  const url = config.url || '';
+  const method = config.method || 'GET';
+  
+  // Aplicar batching para requests apropriados
+  if (shouldBatch(url, method)) {
+    apiLogger.debug(`Aplicando batching para: ${method} ${url}`);
+    return batchRequest(url, method, config.data, {
+      batchDelay: BATCH_CONFIG.batchDelay,
+      maxBatchSize: 5
+    });
+  }
+  
+  // Aplicar deduplicação para requests apropriados
+  if (shouldDedupe(url, method)) {
+    apiLogger.debug(`Aplicando deduplicação para: ${method} ${url}`);
+    return dedupeRequest(url, method, config.data, BATCH_CONFIG.dedupWindow);
+  }
+  
+  // Para outros requests, usar axios normal
+  return api.request(config);
 };
 
 // ✅ INTERCEPTOR OTIMIZADO - Simplified Request Processing
@@ -164,8 +213,16 @@ export const apiService = {
     api.put<ApiResponse<CustomerData>>(`/customers/${id}`, customerData),
   deleteCustomer: (id: string) => api.delete<ApiResponse<void>>(`/customers/${id}`),
 
-  // Pipelines
-  getPipelines: () => api.get<ApiResponse<PipelineData[]>>('/pipelines'),
+  // Pipelines (✅ OTIMIZADO: Com batching)
+  getPipelines: () => {
+    if (shouldBatch('/pipelines', 'GET')) {
+      return batchRequest<ApiResponse<PipelineData[]>>('/pipelines', 'GET', undefined, {
+        batchDelay: BATCH_CONFIG.batchDelay,
+        maxBatchSize: 3
+      });
+    }
+    return api.get<ApiResponse<PipelineData[]>>('/pipelines');
+  },
   createPipeline: (pipelineData: PipelineData) => 
     api.post<ApiResponse<PipelineData>>('/pipelines', pipelineData),
   updatePipeline: (id: string, pipelineData: Partial<PipelineData>) => 
@@ -184,8 +241,13 @@ export const apiService = {
   executeQuery: (query: string, params?: (string | number | boolean | null)[]) =>
     api.post<ApiResponse<unknown[]>>('/database', { query, params } as DatabaseQuery),
 
-  // Health check
-  healthCheck: () => api.get<ApiResponse<HealthCheckResponse>>('/health'),
+  // Health check (✅ OTIMIZADO: Com deduplicação)
+  healthCheck: () => {
+    if (shouldDedupe('/health', 'GET')) {
+      return dedupeRequest<ApiResponse<HealthCheckResponse>>('/health', 'GET', undefined, BATCH_CONFIG.dedupWindow);
+    }
+    return api.get<ApiResponse<HealthCheckResponse>>('/health');
+  },
 
   // MCP operations
   getMcpTools: () => api.get<ApiResponse<McpTool[]>>('/mcp/tools'),
@@ -202,6 +264,48 @@ export const apiService = {
       assigned_to: assignedTo,
       tenant_id: tenantId
     }),
+}
+
+// ✅ MONITORAMENTO: Estatísticas de batching para desenvolvimento
+export const getBatchingStats = (logStats: boolean = false) => {
+  const stats = requestBatcher.getStats();
+  // ✅ PRIORIDADE 3: Log condicional para evitar duplicação
+  if (logStats) {
+    apiLogger.info('Estatísticas de batching:', stats);
+  }
+  return stats;
+};
+
+// ✅ LIMPEZA: Forçar limpeza de cache
+export const clearBatchingCache = () => {
+  requestBatcher.cleanup();
+  apiLogger.info('Cache de batching limpo');
+};
+
+// ✅ DESENVOLVIMENTO: Log estatísticas periodicamente (apenas com atividade)
+if (import.meta.env.DEV) {
+  let lastStatsSnapshot = '';
+  
+  setInterval(() => {
+    const stats = requestBatcher.getStats();
+    const currentSnapshot = JSON.stringify(stats);
+    
+    // ✅ PRIORIDADE 3: Log apenas quando há mudanças ou atividade significativa
+    const hasActivity = stats.pendingBatches > 0 || stats.dedupCacheSize > 0 || stats.totalRequests > 0;
+    const hasChanges = currentSnapshot !== lastStatsSnapshot;
+    
+    if (hasActivity && hasChanges) {
+      apiLogger.debug('📊 [BATCHING-MONITOR]', {
+        pendingBatches: stats.pendingBatches,
+        dedupCacheSize: stats.dedupCacheSize,
+        totalRequests: stats.totalRequests,
+        dedupHits: stats.dedupHits,
+        // ✅ Informações adicionais para debugging
+        dedupEfficiency: stats.totalRequests > 0 ? `${Math.round((stats.dedupHits / stats.totalRequests) * 100)}%` : '0%'
+      });
+      lastStatsSnapshot = currentSnapshot;
+    }
+  }, 30000); // A cada 30 segundos
 }
 
 export default api 

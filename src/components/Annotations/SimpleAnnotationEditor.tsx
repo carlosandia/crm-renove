@@ -155,8 +155,28 @@ export const SimpleAnnotationEditor: React.FC<SimpleAnnotationEditorProps> = ({
   const [permissionState, setPermissionState] = React.useState<'prompt' | 'granted' | 'denied' | 'error'>('prompt');
   const [permissionError, setPermissionError] = React.useState<string>('');
 
+  // ✅ FUNÇÃO PARA DETECTAR MIME TYPE SUPORTADO
+  const getSupportedMimeType = (): string => {
+    const types = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4',
+      'audio/wav'
+    ];
+    
+    for (const type of types) {
+      if (MediaRecorder.isTypeSupported(type)) {
+        console.log(`✅ [getSupportedMimeType] Tipo suportado encontrado: ${type}`);
+        return type;
+      }
+    }
+    
+    console.warn('⚠️ [getSupportedMimeType] Nenhum tipo preferido suportado, usando padrão');
+    return 'audio/webm'; // Fallback padrão
+  };
+
   // ✅ FUNÇÃO PARA INICIALIZAR GRAVAÇÃO (chamada apenas quando usuário clica)
-  const initializeAudioRecording = React.useCallback(async (): Promise<boolean> => {
+  const initializeAudioRecording = React.useCallback(async (existingStream?: MediaStream): Promise<boolean> => {
     try {
       console.log('🎤 [initializeAudioRecording] Solicitando permissão de microfone...');
 
@@ -167,24 +187,76 @@ export const SimpleAnnotationEditor: React.FC<SimpleAnnotationEditorProps> = ({
         return false;
       }
 
-      // ✅ SOLICITAR PERMISSÃO APENAS QUANDO NECESSÁRIO
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 44100
-        } 
-      });
+      // ✅ VERIFICAR SE MEDIARECORDER É SUPORTADO
+      if (!window.MediaRecorder) {
+        setPermissionError('MediaRecorder não disponível neste navegador. Tente usar Chrome, Firefox ou Edge.');
+        setPermissionState('error');
+        return false;
+      }
+
+      // ✅ CONFIGURAÇÕES DE ÁUDIO MAIS FLEXÍVEIS
+      const audioConstraints = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+        // Removido sampleRate fixo para usar padrão do sistema
+      };
+
+      let stream = existingStream;
+      
+      // ✅ SOLICITAR PERMISSÃO APENAS SE NÃO TIVER STREAM VÁLIDO
+      if (!stream || !stream.active) {
+        console.log('🔄 [initializeAudioRecording] Solicitando novo stream de áudio...');
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: audioConstraints
+        });
+      } else {
+        console.log('✅ [initializeAudioRecording] Usando stream existente ativo');
+      }
 
       console.log('✅ [initializeAudioRecording] Permissão concedida, configurando MediaRecorder...');
       setPermissionState('granted');
       setPermissionError('');
       setMediaStream(stream);
 
-      // Criar MediaRecorder
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
+      // ✅ DETECTAR MELHOR MIME TYPE SUPORTADO
+      const mimeType = getSupportedMimeType();
+      
+      // ✅ VALIDAR SUPORTE ANTES DE CRIAR MEDIARECORDER
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        setPermissionError('Navegador não suporta gravação de áudio com os codecs disponíveis');
+        setPermissionState('error');
+        stream.getTracks().forEach(track => track.stop());
+        return false;
+      }
+
+      // ✅ VALIDAR STREAM ANTES DE CRIAR MEDIARECORDER
+      if (!stream.active) {
+        setPermissionError('Stream de áudio não está ativo');
+        setPermissionState('error');
+        stream.getTracks().forEach(track => track.stop());
+        return false;
+      }
+
+      console.log('🔧 [initializeAudioRecording] Criando MediaRecorder:', {
+        mimeType,
+        streamActive: stream.active,
+        audioTracks: stream.getAudioTracks().length
       });
+
+      // ✅ CRIAR MEDIARECORDER COM VALIDAÇÃO ROBUSTA
+      let mediaRecorder: MediaRecorder;
+      try {
+        mediaRecorder = new MediaRecorder(stream, {
+          mimeType
+        });
+      } catch (error: any) {
+        console.error('❌ [initializeAudioRecording] Erro ao criar MediaRecorder:', error);
+        setPermissionError(`Erro ao configurar gravador: ${error.message}`);
+        setPermissionState('error');
+        stream.getTracks().forEach(track => track.stop());
+        return false;
+      }
 
       let audioChunks: Blob[] = [];
 
@@ -228,7 +300,7 @@ export const SimpleAnnotationEditor: React.FC<SimpleAnnotationEditorProps> = ({
     } catch (error: any) {
       console.error('❌ [initializeAudioRecording] Erro:', error);
       
-      // ✅ TRATAMENTO ESPECÍFICO DE ERROS
+      // ✅ TRATAMENTO ESPECÍFICO DE ERROS (CORRIGIDO)
       if (error.name === 'NotAllowedError') {
         setPermissionError('Permissão de microfone negada. Clique no ícone de microfone na barra de endereços para permitir.');
         setPermissionState('denied');
@@ -238,6 +310,33 @@ export const SimpleAnnotationEditor: React.FC<SimpleAnnotationEditorProps> = ({
       } else if (error.name === 'NotReadableError') {
         setPermissionError('Microfone em uso por outro aplicativo. Feche outros apps que possam estar usando o microfone.');
         setPermissionState('error');
+      } else if (error.name === 'NotSupportedError') {
+        setPermissionError('Gravação de áudio não suportada neste navegador. Tente usar Chrome, Firefox ou Edge.');
+        setPermissionState('error');
+      } else if (error.name === 'OverconstrainedError') {
+        setPermissionError('Configurações de áudio não suportadas pelo microfone. Tentando configuração mais simples...');
+        setPermissionState('error');
+        
+        // ✅ FALLBACK: Tentar com configurações mais básicas
+        try {
+          console.log('🔄 [Fallback] Tentando configuração básica de áudio...');
+          const basicStream = await navigator.mediaDevices.getUserMedia({ 
+            audio: true // Configuração mais básica possível
+          });
+          
+          if (basicStream) {
+            setMediaStream(basicStream);
+            const mimeType = getSupportedMimeType();
+            const mediaRecorder = new MediaRecorder(basicStream, { mimeType });
+            recognitionRef.current = mediaRecorder;
+            setPermissionState('granted');
+            setPermissionError('');
+            console.log('✅ [Fallback] Configuração básica funcionou');
+            return true;
+          }
+        } catch (fallbackError) {
+          console.error('❌ [Fallback] Configuração básica também falhou:', fallbackError);
+        }
       } else {
         setPermissionError('Erro ao acessar microfone. Tente recarregar a página.');
         setPermissionState('error');
@@ -247,15 +346,15 @@ export const SimpleAnnotationEditor: React.FC<SimpleAnnotationEditorProps> = ({
     }
   }, [handleAudioRecordedCallback]);
 
-  // ✅ CLEANUP DO STREAM QUANDO COMPONENTE FOR DESMONTADO
+  // ✅ CLEANUP DO STREAM APENAS QUANDO COMPONENTE FOR DESMONTADO
   React.useEffect(() => {
     return () => {
       if (mediaStream) {
-        console.log('🧹 [cleanup] Parando stream de áudio...');
+        console.log('🧹 [cleanup] Parando stream de áudio no desmonte do componente...');
         mediaStream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [mediaStream]);
+  }, []); // ✅ Array vazio = executa cleanup apenas no desmonte
 
   // Auto-resize do textarea
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -270,17 +369,22 @@ export const SimpleAnnotationEditor: React.FC<SimpleAnnotationEditorProps> = ({
 
   // 🔄 Função movida para useCallback acima para corrigir closure bug
 
-  // ✅ CONTROLE DE GRAVAÇÃO DE ÁUDIO (CORRIGIDO)
+  // ✅ CONTROLE DE GRAVAÇÃO DE ÁUDIO (SIMPLIFICADO)
   const toggleRecording = async () => {
     if (isRecording) {
       // ⏸️ PARAR GRAVAÇÃO
       const mediaRecorder = recognitionRef.current as MediaRecorder;
-      if (mediaRecorder && mediaRecorder.state === 'recording') {
+      if (mediaRecorder && (mediaRecorder.state === 'recording' || mediaRecorder.state === 'paused')) {
+        console.log('⏸️ [toggleRecording] Parando gravação...');
         mediaRecorder.stop();
+        // ✅ NÃO alterar estado aqui - será atualizado no evento onstop
         showInfoToast('⏹️ Gravação finalizada', 'Processando áudio...');
+      } else {
+        console.warn('⚠️ [toggleRecording] MediaRecorder não está gravando, estado:', mediaRecorder?.state);
+        setIsRecording(false); // ✅ Forçar reset do estado apenas se necessário
       }
     } else {
-      // ▶️ INICIAR GRAVAÇÃO - Primeiro verificar/solicitar permissão
+      // ▶️ INICIAR GRAVAÇÃO
       if (!recognitionRef.current || permissionState !== 'granted') {
         console.log('🎤 [toggleRecording] Inicializando gravação pela primeira vez...');
         
@@ -294,24 +398,36 @@ export const SimpleAnnotationEditor: React.FC<SimpleAnnotationEditorProps> = ({
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      // Verificar se MediaRecorder está pronto
+      // ✅ VERIFICAR SE MEDIARECORDER ESTÁ PRONTO
       const mediaRecorder = recognitionRef.current as MediaRecorder;
-      if (!mediaRecorder || mediaRecorder.state !== 'inactive') {
-        showErrorToast('MediaRecorder não pronto', 'Tente novamente em alguns segundos');
+      if (!mediaRecorder) {
+        console.error('❌ [toggleRecording] MediaRecorder não encontrado no ref');
+        showErrorToast('MediaRecorder não encontrado', 'Tente novamente');
         return;
       }
 
-      // ✅ INICIAR GRAVAÇÃO
+      // ✅ VERIFICAÇÃO SIMPLIFICADA - apenas verificar se está inativo
+      if (mediaRecorder.state !== 'inactive') {
+        console.warn('⚠️ [toggleRecording] MediaRecorder não está inativo:', mediaRecorder.state);
+        // Tentar parar primeiro se estiver em outro estado
+        if (mediaRecorder.state === 'recording' || mediaRecorder.state === 'paused') {
+          mediaRecorder.stop();
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      // ✅ INICIAR GRAVAÇÃO DIRETAMENTE
       try {
+        console.log('🎤 [toggleRecording] Iniciando gravação...');
         mediaRecorder.start();
-        setIsRecording(true);
+        // ✅ NÃO alterar estado aqui - será atualizado no evento onstart
         setRecordingStartTime(Date.now());
         setRecordingDuration(0);
         
         showSuccessToast('🎤 Gravação iniciada', 'Fale no microfone para gravar sua anotação');
-      } catch (error) {
+      } catch (error: any) {
         console.error('❌ [toggleRecording] Erro ao iniciar gravação:', error);
-        showErrorToast('Erro na gravação', 'Não foi possível iniciar a gravação');
+        showErrorToast('Erro na gravação', `Não foi possível iniciar: ${error.message}`);
       }
     }
   };

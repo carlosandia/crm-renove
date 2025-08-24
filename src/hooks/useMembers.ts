@@ -119,20 +119,22 @@ export const useMembers = () => {
         filters: {
           tenant_id: String(user.tenant_id)
         }
-      }).then(() => {
+      }).then((fetchedData) => {
         // ✅ REACT.DEV PATTERN: Verificar se operação ainda é válida
         if (ignore) return;
         
-        // ✅ CORREÇÃO: Usar dados diretos da tabela users (sem mapeamento)
-        const rawUserData = usersCrud.data || [];
+        // ✅ CORREÇÃO CRÍTICA: Usar dados retornados do fetchAll diretamente
+        const rawUserData = fetchedData || [];
         
-        // ✅ CORREÇÃO: Log detalhado após fetchAll
+        // ✅ CORREÇÃO: Log detalhado após fetchAll com dados corretos
         if (enableDebugLogs) {
-          console.log('🔍 [useMembers] DADOS DA TABELA USERS:', {
+          console.log('🔍 [useMembers] DADOS DA TABELA USERS (CORRIGIDO):', {
             users_total: rawUserData.length,
+            usersCrud_data_length: usersCrud.data?.length || 0, // Para comparação
             tenant_id: user.tenant_id,
             sample_user: rawUserData?.[0],
             rafael_found: rawUserData.find(u => u.email === 'rafael@renovedigital.com.br' || u.first_name?.toLowerCase().includes('rafael')),
+            data_source: 'fetchAll_return_value',
             timestamp: new Date().toISOString()
           });
         }

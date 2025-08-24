@@ -4,6 +4,7 @@ import PipelineFilters from './PipelineFilters';
 import PipelineActions from './PipelineActions';
 import PipelineSelector from './PipelineSelector';
 import EnterpriseMetricsHeader from './metrics/EnterpriseMetricsHeader';
+import { MetricsErrorBoundaryWithQuery } from '../ErrorBoundaries';
 
 interface Pipeline {
   id: string;
@@ -124,14 +125,16 @@ const PipelineViewHeader: React.FC<PipelineViewHeaderProps> = ({
           {/* 🎯 APENAS MÉTRICAS: Controles movidos para o subheader específico */}
           <div className="w-full">
             {useEnterpriseMetrics ? (
-              <EnterpriseMetricsHeader
-                selectedPipelineId={selectedPipeline?.id}
-                compact={false}
-                showComparison={true}
-                showBenchmarks={true}
-                onRefresh={onMetricsRefresh}
-                className="mb-0"
-              />
+              <MetricsErrorBoundaryWithQuery resetKeys={[selectedPipeline?.id]}>
+                <EnterpriseMetricsHeader
+                  selectedPipelineId={selectedPipeline?.id}
+                  compact={false}
+                  showComparison={true}
+                  showBenchmarks={true}
+                  onRefresh={onMetricsRefresh}
+                  className="mb-0"
+                />
+              </MetricsErrorBoundaryWithQuery>
             ) : (
               <PipelineStats
                 totalLeads={totalLeads}

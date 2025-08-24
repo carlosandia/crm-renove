@@ -270,9 +270,9 @@ export const useIntegrationsSubHeader = ({
       searchValue: '',
       filters,
       activeFilter: activeTab,
-      onFilterChange: onTabChange,
-      showSearch: false, // Sem busca para integrações
-      showFilterBadge: false // Sem badge de filtro para integrações (são abas, não filtros)
+      onFilterChange: onTabChange as ((filterId: string) => void) | undefined, // ✅ CORREÇÃO: Cast to expected type
+      showSearch: false as boolean, // ✅ CORREÇÃO: Explicit boolean type
+      showFilterBadge: false as boolean // ✅ CORREÇÃO: Explicit boolean type  
     };
   }, [activeTab, onTabChange]);
 

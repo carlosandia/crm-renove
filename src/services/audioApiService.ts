@@ -77,6 +77,23 @@ export class AudioApiService {
       formData.append('leadId', request.leadId);
       formData.append('tenantId', request.tenantId);
 
+      // ✅ LOGS DE DEBUG DETALHADOS DO FORMDATA
+      console.log('🔍 [DEBUG-FRONTEND] FormData criado:', {
+        audioBlob: {
+          size: request.audioBlob.size,
+          type: request.audioBlob.type,
+          name: 'audio.webm'
+        },
+        leadId: request.leadId.substring(0, 8),
+        tenantId: request.tenantId.substring(0, 8),
+        formDataKeys: Array.from(formData.keys()),
+        formDataEntries: Array.from(formData.entries()).map(([key, value]) => ({
+          key,
+          valueType: typeof value,
+          valueSize: value instanceof Blob ? value.size : 'N/A'
+        }))
+      });
+
       console.log('🔄 [AudioApiService] Enviando requisição para API backend...');
 
       // Enviar para API backend (interceptors cuidam da autenticação)

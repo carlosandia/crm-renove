@@ -10,6 +10,7 @@ import LeadsImportModal from './Leads/LeadsImportModal';
 import LeadsExportModal from './Leads/LeadsExportModal';
 import { filterLeadsWithoutOpportunity } from '../utils/leadOpportunityUtils';
 import { usePerformanceMonitor } from '../shared/utils/performance';
+import { formatLeadIdForLog } from '../utils/logFormatters';
 
 interface LeadMaster {
   id: string;
@@ -149,7 +150,7 @@ const LeadsModule: React.FC = () => {
 
     try {
       setLoading(true);
-      console.log('🔍 [LeadsModule] Carregando leads:', user.tenant_id.substring(0, 8), user.role);
+      console.log('🔍 [LeadsModule] Carregando leads:', formatLeadIdForLog(user.tenant_id), user.role);
       
       // ✅ PERFORMANCE: Monitorar operação crítica de carregamento
       const result = await performanceMonitor.measureAsync('LeadsModule.loadLeads', async () => {
@@ -318,7 +319,7 @@ const LeadsModule: React.FC = () => {
     if (!window.confirm('Tem certeza que deseja excluir este lead?')) return;
 
     try {
-      console.log('🗑️ [LeadsModule] Iniciando exclusão:', leadId.substring(0, 8));
+      console.log('🗑️ [LeadsModule] Iniciando exclusão:', formatLeadIdForLog(leadId));
       
       // ✅ PERFORMANCE: Monitorar operação de exclusão
       await performanceMonitor.measureAsync('LeadsModule.deleteLead', async () => {

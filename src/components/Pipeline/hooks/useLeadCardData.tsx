@@ -1,14 +1,13 @@
 import { useMemo, useRef } from 'react';
 import React from 'react';
 import { Lead } from '../../../types/Pipeline';
-import { useTemperatureAPI } from '../../../hooks/useTemperatureAPI';
-import { generateTemperatureBadge } from '../../../utils/temperatureUtils';
 import { logLeadCard } from '../../../utils/optimizedLogger';
+import { useQualificationEvaluation } from '../../../hooks/useQualificationEvaluation';
 import { 
-  Flame,
-  Snowflake,
-  Sun,
-  Thermometer
+  Star,
+  Trophy,
+  User,
+  Clock
 } from 'lucide-react';
 
 interface UseLeadCardDataProps {
@@ -20,11 +19,11 @@ export const useLeadCardData = ({ lead, pipelineId }: UseLeadCardDataProps) => {
   // ✅ THROTTLING: Refs para controle de logs
   const loggedValuesRef = useRef(new Map<string, { value: any, time: number }>());
   
-  // 🌡️ Hook para configuração de temperatura personalizada
-  const { config: temperatureConfig } = useTemperatureAPI({ 
-    pipelineId: pipelineId || lead.pipeline_id || '', 
-    autoLoad: true 
-  });
+  // 🎯 Hook para avaliação de qualificação (Lead/MQL/SQL)
+  const qualificationEvaluation = useQualificationEvaluation(
+    pipelineId || lead.pipeline_id || '', 
+    lead
+  );
 
   // Função para calcular dias totais do card (desde criação)
   const getDaysInCard = (lead: Lead): number => {
@@ -110,37 +109,57 @@ export const useLeadCardData = ({ lead, pipelineId }: UseLeadCardDataProps) => {
     lead.created_at
   ]);
 
-  // 🚀 MEMOIZAÇÃO DE TAG DE TEMPERATURA COM CONFIGURAÇÃO PERSONALIZADA
-  const temperatureBadge = useMemo(() => {
-    // Determinar nível de temperatura baseado no lead
-    const temperatureLevel = lead.temperature_level || 'hot'; // fallback para 'hot' se não definido
+  // 🚀 MEMOIZAÇÃO DO BADGE DE QUALIFICAÇÃO (Lead/MQL/SQL)
+  const qualificationBadge = useMemo(() => {
+    const evaluation = qualificationEvaluation.data;
+    const isLoading = qualificationEvaluation.isLoading;
     
-    const badge = generateTemperatureBadge(temperatureLevel, temperatureConfig ?? null);
-    
-    // Converter ícones emoji para componentes React
-    let iconComponent;
-    switch (badge.icon) {
-      case '🔥':
-        iconComponent = <Flame className="h-3 w-3" />;
-        break;
-      case '🌡️':
-        iconComponent = <Thermometer className="h-3 w-3" />;
-        break;
-      case '☀️':
-        iconComponent = <Sun className="h-3 w-3" />;
-        break;
-      case '❄️':
-        iconComponent = <Snowflake className="h-3 w-3" />;
-        break;
-      default:
-        iconComponent = <Thermometer className="h-3 w-3" />;
+    if (isLoading) {
+      return {
+        label: 'Avaliando...',
+        color: 'bg-gray-100 text-gray-600 border-gray-300',
+        icon: <Clock className="w-3 h-3 animate-spin" />,
+        tooltip: 'Avaliando qualificação com base nas regras configuradas...'
+      };
     }
     
-    return {
-      ...badge,
-      icon: iconComponent
-    };
-  }, [lead.temperature_level, temperatureConfig]);
+    if (!evaluation) {
+      return {
+        label: 'Lead',
+        color: 'bg-blue-100 text-blue-800 border-blue-300',
+        icon: <User className="w-3 h-3" />,
+        tooltip: 'Lead sem avaliação de qualificação'
+      };
+    }
+
+    switch (evaluation.qualification_level) {
+      case 'MQL':
+        return {
+          label: 'MQL',
+          color: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+          icon: <Star className="w-3 h-3" />,
+          tooltip: `Marketing Qualified Lead (Score: ${evaluation.score}) - ${evaluation.reasoning}`
+        };
+      case 'SQL':
+        return {
+          label: 'SQL',
+          color: 'bg-green-100 text-green-800 border-green-300',
+          icon: <Trophy className="w-3 h-3" />,
+          tooltip: `Sales Qualified Lead (Score: ${evaluation.score}) - ${evaluation.reasoning}`
+        };
+      case 'Hot':
+      case 'Warm':
+      case 'Cold':
+      case 'Lead':
+      default:
+        return {
+          label: 'Lead',
+          color: 'bg-blue-100 text-blue-800 border-blue-300',
+          icon: <User className="w-3 h-3" />,
+          tooltip: evaluation.reasoning || 'Lead sem qualificação específica'
+        };
+    }
+  }, [qualificationEvaluation.data, qualificationEvaluation.isLoading]);
 
   // ✨ OPTIMISTIC UPDATES: Identificar se é lead otimista
   const optimisticState = useMemo(() => ({
@@ -151,7 +170,7 @@ export const useLeadCardData = ({ lead, pipelineId }: UseLeadCardDataProps) => {
 
   return {
     ...leadData,
-    temperatureBadge,
+    qualificationBadge,
     optimisticState
   };
 };

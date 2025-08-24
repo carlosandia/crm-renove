@@ -1,7 +1,8 @@
 import { useState, useCallback, useMemo, useEffect, useDebugValue } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../providers/AuthProvider';
-import { api } from '../lib/api';
+import { api, getBatchingStats } from '../lib/api';
+import { batchRequest, dedupeRequest } from '../utils/requestBatcher';
 import { Lead, Pipeline, PipelineStage } from '../types/Pipeline';
 
 // ✅ CORREÇÃO: Tipo estendido para Leads com propriedades otimistas
@@ -312,7 +313,7 @@ export const usePipelineKanban = ({
         logger.debouncedLog(
           `pipeline-fetch-${pipelineId}`,
           'debug',
-          'Buscando dados da pipeline',
+          'Buscando dados da pipeline (com batching)',
           LogContext.PIPELINE,
           { pipelineId: pipelineId ? pipelineId.substring(0, 8) + '...' : 'unknown' },
           2000
@@ -320,7 +321,13 @@ export const usePipelineKanban = ({
       }
       
       try {
-        const response = await api.get(`/pipelines/${pipelineId}?tenant_id=${user?.tenant_id}`);
+        // ✅ BATCHING: Usar deduplicação para dados da pipeline (raramente mudam)
+        const response = await dedupeRequest<any>(
+          `/pipelines/${pipelineId}?tenant_id=${user?.tenant_id}`,
+          'GET',
+          undefined,
+          5000 // 5 segundos de deduplicação para pipeline
+        );
         
         endTimer(`fetch-pipeline-${pipelineId}`, LogContext.API);
         
@@ -430,7 +437,7 @@ export const usePipelineKanban = ({
         logger.debouncedLog(
           `leads-fetch-${pipelineId}`,
           'debug',
-          'Buscando leads',
+          'Buscando leads (com batching)',
           LogContext.LEADS,
           {
             hasDateFilter: !!state.filters.dateRange,
@@ -461,14 +468,19 @@ export const usePipelineKanban = ({
           );
         }
         
-        const response = await api.get(`/pipelines/${pipelineId}/leads?${queryParams}`);
+        // ✅ BATCHING: Usar batching para leads (podem ser agrupados)
+        const response = await batchRequest<any>(
+          `/pipelines/${pipelineId}/leads?${queryParams}`,
+          'GET',
+          undefined,
+          {
+            batchDelay: 150, // 150ms para agrupar leads
+            maxBatchSize: 3, // Máximo 3 requests por batch
+            dedupWindow: 2000 // 2s para deduplicação
+          }
+        );
         
-        // ✅ DEBUG: Log da resposta da API
-        console.log('✅ [API LEADS] Resposta recebida:', {
-          status: response.status,
-          count: response.data?.length || 0,
-          isArray: Array.isArray(response.data)
-        });
+        // ✅ ETAPA 4: Log consolidado removido (duplicação eliminada)
         
         endTimer(`fetch-leads-${pipelineId}`, LogContext.API);
         
@@ -487,18 +499,12 @@ export const usePipelineKanban = ({
         // 🚀 BYPASS: Usar dados diretamente da API sem validação complexa
         const leads = Array.isArray(response.data) ? response.data : [];
         
-        console.log('✅ [BYPASS VALIDAÇÃO] Usando dados diretos da API:', {
-          rawCount: leads.length,
-          isArray: Array.isArray(leads)
-        });
+        // ✅ ETAPA 4: Log de bypass removido (redundante)
         
         // Validar apenas se tem ID e stage_id (mínimo necessário)
         const validLeads = leads.filter((lead: any) => lead?.id && lead?.stage_id);
         
-        console.log('✅ [VALIDAÇÃO MÍNIMA] Resultado:', {
-          totalRaw: leads.length,
-          withIdAndStage: validLeads.length
-        });
+        // ✅ ETAPA 4: Log de validação consolidado no logOnlyInDevelopment
         
         // ✅ SUCCESS LOG: Log otimizado de sucesso de leads
         if (validLeads.length > 0) {
@@ -560,7 +566,7 @@ export const usePipelineKanban = ({
         logger.debouncedLog(
           `custom-fields-fetch-${pipelineId}`,
           'debug',
-          'Buscando campos customizados',
+          'Buscando campos customizados (com batching)',
           LogContext.API,
           {},
           3000
@@ -568,7 +574,13 @@ export const usePipelineKanban = ({
       }
       
       try {
-        const response = await api.get(`/pipelines/${pipelineId}/custom-fields?tenant_id=${user?.tenant_id}`);
+        // ✅ BATCHING: Usar deduplicação para campos customizados (raramente mudam)
+        const response = await dedupeRequest<any>(
+          `/pipelines/${pipelineId}/custom-fields?tenant_id=${user?.tenant_id}`,
+          'GET',
+          undefined,
+          10000 // 10 segundos de deduplicação para campos customizados
+        );
         endTimer(`fetch-custom-fields-${pipelineId}`, LogContext.API);
         
         logOnlyInDevelopment(
@@ -685,11 +697,32 @@ export const usePipelineKanban = ({
       logger.debouncedLog(
         `kanban-init-${pipelineId}`,
         'debug',
-        'Hook usePipelineKanban iniciado',
+        'Hook usePipelineKanban iniciado (com batching)',
         LogContext.HOOKS,
         { userRole: user?.role },
         5000
       );
+    }
+  }, [pipelineId]);
+
+  // ✅ BATCHING STATS: Log das estatísticas em desenvolvimento
+  useEffect(() => {
+    if (isDevelopment) {
+      const interval = setInterval(() => {
+        const stats = getBatchingStats();
+        if (stats.pendingBatches > 0 || stats.dedupCacheSize > 0) {
+          logger.debouncedLog(
+            `kanban-batching-stats-${pipelineId}`,
+            'debug',
+            'Estatísticas de batching',
+            LogContext.PERFORMANCE,
+            stats,
+            10000
+          );
+        }
+      }, 15000); // A cada 15 segundos
+
+      return () => clearInterval(interval);
     }
   }, [pipelineId]);
 
@@ -725,13 +758,7 @@ export const usePipelineKanban = ({
         requestBody.position = position;
       }
       
-      if (import.meta.env.DEV) {
-        console.log('🎯 [moveLeadMutation] Enviando requisição (background):', {
-          leadId: leadId.substring(0, 8),
-          newStageId: newStageId.substring(0, 8),
-          position
-        });
-      }
+      // ✅ ETAPA 4: Log consolidado apenas para falhas/sucesso
       
       const response = await api.put(`/pipelines/${pipelineId}/leads/${leadId}`, requestBody);
       return response.data;
@@ -741,13 +768,7 @@ export const usePipelineKanban = ({
     onMutate: async (variables) => {
       const queryKey = getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange);
       
-      if (import.meta.env.DEV) {
-        console.log('🎯 [OPTIMISTIC] Iniciando update simples:', {
-          leadId: variables.leadId.substring(0, 8),
-          toStage: variables.newStageId.substring(0, 8),
-          position: variables.position
-        });
-      }
+      // ✅ ETAPA 4: Log otimista removido (verboso)
       
       // 1. Cancelar queries pendentes para evitar conflitos
       await queryClient.cancelQueries({ queryKey });
@@ -758,7 +779,7 @@ export const usePipelineKanban = ({
       // 3. Atualização simples - apenas o lead movido
       queryClient.setQueryData(queryKey, (oldData: Lead[]) => {
         if (!Array.isArray(oldData)) {
-          console.warn('⚠️ [OPTIMISTIC] Cache não é array:', typeof oldData);
+          console.error('❌ [OPTIMISTIC] Cache não é array - falha crítica:', typeof oldData);
           return oldData;
         }
         
@@ -774,9 +795,7 @@ export const usePipelineKanban = ({
           return lead;
         });
         
-        if (import.meta.env.DEV) {
-          console.log('✅ [OPTIMISTIC] Lead atualizado - UI deve atualizar AGORA');
-        }
+        // ✅ ETAPA 4: Log de atualização UI removido (verboso)
         
         return updatedLeads;
       });
@@ -789,27 +808,31 @@ export const usePipelineKanban = ({
     onSuccess: async (data, variables) => {
       setState(prev => ({ ...prev, isUpdatingStage: false }));
       
-      if (import.meta.env.DEV) {
-        console.log('✅ [moveLeadMutation] Sucesso - sync concluído (sem refresh)');
-      }
+      // ✅ ETAPA 4: Log de sucesso consolidado
       
       // ✅ NOVO: Gerar atividades automaticamente para a nova etapa (sistema acumulativo)
       try {
-        console.log('🔄 [moveLeadMutation] Gerando atividades automaticamente para nova etapa...', {
-          leadId: variables.leadId.substring(0, 8),
-          newStageId: variables.newStageId.substring(0, 8),
-          pipelineId: pipelineId.substring(0, 8)
-        });
+        // AIDEV-NOTE: Log apenas em modo debug para reduzir verbosidade
+        if (import.meta.env.VITE_DEBUG_PIPELINE === 'true') {
+          console.log('🔄 [moveLeadMutation] Gerando atividades automaticamente para nova etapa...', {
+            leadId: variables.leadId.substring(0, 8),
+            newStageId: variables.newStageId.substring(0, 8),
+            pipelineId: pipelineId.substring(0, 8)
+          });
+        }
         
         // ✅ DEBUG: Buscar dados do lead movido para obter assigned_to
         const movedLead = leadsQuery.data?.find(lead => lead.id === variables.leadId);
-        console.log('🔍 [moveLeadMutation] Dados do lead encontrado:', {
-          leadFound: !!movedLead,
-          leadId: variables.leadId.substring(0, 8),
-          assignedTo: movedLead?.assigned_to?.substring(0, 8) || 'undefined',
-          leadsInCache: leadsQuery.data?.length || 0,
-          userIdFallback: user?.id?.substring(0, 8) || 'undefined'
-        });
+        // AIDEV-NOTE: Log apenas em modo debug
+        if (import.meta.env.VITE_DEBUG_PIPELINE === 'true') {
+          console.log('🔍 [moveLeadMutation] Dados do lead encontrado:', {
+            leadFound: !!movedLead,
+            leadId: variables.leadId.substring(0, 8),
+            assignedTo: movedLead?.assigned_to?.substring(0, 8) || 'N/A',
+            leadsInCache: leadsQuery.data?.length || 0,
+            userIdFallback: user?.id?.substring(0, 8) || 'N/A'
+          });
+        }
         
         const activityResult = await generateActivities({
           leadId: variables.leadId,
@@ -821,18 +844,21 @@ export const usePipelineKanban = ({
         if (activityResult.success) {
           const tasksCreated = activityResult.tasksCreated || 0;
           if (tasksCreated === 0) {
-            console.log('ℹ️ [moveLeadMutation] Sistema anti-duplicação: atividades já existem para este lead/etapa', {
-              leadId: variables.leadId.substring(0, 8),
-              message: activityResult.message
-            });
+            // AIDEV-NOTE: Log de sistema anti-duplicação apenas em modo debug
+            if (import.meta.env.VITE_DEBUG_PIPELINE === 'true') {
+              console.log('ℹ️ [moveLeadMutation] Sistema anti-duplicação: atividades já existem para este lead/etapa', {
+                leadId: variables.leadId.substring(0, 8),
+                message: activityResult.message
+              });
+            }
           } else {
-            console.log(`✅ [moveLeadMutation] Atividades geradas automaticamente: ${tasksCreated} atividades`, {
-              leadId: variables.leadId.substring(0, 8),
-              message: activityResult.message
+            // AIDEV-NOTE: Manter apenas log de sucesso (informação importante)
+            console.log(`✅ [moveLeadMutation] Atividades geradas: ${tasksCreated}`, {
+              leadId: variables.leadId.substring(0, 8)
             });
           }
         } else {
-          console.warn('⚠️ [moveLeadMutation] Falha na geração automática de atividades:', {
+          console.debug('🔍 [moveLeadMutation] Falha na geração automática de atividades (não crítico):', {
             leadId: variables.leadId.substring(0, 8),
             error: activityResult.error || activityResult.message
           });
@@ -859,12 +885,15 @@ export const usePipelineKanban = ({
           refetchType: 'active'
         });
         
-        console.log('✅ [moveLeadMutation] Cache de atividades invalidado - dropdown será atualizado', {
-          leadId: variables.leadId.substring(0, 8),
-          queries: ['card-tasks', 'activities-combined']
-        });
+        // AIDEV-NOTE: Log de cache apenas em modo debug
+        if (import.meta.env.VITE_DEBUG_PIPELINE === 'true') {
+          console.log('✅ [moveLeadMutation] Cache de atividades invalidado - dropdown será atualizado', {
+            leadId: variables.leadId.substring(0, 8),
+            queries: ['card-tasks', 'activities-combined']
+          });
+        }
       } catch (cacheError) {
-        console.warn('⚠️ [moveLeadMutation] Erro ao invalidar cache de atividades:', cacheError);
+        console.debug('🔍 [moveLeadMutation] Erro ao invalidar cache de atividades (não crítico):', cacheError);
       }
       
       // NÃO invalidar cache de leads - dados já foram atualizados otimisticamente
@@ -906,7 +935,10 @@ export const usePipelineKanban = ({
     },
     // ✨ OPTIMISTIC UPDATE: Criar card instantaneamente
     onMutate: async (leadData: any) => {
-      console.log('🚀 [OPTIMISTIC] Iniciando criação otimista de lead:', leadData);
+      // AIDEV-NOTE: Log de criação otimista apenas em modo debug
+      if (import.meta.env.VITE_DEBUG_PIPELINE === 'true') {
+        console.log('🚀 [OPTIMISTIC] Iniciando criação otimista de lead:', leadData);
+      }
       
       // 1. Cancelar queries pendentes para evitar sobrescrita
       await queryClient.cancelQueries({ queryKey: getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange) });
@@ -950,7 +982,10 @@ export const usePipelineKanban = ({
         tempId: `optimistic-${Date.now()}`
       };
       
-      console.log('✨ [OPTIMISTIC] Lead otimista criado:', optimisticLead);
+      // AIDEV-NOTE: Log apenas em modo debug
+      if (import.meta.env.VITE_DEBUG_PIPELINE === 'true') {
+        console.log('✨ [OPTIMISTIC] Lead otimista criado:', optimisticLead);
+      }
       
       // 4. Atualizar cache imediatamente - adicionar no início da lista
       queryClient.setQueryData(getLeadsQueryKey(pipelineId, user?.tenant_id, state.filters.dateRange), (old: any) => {
@@ -1037,10 +1072,7 @@ export const usePipelineKanban = ({
 
   // Leads filtrados com validação simplificada
   const filteredLeads = useMemo(() => {
-    console.log('✅ [FILTERED LEADS] Estado:', {
-      hasData: !!leadsQuery.data,
-      dataLength: leadsQuery.data?.length || 0
-    });
+    // ✅ ETAPA 4: Log removido - executado a cada render (verboso)
     
     if (leadsQuery.isPending || !Array.isArray(leadsQuery.data)) {
       return [];
@@ -1076,17 +1108,20 @@ export const usePipelineKanban = ({
       results = results.filter(lead => lead.assigned_to === state.filters.selectedUserId);
     }
     
-    console.log('✅ [FILTERED LEADS] Final:', { count: results.length });
+    // AIDEV-NOTE: Log apenas em modo debug para evitar warnings sobre filtros funcionando corretamente
+    if (import.meta.env.DEV && import.meta.env.VITE_DEBUG_PIPELINE === 'true' && results.length === 0 && leadsQuery.data?.length > 0) {
+      console.debug('🔍 [FILTERED LEADS] Filtros eliminaram todos os leads (comportamento normal):', {
+        originalCount: leadsQuery.data.length,
+        filters: state.filters
+      });
+    }
     
     return results;
   }, [leadsQuery.data, leadsQuery.isPending, state.filters]);
 
   // Leads agrupados por stage com processamento otimizado e ordenação por posição
   const leadsByStage = useMemo(() => {
-    console.log('✅ [LEADS BY STAGE] Iniciando:', {
-      stagesCount: stages.length,
-      filteredLeadsCount: filteredLeads.length
-    });
+    // ✅ ETAPA 4: Log de recalculo removido - verboso durante renders
     
     const grouped: Record<string, Lead[]> = {};
     
@@ -1204,13 +1239,16 @@ export const usePipelineKanban = ({
       count: leads.length
     }));
     
-    console.log('✅ [LEADS BY STAGE] Final:', {
-      groups: groupSummary,
-      totalDistributed: Object.values(grouped).reduce((sum, leads) => sum + leads.length, 0)
-    });
+    // AIDEV-NOTE: Log apenas em modo debug para evitar warnings desnecessários em estado normal vazio
+    if (import.meta.env.DEV && import.meta.env.VITE_DEBUG_PIPELINE === 'true') {
+      const totalLeads = Object.values(grouped).reduce((sum, leads) => sum + leads.length, 0);
+      if (totalLeads === 0) {
+        console.debug('🔍 [LEADS BY STAGE] Pipeline vazio - nenhum lead distribuído em stages');
+      }
+    }
     
     return grouped;
-  }, [stages, filteredLeads, state.sortBy, state.sortOrder]);
+  }, [stages, filteredLeads, state.sortBy, state.sortOrder, leadsQuery.data]);
 
   // ============================================
   // HANDLERS E ACTIONS (OTIMIZADOS COM USECALLBACK)

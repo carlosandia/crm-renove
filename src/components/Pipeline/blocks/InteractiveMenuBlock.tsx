@@ -364,7 +364,7 @@ const InteractiveMenuBlock: React.FC<InteractiveMenuBlockProps> = ({
       </div>
 
       {/* Menu Superior - Layout em linha única com espaço máximo */}
-      <div className="flex gap-2 bg-gray-50 p-3 rounded-lg overflow-x-auto mb-4">
+      <div className="flex gap-2 bg-gray-50 p-3 rounded-lg overflow-visible mb-4">
         {menuItems.map(item => {
           const IconComponent = item.icon;
           const isActive = activeInteractiveTab === item.id;
@@ -395,8 +395,8 @@ const InteractiveMenuBlock: React.FC<InteractiveMenuBlockProps> = ({
         })}
       </div>
 
-      {/* Conteúdo Dinâmico - Apenas esta área tem scroll */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      {/* Conteúdo Dinâmico - SEM scroll para evitar nested scroll com Kanban */}
+      <div className="flex-1 min-h-0 overflow-visible">
         {/* ATIVIDADES */}
         {activeInteractiveTab === 'cadencia' && (
           <div className="space-y-4 flex flex-col min-h-0">
@@ -457,8 +457,8 @@ const InteractiveMenuBlock: React.FC<InteractiveMenuBlockProps> = ({
               </div>
             </div>
 
-            {/* ✅ NOVO: Lista de atividades agrupadas por etapa (igual ao TasksDropdown) */}
-            <div className="flex-1 min-h-0 overflow-y-auto">
+            {/* ✅ CORREÇÃO: Lista de atividades SEM scroll próprio para evitar nested scroll */}
+            <div className="flex-1 min-h-0 overflow-visible">
               {activitiesLoading ? (
                 <div className="text-center py-8">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
@@ -760,8 +760,8 @@ const InteractiveMenuBlock: React.FC<InteractiveMenuBlockProps> = ({
               </div>
             )}
 
-            {/* Lista de feedbacks - Altura limitada */}
-            <div className="space-y-2 max-h-64 overflow-y-auto">
+            {/* Lista de feedbacks - SEM scroll próprio para evitar nested scroll */}
+            <div className="space-y-2 max-h-64 overflow-visible">
               {(feedbacks || []).length === 0 ? (
                 <div className="text-center py-6 text-gray-500">
                   <ThumbsUp className="w-8 h-8 mx-auto mb-2 text-gray-300" />
@@ -802,7 +802,7 @@ const InteractiveMenuBlock: React.FC<InteractiveMenuBlockProps> = ({
 
         {/* ANOTAÇÕES */}
         {activeInteractiveTab === 'anotacoes' && (
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="flex-1 min-h-0 overflow-visible">
             <AnnotationsTab
               leadId={lead.id}
               leadType="pipeline_lead"

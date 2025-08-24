@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { supabase, createUserSupabaseClient } from '../config/supabase';
+import { supabase } from '../config/supabase';
 import { LeadDistributionService, CreateLeadPayload } from '../services/leadDistributionService';
 
 export class LeadController {

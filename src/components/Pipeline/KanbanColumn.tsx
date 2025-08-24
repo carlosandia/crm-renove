@@ -1,4 +1,4 @@
-import React, { memo, useMemo, useCallback } from 'react';
+import React, { memo, useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { CustomField, PipelineStage, Lead, DroppableId } from '../../types/Pipeline';
 import { Droppable, Draggable } from '@hello-pangea/dnd';
 import type { 
@@ -50,6 +50,13 @@ const KanbanColumn: React.FC<KanbanColumnProps> = memo(({
   isDragging = false // ✅ CORREÇÃO 1: Estado de drag ativo
 }) => {
   
+  // ============================================
+  // SCROLL DETECTION REMOVIDA - ELIMINAR @hello-pangea/dnd WARNING
+  // ============================================
+  
+  // ✅ CORREÇÃO CRÍTICA: Removida toda lógica de scroll detection que fazia
+  // @hello-pangea/dnd detectar este elemento como scroll container
+
   // ============================================
   // HELPER FUNCTIONS
   // ============================================
@@ -134,6 +141,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = memo(({
             {...provided.dragHandleProps}
             className={`${snapshot.isDragging ? 'opacity-75 transform rotate-2' : ''}`}
             data-dragging={snapshot.isDragging}
+            style={provided.draggableProps.style} // ✅ CORREÇÃO: Usar apenas styles fornecidos pela biblioteca
           >
             <LeadCardErrorBoundary
               leadId={lead.id}
@@ -190,9 +198,8 @@ const KanbanColumn: React.FC<KanbanColumnProps> = memo(({
 
   return (
     <Droppable 
-      droppableId={stage.id}
+      droppableId={stage.id || 'unknown-stage'}
       direction="vertical"
-      ignoreContainerClipping={true}
       isDropDisabled={isDropDisabled}
       type="LEAD"
     >
@@ -200,7 +207,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = memo(({
         <div 
           ref={provided.innerRef}
           {...provided.droppableProps}
-          className={`kanban-stage flex-shrink-0 flex flex-col rounded-md transition-all duration-200 h-full ${
+          className={`kanban-stage flex-shrink-0 flex flex-col rounded-md transition-all duration-200 h-full scrollbar-hidden ${
             snapshot.isDraggingOver ? 'ring-2 ring-blue-400' : ''
           }`}
           data-stage-id={stage.id}
@@ -209,8 +216,11 @@ const KanbanColumn: React.FC<KanbanColumnProps> = memo(({
             width: '280px',
             minWidth: '280px',
             maxWidth: '280px',
-            // ✅ SOLUÇÃO ESTRUTURAL: Permitir overflow natural, sem forçar scroll
-            overflow: 'visible' // Deixa o scroll ser gerenciado pelo container pai único
+            height: '100%', // ✅ CORREÇÃO: Altura fixa sem override de overflow
+            // ✅ FORÇAR: Eliminar scrollbars no container principal também
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+            overflow: 'visible'
           }}
         >
       {/* Header da coluna */}
@@ -230,25 +240,22 @@ const KanbanColumn: React.FC<KanbanColumnProps> = memo(({
         </div>
       </div>
 
-          {/* ÁREA DE DROP = ÁREA DE CARDS - SEM SCROLL ANINHADO */}
-          <div 
-            className={`stage-content flex-1 relative p-2 space-y-2 transition-all duration-200 ${
-              snapshot.isDraggingOver ? 'bg-blue-50/50' : ''
-            }`}
-            style={{ 
-              // ✅ SOLUÇÃO ESTRUTURAL: Remover overflow para eliminar nested scroll containers
-              overflow: 'visible', // Permite que conteúdo seja scrollado pelo container pai
-              width: '100%',
-              boxSizing: 'border-box',
-              position: 'relative',
-              zIndex: 1,
-              minHeight: 0,
-              // ✅ Garantir altura adequada sem forçar scroll interno
-              height: 'auto',
-              maxHeight: 'none'
-            }}
-            data-droppable-over={snapshot.isDraggingOver}
-          >
+          {/* ÁREA DE DROP = ÁREA DE CARDS - SEM SCROLL DETECTION */}
+          <div className="relative flex-1">
+            {/* ✅ CORREÇÃO DEFINITIVA: Container simples conforme @hello-pangea/dnd */}
+            <div 
+              className={`stage-content-enhanced flex-1 p-2 space-y-2 transition-all duration-200 scrollbar-hidden overflow-visible ${
+                snapshot.isDraggingOver ? 'bg-blue-50/50' : ''
+              }`}
+              data-droppable-over={snapshot.isDraggingOver}
+              style={{
+                // ✅ FORÇAR: Eliminar scrollbars através de inline styles
+                scrollbarWidth: 'none',
+                msOverflowStyle: 'none',
+                overflowX: 'visible',
+                overflowY: 'visible'
+              }}
+            >
             {loading && !parentLoading ? (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400 mx-auto mb-2"></div>
@@ -269,6 +276,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = memo(({
               </>
             )}
             {provided.placeholder}
+            </div>
           </div>
         </div>
       )}

@@ -46,7 +46,7 @@ export interface User {
   updated_at?: string;
 }
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
@@ -68,7 +68,7 @@ export interface ApiResponse<T = any> {
 export interface ApiError {
   code: string;
   message: string;
-  details?: any;
+  details?: Record<string, unknown>;
   stack?: string;
   correlationId?: string;
   timestamp: string;
@@ -110,7 +110,7 @@ export interface LogContext {
   tenantId?: string;
   operation?: string;
   duration?: number;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface PaginationParams {
@@ -126,14 +126,14 @@ export interface FilterParams {
   dateFrom?: string;
   dateTo?: string;
   tenantId?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface ValidationError {
   field: string;
   message: string;
   code: string;
-  value?: any;
+  value?: unknown;
 }
 
 export interface HealthCheck {

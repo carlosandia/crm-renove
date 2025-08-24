@@ -6,7 +6,6 @@
 import { EventEmitter } from 'events';
 import { createClient } from '@supabase/supabase-js';
 import { rulesEngine, AutomationEvent } from './rulesEngine';
-import { performanceService } from './performanceService';
 
 export interface EventDefinition {
   type: string;

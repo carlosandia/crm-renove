@@ -4,9 +4,23 @@ import { MemberService } from '../services/memberService';
 import { CadenceService } from '../services/cadenceService'; // ✅ BUGFIX: Importar CadenceService
 import { supabase as supabaseAdmin } from '../config/supabase';
 
+// ✅ TYPES: Definições específicas para Request autenticado
+interface AuthenticatedUser {
+  id: string;
+  email: string;
+  tenant_id: string;
+  role: string;
+  first_name?: string;
+  last_name?: string;
+}
+
+interface AuthenticatedRequest extends Request {
+  user: AuthenticatedUser;
+}
+
 export class PipelineController {
   // ✅ NOVA ROTA: Validar nome de pipeline em tempo real
-  static async validatePipelineName(req: Request, res: Response) {
+  static async validatePipelineName(req: AuthenticatedRequest, res: Response) {
     try {
       const { name, pipeline_id } = req.query;
       const user = (req as any).user;

@@ -9,7 +9,7 @@ import { User, Mail, Phone, Target, DollarSign, FileText, Globe, ChevronDown, Ch
 import * as Collapsible from '@radix-ui/react-collapsible';
 import { Lead, CustomField } from '../../../types/Pipeline';
 import { getFieldIcon } from '../../../utils/leadDetailsUtils';
-import { FlexibleValueInput } from '../../ui/flexible-value-input';
+import { formatCurrency } from '../../../utils/formatUtils';
 
 interface LeadDataBlockProps {
   lead: Lead;
@@ -23,13 +23,14 @@ interface LeadDataBlockProps {
     label: string,
     icon: React.ReactNode,
     placeholder?: string,
-    disabled?: boolean
+    disabled?: boolean,
+    fieldOptions?: string[], // ✅ NOVO: Opções para campos select
+    key?: string // ✅ NOVO: Key para componente
   ) => React.ReactNode;
   createdByUser?: { // Dados do usuário responsável
     name?: string;
     email?: string;
   };
-  onUpdateValue?: (fieldName: string, value: any) => void; // Handler para atualizações de valor
 }
 
 const LeadDataBlockComponent: React.FC<LeadDataBlockProps> = ({
@@ -40,8 +41,7 @@ const LeadDataBlockComponent: React.FC<LeadDataBlockProps> = ({
   editValues,
   getLeadData,
   renderEditableField,
-  createdByUser,
-  onUpdateValue
+  createdByUser
 }) => {
   // Estado para controlar seções colapsáveis
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
@@ -61,17 +61,18 @@ const LeadDataBlockComponent: React.FC<LeadDataBlockProps> = ({
     });
   };
 
-  // Função para formatar data de criação
+  // Função para formatar data de criação compacta
   const formatCreationDate = (dateString?: string) => {
     if (!dateString) return null;
     
     try {
       const date = new Date(dateString);
-      return date.toLocaleDateString('pt-BR', {
-        day: 'numeric',
-        month: 'short', 
-        year: '2-digit'
-      });
+      const day = date.getDate();
+      const month = date.toLocaleDateString('pt-BR', { month: 'short' });
+      const year = date.getFullYear();
+      
+      // Formato: 20/Ago de 2025
+      return `${day}/${month.charAt(0).toUpperCase() + month.slice(1)} de ${year}`;
     } catch {
       return null;
     }
@@ -92,125 +93,71 @@ const LeadDataBlockComponent: React.FC<LeadDataBlockProps> = ({
       ? customFields.fields 
       : [];
   
+  // Extrair array dos campos customizados
+
   // ✅ CORREÇÃO 1: Mostrar TODOS os campos customizados da pipeline (com ou sem valor)
   const camposCustomizadosReais = fieldsArray.filter((field: any) => {
     const naoECampoBasico = !camposBasicosDoSistema.includes(field.field_name);
+    
+    // Verificar se é campo customizado
+    
     return naoECampoBasico; // Mostrar todos os campos customizados, independente de ter valor
   });
 
+  // Campos customizados filtrados prontos para renderização
+
   return (
     <div className="space-y-6">
-      {/* Header do Bloco */}
-      <div className="border-b border-gray-200 pb-2">
+      {/* Header do Bloco com Data */}
+      <div className="border-b border-gray-200 pb-2 flex items-center justify-between">
         <h3 className="text-lg font-semibold text-gray-900">Dados</h3>
+        
+        {/* Data de Criação da Oportunidade */}
+        {formatCreationDate(lead.created_at) && (
+          <div className="flex items-center text-sm text-muted-foreground">
+            <Calendar className="w-3 h-3" />
+            <span className="ml-1">{formatCreationDate(lead.created_at)}</span>
+          </div>
+        )}
       </div>
 
-      {/* SEÇÃO 1: DADOS DA OPORTUNIDADE - HEADER MODERNO */}
-      <div className="group relative overflow-hidden rounded-lg border bg-white p-6 shadow-sm hover:shadow-md transition-shadow duration-200">
-          {/* Header Principal com Layout Otimizado */}
-          <div className="relative flex items-start gap-4 mb-4">
-            {/* Avatar com Border Gradient */}
-            <div className="relative">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 p-0.5">
-                <div className="w-full h-full rounded-full bg-blue-100 flex items-center justify-center">
-                  <Target className="w-6 h-6 text-blue-600" />
-                </div>
-              </div>
-              {/* Status Badge */}
-              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white" />
-            </div>
-            
-            <div className="flex-1 min-w-0">
-              {/* Nome Principal - Título Destacado */}
-              <div className="mb-1">
-                <div className="[&_.flex-shrink-0]:hidden [&_.text-sm]:text-2xl [&_.text-sm]:font-semibold [&_.text-sm]:text-foreground [&_input]:text-2xl [&_input]:font-semibold [&_input]:text-foreground">
-                  {renderEditableField(
-                    'nome_oportunidade',
-                    '',
-                    <></>,
-                    'Digite o nome da oportunidade...'
-                  )}
-                </div>
-              </div>
-              
-              {/* Metadata Row */}
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                {formatCreationDate(lead.created_at) && (
-                  <span className="flex items-center gap-1">
-                    <Calendar className="w-3 h-3" />
-                    Criado em {formatCreationDate(lead.created_at)}
-                  </span>
-                )}
-                <div className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80">
-                  Ativo
-                </div>
-              </div>
-            </div>
-          </div>
+      {/* SEÇÃO 1: DADOS DA OPORTUNIDADE - LAYOUT OTIMIZADO */}
+      <div className="rounded-lg border bg-white p-4 shadow-sm">
+          {/* Nome da Oportunidade - Sem div wrapper desnecessária */}
+          {renderEditableField(
+            'nome_oportunidade',
+            'Nome da Oportunidade',
+            <Target className="w-4 h-4 text-blue-500 flex-shrink-0" />,
+            'Digite o nome da oportunidade...',
+            false,
+            undefined,
+            'nome_oportunidade_field'
+          )}
 
-          {/* Campos da Oportunidade */}
-          <div className="grid gap-4">
-            {/* Sistema de Valores Flexível */}
-            <div className="grid grid-cols-1 gap-2">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <DollarSign className="w-4 h-4 text-gray-500" />
-                <span>Valor da Oportunidade</span>
-              </div>
-              <div className="pl-6">
-                <FlexibleValueInput
-                  leadId={lead.id}
-                  pipelineId={lead.pipeline_id}
-                  initialValues={{
-                    valor_unico: lead.valor_unico || (lead.valor ? parseFloat(lead.valor.replace(/[^\d,]/g, '').replace(',', '.')) || 0 : 0),
-                    valor_recorrente: lead.valor_recorrente || 0,
-                    recorrencia_periodo: lead.recorrencia_periodo || 1,
-                    recorrencia_unidade: lead.recorrencia_unidade || 'mes',
-                    tipo_venda: lead.tipo_venda || 'unico'
-                  }}
-                  onValueChange={(values) => {
-                    // Chamar onUpdateValue para cada campo se disponível
-                    if (onUpdateValue) {
-                      onUpdateValue('valor_unico', values.valor_unico);
-                      onUpdateValue('valor_recorrente', values.valor_recorrente);
-                      onUpdateValue('recorrencia_periodo', values.recorrencia_periodo);
-                      onUpdateValue('recorrencia_unidade', values.recorrencia_unidade);
-                      onUpdateValue('tipo_venda', values.tipo_venda);
-                    }
-                  }}
-                  disabled={saving.valor || saving.valor_unico}
-                  autoSave={true}
-                />
-              </div>
-            </div>
+          {/* Campos da Oportunidade - Espaçamento Compacto */}
+          <div className="space-y-1 mt-2">
+            {/* Valor */}
+            {renderEditableField(
+              'valor',
+              'Valor',
+              <DollarSign className="w-4 h-4 text-gray-500 flex-shrink-0" />,
+              'Digite o valor...'
+            )}
 
             {/* Links da Oportunidade */}
-            <div className="grid grid-cols-1 gap-2">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <Globe className="w-4 h-4 text-gray-500" />
-                <span>Links</span>
-              </div>
-              <div className="pl-6">
-                <div className="[&_.flex-shrink-0]:hidden [&>div]:p-0 [&_.text-sm]:text-base [&_input]:text-base">
-                  {renderEditableField(
-                    'links_oportunidade',
-                    '',
-                    <></>,
-                    'Cole URLs separadas por vírgula...'
-                  )}
-                </div>
-              </div>
-            </div>
+            {renderEditableField(
+              'links_oportunidade',
+              'Links',
+              <Globe className="w-4 h-4 text-gray-500 flex-shrink-0" />,
+              'Cole URLs separadas por vírgula...'
+            )}
 
-            {/* Responsável pela Oportunidade */}
+            {/* Responsável pela Oportunidade - Estrutura Simplificada */}
             {createdByUser?.name && (
-              <div className="grid grid-cols-1 gap-2">
-                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                  <UserCheck className="w-4 h-4 text-gray-500" />
-                  <span>Responsável</span>
-                </div>
-                <div className="pl-6 text-sm text-gray-600">
-                  {createdByUser.name}
-                </div>
+              <div className="flex items-center space-x-3 p-1">
+                <UserCheck className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                <span className="text-sm font-medium text-gray-700">Responsável:</span>
+                <span className="text-sm text-gray-900">{createdByUser.name}</span>
               </div>
             )}
           </div>
@@ -239,7 +186,7 @@ const LeadDataBlockComponent: React.FC<LeadDataBlockProps> = ({
         </Collapsible.Trigger>
         
         <Collapsible.Content className="overflow-hidden data-[state=closed]:animate-slide-up data-[state=open]:animate-slide-down">
-          <div className="mt-3 space-y-2 p-4 border border-t-0 border-gray-200 rounded-b-lg bg-gray-50">
+          <div className="mt-3 space-y-1 p-4 border border-t-0 border-gray-200 rounded-b-lg bg-gray-50">
             {/* Nome do Lead */}
             <div className="group">
               {renderEditableField(
@@ -296,9 +243,9 @@ const LeadDataBlockComponent: React.FC<LeadDataBlockProps> = ({
         </Collapsible.Trigger>
         
         <Collapsible.Content className="overflow-hidden data-[state=closed]:animate-slide-up data-[state=open]:animate-slide-down">
-          <div className="mt-3 p-4 border border-t-0 border-gray-200 rounded-b-lg bg-gray-50">
+          <div className="mt-3 p-2 border border-t-0 border-gray-200 rounded-b-lg bg-gray-50">
             {camposCustomizadosReais.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-1">
                 {camposCustomizadosReais.map((field: any, index: number) => {
                   const IconComponent = getFieldIcon(field.field_type);
                   
@@ -308,14 +255,15 @@ const LeadDataBlockComponent: React.FC<LeadDataBlockProps> = ({
                     `field-${field.field_name}-${index}`;
                   
                   return (
-                    <div key={fieldKey} className="group">
-                      {renderEditableField(
-                        field.field_name,
-                        field.field_label + (field.is_required ? ' *' : ''),
-                        <IconComponent className="w-4 h-4 text-gray-500 flex-shrink-0" />,
-                        `Digite ${field.field_label.toLowerCase()}...`
-                      )}
-                    </div>
+                    renderEditableField(
+                      field.field_name,
+                      field.field_label + (field.is_required ? ' *' : ''),
+                      <IconComponent className="w-4 h-4 text-gray-500 flex-shrink-0" />,
+                      `Digite ${field.field_label.toLowerCase()}...`,
+                      false, // disabled
+                      field.field_options, // ✅ PASSAR field_options para renderizar select quando disponível
+                      fieldKey // ✅ PASSAR key para o componente
+                    )
                   );
                 })}
               </div>

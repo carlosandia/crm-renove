@@ -74,7 +74,31 @@ class StructuredLogger {
   // ✅ NOVOS: Maps para throttling e agrupamento
   private throttleMap: Map<string, number> = new Map();
   private groupedLogs: Map<string, { count: number; lastMessage: string; data?: any }> = new Map();
+  
+  // ✅ ETAPA 3: Sistema de consolidação de logs sequenciais
+  private sequentialLogs: Map<string, {
+    sequence: Array<{ message: string; data?: any; timestamp: number }>;
+    lastActivity: number;
+    consolidationTimer?: NodeJS.Timeout;
+  }> = new Map();
+  
   private flushInterval: NodeJS.Timeout | null = null;
+  private readonly CONSOLIDATION_WINDOW = 2000; // 2 segundos para agrupar logs relacionados
+  private readonly MAX_SEQUENCE_LENGTH = 10; // Máximo de logs para consolidar em uma sequência
+
+  // ✅ ETAPA 5: Sistema de buffering assíncrono
+  private logBuffer: Array<{
+    level: LogLevel;
+    message: string;
+    context?: LogContext;
+    timestamp: number;
+    args?: any[];
+  }> = [];
+  
+  private bufferFlushTimer: NodeJS.Timeout | null = null;
+  private readonly BUFFER_FLUSH_INTERVAL = 1000; // 1 segundo para flush do buffer
+  private readonly MAX_BUFFER_SIZE = 50; // Máximo de logs no buffer antes de flush forçado
+  private processingBuffer = false;
 
   constructor() {
     this.isDev = LOGGING_CONFIG.IS_DEVELOPMENT;
@@ -94,22 +118,184 @@ class StructuredLogger {
     
     const logLevel = mapLogLevel(LOGGING_CONFIG.LOG_LEVEL);
     
+    // ✅ ETAPA 4: Aplicar configurações específicas por ambiente
+    const envConfig = this.getEnvironmentLoggingConfig();
+    
     this.config = {
       level: logLevel,
       enableColors: this.isDev,
       enableTimestamp: this.isDev,
-      enableDataMasking: LOGGING_CONFIG.IS_PRODUCTION,
+      enableDataMasking: envConfig.enableDataMasking,
       enableCorrelationId: true,
       environment: this.environment as 'development' | 'production' | 'test',
-      throttleInterval: getThrottleThreshold(),
+      throttleInterval: getThrottleThreshold() * envConfig.throttleMultiplier,
       enableStructuredLogging: true,
-      performanceTracking: shouldLogPerformance(),
+      performanceTracking: envConfig.enablePerformanceTracking,
       includeStack: shouldLogComponentDebug() && logLevel === 'debug',
       clientFactoryLogging: shouldLogComponentDebug()
     };
+    
+    // ✅ ETAPA 4: Configurar consolidação baseada no ambiente
+    this.updateConsolidationSettings(envConfig);
 
-    // ✅ WINSTON-STYLE: Configurar flush automático otimizado
-    this.setupGroupedLogsFlusher();
+    // ✅ WINSTON-STYLE: Configurar flush automático otimizado (só se consolidação ativa)
+    if (envConfig.enableConsolidation) {
+      this.setupGroupedLogsFlusher();
+    }
+
+    // ✅ ETAPA 5: Configurar sistema de buffering assíncrono
+    this.setupAsyncBuffering(envConfig);
+  }
+
+  // ✅ ETAPA 4: Atualizar configurações de consolidação baseada no ambiente
+  private updateConsolidationSettings(envConfig: any): void {
+    // ✅ Desabilitar consolidação em produção para performance
+    if (!envConfig.enableConsolidation) {
+      this.sequentialLogs.clear();
+      if (this.flushInterval) {
+        clearInterval(this.flushInterval);
+        this.flushInterval = null;
+      }
+    } else {
+      // ✅ Atualizar constantes de configuração baseadas no ambiente
+      (this as any).CONSOLIDATION_WINDOW = envConfig.consolidationWindow;
+      (this as any).MAX_SEQUENCE_LENGTH = envConfig.maxSequenceLength;
+      
+      // ✅ Reconfigurar flush interval
+      if (this.flushInterval) {
+        clearInterval(this.flushInterval);
+      }
+      this.flushInterval = setInterval(() => {
+        this.flushGroupedLogs();
+      }, envConfig.flushInterval);
+    }
+  }
+
+  // ✅ ETAPA 5: Configurar sistema de buffering assíncrono
+  private setupAsyncBuffering(envConfig: any): void {
+    // ✅ Configurar flush timer baseado no ambiente
+    this.bufferFlushTimer = setInterval(() => {
+      this.flushLogBuffer();
+    }, this.BUFFER_FLUSH_INTERVAL);
+    
+    // ✅ Flush ao sair da página
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', () => {
+        this.flushLogBuffer();
+      });
+    }
+  }
+
+  // ✅ ETAPA 5: Adicionar log ao buffer para processamento assíncrono
+  private addToLogBuffer(level: LogLevel, message: string, context?: LogContext, args?: any[]): void {
+    // ✅ Verificar se deve usar buffering baseado no ambiente
+    const envConfig = this.getEnvironmentLoggingConfig();
+    
+    // ✅ Em produção, usar buffering apenas para performance crítica
+    if (envConfig.defaultLevel === 'error' && level !== 'error') {
+      return; // ✅ Não bufferar logs não críticos em produção
+    }
+    
+    this.logBuffer.push({
+      level,
+      message,
+      context,
+      timestamp: Date.now(),
+      args
+    });
+    
+    // ✅ Flush forçado se buffer estiver muito cheio
+    if (this.logBuffer.length >= this.MAX_BUFFER_SIZE) {
+      this.flushLogBuffer();
+    }
+  }
+
+  // ✅ ETAPA 5: Processar buffer de logs de forma assíncrona
+  private async flushLogBuffer(): Promise<void> {
+    if (this.processingBuffer || this.logBuffer.length === 0) {
+      return;
+    }
+    
+    this.processingBuffer = true;
+    
+    try {
+      // ✅ Processar logs em lotes para melhor performance
+      const logsToProcess = [...this.logBuffer];
+      this.logBuffer = []; // ✅ Limpar buffer imediatamente
+      
+      // ✅ Processar logs usando requestIdleCallback quando disponível
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(() => {
+          this.processBatchLogs(logsToProcess);
+        });
+      } else {
+        // ✅ Fallback para setTimeout
+        setTimeout(() => {
+          this.processBatchLogs(logsToProcess);
+        }, 0);
+      }
+    } catch (error) {
+      console.error('❌ [Logger] Erro ao processar buffer:', error);
+    } finally {
+      this.processingBuffer = false;
+    }
+  }
+
+  // ✅ ETAPA 5: Processar lote de logs
+  private processBatchLogs(logs: Array<{ level: LogLevel; message: string; context?: LogContext; timestamp: number; args?: any[] }>): void {
+    const groupedByComponent = new Map<string, typeof logs>();
+    
+    // ✅ Agrupar logs por componente para consolidação
+    logs.forEach(log => {
+      const component = log.context?.domain || 'General';
+      if (!groupedByComponent.has(component)) {
+        groupedByComponent.set(component, []);
+      }
+      groupedByComponent.get(component)!.push(log);
+    });
+    
+    // ✅ Processar cada grupo de componente
+    groupedByComponent.forEach((componentLogs, component) => {
+      if (componentLogs.length === 1) {
+        // ✅ Log único - processar diretamente
+        const log = componentLogs[0];
+        this.directConsoleLog(log.level, log.message, log.context, log.args);
+      } else {
+        // ✅ Múltiplos logs - criar log consolidado
+        const timeSpan = componentLogs[componentLogs.length - 1].timestamp - componentLogs[0].timestamp;
+        const consolidatedMessage = `[${component}] ${componentLogs.length} operações em ${timeSpan}ms`;
+        
+        this.directConsoleLog('info', consolidatedMessage, {
+          domain: component,
+          batchDetails: {
+            count: componentLogs.length,
+            timeSpanMs: timeSpan,
+            levels: componentLogs.map(l => l.level)
+          }
+        });
+      }
+    });
+  }
+
+  // ✅ ETAPA 5: Log direto no console (bypass buffering)
+  private directConsoleLog(level: LogLevel, message: string, context?: LogContext, args?: any[]): void {
+    const formatted = this.formatMessage(level, message, context);
+    
+    switch (level) {
+      case 'error':
+        console.error(formatted, ...(args || []));
+        break;
+      case 'warn':
+        console.warn(formatted, ...(args || []));
+        break;
+      case 'debug':
+      case 'info':
+      case 'http':
+      case 'silly':
+      default:
+        console.log(formatted, ...(args || []));
+        break;
+    }
   }
 
   // ✅ CORREÇÃO: Configurar flush automático de logs agrupados
@@ -167,19 +353,42 @@ class StructuredLogger {
       'ModernPipelineCreatorRefactored::state-update'
     ];
     
-    // ✅ THROTTLING ESCALADO: Ultra-agressivo para ModernPipelineCreatorRefactored
+    // ✅ CORREÇÃO APLICADA: THROTTLING ULTRA-AGRESSIVO baseado na análise dos logs
     let adjustedThrottleMs = throttleMs;
     
+    // ✅ CORREÇÃO ESPECÍFICA: ModernPipelineCreatorRefactored gerava 75+ logs por operação
     if (key.startsWith('ModernPipelineCreatorRefactored::')) {
-      adjustedThrottleMs = Math.max(throttleMs, 20000); // 20s para resolver spam crítico
+      // ✅ CORREÇÃO CRÍTICA: Throttling extremo para parar spam de logs
+      if (key.includes('tab-change') || key.includes('aba-ativa')) {
+        adjustedThrottleMs = Math.max(throttleMs, 45000); // 45s para mudanças de aba
+      } else if (key.includes('validation') || key.includes('data-loading')) {
+        adjustedThrottleMs = Math.max(throttleMs, 30000); // 30s para validação repetida
+      } else if (key.includes('form-dirty') || key.includes('state-update')) {
+        adjustedThrottleMs = Math.max(throttleMs, 25000); // 25s para mudanças de estado
+      } else {
+        adjustedThrottleMs = Math.max(throttleMs, 20000); // 20s padrão
+      }
+    } else if (key.startsWith('SimpleMotivesManager::') || key.includes('ReasonItem')) {
+      // ✅ CORREÇÃO CRÍTICA: SimpleMotivesManager gerando loops infinitos de sync
+      if (key.includes('sync') || key.includes('sincronização') || key.includes('Estado de sincronização')) {
+        adjustedThrottleMs = Math.max(throttleMs, 60000); // 60s para logs de sincronização
+      } else if (key.includes('render') || key.includes('renders suprimidos')) {
+        adjustedThrottleMs = Math.max(throttleMs, 45000); // 45s para logs de renderização
+      } else if (key.includes('dados-recebidos') || key.includes('field_reason_text')) {
+        adjustedThrottleMs = Math.max(throttleMs, 30000); // 30s para logs de dados
+      } else {
+        adjustedThrottleMs = Math.max(throttleMs, 25000); // 25s padrão para SimpleMotivesManager
+      }
     } else if (spamComponents.includes(key)) {
-      adjustedThrottleMs = Math.max(throttleMs, 8000); // 8s para componentes problemáticos
+      adjustedThrottleMs = Math.max(throttleMs, 12000); // 12s para outros componentes spam
     }
     
-    // ✅ DETECÇÃO DE SPAM: Se logou muito recentemente, aumentar throttle
+    // ✅ CORREÇÃO APLICADA: Detecção de spam baseada nos logs analisados
     const timeSinceLastLog = now - lastLog;
-    if (timeSinceLastLog < 500) { // Menos de 500ms
-      adjustedThrottleMs = Math.max(adjustedThrottleMs, 25000); // 25s de throttle
+    if (timeSinceLastLog < 300) { // Menos de 300ms indica spam crítico
+      adjustedThrottleMs = Math.max(adjustedThrottleMs, 60000); // 60s de throttle para spam crítico
+    } else if (timeSinceLastLog < 1000) { // Menos de 1s
+      adjustedThrottleMs = Math.max(adjustedThrottleMs, 35000); // 35s para spam moderado
     }
     
     if (timeSinceLastLog < adjustedThrottleMs) {
@@ -207,6 +416,215 @@ class StructuredLogger {
     }
   }
 
+  // ✅ ETAPA 3: Adicionar log à sequência de consolidação
+  public addToSequentialConsolidation(component: string, operation: string, message: string, data?: any): void {
+    const key = `${component}::${operation}`;
+    const now = Date.now();
+    
+    let sequence = this.sequentialLogs.get(key);
+    
+    if (!sequence) {
+      // ✅ Criar nova sequência
+      sequence = {
+        sequence: [],
+        lastActivity: now,
+        consolidationTimer: undefined
+      };
+      this.sequentialLogs.set(key, sequence);
+    }
+    
+    // ✅ Adicionar log à sequência
+    sequence.sequence.push({ message, data, timestamp: now });
+    sequence.lastActivity = now;
+    
+    // ✅ Limitar tamanho da sequência para evitar uso excessivo de memória
+    if (sequence.sequence.length > this.MAX_SEQUENCE_LENGTH) {
+      sequence.sequence.shift(); // Remove o mais antigo
+    }
+    
+    // ✅ Cancelar timer anterior se existir
+    if (sequence.consolidationTimer) {
+      clearTimeout(sequence.consolidationTimer);
+    }
+    
+    // ✅ Configurar novo timer de consolidação
+    sequence.consolidationTimer = setTimeout(() => {
+      this.flushSequentialLogs(key);
+    }, this.CONSOLIDATION_WINDOW);
+  }
+
+  // ✅ ETAPA 3: Flush de logs sequenciais consolidados
+  private flushSequentialLogs(key: string): void {
+    const sequence = this.sequentialLogs.get(key);
+    if (!sequence || sequence.sequence.length === 0) {
+      return;
+    }
+    
+    const [component, operation] = key.split('::');
+    const logCount = sequence.sequence.length;
+    const firstLog = sequence.sequence[0];
+    const lastLog = sequence.sequence[sequence.sequence.length - 1];
+    const timeSpan = lastLog.timestamp - firstLog.timestamp;
+    
+    if (logCount === 1) {
+      // ✅ Log único - exibir normalmente
+      const formatted = this.formatMessage('info', firstLog.message, { domain: component });
+      console.log(formatted, firstLog.data);
+    } else {
+      // ✅ Múltiplos logs - consolidar em uma entrada
+      const consolidatedMessage = `${operation} (${logCount} operações em ${timeSpan}ms)`;
+      const consolidatedData = {
+        domain: component,
+        consolidatedSequence: {
+          operationCount: logCount,
+          timeSpanMs: timeSpan,
+          firstMessage: firstLog.message,
+          lastMessage: lastLog.message,
+          detailedSequence: sequence.sequence.map(log => ({
+            message: log.message,
+            relativeTime: log.timestamp - firstLog.timestamp
+          }))
+        },
+        // ✅ Incluir dados do último log para contexto
+        ...lastLog.data
+      };
+      
+      const formatted = this.formatMessage('info', consolidatedMessage, consolidatedData);
+      console.log(formatted);
+    }
+    
+    // ✅ Limpar sequência após flush
+    this.sequentialLogs.delete(key);
+  }
+
+  // ✅ ETAPA 3: Detectar se um log deve ser consolidado sequencialmente
+  private shouldUseSequentialConsolidation(message: string, context?: LogContext): { shouldConsolidate: boolean; component: string; operation: string } {
+    const msg = String(message).toLowerCase();
+    
+    // ✅ Detectar padrões de logs que devem ser consolidados
+    const consolidationPatterns = [
+      {
+        pattern: ['form', 'dirty', 'update', 'changed', 'valor', 'input'],
+        component: 'ModernPipelineCreatorRefactored',
+        operation: 'form-updates'
+      },
+      {
+        pattern: ['validation', 'validando', 'field', 'campo', 'error', 'erro'],
+        component: 'ModernPipelineCreatorRefactored', 
+        operation: 'validation-sequence'
+      },
+      {
+        pattern: ['effect', 'useeffect', 'running', 'executando', 'dependency'],
+        component: 'ModernPipelineCreatorRefactored',
+        operation: 'effect-chain'
+      },
+      {
+        pattern: ['state', 'estado', 'update', 'setstate', 'changing'],
+        component: 'ModernPipelineCreatorRefactored',
+        operation: 'state-changes'
+      },
+      {
+        pattern: ['loading', 'carregando', 'data', 'fetch', 'fetching'],
+        component: 'ModernPipelineCreatorRefactored',
+        operation: 'data-operations'
+      },
+      {
+        pattern: ['render', 'rendering', 'renderizando', 'component', 'mount'],
+        component: 'ModernPipelineCreatorRefactored',
+        operation: 'render-cycle'
+      },
+      {
+        pattern: ['tab', 'aba', 'mudou', 'changed', 'switch', 'navigation'],
+        component: 'ModernPipelineCreatorRefactored',
+        operation: 'navigation-sequence'
+      }
+    ];
+    
+    // ✅ Verificar se o contexto indica um componente específico
+    let detectedComponent = context?.domain || 'Unknown';
+    
+    // ✅ Mapear domínios para componentes
+    if (context?.domain) {
+      const domainMappings: Record<string, string> = {
+        'pipeline-form': 'ModernPipelineCreatorRefactored',
+        'pipeline-init': 'ModernPipelineCreatorRefactored',
+        'pipeline-data': 'ModernPipelineCreatorRefactored',
+        'pipeline-effect': 'ModernPipelineCreatorRefactored',
+        'pipeline-state': 'ModernPipelineCreatorRefactored',
+        'pipeline-tabs': 'ModernPipelineCreatorRefactored',
+        'pipeline-general': 'ModernPipelineCreatorRefactored'
+      };
+      detectedComponent = domainMappings[context.domain] || detectedComponent;
+    }
+    
+    // ✅ Procurar padrões que indicam necessidade de consolidação
+    for (const pattern of consolidationPatterns) {
+      const hasPatternMatch = pattern.pattern.some(keyword => msg.includes(keyword));
+      
+      if (hasPatternMatch) {
+        // ✅ Verificar se o componente também bate
+        const isTargetComponent = detectedComponent.includes(pattern.component) || 
+                                   msg.includes(pattern.component.toLowerCase());
+        
+        if (isTargetComponent) {
+          return {
+            shouldConsolidate: true,
+            component: pattern.component,
+            operation: pattern.operation
+          };
+        }
+      }
+    }
+    
+    return { shouldConsolidate: false, component: detectedComponent, operation: 'unknown' };
+  }
+
+  // ✅ ETAPA 4: Verificar se componente específico deve loggar baseado no ambiente
+  private shouldComponentLog(componentName: string, level: LogLevel): boolean {
+    const envConfig = this.getEnvironmentLoggingConfig();
+    const componentLevel = envConfig.componentLoggingLevel[componentName];
+    
+    if (componentLevel && componentLevel !== 'none') {
+      // ✅ Aplicar nível específico do componente
+      return LOG_LEVELS[level] <= LOG_LEVELS[componentLevel];
+    }
+    
+    // ✅ Usar configuração padrão se componente não especificado
+    return this.shouldLog(level);
+  }
+
+  // ✅ ETAPA 3: Limpeza manual de consolidação para teste ou debug
+  public flushAllSequentialLogs(): void {
+    console.log(`🔄 [Logger] Forçando flush de ${this.sequentialLogs.size} sequências pendentes`);
+    
+    this.sequentialLogs.forEach((sequence, key) => {
+      if (sequence.consolidationTimer) {
+        clearTimeout(sequence.consolidationTimer);
+      }
+      this.flushSequentialLogs(key);
+    });
+  }
+
+  // ✅ ETAPA 3: Método para cleanup ao destruir o logger
+  public cleanup(): void {
+    // ✅ Limpar todos os timers de consolidação
+    this.sequentialLogs.forEach((sequence) => {
+      if (sequence.consolidationTimer) {
+        clearTimeout(sequence.consolidationTimer);
+      }
+    });
+    this.sequentialLogs.clear();
+    
+    // ✅ Limpar flush interval
+    if (this.flushInterval) {
+      clearInterval(this.flushInterval);
+      this.flushInterval = null;
+    }
+    
+    // ✅ Flush final dos logs agrupados
+    this.flushGroupedLogs();
+  }
+
   // ✅ WINSTON-STYLE: Configuração de níveis por ambiente otimizada
   private getDefaultLogLevel(): LogLevel {
     // ✅ OTIMIZAÇÃO: Verificar override via query string para debugging
@@ -231,15 +649,83 @@ class StructuredLogger {
       }
     }
     
-    switch (this.environment) {
-      case 'development':
-        return 'info';     // ✅ OTIMIZAÇÃO: Reduzir de debug para info por padrão
-      case 'test':
-        return 'warn';     // Testes: apenas warnings e errors
-      case 'production':
-        return 'warn';     // ✅ OTIMIZAÇÃO: Produção mais silenciosa
-      default:
-        return 'warn';     // ✅ OTIMIZAÇÃO: Padrão mais conservador
+    // ✅ ETAPA 4: Configuração mais granular por ambiente
+    const environmentConfig = this.getEnvironmentLoggingConfig();
+    return environmentConfig.defaultLevel;
+  }
+
+  // ✅ ETAPA 4: Configuração específica por ambiente
+  private getEnvironmentLoggingConfig() {
+    const baseUrl = window.location.origin;
+    const isLocalhost = baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1');
+    const isStaging = baseUrl.includes('staging') || baseUrl.includes('develop');
+    const isProduction = baseUrl.includes('.com.br') || this.environment === 'production';
+    
+    // ✅ Configurações por tipo de ambiente
+    if (isLocalhost || this.environment === 'development') {
+      return {
+        defaultLevel: 'info' as LogLevel,
+        enableConsolidation: true,
+        throttleMultiplier: 1.0,
+        flushInterval: 3000,
+        maxSequenceLength: 10,
+        consolidationWindow: 2000,
+        enablePerformanceTracking: true,
+        enableDataMasking: false,
+        componentLoggingLevel: {
+          'ModernPipelineCreatorRefactored': 'debug',
+          'LeadsModule': 'info', 
+          'PipelineKanban': 'info',
+          'TasksDropdown': 'warn'
+        }
+      };
+    } else if (isStaging) {
+      return {
+        defaultLevel: 'warn' as LogLevel,
+        enableConsolidation: true,
+        throttleMultiplier: 1.5,
+        flushInterval: 5000,
+        maxSequenceLength: 8,
+        consolidationWindow: 3000,
+        enablePerformanceTracking: true,
+        enableDataMasking: true,
+        componentLoggingLevel: {
+          'ModernPipelineCreatorRefactored': 'warn',
+          'LeadsModule': 'warn',
+          'PipelineKanban': 'warn', 
+          'TasksDropdown': 'error'
+        }
+      };
+    } else if (isProduction) {
+      return {
+        defaultLevel: 'error' as LogLevel,
+        enableConsolidation: false, // ✅ Produção: sem consolidação para performance
+        throttleMultiplier: 3.0,
+        flushInterval: 10000,
+        maxSequenceLength: 5,
+        consolidationWindow: 5000,
+        enablePerformanceTracking: false,
+        enableDataMasking: true,
+        componentLoggingLevel: {
+          'ModernPipelineCreatorRefactored': 'error',
+          'LeadsModule': 'error',
+          'PipelineKanban': 'error',
+          'TasksDropdown': 'none'
+        }
+      };
+    } else {
+      // ✅ Fallback para ambiente de teste
+      return {
+        defaultLevel: 'error' as LogLevel,
+        enableConsolidation: false,
+        throttleMultiplier: 2.0,
+        flushInterval: 8000,
+        maxSequenceLength: 3,
+        consolidationWindow: 1000,
+        enablePerformanceTracking: false,
+        enableDataMasking: true,
+        componentLoggingLevel: {}
+      };
     }
   }
 
@@ -315,12 +801,54 @@ class StructuredLogger {
     return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
+  // ✅ WINSTON-STYLE: Função segura para eliminar undefined em logs
+  private safeFormat(value: any, fieldName?: string): any {
+    if (value === undefined) {
+      return fieldName ? `[${fieldName}:N/A]` : 'N/A';
+    }
+    
+    if (value === null) {
+      return fieldName ? `[${fieldName}:null]` : 'null';
+    }
+    
+    if (typeof value === 'object' && value !== null) {
+      const safeObj: any = {};
+      for (const [key, val] of Object.entries(value)) {
+        safeObj[key] = this.safeFormat(val, key);
+      }
+      return safeObj;
+    }
+    
+    if (typeof value === 'string' && value.trim() === '') {
+      return fieldName ? `[${fieldName}:empty]` : '[empty]';
+    }
+    
+    return value;
+  }
+
+  // ✅ WINSTON-STYLE: Safe string interpolation para evitar "undefined"
+  private safeInterpolate(template: string, values: Record<string, any>): string {
+    return template.replace(/\$\{(\w+)\}/g, (match, key) => {
+      const value = values[key];
+      if (value === undefined) return `[${key}:N/A]`;
+      if (value === null) return `[${key}:null]`;
+      return String(value);
+    });
+  }
+
   private formatMessage(level: LogLevel, message: string, context?: LogContext): string {
+    // ✅ CORREÇÃO APLICADA: Formatação seguindo winston.format.combine() padrões
     let formatted = '';
     
+    // ✅ WINSTON-STYLE: Timestamp consistente no formato ISO padronizado
     if (this.config.enableTimestamp) {
-      formatted += `[${new Date().toLocaleTimeString()}] `;
+      const now = new Date();
+      formatted += `${now.toISOString()} `;
     }
+
+    // ✅ WINSTON-STYLE: Level padronizado seguindo RFC5424
+    const levelUpper = level.toUpperCase().padEnd(5, ' '); // Padronizar largura
+    formatted += `[${levelUpper}] `;
 
     if (this.config.enableColors) {
       const colors = {
@@ -335,38 +863,50 @@ class StructuredLogger {
       formatted += `${colors[level]} `;
     }
 
-    // Adicionar correlation ID se disponível
-    if (context?.correlationId && this.config.enableCorrelationId) {
-      formatted += `[${context.correlationId.substring(0, 8)}] `;
+    // ✅ CORREÇÃO: Usar safeFormat e formatação consistente de IDs
+    const safeContext = context ? this.safeFormat(context) : {};
+
+    // ✅ WINSTON-STYLE: Correlation ID padronizado (sempre 8 chars)
+    if (safeContext.correlationId && this.config.enableCorrelationId) {
+      const corrId = String(safeContext.correlationId);
+      const formattedCorrId = corrId.length > 8 ? corrId.substring(0, 8) : corrId;
+      formatted += `[COR:${formattedCorrId}] `;
     }
 
-    // Adicionar tenant ID mascarado se disponível  
-    if (context?.tenantId) {
-      const maskedTenantId = this.config.enableDataMasking ? 
-        this.maskId(context.tenantId) : 
-        context.tenantId.substring(0, 8);
-      formatted += `[T:${maskedTenantId}] `;
+    // ✅ CORREÇÃO APLICADA: Tenant ID usando formatação padronizada
+    if (safeContext.tenantId) {
+      const tenantId = String(safeContext.tenantId);
+      const formattedTenantId = this.config.enableDataMasking ? 
+        this.maskId(tenantId) : 
+        tenantId.substring(0, 8);
+      formatted += `[T:${formattedTenantId}] `;
     }
 
-    // Adicionar domínio se disponível
-    if (context?.domain) {
-      formatted += `[${context.domain.toUpperCase()}] `;
+    // ✅ WINSTON-STYLE: Domínio consistente
+    if (safeContext.domain) {
+      formatted += `[${String(safeContext.domain).toUpperCase()}] `;
     }
 
-    // ✅ WINSTON-STYLE: Adicionar performance info se disponível
-    if (context?.performance?.duration) {
-      const duration = typeof context.performance.duration === 'number' 
-        ? `${context.performance.duration}ms`
-        : context.performance.duration;
+    // ✅ CORREÇÃO APLICADA: Performance info padronizada (sempre em ms)
+    if (safeContext.performance?.duration) {
+      let duration: string;
+      if (typeof safeContext.performance.duration === 'number') {
+        duration = `${Math.round(safeContext.performance.duration)}ms`;
+      } else {
+        const durationStr = String(safeContext.performance.duration);
+        // Normalizar para sempre terminar com 'ms'
+        duration = durationStr.includes('ms') ? durationStr : `${durationStr}ms`;
+      }
       formatted += `(${duration}`;
       
-      if (context.performance.retries && context.performance.retries > 0) {
-        formatted += `, ${context.performance.retries} retries`;
+      if (safeContext.performance.retries && Number(safeContext.performance.retries) > 0) {
+        formatted += `, ${safeContext.performance.retries} retries`;
       }
       formatted += `) `;
     }
 
-    formatted += message;
+    // ✅ CORREÇÃO: Safe format da mensagem
+    formatted += this.safeFormat(message);
     return formatted;
   }
 
@@ -379,9 +919,12 @@ class StructuredLogger {
         const context = contextOrString as LogContext;
         const maskedContext = this.maskSensitiveData(context);
         const correlationId = context.correlationId || this.generateCorrelationId();
-        console.error(this.formatMessage('error', message, { ...maskedContext, correlationId }), ...args);
+        const safeArgs = args.map(arg => this.safeFormat(arg));
+        console.error(this.formatMessage('error', message, { ...maskedContext, correlationId }), ...safeArgs);
       } else {
-        console.error(this.formatMessage('error', message), contextOrString, ...args);
+        const safeContextOrString = this.safeFormat(contextOrString);
+        const safeArgs = args.map(arg => this.safeFormat(arg));
+        console.error(this.formatMessage('error', message), safeContextOrString, ...safeArgs);
       }
     }
   }
@@ -394,9 +937,12 @@ class StructuredLogger {
         const context = contextOrString as LogContext;
         const maskedContext = this.maskSensitiveData(context);
         const correlationId = context.correlationId || this.generateCorrelationId();
-        console.warn(this.formatMessage('warn', message, { ...maskedContext, correlationId }), ...args);
+        const safeArgs = args.map(arg => this.safeFormat(arg));
+        console.warn(this.formatMessage('warn', message, { ...maskedContext, correlationId }), ...safeArgs);
       } else {
-        console.warn(this.formatMessage('warn', message), contextOrString, ...args);
+        const safeContextOrString = this.safeFormat(contextOrString);
+        const safeArgs = args.map(arg => this.safeFormat(arg));
+        console.warn(this.formatMessage('warn', message), safeContextOrString, ...safeArgs);
       }
     }
   }
@@ -409,9 +955,48 @@ class StructuredLogger {
         const context = contextOrString as LogContext;
         const maskedContext = this.maskSensitiveData(context);
         const correlationId = context.correlationId || this.generateCorrelationId();
-        console.log(this.formatMessage('info', message, { ...maskedContext, correlationId }), ...args);
+        const safeArgs = args.map(arg => this.safeFormat(arg));
+        
+        // ✅ ETAPA 3: Verificar se deve usar consolidação sequencial
+        const consolidationResult = this.shouldUseSequentialConsolidation(message, context);
+        
+        if (consolidationResult.shouldConsolidate) {
+          // ✅ Usar consolidação sequencial para logs relacionados
+          this.addToSequentialConsolidation(
+            consolidationResult.component,
+            consolidationResult.operation,
+            message,
+            { ...maskedContext, correlationId, args: safeArgs }
+          );
+        } else {
+          // ✅ ETAPA 5: Usar buffering assíncrono quando apropriado
+          const envConfig = this.getEnvironmentLoggingConfig();
+          if (envConfig.defaultLevel !== 'error' && !this.isDev) {
+            this.addToLogBuffer('info', message, { ...maskedContext, correlationId }, safeArgs);
+          } else {
+            // ✅ Log direto para desenvolvimento ou logs críticos
+            console.log(this.formatMessage('info', message, { ...maskedContext, correlationId }), ...safeArgs);
+          }
+        }
       } else {
-        console.log(this.formatMessage('info', message), contextOrString, ...args);
+        const safeContextOrString = this.safeFormat(contextOrString);
+        const safeArgs = args.map(arg => this.safeFormat(arg));
+        
+        // ✅ ETAPA 3: Verificar consolidação mesmo sem contexto complexo
+        const consolidationResult = this.shouldUseSequentialConsolidation(message);
+        
+        if (consolidationResult.shouldConsolidate) {
+          // ✅ Usar consolidação sequencial
+          this.addToSequentialConsolidation(
+            consolidationResult.component,
+            consolidationResult.operation,
+            message,
+            { contextStr: safeContextOrString, args: safeArgs }
+          );
+        } else {
+          // ✅ Log normal
+          console.log(this.formatMessage('info', message), safeContextOrString, ...safeArgs);
+        }
       }
     }
   }
@@ -424,9 +1009,42 @@ class StructuredLogger {
         const context = contextOrString as LogContext;
         const maskedContext = this.maskSensitiveData(context);
         const correlationId = context.correlationId || this.generateCorrelationId();
-        console.log(this.formatMessage('debug', message, { ...maskedContext, correlationId }), ...args);
+        const safeArgs = args.map(arg => this.safeFormat(arg));
+        
+        // ✅ ETAPA 3: Verificar se deve usar consolidação sequencial
+        const consolidationResult = this.shouldUseSequentialConsolidation(message, context);
+        
+        if (consolidationResult.shouldConsolidate) {
+          // ✅ Usar consolidação sequencial para logs relacionados
+          this.addToSequentialConsolidation(
+            consolidationResult.component,
+            consolidationResult.operation,
+            message,
+            { ...maskedContext, correlationId, args: safeArgs }
+          );
+        } else {
+          // ✅ Log normal sem consolidação
+          console.log(this.formatMessage('debug', message, { ...maskedContext, correlationId }), ...safeArgs);
+        }
       } else {
-        console.log(this.formatMessage('debug', message), contextOrString, ...args);
+        const safeContextOrString = this.safeFormat(contextOrString);
+        const safeArgs = args.map(arg => this.safeFormat(arg));
+        
+        // ✅ ETAPA 3: Verificar consolidação mesmo sem contexto complexo
+        const consolidationResult = this.shouldUseSequentialConsolidation(message);
+        
+        if (consolidationResult.shouldConsolidate) {
+          // ✅ Usar consolidação sequencial
+          this.addToSequentialConsolidation(
+            consolidationResult.component,
+            consolidationResult.operation,
+            message,
+            { contextStr: safeContextOrString, args: safeArgs }
+          );
+        } else {
+          // ✅ Log normal
+          console.log(this.formatMessage('debug', message), safeContextOrString, ...safeArgs);
+        }
       }
     }
   }
@@ -440,9 +1058,12 @@ class StructuredLogger {
         const context = contextOrString as LogContext;
         const maskedContext = this.maskSensitiveData(context);
         const correlationId = context.correlationId || this.generateCorrelationId();
-        console.log(this.formatMessage('http', message, { ...maskedContext, correlationId }), ...args);
+        const safeArgs = args.map(arg => this.safeFormat(arg));
+        console.log(this.formatMessage('http', message, { ...maskedContext, correlationId }), ...safeArgs);
       } else {
-        console.log(this.formatMessage('http', message), contextOrString, ...args);
+        const safeContextOrString = this.safeFormat(contextOrString);
+        const safeArgs = args.map(arg => this.safeFormat(arg));
+        console.log(this.formatMessage('http', message), safeContextOrString, ...safeArgs);
       }
     }
   }
@@ -455,9 +1076,42 @@ class StructuredLogger {
         const context = contextOrString as LogContext;
         const maskedContext = this.maskSensitiveData(context);
         const correlationId = context.correlationId || this.generateCorrelationId();
-        console.log(this.formatMessage('silly', message, { ...maskedContext, correlationId }), ...args);
+        const safeArgs = args.map(arg => this.safeFormat(arg));
+        
+        // ✅ ETAPA 3: Verificar se deve usar consolidação sequencial  
+        const consolidationResult = this.shouldUseSequentialConsolidation(message, context);
+        
+        if (consolidationResult.shouldConsolidate) {
+          // ✅ Usar consolidação sequencial para logs relacionados
+          this.addToSequentialConsolidation(
+            consolidationResult.component,
+            consolidationResult.operation,
+            message,
+            { ...maskedContext, correlationId, args: safeArgs }
+          );
+        } else {
+          // ✅ Log normal sem consolidação
+          console.log(this.formatMessage('silly', message, { ...maskedContext, correlationId }), ...safeArgs);
+        }
       } else {
-        console.log(this.formatMessage('silly', message), contextOrString, ...args);
+        const safeContextOrString = this.safeFormat(contextOrString);
+        const safeArgs = args.map(arg => this.safeFormat(arg));
+        
+        // ✅ ETAPA 3: Verificar consolidação mesmo sem contexto complexo
+        const consolidationResult = this.shouldUseSequentialConsolidation(message);
+        
+        if (consolidationResult.shouldConsolidate) {
+          // ✅ Usar consolidação sequencial
+          this.addToSequentialConsolidation(
+            consolidationResult.component,
+            consolidationResult.operation,
+            message,
+            { contextStr: safeContextOrString, args: safeArgs }
+          );
+        } else {
+          // ✅ Log normal
+          console.log(this.formatMessage('silly', message), safeContextOrString, ...safeArgs);
+        }
       }
     }
   }
@@ -1054,6 +1708,12 @@ export const loggers = {
       }
     },
 
+    // ✅ MÉTODO DEBUG: Compatibilidade com chamadas diretas debug
+    debug: (message: string, context?: any) => {
+      // Mapear chamadas debug para smartLog com processamento inteligente
+      loggers.modernPipelineCreator.smartLog(message, context);
+    },
+
     // ✅ COMPATIBILIDADE: Método que substitui console.log direto
     log: (message: string, ...args: any[]) => {
       // Usar smartLog para processamento inteligente
@@ -1113,7 +1773,13 @@ export const showLoggerStatus = () => {
     environment: import.meta.env.VITE_ENVIRONMENT || 'development',
     dataMasking: config.enableDataMasking,
     throttleMapSize: logger['throttleMap']?.size || 0,
-    groupedLogsSize: logger['groupedLogs']?.size || 0
+    groupedLogsSize: logger['groupedLogs']?.size || 0,
+    // ✅ ETAPA 3: Estatísticas de consolidação sequencial
+    sequentialLogsSize: logger['sequentialLogs']?.size || 0,
+    consolidationWindow: logger['CONSOLIDATION_WINDOW'] || 2000,
+    maxSequenceLength: logger['MAX_SEQUENCE_LENGTH'] || 10,
+    activeConsolidationTimers: Array.from(logger['sequentialLogs']?.values() || [])
+      .filter(seq => seq.consolidationTimer !== undefined).length
   });
 };
 

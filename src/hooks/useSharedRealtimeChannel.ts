@@ -61,7 +61,7 @@ export const useSharedRealtimeChannel = (
     });
     
     updateCountRef.current++;
-    console.log(`🔄 [SHARED-HOOK] Force refresh executado para lead: ${leadId.substring(0, 8)}, Count: ${updateCountRef.current}`);
+    // ✅ ETAPA 4: Log de force refresh removido (verboso durante invalidations)
   }, [leadId, queryClient]);
 
   // Polling como fallback
@@ -69,7 +69,7 @@ export const useSharedRealtimeChannel = (
     if (!enableFallback) return;
     
     setConnectionStatus(prev => prev !== 'fallback' ? 'fallback' : prev);
-    console.log(`🔄 [SHARED-HOOK] Iniciando polling fallback para lead: ${leadId.substring(0, 8)}`);
+    // ✅ ETAPA 4: Log de polling start removido (verboso)
     
     pollingIntervalRef.current = setInterval(() => {
       try {
@@ -86,7 +86,7 @@ export const useSharedRealtimeChannel = (
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
       pollingIntervalRef.current = undefined;
-      console.log(`⏹️ [SHARED-HOOK] Polling parado para lead: ${leadId.substring(0, 8)}`);
+      // ✅ ETAPA 4: Log de polling stop removido (verboso)
     }
   }, [leadId]);
 
@@ -96,7 +96,7 @@ export const useSharedRealtimeChannel = (
       return;
     }
 
-    console.log(`⚠️ [REAL-TIME-DISABLED] Real-time desabilitado temporariamente para lead: ${leadId.substring(0, 8)}`);
+    // ✅ ETAPA 4: Log de real-time disabled removido (verboso)
     
     try {
       // 🚨 REAL-TIME DESABILITADO: Configurações comentadas para estabilizar console
@@ -186,7 +186,7 @@ export const useSharedRealtimeChannel = (
       */
       
       // 🚨 MODO FALLBACK TEMPORÁRIO: Funciona sem real-time
-      console.log(`🔄 [FALLBACK-MODE] Lead: ${leadId.substring(0, 8)} - Funcionando sem real-time`);
+      // ✅ ETAPA 4: Log de fallback mode removido (verboso)
       setConnectionStatus('disconnected');
       
       // Ativar polling como fallback principal
@@ -212,7 +212,7 @@ export const useSharedRealtimeChannel = (
 
   // 🚨 CLEANUP TEMPORÁRIO: Sem real-time manager
   const cleanupConnection = useCallback(() => {
-    console.log(`🧹 [FALLBACK-CLEANUP] Cleanup para lead: ${leadId.substring(0, 8)}`);
+    // ✅ ETAPA 4: Log de cleanup removido (verboso)
     
     if (isSubscribedRef.current) {
       // 🚨 REAL-TIME DESABILITADO: Sem cleanup do manager
@@ -232,11 +232,11 @@ export const useSharedRealtimeChannel = (
       return;
     }
 
-    console.log(`🔄 [V3.4-HOOK] Iniciando setup event-driven para lead: ${leadId.substring(0, 8)}`);
+    // ✅ ETAPA 4: Log de setup event-driven removido (verboso durante mount)
     const statusUnsubscribe = setupConnection();
     
     return () => {
-      console.log(`🛑 [V3.4-HOOK] Cleanup event-driven para lead: ${leadId.substring(0, 8)}`);
+      // ✅ ETAPA 4: Log de cleanup event-driven removido (verboso durante unmount)
       
       // Cleanup do status monitoring
       if (statusUnsubscribe && typeof statusUnsubscribe === 'function') {

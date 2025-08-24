@@ -21,6 +21,7 @@ import {
   isValidPeriod
 } from '../types/EnterpriseMetrics';
 import { EnterpriseMetricsService, metricsQueryKeys } from '../services/metricsApi';
+import { batchRequest, dedupeRequest } from '../utils/requestBatcher';
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -110,17 +111,49 @@ export const useEnterpriseMetrics = (
   // Query para métricas básicas
   const metricsQuery = useQuery({
     queryKey: metricsQueryKeys.list(currentFilters),
-    queryFn: () => EnterpriseMetricsService.getMetrics(currentFilters),
+    queryFn: () => {
+      // AIDEV-NOTE: Batching otimizado com logs apenas em modo debug
+      if (import.meta.env.DEV && import.meta.env.VITE_DEBUG_METRICS === 'true') {
+        console.log('📊 [useEnterpriseMetrics] Buscando métricas (com batching):', currentFilters);
+      }
+      
+      // ✅ OTIMIZAÇÃO: Usar deduplicação com tempo estendido para reduzir requests
+      return dedupeRequest<any>(
+        `/metrics/enterprise?${new URLSearchParams(currentFilters as any).toString()}`,
+        'GET',
+        undefined,
+        10000 // 10s deduplicação para métricas (tempo estendido)
+      ).then(response => response.data || EnterpriseMetricsService.getMetrics(currentFilters));
+    },
     enabled: Boolean(enabled && !!currentFilters.tenant_id),
     staleTime,
     gcTime: cacheTime,
     refetchInterval: enableAutoRefresh ? autoRefreshInterval : false,
     retry: (failureCount, error: any) => {
-      // AIDEV-NOTE: Não retry para ERR_CONNECTION_REFUSED ou Network Error
-      if (error?.code === 'ERR_NETWORK' || error?.message === 'Network Error' || error?.code === 'ECONNREFUSED' || error?.code === 'ERR_CONNECTION_REFUSED') {
+      // ✅ CORREÇÃO: Retry strategy inteligente baseada na documentação TanStack Query
+      console.log(`📊 [useEnterpriseMetrics] Retry attempt ${failureCount}, error:`, error?.message);
+      
+      // Não retry para erros 404 (endpoints não encontrados)
+      if (error?.status === 404 || error?.response?.status === 404) {
+        console.log('📊 [useEnterpriseMetrics] 404 - não tentará novamente');
         return false;
       }
-      return failureCount < 2; // Máximo 2 retries para outros erros
+      
+      // Não retry para erros de rede (server down)
+      if (error?.code === 'ERR_NETWORK' || error?.message === 'Network Error' || 
+          error?.code === 'ECONNREFUSED' || error?.code === 'ERR_CONNECTION_REFUSED') {
+        console.log('📊 [useEnterpriseMetrics] Network error - não tentará novamente');
+        return false;
+      }
+
+      // Não retry para erros 4xx (client errors)
+      if (error?.status >= 400 && error?.status < 500) {
+        console.log('📊 [useEnterpriseMetrics] Client error - não tentará novamente');
+        return false;
+      }
+      
+      // Retry para erros 5xx (server errors) até 2 tentativas
+      return failureCount < 2;
     },
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30000)
   });
@@ -128,33 +161,85 @@ export const useEnterpriseMetrics = (
   // Query para métricas detalhadas (opcional)
   const detailedQuery = useQuery({
     queryKey: metricsQueryKeys.detail(currentFilters),
-    queryFn: () => EnterpriseMetricsService.getDetailedMetrics(currentFilters),
+    queryFn: () => {
+      // AIDEV-NOTE: Logs apenas em modo debug para métricas detalhadas
+      if (import.meta.env.DEV && import.meta.env.VITE_DEBUG_METRICS === 'true') {
+        console.log('📊 [useEnterpriseMetrics] Buscando métricas detalhadas (com batching):', currentFilters);
+      }
+      
+      // ✅ OTIMIZAÇÃO: Deduplicação estendida para métricas pesadas
+      return dedupeRequest<any>(
+        `/metrics/detailed?${new URLSearchParams(currentFilters as any).toString()}`,
+        'GET',
+        undefined,
+        15000 // 15s deduplicação para métricas detalhadas (mais tempo por serem pesadas)
+      ).then(response => response.data || EnterpriseMetricsService.getDetailedMetrics(currentFilters));
+    },
     enabled: Boolean(enabled && loadDetailed && !!currentFilters.tenant_id),
     staleTime: CACHE_CONFIG.DETAILED_METRICS.staleTime,
     gcTime: CACHE_CONFIG.DETAILED_METRICS.cacheTime,
     retry: (failureCount, error: any) => {
-      // AIDEV-NOTE: Não retry para ERR_CONNECTION_REFUSED ou Network Error
-      if (error?.code === 'ERR_NETWORK' || error?.message === 'Network Error' || error?.code === 'ECONNREFUSED' || error?.code === 'ERR_CONNECTION_REFUSED') {
+      // ✅ CORREÇÃO: Retry strategy para métricas detalhadas
+      console.log(`📊 [useEnterpriseMetrics] Detailed retry attempt ${failureCount}, error:`, error?.message);
+      
+      // Não retry para 404s ou client errors
+      if (error?.status === 404 || error?.response?.status === 404 || 
+          (error?.status >= 400 && error?.status < 500)) {
         return false;
       }
-      return failureCount < 1; // Máximo 1 retry para outros erros
-    }
+      
+      // Não retry para erros de rede
+      if (error?.code === 'ERR_NETWORK' || error?.message === 'Network Error' || 
+          error?.code === 'ECONNREFUSED' || error?.code === 'ERR_CONNECTION_REFUSED') {
+        return false;
+      }
+      
+      // Retry conservador para métricas detalhadas (pesadas)
+      return failureCount < 1;
+    },
+    retryDelay: (attempt) => Math.min(2000 * 2 ** attempt, 60000) // Delay maior para detailed
   });
   
   // Query para filtros disponíveis
   const filtersQuery = useQuery({
     queryKey: metricsQueryKeys.filters(currentFilters.tenant_id),
-    queryFn: () => EnterpriseMetricsService.getFilters(currentFilters.tenant_id),
+    queryFn: () => {
+      // AIDEV-NOTE: Logs apenas em modo debug para filtros
+      if (import.meta.env.DEV && import.meta.env.VITE_DEBUG_METRICS === 'true') {
+        console.log('📊 [useEnterpriseMetrics] Buscando filtros (com batching):', currentFilters.tenant_id);
+      }
+      
+      // ✅ OTIMIZAÇÃO: Deduplicação máxima para filtros (raramente mudam)
+      return dedupeRequest<any>(
+        `/metrics/filters?tenant_id=${currentFilters.tenant_id}`,
+        'GET',
+        undefined,
+        60000 // 60s deduplicação para filtros (máxima duração - raramente mudam)
+      ).then(response => response.data || EnterpriseMetricsService.getFilters(currentFilters.tenant_id));
+    },
     enabled: Boolean(enabled && loadFilters && !!currentFilters.tenant_id),
     staleTime: CACHE_CONFIG.FILTERS.staleTime,
     gcTime: CACHE_CONFIG.FILTERS.cacheTime,
     retry: (failureCount, error: any) => {
-      // AIDEV-NOTE: Não retry para ERR_CONNECTION_REFUSED ou Network Error
-      if (error?.code === 'ERR_NETWORK' || error?.message === 'Network Error' || error?.code === 'ECONNREFUSED' || error?.code === 'ERR_CONNECTION_REFUSED') {
+      // ✅ CORREÇÃO: Retry strategy para filtros
+      console.log(`📊 [useEnterpriseMetrics] Filters retry attempt ${failureCount}, error:`, error?.message);
+      
+      // Não retry para 404s ou client errors
+      if (error?.status === 404 || error?.response?.status === 404 || 
+          (error?.status >= 400 && error?.status < 500)) {
         return false;
       }
-      return failureCount < 1; // Máximo 1 retry para outros erros
-    }
+      
+      // Não retry para erros de rede
+      if (error?.code === 'ERR_NETWORK' || error?.message === 'Network Error' || 
+          error?.code === 'ECONNREFUSED' || error?.code === 'ERR_CONNECTION_REFUSED') {
+        return false;
+      }
+      
+      // Retry conservador para filtros (são dados estáticos)
+      return failureCount < 1;
+    },
+    retryDelay: (attempt) => Math.min(1500 * 2 ** attempt, 45000) // Delay moderado para filtros
   });
   
   // ============================================================================
@@ -177,26 +262,26 @@ export const useEnterpriseMetrics = (
   // ============================================================================
   
   const refetch = useCallback(async () => {
-    console.log('🔄 [useEnterpriseMetrics] Refetch manual');
+    if (import.meta.env.DEV) console.log('🔄 [useEnterpriseMetrics] Refetch manual');
     await metricsQuery.refetch();
   }, [metricsQuery]);
   
   const refetchDetailed = useCallback(async () => {
     if (loadDetailed) {
-      console.log('🔄 [useEnterpriseMetrics] Refetch detailed');
+      if (import.meta.env.DEV) console.log('🔄 [useEnterpriseMetrics] Refetch detailed');
       await detailedQuery.refetch();
     }
   }, [detailedQuery, loadDetailed]);
   
   const refetchFilters = useCallback(async () => {
     if (loadFilters) {
-      console.log('🔄 [useEnterpriseMetrics] Refetch filters');
+      if (import.meta.env.DEV) console.log('🔄 [useEnterpriseMetrics] Refetch filters');
       await filtersQuery.refetch();
     }
   }, [filtersQuery, loadFilters]);
   
   const clearCache = useCallback(() => {
-    console.log('🗑️ [useEnterpriseMetrics] Limpando cache');
+    if (import.meta.env.DEV) console.log('🗑️ [useEnterpriseMetrics] Limpando cache');
     queryClient.removeQueries({ queryKey: metricsQueryKeys.all });
     invalidateMutation.mutate();
   }, [queryClient, invalidateMutation]);
@@ -206,7 +291,7 @@ export const useEnterpriseMetrics = (
   // ============================================================================
   
   const updateFilters = useCallback((newFilters: Partial<MetricsFilters>) => {
-    console.log('📊 [useEnterpriseMetrics] Atualizando filtros:', newFilters);
+    if (import.meta.env.DEV) console.log('📊 [useEnterpriseMetrics] Atualizando filtros:', newFilters);
     setCurrentFilters(prev => ({
       ...prev,
       ...newFilters
@@ -219,7 +304,7 @@ export const useEnterpriseMetrics = (
       return;
     }
     
-    console.log('📅 [useEnterpriseMetrics] Definindo período:', period);
+    if (import.meta.env.DEV) console.log('📅 [useEnterpriseMetrics] Definindo período:', period);
     const dates = EnterpriseMetricsService.getPeriodDates(period);
     setCurrentFilters(prev => ({
       ...prev,
@@ -229,7 +314,7 @@ export const useEnterpriseMetrics = (
   }, []);
   
   const setDateRange = useCallback((start: string, end: string) => {
-    console.log('📅 [useEnterpriseMetrics] Definindo range:', { start, end });
+    if (import.meta.env.DEV) console.log('📅 [useEnterpriseMetrics] Definindo range:', { start, end });
     setCurrentFilters(prev => ({
       ...prev,
       start_date: start,
@@ -250,7 +335,7 @@ export const useEnterpriseMetrics = (
   // Callbacks de sucesso e erro
   useEffect(() => {
     if (metricsQuery.isSuccess && metricsQuery.data) {
-      console.log('✅ [useEnterpriseMetrics] Métricas carregadas:', metricsQuery.data);
+      if (import.meta.env.DEV) console.log('✅ [useEnterpriseMetrics] Métricas carregadas');
       onSuccess?.(metricsQuery.data);
     }
   }, [metricsQuery.isSuccess, metricsQuery.data, onSuccess]);
@@ -278,7 +363,7 @@ export const useEnterpriseMetrics = (
   // Atualizar tenant_id quando usuário muda
   useEffect(() => {
     if (user?.tenant_id && currentFilters.tenant_id !== user.tenant_id) {
-      console.log('👤 [useEnterpriseMetrics] Atualizando tenant_id:', user.tenant_id);
+      if (import.meta.env.DEV) console.log('👤 [useEnterpriseMetrics] Atualizando tenant_id:', user.tenant_id);
       setCurrentFilters(prev => ({
         ...prev,
         tenant_id: user.tenant_id
@@ -292,7 +377,7 @@ export const useEnterpriseMetrics = (
     
     const interval = setInterval(() => {
       if (isDataStaleCheck()) {
-        console.log('🔄 [useEnterpriseMetrics] Auto refresh triggered');
+        if (import.meta.env.DEV) console.log('🔄 [useEnterpriseMetrics] Auto refresh triggered');
         refetch();
       }
     }, autoRefreshInterval);

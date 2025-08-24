@@ -23,10 +23,14 @@ import {
 import { registerFeedback, registerStageMove } from '../../utils/historyUtils';
 import { checkHistoryTable } from '../../utils/fixHistoryTables';
 import { useLeadTasks, LeadTask } from '../../hooks/useLeadTasks';
+import { useFieldOptionsParsing } from '../../hooks/useFieldOptionsParsing';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { useLeadFeedbacks } from '../../hooks/useLeadFeedbacks';
 import { useLeadHistory } from '../../hooks/useLeadHistory';
 // ✅ REMOVIDO: useCadenceActivityGenerator - agora usa automação do backend
 import { useQualificationEvaluation } from '../../hooks/useQualificationEvaluation';
+import { useDeleteOpportunityMutation } from '../../hooks/useDeleteOpportunityMutation';
+import { formatCurrency } from '../../utils/formatUtils';
 import { StageSelector } from './StageSelector';
 import { MinimalHorizontalStageSelector } from './MinimalHorizontalStageSelector';
 import { EnhancedGoogleCalendarTab } from '../meetings/EnhancedGoogleCalendarTab';
@@ -139,6 +143,9 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     pipelineId: pipelineId || lead?.pipeline_id || '',
     autoLoad: true 
   });
+  
+  // ✅ PROCESSAR CUSTOMFIELDS: Garantir que field_options sejam arrays válidos
+  const processedCustomFields = useFieldOptionsParsing(customFields);
   
   // AIDEV-NOTE: Estados consolidados com useReducer para otimizar performance
   
@@ -305,7 +312,10 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
           <CurrencyInput
             {...commonProps}
             onValueChange={(values) => {
-              onChange(values.formattedValue || '');
+              // ✅ CORREÇÃO CRÍTICA: Usar values.value (número) ao invés de formattedValue (string formatada)
+              // Isso evita que valores como "R$ 132,00" sejam salvos como string e convertidos incorretamente
+              const numericValue = values.value || 0;
+              onChange(String(numericValue)); // Converter para string apenas para consistência do estado
             }}
           />
         );
@@ -355,7 +365,7 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
       const fieldMapping = FIELD_MAPPING[fieldName as keyof typeof FIELD_MAPPING];
       const isLeadsMaster = fieldMapping && fieldMapping.table === 'leads_master';
       
-      console.log('🎯 [LeadDetailsModal] Tentando salvar com 3 métodos de fallback');
+      // ✅ ETAPA 4: Log de save methods removido (verboso durante edição)
       
       let result: any = null;
       let usedMethod = 'RPC';
@@ -384,7 +394,7 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
         throw new Error(result?.message || 'Erro desconhecido na função');
       }
       
-      console.log(`✅ [LeadDetailsModal] Campo salvo via ${usedMethod}:`, result);
+      // ✅ ETAPA 4: Log de sucesso do save removido (verboso)
       
       // ✅ CORREÇÃO CRÍTICA: Atualizar estado local E invalidar cache
       
@@ -422,6 +432,13 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
         refetchType: 'active' 
       });
       
+      // ✅ CORREÇÃO CRÍTICA: Invalidar cache de qualificação para atualizar badge MQL/SQL
+      queryClient.invalidateQueries({ 
+        queryKey: ['qualification-evaluation'], 
+        refetchType: 'active' 
+      });
+      // ✅ ETAPA 4: Log de cache invalidation removido (verboso durante edição)
+      
       // 3. Sair do modo de edição - CORREÇÃO: usar setEditState ao invés de setEditing
       setEditState({ editing: { ...editState.editing, [fieldName]: false } });
       
@@ -449,37 +466,63 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     }
   }, [editState.editValues, editState.saving, localLeadData, showSuccessToast, showErrorToast, queryClient, editState.editing]);
 
-  // ✅ PERFORMANCE: useCallback para estabilizar função de delete
-  // CORREÇÃO 1: Função de delete usando Supabase direto (padrão ModernPipelineCreatorRefactored)
+  // ✅ CORREÇÃO CRÍTICA: Usar hook centralizado useDeleteOpportunityMutation para consistência
+  const deleteOpportunityMutation = useDeleteOpportunityMutation(localLeadData?.pipeline_id || '');
+  
   const handleDeleteOpportunity = useCallback(async () => {
-    if (!lead || !localLeadData?.id) return;
+    if (!lead || !localLeadData?.id) {
+      console.error('❌ [DeleteOpportunity] Lead ou ID não encontrado');
+      return;
+    }
+    
+    // ✅ VALIDAÇÃO ROBUSTA: Verificar autenticação e tenant_id
+    const tenantId = user?.tenant_id;
+    if (!user?.id || !tenantId) {
+      console.error('❌ [DeleteOpportunity] Usuário não autenticado ou tenant_id ausente:', {
+        hasUser: !!user,
+        hasUserId: !!user?.id,
+        hasTenantId: !!tenantId
+      });
+      showErrorToast('Erro de autenticação', 'Faça login novamente para continuar.');
+      return;
+    }
     
     try {
-      setUIState({ deleting: true, showDeleteDialog: false });
-      
-      // Excluindo oportunidade via Supabase
-      
-      // ✅ CORREÇÃO 1: Usar Supabase direto seguindo padrão do ModernPipelineCreatorRefactored
-      const { error } = await supabase
-        .from('pipeline_leads')
-        .delete()
-        .eq('id', localLeadData.id)
-        .eq('tenant_id', user?.tenant_id); // Segurança: filtrar por tenant
-      
-      if (error) {
-        throw new Error(error.message);
+      // ✅ PROTEÇÃO: Verificar se já está sendo excluído
+      if (uiState.deleting || deleteOpportunityMutation.isPending) {
+        console.warn('⚠️ [DeleteOpportunity] Exclusão já em andamento, ignorando nova tentativa');
+        return;
       }
       
-      // ✅ CORREÇÃO 1: Cache invalidation manual seguindo padrão do sistema
-      await queryClient.invalidateQueries({ 
-        queryKey: ['pipeline-leads', localLeadData.pipeline_id] 
+      setUIState({ deleting: true, showDeleteDialog: false });
+      
+      // ✅ ETAPA 4: Log de delete inicio removido (verboso)
+      
+      // ✅ USAR HOOK CENTRALIZADO: Delegar para useDeleteOpportunityMutation
+      await deleteOpportunityMutation.mutateAsync({ 
+        leadId: localLeadData.id 
       });
       
-      await queryClient.invalidateQueries({ 
-        queryKey: ['pipeline', localLeadData.pipeline_id] 
-      });
+      // ✅ VALIDAÇÃO ROBUSTA: Verificar se realmente foi excluído verificando API
+      // ✅ ETAPA 4: Log de verificação removido (verboso)
       
-      // Cache invalidado
+      // Aguardar um momento para o cache invalidar
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Verificar se ainda existe no cache/API (validação adicional)
+      const currentData = queryClient.getQueryData(['pipeline-leads', localLeadData.pipeline_id, tenantId, undefined]);
+      if (Array.isArray(currentData)) {
+        const stillExists = currentData.some((item: any) => item.id === localLeadData.id);
+        if (stillExists) {
+          console.warn('⚠️ [DeleteOpportunity] Item ainda existe no cache após exclusão');
+          // Forçar refetch se ainda existir
+          await queryClient.refetchQueries({ 
+            queryKey: ['pipeline-leads', localLeadData.pipeline_id, tenantId, undefined] 
+          });
+        } else {
+          // ✅ ETAPA 4: Log de confirmação removido (verboso)
+        }
+      }
       
       showSuccessToast('Oportunidade excluída com sucesso! Lead mantido para reutilização.');
       
@@ -489,12 +532,28 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
       }, 1000);
       
     } catch (error: any) {
-      // Erro ao excluir oportunidade
-      showErrorToast('Erro ao excluir oportunidade. Tente novamente.');
+      console.error('❌ [DeleteOpportunity] Erro na exclusão:', error);
+      
+      // ✅ TRATAMENTO ROBUSTO: Diferentes tipos de erro
+      if (error?.message?.includes('RLS')) {
+        showErrorToast('Acesso negado', 'Você não tem permissão para excluir esta oportunidade devido às políticas de segurança.');
+      } else if (error?.message?.includes('tenant_id')) {
+        showErrorToast('Erro de isolamento', 'Problema de isolamento multi-tenant. Verifique suas permissões.');
+      } else if (error?.message?.includes('auth')) {
+        showErrorToast('Erro de autenticação', 'Sessão expirada. Faça login novamente.');
+      } else if (error?.code === 'PGRST116' || error?.message?.includes('404') || error?.message?.includes('Not Found')) {
+        showErrorToast('Oportunidade não encontrada', 'A oportunidade pode já ter sido excluída ou não existe.');
+        // ✅ CORREÇÃO: Fechar modal se item não existe mais
+        setTimeout(() => {
+          protectedOnClose();
+        }, 1500);
+      } else {
+        showErrorToast('Erro ao excluir oportunidade', error?.message || 'Tente novamente em alguns instantes.');
+      }
     } finally {
       setUIState({ deleting: false });
     }
-  }, [lead, localLeadData?.id, localLeadData?.pipeline_id, user?.tenant_id, protectedOnClose, queryClient]);
+  }, [lead, localLeadData?.id, localLeadData?.pipeline_id, user?.tenant_id, user?.id, deleteOpportunityMutation, protectedOnClose, queryClient, showSuccessToast, showErrorToast]);
 
   // ✅ HOOKS CUSTOMIZADOS: Usando hooks customizados para dados do lead (com guards)
   const {
@@ -566,15 +625,27 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
 
   // AIDEV-NOTE: Monitoring leadDataUpdated removido para performance
 
-  // ✅ CORREÇÃO CRÍTICA: SINCRONIZAR ESTADO LOCAL QUANDO LEAD PROP MUDAR
+  // ✅ REACT-USE PATTERN: SINCRONIZAÇÃO REATIVA COMPLETA DO ESTADO LOCAL
   React.useEffect(() => {
+    // ✅ ETAPA 4: Log de sincronização removido (verboso durante updates)
+    
     if (!lead?.id) return; // ✅ GUARD: Verificar lead.id específico
     
-    // ✅ CORREÇÃO: Só atualizar se o lead realmente mudou e for diferente
+    // ✅ REACT-USE PATTERN: useSetState-like merge para atualização granular
     if (lead.id !== localLeadData?.id) {
+      // Lead completo mudou - atualizar tudo
+      // ✅ ETAPA 4: Log de lead novo removido (frequente)
       setLocalLeadData(lead);
+    } else if (lead?.stage_id && lead.stage_id !== localLeadData?.stage_id) {
+      // ✅ NOVA: Sincronização reativa apenas do stage_id (feedback visual imediato)
+      // ✅ ETAPA 4: Log de stage sync removido (verboso durante movimentações)
+      setLocalLeadData(prev => ({
+        ...prev,
+        stage_id: lead.stage_id,
+        moved_at: lead.moved_at || new Date().toISOString()
+      }));
     }
-  }, [lead?.id]); // ✅ OTIMIZADO: Apenas lead.id para evitar re-renders por updated_at
+  }, [lead?.id, lead?.stage_id, isOpen]); // ✅ Dependencies incluindo stage_id
 
   // ✅ CORREÇÃO: Função duplicada removida - usando apenas handleDeleteOpportunity
 
@@ -587,10 +658,29 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   // ✅ BADGES MEMOIZADAS PARA PERFORMANCE OTIMIZADA
   
   // CORREÇÃO 2: Sistema de qualificação usando hook personalizado integrado com Supabase
+  // ✅ CORREÇÃO CRÍTICA: Garantir pipeline_id sempre disponível com fallbacks múltiplos
+  const effectivePipelineId = useMemo(() => {
+    const sources = [
+      localLeadData?.pipeline_id,
+      lead?.pipeline_id,
+      pipelineId,
+      // Fallback final se nenhum dos anteriores funcionar
+      ''
+    ].filter(Boolean);
+    
+    const finalPipelineId = sources[0] || '';
+    
+    // ✅ ETAPA 4: Log de pipeline fallback removido (verboso durante inicialização)
+    
+    return finalPipelineId;
+  }, [localLeadData?.pipeline_id, lead?.pipeline_id, pipelineId, localLeadData?.id, localLeadData?.custom_data?.nome_oportunidade]);
+  
   const qualificationEvaluation = useQualificationEvaluation(
-    localLeadData?.pipeline_id, 
+    effectivePipelineId, 
     localLeadData
   );
+  
+  // ✅ ETAPA 4: Log de qualification result removido (verboso durante avaliação)
   
   // Badge de qualificação baseado na avaliação real das regras configuradas via hook
   const qualificationBadge = useMemo(() => {
@@ -709,20 +799,28 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     const leadData = (localLeadData as any).lead_data || {};
     
     // ✅ CORREÇÃO CRÍTICA: Mapeamento de campos para dados reais do DB
-    // Quando buscar nome_oportunidade, tentar primeiro os campos que existem
+    // SINCRONIZAÇÃO: nome_oportunidade salva como 'nome' no custom_data (linha 401)
     if (key === 'nome_oportunidade') {
-      return customData.nome_oportunidade || 
+      return customData.nome ||  // ✅ PRIORIDADE: Campo onde saveField() salva
+             customData.nome_oportunidade || 
              customData.titulo_oportunidade || 
              customData.titulo || 
-             customData.nome ||  // ✅ Campo real do DB
              '';
     }
     
     // ✅ CORREÇÃO VALOR: Tratar especialmente o campo valor
     if (key === 'valor') {
       const valor = customData.valor || customData.valor_oportunidade || (localLeadData as any).estimated_value || 0;
-      // ✅ THROTTLING: Log apenas quando valor realmente muda
-      // AIDEV-NOTE: Debug logging removido para performance
+      
+      // 🔍 DEBUG TEMPORÁRIO: Identificar por que valor retorna 0
+      console.log('🔍 [DEBUG-VALOR]', {
+        customData_valor: customData.valor,
+        customData_valor_oportunidade: customData.valor_oportunidade,
+        estimated_value: (localLeadData as any).estimated_value,
+        resultado_final: valor,
+        customData_keys: Object.keys(customData)
+      });
+      
       return valor;
     }
     
@@ -764,49 +862,87 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     label: string,
     icon: React.ReactNode,
     placeholder: string = '',
-    disabled: boolean = false
+    disabled: boolean = false,
+    fieldOptions?: string[], // ✅ NOVO: Opções para campos select
+    key?: string // ✅ NOVO: Key para componente
   ) => {
     const currentValue = getLeadData(fieldName) || '';
     const isEditing = editState.editing[fieldName];
     const isSaving = editState.saving[fieldName];
     const maskType = getFieldMaskType(fieldName);
     
+    // ✅ DETECTAR SELECT: Verificar se tem opções válidas
+    const hasValidOptions = Array.isArray(fieldOptions) && fieldOptions.length > 0;
+    
     return (
-      <div className="flex items-center space-x-3 p-1 hover:bg-gray-50 rounded-md transition-colors group">
-        {icon}
-        <div className="flex-1 min-w-0 flex items-center space-x-2">
-          <span className="text-sm font-medium text-gray-700 flex-shrink-0">{label}:</span>
-          {isEditing ? (
-            <div className="flex items-center space-x-2 flex-1">
-              {renderMaskedInput(
-                fieldName,
-                maskType,
-                editState.editValues[fieldName] || '',
-                (value) => handleInputChange(fieldName, value),
-                placeholder,
-                isSaving,
-                (e) => {
-                  if (e.key === 'Enter' && !isSaving) {
-                    saveField(fieldName);
-                  } else if (e.key === 'Escape') {
-                    cancelEditing(fieldName);
+      <div key={key} className="p-1 rounded-md group">
+        {/* ✅ LAYOUT HÍBRIDO: Header compacto com ícone e label */}
+        <div className="flex items-center space-x-2 mb-1">
+          {icon}
+          <span className="text-sm font-medium text-gray-700">{label}:</span>
+        </div>
+        
+        {/* ✅ LAYOUT PROPORÇÕES FIXAS: 70% Input + 20% Botões */}
+        {isEditing ? (
+          <div className="flex items-center">
+            {/* ✅ INPUT/SELECT: 70% do container pai */}
+            <div className="w-[70%] min-w-0">
+              {hasValidOptions ? (
+                // ✅ RENDERIZAR SELECT: Para campos com opções
+                <Select 
+                  value={editState.editValues[fieldName] || currentValue || ''} 
+                  onValueChange={(value) => handleInputChange(fieldName, value)}
+                  disabled={isSaving}
+                >
+                  <SelectTrigger className="w-full max-w-full">
+                    <SelectValue placeholder={`Selecione ${label.toLowerCase()}`} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {fieldOptions.map((option, index) => (
+                      <SelectItem key={index} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                // ✅ RENDERIZAR INPUT: Para campos sem opções (comportamento original)
+                renderMaskedInput(
+                  fieldName,
+                  maskType,
+                  editState.editValues[fieldName] || '',
+                  (value) => handleInputChange(fieldName, value),
+                  placeholder,
+                  isSaving,
+                  (e) => {
+                    if (e.key === 'Enter' && !isSaving) {
+                      saveField(fieldName);
+                    } else if (e.key === 'Escape') {
+                      cancelEditing(fieldName);
+                    }
                   }
-                }
+                )
               )}
+            </div>
+            
+            {/* ✅ BOTÕES: 20% do container pai alinhados à direita */}
+            <div className="w-[20%] flex justify-end items-center space-x-1">
               {isSaving ? (
-                <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
+                  <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                </div>
               ) : (
                 <>
                   <button 
                     onClick={() => saveField(fieldName)}
-                    className="p-1 hover:bg-green-100 rounded transition-colors"
+                    className="w-6 h-6 flex items-center justify-center hover:bg-green-100 rounded transition-colors flex-shrink-0"
                     title="Salvar alterações"
                   >
                     <Check className="h-3 w-3 text-green-600" />
                   </button>
                   <button 
                     onClick={() => cancelEditing(fieldName)}
-                    className="p-1 hover:bg-red-100 rounded transition-colors"
+                    className="w-6 h-6 flex items-center justify-center hover:bg-red-100 rounded transition-colors flex-shrink-0"
                     title="Cancelar edição"
                   >
                     <XIcon className="h-3 w-3 text-red-600" />
@@ -814,23 +950,27 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                 </>
               )}
             </div>
-          ) : (
-            <div className="flex items-center justify-between flex-1">
-              <span className="text-sm text-gray-900">
-                {currentValue || <span className="italic text-gray-500">Não informado</span>}
-              </span>
-              {!disabled && (
-                <button 
-                  onClick={() => startEditing(fieldName, currentValue)}
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-100 rounded transition-all"
-                  title="Editar campo"
-                >
-                  <Edit className="h-3 w-3 text-gray-400 hover:text-gray-600" />
-                </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-900 flex-1 min-w-0">
+              {currentValue ? (
+                maskType === 'currency' ? formatCurrency(currentValue) : currentValue
+              ) : (
+                <span className="italic text-gray-500">Não informado</span>
               )}
-            </div>
-          )}
-        </div>
+            </span>
+            {!disabled && (
+              <button 
+                onClick={() => startEditing(fieldName, currentValue)}
+                className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center hover:bg-gray-100 rounded transition-all flex-shrink-0 ml-2"
+                title="Editar campo"
+              >
+                <Edit className="h-3 w-3 text-gray-400 hover:text-gray-600" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     );
   }, [editState.editing, editState.saving, editState.editValues, getLeadData, handleInputChange, saveField, startEditing, cancelEditing, getFieldMaskType, renderMaskedInput]);
@@ -848,10 +988,11 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     return getLeadData('telefone') || getLeadData('phone') || '';
   }, [getLeadData]);
 
+
   // Memoizar props para componentes filhos
   const leadDataBlockProps = useMemo(() => ({
     lead: localLeadData,
-    customFields: customFields,
+    customFields: processedCustomFields, // ✅ USAR CAMPOS PROCESSADOS COM field_options COMO ARRAYS
     editing: editState.editing,
     saving: editState.saving,
     editValues: editState.editValues,
@@ -863,7 +1004,7 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
         : user?.first_name || 'Usuário',
       email: user?.email || undefined
     }
-  }), [localLeadData, customFields, editState.editing, editState.saving, editState.editValues, getLeadData, renderEditableField, user]);
+  }), [localLeadData, processedCustomFields, editState.editing, editState.saving, editState.editValues, getLeadData, renderEditableField, user]);
 
   const interactiveMenuProps = useMemo(() => ({
     activeTab: activeInteractiveTab,
@@ -1185,6 +1326,37 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     }
   }, [localLeadData, pipelineStages, user, onUpdate, loadHistory]);
 
+  // ✅ REACT-USE PATTERN: Callback unificado para stage change com feedback visual imediato
+  const handleUnifiedStageChange = useCallback(async (updatedLead: any) => {
+    // ✅ ETAPA 4: Log de stage change callback removido (verboso)
+
+    // ✅ FEEDBACK VISUAL IMEDIATO: Atualizar estado local primeiro
+    if (updatedLead?.stage_id && updatedLead.stage_id !== localLeadData?.stage_id) {
+      // ✅ ETAPA 4: Log de feedback visual removido (verboso)
+      
+      setLocalLeadData(prev => ({
+        ...prev,
+        stage_id: updatedLead.stage_id,
+        moved_at: updatedLead.moved_at || new Date().toISOString()
+      }));
+    }
+
+    // ✅ CACHE INVALIDATION: Chamar callback do pai para invalidar cache
+    if (onUpdate && updatedLead) {
+      // ✅ ETAPA 4: Log de notificação pai removido (verboso)
+      
+      onUpdate(updatedLead.id || localLeadData?.id, updatedLead);
+    }
+
+    // ✅ RELOAD HISTORY: Recarregar histórico para mostrar nova entrada
+    try {
+      await loadHistory();
+      // ✅ ETAPA 4: Log de history reload removido (verboso)
+    } catch (historyError) {
+      console.warn('⚠️ [LeadDetailsModal] Erro ao recarregar histórico:', historyError);
+    }
+  }, [localLeadData?.stage_id, localLeadData?.id, onUpdate, loadHistory]);
+
   // ✅ CORREÇÃO: Carregar stages quando modal abre (otimizado)
   useEffect(() => {
     if (!lead?.id || !isOpen || !localLeadData?.pipeline_id) return; // ✅ GUARDS completos
@@ -1217,7 +1389,7 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
 
   // ✅ CORREÇÃO BABEL SYNTAX: Separar métodos de salvamento para evitar nested try-catch complex
   const executeRpcSave = async (fieldName: string, inputValue: string, isLeadsMaster: boolean): Promise<any> => {
-    console.log('🚀 [LeadDetailsModal] Tentativa 1: RPC update_lead_field_safe');
+    // ✅ ETAPA 4: Log de RPC attempt removido (verboso durante operações)
     
     // ✅ CORREÇÃO: Mapear nome_oportunidade para 'nome' no banco
     const dbFieldName = fieldName === 'nome_oportunidade' ? 'nome' : fieldName;
@@ -1235,12 +1407,12 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
       throw rpcResponse.error;
     }
     
-    console.log('✅ [LeadDetailsModal] RPC executado com sucesso');
+    // ✅ ETAPA 4: Log de RPC success removido (verboso)
     return rpcResponse.data;
   };
 
   const executeSqlFallback = async (fieldName: string, inputValue: string, isLeadsMaster: boolean): Promise<any> => {
-    console.log('🔄 [LeadDetailsModal] Tentativa 2: SQL fallback');
+    // ✅ ETAPA 4: Log de SQL fallback removido (verboso)
     
     // ✅ CORREÇÃO: Mapear nome_oportunidade para 'nome' no banco
     const dbFieldName = fieldName === 'nome_oportunidade' ? 'nome' : fieldName;
@@ -1262,12 +1434,12 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
       throw sqlResponse.error;
     }
     
-    console.log('✅ [LeadDetailsModal] Fallback SQL executado com sucesso');
+    // ✅ ETAPA 4: Log de SQL success removido (verboso)
     return sqlResponse.data?.[0]?.result;
   };
 
   const executeDirectUpdate = async (fieldName: string, inputValue: string, isLeadsMaster: boolean): Promise<any> => {
-    console.log('🔄 [LeadDetailsModal] Tentativa 3: Update direto');
+    // ✅ ETAPA 4: Log de direct update removido (verboso)
     
     if (isLeadsMaster) {
       // Update direto em leads_master
@@ -1378,8 +1550,9 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
         }
       }}
     >
+      {/* ✅ CORREÇÃO CRÍTICA: Eliminar nested scroll do modal principal */}
       <div 
-        className="bg-white rounded-lg shadow-xl w-full max-w-[95vw] max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-white rounded-lg shadow-xl w-full max-w-[95vw] max-h-[90vh] overflow-visible flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header Minimalista */}
@@ -1440,7 +1613,7 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
             <MinimalHorizontalStageSelector
               leadId={localLeadData.id}
               currentStageId={localLeadData.stage_id}
-              onStageChange={onUpdate}
+              onStageChange={handleUnifiedStageChange}
             />
             
             {isUpdatingStage && (
@@ -1463,14 +1636,14 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
         </div>
 
         {/* ✅ NOVO LAYOUT: 3 Blocos Fixos - Proporção Ideal: 25% | 50% | 25% */}
-        <div className="grid grid-cols-12 gap-6 flex-1 p-6 overflow-hidden min-h-0">
+        <div className="grid grid-cols-12 gap-6 flex-1 p-6 overflow-visible min-h-0">{/* ✅ CORREÇÃO CRÍTICA: Eliminar nested scroll do grid principal */}
           {/* BLOCO 1: Dados Lead & Oportunidade (Esquerda - 25%) */}
-          <div className="col-span-3 bg-gray-50 rounded-lg p-4 overflow-y-auto border border-gray-200">
+          <div className="col-span-3 bg-gray-50 rounded-lg p-4 overflow-y-auto border border-gray-200 max-h-full">
             <LeadDataBlock {...leadDataBlockProps} />
           </div>
 
-          {/* BLOCO 2: Menu Interativo (Centro - 50%) - Sem scroll, usa altura completa */}
-          <div className="col-span-6 bg-white rounded-lg p-4 border border-gray-200 flex flex-col">
+          {/* BLOCO 2: Menu Interativo (Centro - 50%) - Com scroll quando necessário */}
+          <div className="col-span-6 bg-white rounded-lg p-4 border border-gray-200 flex flex-col overflow-y-auto max-h-full">
             <InteractiveMenuBlock
               lead={localLeadData}
               activeInteractiveTab={activeInteractiveTab}
@@ -1511,7 +1684,7 @@ const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
           </div>
 
           {/* BLOCO 3: Histórico Completo (Direita - 25%) */}
-          <div className="col-span-3 bg-gray-50 rounded-lg p-4 overflow-y-auto border border-gray-200">
+          <div className="col-span-3 bg-gray-50 rounded-lg p-4 overflow-y-auto border border-gray-200 max-h-full">
             <HistoryBlock
               lead={localLeadData}
               history={history}

@@ -82,16 +82,111 @@ const OutcomeReasonModal: React.FC<OutcomeModalProps> = ({
       if (!selectedReason) return;
       
       reasonText = selectedReason.reason_text;
-      reasonId = selectedReasonId;
+      
+      // ✅ CORREÇÃO CRÍTICA: Tratar motivos JSON como personalizados
+      if (selectedReasonId.startsWith('json-')) {
+        // Motivo padrão JSON - enviar como personalizado (sem reason_id)
+        reasonId = undefined;
+        console.log('🔄 [OUTCOME MODAL] Motivo JSON detectado, enviando como personalizado:', {
+          selectedReasonId,
+          reasonText,
+          willSendAsCustom: true
+        });
+      } else {
+        // Motivo do banco - enviar com reason_id
+        reasonId = selectedReasonId;
+        console.log('✅ [OUTCOME MODAL] Motivo do banco detectado, enviando com UUID:', {
+          selectedReasonId,
+          reasonText,
+          isUUID: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedReasonId)
+        });
+      }
     }
 
-    applyOutcome({
+    // ✅ CORREÇÃO CRÍTICA: Construir requestData baseado no tipo de motivo
+    const requestData: any = {
       lead_id: leadId,
       outcome_type: outcomeType,
-      reason_id: reasonId,
-      reason_text: reasonText,
-      notes: notes.trim() || undefined
+      reason_text: reasonText
+    };
+
+    // ✅ CORREÇÃO ERRO 500: Só incluir notes se tiver conteúdo (não enviar undefined)
+    const trimmedNotes = notes.trim();
+    if (trimmedNotes) {
+      requestData.notes = trimmedNotes;
+    }
+
+    // ✅ Só incluir reason_id se for motivo do banco (não JSON)
+    if (reasonId) {
+      requestData.reason_id = reasonId;
+    }
+
+    console.log('🔄 [OUTCOME MODAL] Dados do request construídos:', {
+      hasReasonId: !!reasonId,
+      reasonIdType: reasonId ? (reasonId.startsWith('json-') ? 'JSON_MOTIVO' : 'BANCO_UUID') : 'PERSONALIZADO',
+      requestData
     });
+
+    // ✅ VALIDAÇÃO ROBUSTA DE CAMPOS OBRIGATÓRIOS
+    const validation = {
+      leadId_isUUID: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(leadId),
+      leadId_length: leadId.length,
+      outcomeType_valid: ['ganho', 'perdido', 'won', 'lost'].includes(outcomeType),
+      reasonText_afterTrim: reasonText,
+      reasonText_length: reasonText.length,
+      reasonText_isEmpty: reasonText.length === 0,
+      reasonId_isUUID: reasonId ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reasonId) : 'not_provided',
+      notes_value: requestData.notes || 'empty'
+    };
+
+    console.log('🔍 [OUTCOME MODAL] Dados que serão enviados para API:', {
+      requestData,
+      validation
+    });
+
+    // ✅ CORREÇÃO CRÍTICA: Validar campos obrigatórios antes do envio
+    if (!validation.leadId_isUUID) {
+      console.error('❌ [OUTCOME MODAL] ERRO DE VALIDAÇÃO: leadId não é UUID válido', {
+        leadId,
+        leadId_length: leadId.length
+      });
+      return;
+    }
+
+    if (!validation.outcomeType_valid) {
+      console.error('❌ [OUTCOME MODAL] ERRO DE VALIDAÇÃO: outcomeType inválido', {
+        outcomeType,
+        validValues: ['ganho', 'perdido', 'won', 'lost']
+      });
+      return;
+    }
+
+    if (validation.reasonText_isEmpty) {
+      console.error('❌ [OUTCOME MODAL] ERRO DE VALIDAÇÃO: reasonText está vazio após trim', {
+        originalReasonText: reasonText,
+        trimmedLength: reasonText.length
+      });
+      return;
+    }
+
+    // ✅ CORREÇÃO CRÍTICA: Só validar UUID se reasonId existir (motivos do banco)
+    if (reasonId && validation.reasonId_isUUID !== true) {
+      console.error('❌ [OUTCOME MODAL] ERRO DE VALIDAÇÃO: reasonId não é UUID válido', {
+        reasonId,
+        reasonId_length: reasonId?.length,
+        note: 'Motivos JSON são enviados sem reasonId, então esta validação só deve ocorrer para motivos do banco'
+      });
+      return;
+    }
+
+    // ✅ VALIDAÇÃO ESPECÍFICA: Verificar se motivo JSON foi tratado corretamente
+    if (!reasonId && !useCustomReason) {
+      console.log('✅ [OUTCOME MODAL] Motivo JSON sendo enviado como personalizado (reasonId=undefined)');
+    }
+
+    console.log('✅ [OUTCOME MODAL] Todas as validações passaram, enviando request...');
+
+    applyOutcome(requestData);
   };
 
   const handleClose = () => {
@@ -136,7 +231,24 @@ const OutcomeReasonModal: React.FC<OutcomeModalProps> = ({
   // RENDER PRINCIPAL
   // ============================================
 
-  if (!isOpen) return null;
+  // ✅ CORREÇÃO CRÍTICA: Validar props obrigatórios antes de renderizar
+  if (!isOpen || !leadId || !pipelineId || !outcomeType) {
+    return null;
+  }
+
+  // ✅ CORREÇÃO: Aguardar dados estarem prontos com validação robusta
+  if (isLoadingReasons) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]">
+        <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <span className="ml-2 text-sm text-gray-600">Carregando motivos...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]">
@@ -172,19 +284,6 @@ const OutcomeReasonModal: React.FC<OutcomeModalProps> = ({
             </div>
           )}
 
-          {/* DEBUG INFO - TEMPORÁRIO */}
-          {!isLoadingReasons && (
-            <div className="bg-gray-100 p-3 rounded text-xs">
-              <strong>Debug Info:</strong><br/>
-              Pipeline ID: {pipelineId}<br/>
-              Outcome Type: {outcomeType}<br/>
-              Motivos carregados: {reasons?.length || 0}<br/>
-              Loading: {isLoadingReasons ? 'Sim' : 'Não'}<br/>
-              {reasons?.length === 0 && !isLoadingReasons && (
-                <span className="text-red-600">❌ Nenhum motivo encontrado!</span>
-              )}
-            </div>
-          )}
 
           {/* FORM CONTENT */}
           {!isLoadingReasons && (

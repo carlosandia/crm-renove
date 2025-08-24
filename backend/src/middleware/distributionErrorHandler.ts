@@ -12,7 +12,7 @@ export function distributionErrorHandler(
   req: Request,
   res: Response,
   next: NextFunction
-): void {
+) {
   // ✅ LOGGING ESTRUTURADO: Informações detalhadas para debugging
   console.error('❌ [DISTRIBUTION-ERROR]:', {
     error: err.message,

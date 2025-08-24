@@ -34,122 +34,71 @@ export const outcomeReasonsKeys = {
 export const useOutcomeReasons = (params: UseOutcomeReasonsParams) => {
   const queryClient = useQueryClient();
 
-  // ✅ Query para buscar motivos com fallback inteligente
+  // ✅ Query para buscar motivos (agora com fallback automático na API)
   const query = useQuery({
     queryKey: outcomeReasonsKeys.reasons(params),
     queryFn: async () => {
-      try {
-        const result = await outcomeReasonsApi.getReasons({
-          pipeline_id: params.pipelineId,
-          reason_type: params.reasonType || 'all',
-          active_only: params.activeOnly ?? true
-        });
-        
-        // ✅ FALLBACK INTELIGENTE: Se não há motivos configurados, usar motivos padrão
-        if (!result || result.length === 0) {
-          console.log('🔄 [useOutcomeReasons] Nenhum motivo configurado, buscando padrões...');
-          
-          try {
-            const defaultReasons = await outcomeReasonsApi.getDefaultReasons();
-            const fallbackReasons = [];
-            
-            // Transformar motivos padrão em formato esperado
-            if (params.reasonType === 'won' || params.reasonType === 'all') {
-              (defaultReasons.won || []).forEach((reasonText: string, index: number) => {
-                fallbackReasons.push({
-                  id: `default-won-${index}`,
-                  pipeline_id: params.pipelineId,
-                  tenant_id: '',
-                  reason_type: 'won' as const,
-                  reason_text: reasonText,
-                  is_active: true,
-                  display_order: index,
-                  created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString(),
-                  is_default: true // Marcador para identificar motivos padrão
-                });
-              });
-            }
-            
-            if (params.reasonType === 'lost' || params.reasonType === 'all') {
-              (defaultReasons.lost || []).forEach((reasonText: string, index: number) => {
-                fallbackReasons.push({
-                  id: `default-lost-${index}`,
-                  pipeline_id: params.pipelineId,
-                  tenant_id: '',
-                  reason_type: 'lost' as const,
-                  reason_text: reasonText,
-                  is_active: true,
-                  display_order: index,
-                  created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString(),
-                  is_default: true // Marcador para identificar motivos padrão
-                });
-              });
-            }
-            
-            console.log('✅ [useOutcomeReasons] Usando motivos padrão:', fallbackReasons.length);
-            return fallbackReasons;
-            
-          } catch (fallbackError) {
-            console.error('❌ [useOutcomeReasons] Erro ao buscar padrões:', fallbackError);
-            return []; // Retorna array vazio se até o fallback falhar
-          }
+      const result = await outcomeReasonsApi.getReasons({
+        pipeline_id: params.pipelineId,
+        reason_type: params.reasonType || 'all',
+        active_only: params.activeOnly ?? true
+      });
+      
+      // ✅ LOGS OBRIGATÓRIOS PADRÃO CLAUDE.MD - ETAPA 1: ANALISAR FILTROS
+      console.log('🔍 [FILTER-DEBUG] useOutcomeReasons - Dados recebidos da API:', {
+        pipelineId: params.pipelineId?.substring(0, 8) || 'undefined',
+        reasonType: params.reasonType || 'all',
+        rawDataCount: result?.length || 0,
+        filteredDataCount: result?.length || 0, // API já faz filtro
+        apiSuccessful: !!result,
+        hasFromJson: result?.some(r => r.is_from_json) || false,
+        filterCondition: `reasonType: ${params.reasonType || 'all'}, activeOnly: ${params.activeOnly ?? true}`,
+        sampleRawItem: result?.[0] ? {
+          id: result[0].id?.substring(0, 8),
+          type: result[0].reason_type,
+          text: result[0].reason_text?.substring(0, 30)
+        } : null
+      });
+      
+      // ✅ LOGS OBRIGATÓRIOS PADRÃO CLAUDE.MD - ETAPA 2: VALIDAÇÃO ZOD
+      console.log('🔍 [ZOD-DEBUG] useOutcomeReasons - Validação dos dados:', {
+        rawCount: result?.length || 0,
+        validatedCount: result?.length || 0, // API já validou com schemas
+        validationPassed: (result?.length || 0) > 0,
+        hasNullFields: result?.some(r => 
+          r.tenant_id === null || 
+          r.is_active === null || 
+          r.display_order === null
+        ) || false,
+        sampleData: result?.[0] ? {
+          id: result[0].id?.substring(0, 8) || 'undefined',
+          pipeline_id: result[0].pipeline_id?.substring(0, 8) || 'undefined',
+          tenant_id: result[0].tenant_id?.substring(0, 8) || 'null/undefined',
+          reason_type: result[0].reason_type || 'undefined',
+          reason_text: result[0].reason_text?.substring(0, 30) || 'undefined',
+          is_active: result[0].is_active ?? 'null',
+          display_order: result[0].display_order ?? 'null',
+          is_from_json: result[0].is_from_json || false
+        } : null
+      });
+      
+      // ✅ LOGS OBRIGATÓRIOS PADRÃO CLAUDE.MD - ETAPA 3: RENDERIZAÇÃO UI
+      console.log('🔍 [RENDER-DEBUG] useOutcomeReasons - Dados preparados para componente:', {
+        propsData_length: result?.length || 0,
+        componentWillRender: (result?.length || 0) > 0,
+        reasonsByType: {
+          ganho: result?.filter(r => r.reason_type === 'ganho').length || 0,
+          perdido: result?.filter(r => r.reason_type === 'perdido').length || 0,
+          won: result?.filter(r => r.reason_type === 'won').length || 0,
+          lost: result?.filter(r => r.reason_type === 'lost').length || 0
+        },
+        dataOrigin: {
+          fromDatabase: result?.filter(r => !r.is_from_json).length || 0,
+          fromJsonFallback: result?.filter(r => r.is_from_json).length || 0
         }
-        
-        console.log('✅ [useOutcomeReasons] Motivos configurados encontrados:', result.length);
-        return result;
-        
-      } catch (error: any) {
-        console.error('❌ [useOutcomeReasons] Erro detalhado:', {
-          error,
-          message: error?.message,
-          status: error?.response?.status,
-          data: error?.response?.data,
-          params: {
-            pipeline_id: params.pipelineId,
-            reason_type: params.reasonType || 'all',
-            active_only: params.activeOnly ?? true
-          }
-        });
-        
-        // ✅ FALLBACK DE EMERGÊNCIA: Se erro na API, tentar motivos padrão do sistema
-        if (error?.response?.status === 404 || error?.response?.status >= 500) {
-          console.log('🔄 [useOutcomeReasons] Erro na API, tentando fallback de emergência...');
-          return [
-            {
-              id: 'emergency-won-1',
-              pipeline_id: params.pipelineId,
-              tenant_id: '',
-              reason_type: 'won' as const,
-              reason_text: 'Proposta aceita',
-              is_active: true,
-              display_order: 0,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-              is_default: true,
-              is_emergency: true
-            },
-            {
-              id: 'emergency-lost-1',
-              pipeline_id: params.pipelineId,
-              tenant_id: '',
-              reason_type: 'lost' as const,
-              reason_text: 'Não converteu',
-              is_active: true,
-              display_order: 0,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-              is_default: true,
-              is_emergency: true
-            }
-          ].filter(reason => 
-            params.reasonType === 'all' || reason.reason_type === params.reasonType
-          );
-        }
-        
-        throw error;
-      }
+      });
+      
+      return result || [];
     },
     staleTime: 5 * 60 * 1000, // 5 minutos
     retry: (failureCount, error: any) => {

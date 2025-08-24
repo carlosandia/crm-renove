@@ -25,11 +25,20 @@ const upload = multer({
     fileSize: 10 * 1024 * 1024, // 10MB limite
   },
   fileFilter: (req, file, cb) => {
+    console.log('🔍 [MULTER-FILTER] Arquivo recebido:', {
+      fieldname: file.fieldname,
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size || 'unknown'
+    });
+    
     // Validar tipos MIME permitidos
     const allowedMimeTypes = ['audio/webm', 'audio/wav', 'audio/mp3', 'audio/ogg', 'audio/mpeg'];
     if (allowedMimeTypes.includes(file.mimetype)) {
+      console.log('✅ [MULTER-FILTER] Tipo MIME aceito:', file.mimetype);
       cb(null, true);
     } else {
+      console.error('❌ [MULTER-FILTER] Tipo MIME rejeitado:', file.mimetype);
       cb(new Error(`Tipo de arquivo não suportado: ${file.mimetype}`));
     }
   }
@@ -40,46 +49,39 @@ router.get('/test', (req: Request, res: Response) => {
   res.json({ success: true, message: 'Rota de anotações funcionando!' });
 });
 
-// AIDEV-NOTE: Middleware obrigatório - autenticação e tenant isolation
-router.use(authMiddleware);
-
-/**
- * GET /api/annotations
- * Listar anotações (com filtros opcionais)
- */
-router.get('/', asyncHandler(async (req: Request, res: Response) => {
-  console.log('📋 [GET /api/annotations] Listando anotações');
-
-  // Validar query parameters
-  const queryParams = ListAnnotationsQuerySchema.parse(req.query);
-
-  // Buscar anotações via service
-  const result = await AnnotationsService.getLeadAnnotations(
-    '', // leadId vazio para buscar todas as anotações
-    req.user!.tenant_id,
-    'pipeline_lead',
-    queryParams
-  );
-
-  res.json({
-    success: true,
-    data: result.annotations,
-    pagination: result.pagination
-  });
-}));
-
 // ===================================
-// UPLOAD DE ÁUDIO
+// UPLOAD DE ÁUDIO (ANTES DA AUTENTICAÇÃO GERAL)
 // ===================================
 
 /**
  * POST /api/annotations/upload-audio
  * Upload de arquivo de áudio para anotações
+ * ✅ CORREÇÃO: Multer processa arquivo ANTES da autenticação interferir
  */
-router.post('/upload-audio', upload.single('audio'), asyncHandler(async (req: Request, res: Response) => {
+router.post('/upload-audio', upload.single('audio'), authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   console.log('🎵 [POST /api/annotations/upload-audio] Iniciando upload de áudio');
+  
+  // ✅ LOGS DE DEBUG DETALHADOS
+  console.log('🔍 [DEBUG-UPLOAD] Headers recebidos:', {
+    contentType: req.headers['content-type'],
+    contentLength: req.headers['content-length'],
+    authorization: req.headers.authorization ? 'Presente' : 'Ausente'
+  });
+  
+  console.log('🔍 [DEBUG-UPLOAD] Body keys:', Object.keys(req.body));
+  console.log('🔍 [DEBUG-UPLOAD] Body content:', req.body);
+  console.log('🔍 [DEBUG-UPLOAD] req.file status:', {
+    hasFile: !!req.file,
+    file: req.file ? {
+      fieldname: req.file.fieldname,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size
+    } : 'undefined'
+  });
 
   if (!req.file) {
+    console.error('❌ [DEBUG-UPLOAD] Multer não encontrou arquivo no campo "audio"');
     return res.status(400).json({
       success: false,
       error: 'Nenhum arquivo de áudio enviado'
@@ -191,6 +193,35 @@ router.post('/upload-audio', upload.single('audio'), asyncHandler(async (req: Re
     });
   }
 }));
+
+// AIDEV-NOTE: Middleware obrigatório - autenticação e tenant isolation
+router.use(authMiddleware);
+
+/**
+ * GET /api/annotations
+ * Listar anotações (com filtros opcionais)
+ */
+router.get('/', asyncHandler(async (req: Request, res: Response) => {
+  console.log('📋 [GET /api/annotations] Listando anotações');
+
+  // Validar query parameters
+  const queryParams = ListAnnotationsQuerySchema.parse(req.query);
+
+  // Buscar anotações via service
+  const result = await AnnotationsService.getLeadAnnotations(
+    '', // leadId vazio para buscar todas as anotações
+    req.user!.tenant_id,
+    'pipeline_lead',
+    queryParams
+  );
+
+  res.json({
+    success: true,
+    data: result.annotations,
+    pagination: result.pagination
+  });
+}));
+
 
 // ===================================
 // CRUD BÁSICO DE ANOTAÇÕES

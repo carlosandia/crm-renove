@@ -113,17 +113,13 @@ const PipelineKanbanView: React.FC<PipelineKanbanViewProps> = ({
   // ✅ @hello-pangea/dnd: Drag and Drop Handlers
   // ============================================
   
-  // ✅ CURSOR MANAGEMENT: Gerenciar estado global de cursor
+  // ✅ DRAG HANDLERS: Simplificados sem manipulação manual de cursor
   const handleDragStart = useCallback(() => {
-    // Aplicar classe global para cursor grabbing
-    document.body.classList.add('dragging-active');
+    // @hello-pangea/dnd gerencia cursor automaticamente
   }, []);
   
   const handleDragUpdate = useCallback(() => {
-    // Manter estado de cursor durante drag
-    if (!document.body.classList.contains('dragging-active')) {
-      document.body.classList.add('dragging-active');
-    }
+    // @hello-pangea/dnd gerencia estado de cursor durante drag
   }, []);
   
   // 🎯 FUNÇÃO: Cálculo de posição baseado no contexto real dos leads
@@ -167,16 +163,11 @@ const PipelineKanbanView: React.FC<PipelineKanbanViewProps> = ({
   const handleDragEnd = useCallback(async (result: DropResult) => {
     const { destination, source, draggableId } = result;
     
-    // ✅ CURSOR CLEANUP: Sempre remover estado global
-    document.body.classList.remove('dragging-active');
-    
     // Cancelar se não há destino ou se não houve movimento
     if (!destination || 
         (destination.droppableId === source.droppableId && 
          destination.index === source.index)) {
-      if (import.meta.env.DEV) {
-        console.log('🔄 [DRAG END] Drop cancelado - sem movimento');
-      }
+      // ✅ ETAPA 4: Log removido (verboso e frequente)
       return;
     }
     
@@ -191,37 +182,14 @@ const PipelineKanbanView: React.FC<PipelineKanbanViewProps> = ({
       draggableId
     );
     
-    // 🔍 DEBUG: Log detalhado para análise de posicionamento
-    if (import.meta.env.DEV) {
-      const destLeadsInfo = destinationLeads.map(l => ({ 
-        id: l.id.substring(0, 8), 
-        position: l.position 
-      }));
-      
-      console.log('🎯 [DRAG END] Posicionamento contextual:', {
-        leadId: draggableId.substring(0, 8),
-        draggedLeadPosition: draggedLead?.position,
-        from: `${source.droppableId.substring(0, 8)}[${source.index}]`,
-        to: `${destination.droppableId.substring(0, 8)}[${destination.index}]`,
-        destinationLeads: destLeadsInfo,
-        calculatedPosition,
-        positionMapping: `visual_index_${destination.index} → real_position_${calculatedPosition}`,
-        reasoning: destination.index === 0 ? 'inserir_antes_primeiro' : 
-                  destination.index >= destinationLeads.length ? 'inserir_apos_ultimo' : 'inserir_entre_leads'
-      });
-    }
+    // ✅ ETAPA 4: Log de posicionamento removido (verboso durante drag operations)
     
     // ✅ INTERCEPTAÇÃO OBRIGATÓRIA: Verificar se destino é ganho/perdido
     const outcomeType = getStageOutcomeType(destination.droppableId);
     
     if (outcomeType) {
       // 🛑 INTERCEPTAR: Destino é ganho/perdido - abrir modal ANTES de mover
-      console.log('🛑 [OUTCOME REQUIRED] Movimento interceptado para stage de outcome:', {
-        leadId: draggableId.substring(0, 8),
-        destinationStage: destination.droppableId.substring(0, 8),
-        outcomeType,
-        message: 'Modal de motivo será exibido antes da movimentação'
-      });
+      // ✅ ETAPA 4: Log simplificado para outcome interception
       
       // Armazenar dados da movimentação pendente
       setPendingMove({
@@ -246,9 +214,7 @@ const PipelineKanbanView: React.FC<PipelineKanbanViewProps> = ({
         source.droppableId,
         destination.index
       );
-      if (import.meta.env.DEV) {
-        console.log('✅ [DRAG END] Movimentação normal concluída:', calculatedPosition);
-      }
+      // ✅ ETAPA 4: Log de sucesso removido (verboso durante operações)
     } catch (error) {
       console.error('❌ [DRAG END] Erro na movimentação normal:', error);
     }
@@ -260,7 +226,7 @@ const PipelineKanbanView: React.FC<PipelineKanbanViewProps> = ({
   
   // Handler para quando o modal é fechado (cancelado)
   const handleOutcomeModalClose = useCallback(() => {
-    console.log('❌ [OUTCOME MODAL] Cancelado pelo usuário - movimento não executado');
+    // ✅ ETAPA 4: Log de cancelamento removido (frequente)
     setPendingMove(null);
   }, []);
   
@@ -271,11 +237,7 @@ const PipelineKanbanView: React.FC<PipelineKanbanViewProps> = ({
       return;
     }
     
-    console.log('✅ [OUTCOME MODAL] Motivo aplicado - executando movimento:', {
-      leadId: pendingMove.leadId.substring(0, 8),
-      destinationStage: pendingMove.destinationStageId.substring(0, 8),
-      outcomeType: pendingMove.outcomeType
-    });
+    // ✅ ETAPA 4: Log de outcome success removido (verboso)
     
     try {
       // Executar a movimentação que estava pendente
@@ -287,7 +249,7 @@ const PipelineKanbanView: React.FC<PipelineKanbanViewProps> = ({
         pendingMove.destinationIndex
       );
       
-      console.log('🎉 [OUTCOME MODAL] Movimento concluído com sucesso após aplicar motivo');
+      // ✅ ETAPA 4: Log de sucesso final removido (verboso)
     } catch (error) {
       console.error('❌ [OUTCOME MODAL] Erro ao executar movimento após motivo:', error);
     } finally {
@@ -310,7 +272,7 @@ const PipelineKanbanView: React.FC<PipelineKanbanViewProps> = ({
       onDragStart={handleDragStart}
       onDragUpdate={handleDragUpdate}
     >
-      <div className="flex flex-col h-full w-full bg-transparent">
+      <div className="flex flex-col w-full bg-transparent" style={{ height: '100%' }}>
         {/* HEADER COM MÉTRICAS CUSTOMIZÁVEIS */}
         {enableMetrics && (
           <div className="border-b border-gray-200 bg-transparent">
@@ -323,14 +285,20 @@ const PipelineKanbanView: React.FC<PipelineKanbanViewProps> = ({
           </div>
         )}
 
-        {/* KANBAN BOARD COM @hello-pangea/dnd - CORREÇÃO DEFINITIVA: CONTAINER ÚNICO */}
+        {/* KANBAN BOARD COM @hello-pangea/dnd - CORREÇÃO SCROLL ÚNICO */}
         <div 
           ref={kanbanContainerRef}
-          className="flex-1 h-full overflow-visible kanban-container"
+          className="flex-1 kanban-container"
           style={{ 
-            // ✅ CORREÇÃO DEFINITIVA: Container único elimina nested scroll containers
-            overflowAnchor: 'none', // Previne conflitos de scroll anchoring
-            scrollBehavior: 'smooth' // Melhora experiência de navegação
+            // ✅ CORREÇÃO CRÍTICA: APENAS scroll horizontal - eliminar nested scroll vertical
+            overflowX: 'auto', // Scroll horizontal para múltiplas colunas
+            overflowY: 'visible', // ✅ CORREÇÃO: Removido 'auto' para eliminar nested scroll
+            overflowAnchor: 'none',
+            scrollBehavior: 'smooth',
+            scrollbarGutter: 'stable',
+            // ✅ HEIGHT CONTROL: Altura precisa sem conflito com parent
+            height: enableMetrics ? 'calc(100% - 80px)' : '100%',
+            minHeight: 0
           }}
         >
             <div className="flex px-0 py-2 min-w-max gap-2">

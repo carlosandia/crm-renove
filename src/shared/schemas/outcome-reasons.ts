@@ -16,7 +16,7 @@ import { z } from 'zod';
 export const OutcomeReasonSchema = z.object({
   id: z.string().uuid('ID deve ser um UUID válido'),
   pipeline_id: z.string().uuid('Pipeline ID deve ser um UUID válido'),
-  tenant_id: z.string().min(1, 'Tenant ID é obrigatório'), // text, não uuid
+  tenant_id: z.string().min(1, 'Tenant ID é obrigatório').nullable().optional(), // ✅ Aceita null do banco Supabase
   reason_type: z.enum(['ganho', 'perdido', 'won', 'lost'], { // ganho/perdido são novos padrões, won/lost para compatibilidade
     errorMap: () => ({ message: 'Tipo deve ser "ganho", "perdido", "won" ou "lost"' })
   }),
@@ -24,12 +24,16 @@ export const OutcomeReasonSchema = z.object({
     .min(1, 'Motivo não pode estar vazio')
     .max(200, 'Motivo deve ter no máximo 200 caracteres')
     .trim(),
-  is_active: z.boolean().default(true),
+  is_active: z.boolean().nullable().default(false), // ✅ Aceita null do banco, default false
   display_order: z.number()
     .int('Ordem deve ser um número inteiro')
-    .min(0, 'Ordem não pode ser negativa'),
+    .min(0, 'Ordem não pode ser negativa')
+    .nullable()
+    .optional(), // ✅ Campo pode ser null no banco
   created_at: z.string().datetime('Data de criação inválida'),
-  updated_at: z.string().datetime('Data de atualização inválida')
+  updated_at: z.string().datetime('Data de atualização inválida'),
+  // ✅ CORREÇÃO: Campo para identificar origem dos dados (tabela vs JSON)
+  is_from_json: z.boolean().nullable().optional().default(false) // ✅ Aceita null
 });
 
 // ============================================
@@ -40,18 +44,18 @@ export const LeadOutcomeHistorySchema = z.object({
   id: z.string().uuid('ID deve ser um UUID válido'),
   lead_id: z.string().uuid('Lead ID deve ser um UUID válido'),
   pipeline_id: z.string().uuid('Pipeline ID deve ser um UUID válido'),
-  tenant_id: z.string().min(1, 'Tenant ID é obrigatório'), // text, não uuid
+  tenant_id: z.string().min(1, 'Tenant ID é obrigatório').nullable().optional(), // ✅ Aceita null do banco
   outcome_type: z.enum(['ganho', 'perdido', 'won', 'lost'], { // ganho/perdido são novos padrões, won/lost para compatibilidade
     errorMap: () => ({ message: 'Tipo deve ser "ganho", "perdido", "won" ou "lost"' })
   }),
-  reason_id: z.string().uuid('Reason ID deve ser um UUID válido').optional(),
+  reason_id: z.string().uuid('Reason ID deve ser um UUID válido').nullish(), // ✅ Zod oficial: aceita null e undefined
   reason_text: z.string()
     .min(1, 'Texto do motivo não pode estar vazio')
     .trim(),
   notes: z.string()
     .max(500, 'Observações devem ter no máximo 500 caracteres')
     .trim()
-    .optional(),
+    .nullish(), // ✅ Zod oficial: aceita null, undefined e string
   applied_by: z.string().uuid('Applied by deve ser um UUID válido'),
   applied_at: z.string().datetime('Data de aplicação inválida')
 });
@@ -72,9 +76,9 @@ export const UpdateOutcomeReasonRequestSchema = CreateOutcomeReasonRequestSchema
 export const ApplyOutcomeRequestSchema = z.object({
   lead_id: z.string().uuid(),
   outcome_type: z.enum(['ganho', 'perdido', 'won', 'lost']), // ganho/perdido preferidos, won/lost para compatibilidade
-  reason_id: z.string().uuid().optional(),
+  reason_id: z.string().uuid().nullish(), // ✅ Zod oficial: aceita null, undefined e UUID
   reason_text: z.string().min(1).trim(),
-  notes: z.string().max(500).trim().optional()
+  notes: z.string().max(500).trim().nullish() // ✅ Zod oficial: aceita null, undefined e string
 });
 
 export const GetOutcomeReasonsQuerySchema = z.object({

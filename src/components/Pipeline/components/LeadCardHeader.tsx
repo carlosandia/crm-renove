@@ -43,19 +43,19 @@ export const LeadCardHeader: React.FC<LeadCardHeaderProps> = ({
   progressBadge
 }) => {
   return (
-    <div className="flex-1 overflow-hidden">
+    <div className="flex-1 overflow-visible">
       {/* LINHA 1: Nome da Oportunidade (esquerda) + Badge de Progresso (direita) */}
-      <div className="flex items-center justify-between mb-1.5 overflow-hidden">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
+      <div className="flex items-center justify-between mb-1 overflow-visible">
+        <div className="flex items-center gap-2 flex-1">
           <h4 
-            className="text-sm font-semibold text-gray-900 truncate tracking-wide"
+            className="text-sm font-semibold text-gray-900 tracking-wide"
             title={opportunityName}
           >
             {opportunityName}
           </h4>
         </div>
         
-        <div className="flex items-center gap-1.5 overflow-hidden">
+        <div className="flex items-center gap-1.5 overflow-visible">
           {/* ✨ OPTIMISTIC UPDATES: Indicador de criação */}
           {isCreating && (
             <div 
@@ -88,9 +88,9 @@ export const LeadCardHeader: React.FC<LeadCardHeaderProps> = ({
       </div>
 
       {/* LINHA 2: Nome do Lead */}
-      <div className="flex items-center gap-1.5 mb-1.5">
+      <div className="flex items-center gap-1.5 mb-1">
         <UserIcon className="h-3 w-3 text-gray-400" />
-        <span className="text-xs font-medium text-gray-700 truncate tracking-wide">
+        <span className="text-xs font-medium text-gray-700 tracking-wide">
           {leadName}
         </span>
       </div>

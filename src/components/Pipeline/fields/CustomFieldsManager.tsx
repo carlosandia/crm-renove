@@ -60,6 +60,8 @@ import { PIPELINE_UI_CONSTANTS } from '../../../styles/pipeline-constants';
 
 // ✅ AIDEV-NOTE: Usando tipo derivado do schema Zod para garantir consistência
 import { CustomField } from '../../../types/Pipeline';
+// ✅ PARSING HELPER: Hook para processar field_options consistentemente
+import { parseFieldOptions } from '../../../hooks/useFieldOptionsParsing';
 
 // ================================================================================
 // INTERFACES E TIPOS
@@ -601,7 +603,29 @@ export function useCustomFieldsManager({
 
   const handleEditField = (index: number) => {
     const field = localFields[index];
-    setEditingField({ ...field });
+    
+    // ✅ CORREÇÃO: Usar helper para parsing consistente de field_options
+    const processedField = parseFieldOptions(field);
+    
+    console.log('🔍 [CustomFieldsManager] Editing field:', {
+      fieldName: field.field_name,
+      fieldType: field.field_type,
+      originalOptions: field.field_options,
+      processedOptions: processedField.field_options,
+      isSelectType: field.field_type === 'select'
+    });
+    
+    setEditingField(processedField);
+    
+    // ✅ DEBUG: Log após setEditingField para confirmar estado
+    console.log('🔍 [CustomFieldsManager] Estado definido após setEditingField:', {
+      fieldName: processedField.field_name,
+      fieldType: processedField.field_type,
+      field_options: processedField.field_options,
+      field_options_length: processedField.field_options?.length,
+      setEditingFieldCalled: true
+    });
+    
     setEditFieldIndex(index);
     setShowFieldModal(true);
   };
@@ -1100,13 +1124,36 @@ export function CustomFieldsManagerRender({ fieldsManager }: CustomFieldsManager
                     <Label htmlFor="fieldType">Tipo do Campo</Label>
                     <Select
                       value={editingField?.field_type || 'text'}
-                      onValueChange={(value: CustomField['field_type']) => 
+                      onValueChange={(value: CustomField['field_type']) => {
+                        // ✅ CORREÇÃO: Preservar opções existentes quando já é select
+                        const currentOptions = editingField?.field_options;
+                        let newOptions;
+                        
+                        if (value === 'select') {
+                          // ✅ PRESERVAR: opções existentes ou criar padrão apenas se não houver
+                          newOptions = (currentOptions && currentOptions.length > 0) 
+                            ? currentOptions 
+                            : ['Opção 1'];
+                        } else {
+                          // ✅ LIMPAR: opções quando não é select
+                          newOptions = undefined;
+                        }
+                        
+                        console.log('🔍 [CustomFieldsManager] onValueChange tipo campo:', {
+                          fieldName: editingField?.field_name,
+                          oldType: editingField?.field_type,
+                          newType: value,
+                          currentOptions: currentOptions,
+                          newOptions: newOptions,
+                          optionsPreserved: value === 'select' && currentOptions && currentOptions.length > 0
+                        });
+                        
                         setEditingField({
                           ...editingField!,
                           field_type: value,
-                          field_options: value === 'select' ? ['Opção 1'] : undefined
-                        })
-                      }
+                          field_options: newOptions
+                        });
+                      }}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -1128,50 +1175,6 @@ export function CustomFieldsManagerRender({ fieldsManager }: CustomFieldsManager
                   </div>
 
 
-                  {/* Opções para campos select */}
-                  {editingField?.field_type === 'select' && (
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <Label>Opções</Label>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={handleAddOption}
-                        >
-                          <Plus className="h-4 w-4 mr-1" />
-                          Adicionar
-                        </Button>
-                      </div>
-                      <div className="space-y-2">
-                        {editingField.field_options?.map((option: string, index: number) => (
-                          <div key={index} className="flex gap-2">
-                            <Input
-                              value={option}
-                              onChange={(e) => {
-                                const newOptions = [...(editingField.field_options || [])];
-                                newOptions[index] = e.target.value;
-                                setEditingField({
-                                  ...editingField,
-                                  field_options: newOptions
-                                });
-                              }}
-                              placeholder={`Opção ${index + 1}`}
-                            />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleRemoveOption(index)}
-                              disabled={(editingField.field_options?.length || 0) <= 1}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
                   <div className="flex items-center gap-4">
                     <div className="flex items-center space-x-2">
@@ -1308,6 +1311,20 @@ export function CustomFieldsManagerRender({ fieldsManager }: CustomFieldsManager
                 {/* ✅ MELHOR UX: Formulário de edição aparece logo abaixo do campo sendo editado */}
                 {showFieldModal && editFieldIndex === customFields.findIndex(f => f.field_name === field.field_name) && (
                   <div className="mt-2">
+                    {(() => {
+                      console.log('🔍 [CustomFieldsManager] MODAL EDIÇÃO RENDERIZANDO:', {
+                        fieldName: field.field_name,
+                        showFieldModal: showFieldModal,
+                        editFieldIndex: editFieldIndex,
+                        customFieldsIndex: customFields.findIndex(f => f.field_name === field.field_name),
+                        indexMatch: editFieldIndex === customFields.findIndex(f => f.field_name === field.field_name),
+                        editingField_exists: !!editingField,
+                        editingField_fieldName: editingField?.field_name,
+                        editingField_options: editingField?.field_options,
+                        editingField_options_length: editingField?.field_options?.length
+                      });
+                      return null;
+                    })()}
                     <BlurFade delay={0.05} inView>
                       <AnimatedCard className="border-2 border-dashed border-orange-500/50 bg-orange-50/50">
                         <CardHeader>
@@ -1362,6 +1379,76 @@ export function CustomFieldsManagerRender({ fieldsManager }: CustomFieldsManager
                               />
                             </div>
                           </div>
+
+                          {/* ✅ CORREÇÃO: Seção de opções para campos select - DENTRO DO MODAL DE EDIÇÃO */}
+                          {(() => {
+                            console.log('🔍 [CustomFieldsManager] MODAL EDIÇÃO - CONDICIONAL RENDERIZAÇÃO:', {
+                              editingField_exists: !!editingField,
+                              editingField_fieldName: editingField?.field_name,
+                              editingField_fieldType: editingField?.field_type,
+                              editingField_isSelect: editingField?.field_type === 'select',
+                              editingField_hasOptions: !!editingField?.field_options,
+                              editingField_optionsLength: editingField?.field_options?.length,
+                              condicionalPassará: !!editingField && editingField?.field_type === 'select'
+                            });
+                            return null;
+                          })()}
+                          
+                          {editingField?.field_type === 'select' && (
+                            <div>
+                              <div className="flex justify-between items-center mb-2">
+                                <Label>Opções</Label>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={handleAddOption}
+                                >
+                                  <Plus className="h-4 w-4 mr-1" />
+                                  Adicionar
+                                </Button>
+                              </div>
+                              <div className="space-y-2">
+                                {(() => {
+                                  console.log('🔍 [CustomFieldsManager] MODAL EDIÇÃO - RENDERIZAÇÃO OPÇÕES:', {
+                                    fieldName: editingField?.field_name,
+                                    fieldType: editingField?.field_type,
+                                    field_options: editingField?.field_options,
+                                    field_options_length: editingField?.field_options?.length,
+                                    field_options_type: typeof editingField?.field_options,
+                                    isArray: Array.isArray(editingField?.field_options),
+                                    willRender: editingField?.field_options?.length > 0
+                                  });
+                                  return null;
+                                })()}
+                                {editingField.field_options?.map((option: string, index: number) => (
+                                  <div key={index} className="flex gap-2">
+                                    <Input
+                                      value={option}
+                                      onChange={(e) => {
+                                        const newOptions = [...(editingField.field_options || [])];
+                                        newOptions[index] = e.target.value;
+                                        setEditingField({
+                                          ...editingField,
+                                          field_options: newOptions
+                                        });
+                                      }}
+                                      placeholder={`Opção ${index + 1}`}
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleRemoveOption(index)}
+                                      disabled={(editingField.field_options?.length || 0) <= 1}
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
 
                           <div className="flex items-center justify-end gap-2 pt-4">
                             <Button

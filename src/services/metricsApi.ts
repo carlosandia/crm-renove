@@ -150,28 +150,15 @@ export class EnterpriseMetricsService {
           tenant_id,
           pipeline_id,
           lead_master_id,
-          pipeline_stages!inner(name, pipeline_id)
+          valor_unico,
+          valor_total_calculado,
+          valor_recorrente,
+          pipeline_stages!inner(name)
         `);
       
       opportunitiesQuery = applyFilters(opportunitiesQuery, filters, 'pipeline_leads');
       
-      // 🔍 DEBUG: Log da query final para identificar problema
-      console.log('🔍 [DEBUG] Query de oportunidades:', {
-        tenant_id: filters.tenant_id,
-        pipeline_id: filters.pipeline_id,
-        start_date: filters.start_date,
-        end_date: filters.end_date,
-        hasFilters: !!(filters.start_date || filters.end_date)
-      });
-      
       const { data: opportunitiesData, error: opportunitiesError } = await opportunitiesQuery;
-      
-      // 🔍 DEBUG: Log do resultado
-      console.log('🔍 [DEBUG] Resultado oportunidades:', {
-        count: opportunitiesData?.length || 0,
-        error: opportunitiesError?.message,
-        firstRecord: opportunitiesData?.[0]?.id?.substring(0, 8)
-      });
       
       if (opportunitiesError) {
         console.error('❌ Erro ao buscar oportunidades:', opportunitiesError);
@@ -182,38 +169,107 @@ export class EnterpriseMetricsService {
       const totalUniqueLeads = leadsData?.length || 0;
       const totalOpportunities = opportunitiesData?.length || 0;
       
-      // Identificar oportunidades ganhas (Ganho, Won, Closed Won)
+      // ✅ MELHORIA: Identificar oportunidades ganhas com detecção ampliada
       const wonOpportunities = opportunitiesData?.filter(opp => {
         const stage = opp.pipeline_stages;
         const stageName = (stage && typeof stage === 'object' && 'name' in stage) 
           ? (typeof stage.name === 'string' ? stage.name.toLowerCase() : '') 
           : '';
-        return stageName.includes('ganho') || stageName.includes('won') || stageName === 'closed won';
+        
+        // AIDEV-NOTE: Detectar múltiplos padrões de etapas ganhas
+        const winningPatterns = [
+          'ganho',
+          'won', 
+          'closed won',
+          'venda realizada',
+          'venda fechada',
+          'fechado',
+          'vendido',
+          'sucesso',
+          'finalizado',
+          'concluído'
+        ];
+        
+        // Verificar se a etapa contém qualquer padrão de vitória
+        return winningPatterns.some(pattern => stageName.includes(pattern));
       }) || [];
+      
+      // ✅ Log apenas em desenvolvimento para debug de etapas ganhas
+      if (import.meta.env.DEV && wonOpportunities.length !== opportunitiesData?.length) {
+        console.log('🎯 [DEBUG] Etapas encontradas:', opportunitiesData?.map(opp => opp.pipeline_stages?.name).join(', '));
+      }
       
       const salesCount = wonOpportunities.length;
       
-      // Calcular valor total das vendas
+      // ✅ MELHORIA: Calcular valor total das vendas com campos expandidos
       let totalSalesValue = 0;
+      const valueBreakdown: Array<{ opportunityId: string, value: number, source: string }> = [];
+      
       wonOpportunities.forEach(opp => {
-        const customData = opp.custom_data || {};
-        // Tentar vários campos de valor
-        const valueFields = ['valor_numerico', 'valor', 'value', 'price', 'amount'];
+        // Verificar campos diretos da oportunidade primeiro
+        const directFields = [
+          { name: 'valor_unico', value: opp.valor_unico },
+          { name: 'valor_total_calculado', value: opp.valor_total_calculado },
+          { name: 'valor_recorrente', value: opp.valor_recorrente }
+        ];
         
-        for (const field of valueFields) {
-          const fieldValue = customData[field];
-          if (fieldValue && typeof fieldValue === 'number' && fieldValue > 0) {
-            totalSalesValue += fieldValue;
+        let opportunityValue = 0;
+        let valueSource = '';
+        
+        // Primeiro: campos diretos da pipeline_leads
+        for (const field of directFields) {
+          if (field.value && typeof field.value === 'number' && field.value > 0) {
+            opportunityValue = field.value;
+            valueSource = `direct_${field.name}`;
             break;
-          } else if (fieldValue && typeof fieldValue === 'string') {
-            const numericValue = parseFloat(fieldValue.replace(/[R$\s,]/g, '').replace(',', '.'));
-            if (!isNaN(numericValue) && numericValue > 0) {
-              totalSalesValue += numericValue;
+          }
+        }
+        
+        // Segundo: campos no custom_data se não encontrou valor direto
+        if (opportunityValue === 0) {
+          const customData = opp.custom_data || {};
+          const customValueFields = [
+            'valor_numerico', 'valor', 'value', 'price', 'amount', 
+            'deal_value', 'sale_amount', 'ticket', 'receita'
+          ];
+          
+          for (const field of customValueFields) {
+            const fieldValue = customData[field];
+            if (fieldValue && typeof fieldValue === 'number' && fieldValue > 0) {
+              opportunityValue = fieldValue;
+              valueSource = `custom_${field}`;
               break;
+            } else if (fieldValue && typeof fieldValue === 'string') {
+              // Melhor parsing de strings com valores monetários
+              const cleanValue = fieldValue
+                .replace(/[R$\s]/g, '') // Remove R$, espaços
+                .replace(/\./g, '') // Remove separadores de milhares
+                .replace(',', '.'); // Troca vírgula decimal por ponto
+              
+              const numericValue = parseFloat(cleanValue);
+              if (!isNaN(numericValue) && numericValue > 0) {
+                opportunityValue = numericValue;
+                valueSource = `custom_string_${field}`;
+                break;
+              }
             }
           }
         }
+        
+        if (opportunityValue > 0) {
+          totalSalesValue += opportunityValue;
+          valueBreakdown.push({
+            opportunityId: opp.id.substring(0, 8),
+            value: opportunityValue,
+            source: valueSource
+          });
+        }
       });
+      
+      // ✅ Log resumido apenas em desenvolvimento ou quando há problemas
+      if (import.meta.env.DEV && totalSalesValue === 0 && wonOpportunities.length > 0) {
+        console.warn('⚠️ [DEBUG] Vendas sem valor:', { salesCount: wonOpportunities.length, valueBreakdown });
+      }
       
       // Calcular métricas derivadas
       const conversionRate = totalUniqueLeads > 0 ? (salesCount / totalUniqueLeads) * 100 : 0;
@@ -234,7 +290,7 @@ export class EnterpriseMetricsService {
         last_updated: new Date().toISOString()
       };
       
-      console.log('✅ [EnterpriseMetricsService] Métricas calculadas:', metrics);
+      // ✅ ETAPA 4: Log de métricas resultado removido (verboso durante cálculos)
       return metrics;
       
     } catch (error: any) {
@@ -248,10 +304,7 @@ export class EnterpriseMetricsService {
    */
   static async getDetailedMetrics(filters: MetricsFilters): Promise<DetailedMetrics> {
     try {
-      // ✅ OTIMIZADO: Log apenas em DEV
-      if (import.meta.env.DEV) {
-        console.log('🔍 [EnterpriseMetricsService] Buscando métricas detalhadas');
-      }
+      // ✅ ETAPA 4: Log de busca detailed removido (verboso)
       
       // 1. Buscar métricas básicas
       const basicMetrics = await this.getMetrics(filters);

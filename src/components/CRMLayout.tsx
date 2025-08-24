@@ -59,7 +59,8 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
     if (isFullWidth) {
       return `${baseClasses} overflow-visible`;
     }
-    return `${baseClasses} overflow-y-auto overflow-x-hidden`;
+    // ✅ CORREÇÃO CRÍTICA: Eliminar nested scroll - usar overflow visible também para módulos não-fullWidth
+    return `${baseClasses} overflow-visible`;
   }, [isFullWidth]);
 
   // ✅ MEMOIZAÇÃO DE PADDING RESPONSIVO
@@ -98,9 +99,18 @@ const CRMLayout: React.FC<CRMLayoutProps> = ({
       
       {/* Conteúdo principal - ocupa largura total abaixo do header */}
       <div className={mainContentClasses}>
-        <main className="flex-1 relative overflow-hidden" style={{ backgroundColor: '#F1F1FA' }}>
+        <main className="flex-1 relative overflow-visible" style={{ backgroundColor: '#F1F1FA' }}>
           {isFullWidth ? (
-            <div className="h-full w-full overflow-visible" style={{ backgroundColor: '#F1F1FA' }}>
+            <div 
+              className="w-full" 
+              style={{ 
+                backgroundColor: '#F1F1FA',
+                // ✅ HEIGHT CONTROL: Altura precisa que desconta o header
+                height: subHeaderContent ? 'calc(100vh - 110px)' : 'calc(100vh - 60px)',
+                // ✅ CORREÇÃO CRÍTICA: Permitir scroll natural do Kanban sem overflow-hidden
+                overflow: 'visible'
+              }}
+            >
               {children}
             </div>
           ) : (

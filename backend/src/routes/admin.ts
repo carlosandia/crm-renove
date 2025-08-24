@@ -1,5 +1,6 @@
 import express from 'express';
 import { supabaseAdmin } from '../services/supabase-admin';
+import { supabaseManagementAPI } from '../services/supabase-management-api';
 
 const router = express.Router();
 
@@ -43,6 +44,607 @@ router.post('/sql/execute', async (req, res) => {
     res.status(500).json({
       success: false,
       error: (error instanceof Error ? error.message : String(error))
+    });
+  }
+});
+
+/**
+ * GET /admin/auth/debug-user/:user_id
+ * Debug user metadata específico
+ */
+router.get('/auth/debug-user/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    
+    console.log('🔍 [DEBUG] Debugando usuário:', user_id);
+    
+    // Usar Management API para buscar dados completos do usuário
+    const userQuery = `
+      SELECT 
+        id,
+        email,
+        raw_user_meta_data,
+        created_at,
+        updated_at,
+        confirmed_at,
+        email_confirmed_at
+      FROM auth.users 
+      WHERE id = '${user_id}'
+      LIMIT 1;
+    `;
+    
+    const result = await supabaseManagementAPI.executeSQL(userQuery);
+    
+    if (!result.data || result.data.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Usuário não encontrado',
+        user_id
+      });
+    }
+    
+    const userData = result.data[0];
+    
+    const userMetadata = userData.raw_user_meta_data || {};
+    
+    console.log('📊 [DEBUG] Dados do usuário encontrados:', {
+      id: userData.id,
+      email: userData.email,
+      has_user_metadata: !!userData.raw_user_meta_data,
+      user_metadata_keys: Object.keys(userMetadata),
+      tenant_id_in_metadata: userMetadata?.tenant_id,
+      role_in_metadata: userMetadata?.role,
+      raw_user_meta_data: userData.raw_user_meta_data
+    });
+    
+    res.json({
+      success: true,
+      userData,
+      analysis: {
+        hasMetadata: !!userData.raw_user_meta_data,
+        metadataKeys: Object.keys(userMetadata),
+        hasTenantId: !!userMetadata?.tenant_id,
+        hasRole: !!userMetadata?.role,
+        tenantIdValue: userMetadata?.tenant_id,
+        roleValue: userMetadata?.role,
+        rawMetadata: userData.raw_user_meta_data
+      }
+    });
+    
+  } catch (error: any) {
+    console.error('❌ [DEBUG] Erro ao debugar usuário:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /admin/auth/list-users
+ * Listar todos os usuários para debug
+ */
+router.get('/auth/list-users', async (req, res) => {
+  try {
+    console.log('🔍 [DEBUG] Listando todos os usuários...');
+    
+    const usersQuery = `
+      SELECT 
+        id,
+        email,
+        raw_user_meta_data,
+        created_at,
+        confirmed_at
+      FROM auth.users 
+      ORDER BY created_at DESC
+      LIMIT 10;
+    `;
+    
+    const result = await supabaseManagementAPI.executeSQL(usersQuery);
+    
+    const users = (result.data || []).map((user: any) => ({
+      id: user.id,
+      email: user.email,
+      created_at: user.created_at,
+      confirmed_at: user.confirmed_at,
+      metadata: user.raw_user_meta_data || {},
+      tenant_id: user.raw_user_meta_data?.tenant_id,
+      role: user.raw_user_meta_data?.role
+    }));
+    
+    console.log('📊 [DEBUG] Usuários encontrados:', users.length);
+    
+    res.json({
+      success: true,
+      users,
+      count: users.length
+    });
+    
+  } catch (error: any) {
+    console.error('❌ [DEBUG] Erro ao listar usuários:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /admin/auth/check-tables
+ * Verificar tabelas relacionadas a usuários
+ */
+router.get('/auth/check-tables', async (req, res) => {
+  try {
+    console.log('🔍 [DEBUG] Verificando tabelas de usuários...');
+    
+    // Verificar tabelas relacionadas a usuários
+    const tablesQuery = `
+      SELECT table_name, table_schema
+      FROM information_schema.tables 
+      WHERE table_name LIKE '%user%' 
+         OR table_name LIKE '%member%' 
+         OR table_name LIKE '%auth%'
+         OR table_name = 'tenants'
+      ORDER BY table_schema, table_name;
+    `;
+    
+    const result = await supabaseManagementAPI.executeSQL(tablesQuery);
+    
+    const tables = result.data || [];
+    
+    console.log('📊 [DEBUG] Tabelas encontradas:', tables.length);
+    
+    // Verificar especificamente a tabela members
+    let membersData = null;
+    try {
+      const membersQuery = `
+        SELECT 
+          id,
+          email,
+          first_name,
+          last_name,
+          role,
+          tenant_id,
+          created_at
+        FROM members 
+        WHERE id = 'fdfeb609-8dbe-46fa-9bee-f7da4eb5dfd8'
+           OR email LIKE '%@%'
+        ORDER BY created_at DESC
+        LIMIT 5;
+      `;
+      
+      const membersResult = await supabaseManagementAPI.executeSQL(membersQuery);
+      membersData = membersResult.data || [];
+      
+      console.log('📊 [DEBUG] Dados da tabela members:', membersData.length, 'registros');
+    } catch (membersError) {
+      console.log('⚠️ [DEBUG] Tabela members não encontrada ou erro:', (membersError as Error).message);
+    }
+    
+    res.json({
+      success: true,
+      tables,
+      membersData,
+      analysis: {
+        totalTables: tables.length,
+        hasMembersTable: !!membersData,
+        membersCount: membersData?.length || 0
+      }
+    });
+    
+  } catch (error: any) {
+    console.error('❌ [DEBUG] Erro ao verificar tabelas:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /admin/auth/check-all-tables
+ * Verificar TODAS as tabelas do banco
+ */
+router.get('/auth/check-all-tables', async (req, res) => {
+  try {
+    console.log('🔍 [DEBUG] Verificando TODAS as tabelas do banco...');
+    
+    const allTablesQuery = `
+      SELECT 
+        table_name, 
+        table_schema,
+        table_type
+      FROM information_schema.tables 
+      WHERE table_schema NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+      ORDER BY table_schema, table_name;
+    `;
+    
+    const result = await supabaseManagementAPI.executeSQL(allTablesQuery);
+    
+    const tables = result.data || [];
+    
+    console.log('📊 [DEBUG] Total de tabelas encontradas:', tables.length);
+    
+    // Filtrar por schemas relevantes
+    const publicTables = tables.filter((t: any) => t.table_schema === 'public');
+    const authTables = tables.filter((t: any) => t.table_schema === 'auth');
+    
+    res.json({
+      success: true,
+      allTables: tables,
+      analysis: {
+        totalTables: tables.length,
+        publicTables: publicTables.length,
+        authTables: authTables.length,
+        schemas: [...new Set(tables.map((t: any) => t.table_schema))]
+      },
+      publicTables: publicTables.map((t: any) => t.table_name),
+      authTables: authTables.map((t: any) => t.table_name)
+    });
+    
+  } catch (error: any) {
+    console.error('❌ [DEBUG] Erro ao verificar todas as tabelas:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /admin/data/check-pipeline-leads
+ * Verificar dados pipeline_leads para debug DELETE
+ */
+router.get('/data/check-pipeline-leads', async (req, res) => {
+  try {
+    console.log('🔍 [DEBUG] Verificando dados pipeline_leads...');
+    
+    const pipelineLeadsQuery = `
+      SELECT 
+        id,
+        pipeline_id,
+        tenant_id,
+        created_at
+      FROM pipeline_leads 
+      WHERE tenant_id = 'd7caffc1-c923-47c8-9301-ca9eeff1a243'
+      ORDER BY created_at DESC
+      LIMIT 10;
+    `;
+    
+    const result = await supabaseManagementAPI.executeSQL(pipelineLeadsQuery);
+    
+    const pipelineLeads = result.data || [];
+    
+    console.log('📊 [DEBUG] Pipeline leads encontradas:', pipelineLeads.length);
+    
+    res.json({
+      success: true,
+      pipelineLeads,
+      count: pipelineLeads.length,
+      tenantId: 'd7caffc1-c923-47c8-9301-ca9eeff1a243',
+      analysis: {
+        totalFound: pipelineLeads.length,
+        correctTenantId: pipelineLeads.every((lead: any) => lead.tenant_id === 'd7caffc1-c923-47c8-9301-ca9eeff1a243')
+      }
+    });
+    
+  } catch (error: any) {
+    console.error('❌ [DEBUG] Erro ao verificar pipeline_leads:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /admin/data/check-all-pipeline-leads
+ * Verificar TODOS os dados pipeline_leads
+ */
+router.get('/data/check-all-pipeline-leads', async (req, res) => {
+  try {
+    console.log('🔍 [DEBUG] Verificando TODOS os dados pipeline_leads...');
+    
+    const allPipelineLeadsQuery = `
+      SELECT 
+        id,
+        pipeline_id,
+        tenant_id,
+        created_at,
+        COUNT(*) OVER (PARTITION BY tenant_id) as count_per_tenant
+      FROM pipeline_leads 
+      ORDER BY created_at DESC
+      LIMIT 20;
+    `;
+    
+    const result = await supabaseManagementAPI.executeSQL(allPipelineLeadsQuery);
+    
+    const pipelineLeads = result.data || [];
+    
+    // Agrupar por tenant_id
+    const tenantGroups = pipelineLeads.reduce((acc: any, lead: any) => {
+      const tenantId = lead.tenant_id || 'null';
+      if (!acc[tenantId]) {
+        acc[tenantId] = [];
+      }
+      acc[tenantId].push(lead);
+      return acc;
+    }, {});
+    
+    console.log('📊 [DEBUG] Pipeline leads por tenant:', Object.keys(tenantGroups));
+    
+    res.json({
+      success: true,
+      pipelineLeads,
+      count: pipelineLeads.length,
+      tenantGroups,
+      analysis: {
+        totalFound: pipelineLeads.length,
+        uniqueTenants: Object.keys(tenantGroups),
+        tenantCounts: Object.fromEntries(
+          Object.entries(tenantGroups).map(([tenant, leads]: [string, any]) => [tenant, leads.length])
+        )
+      }
+    });
+    
+  } catch (error: any) {
+    console.error('❌ [DEBUG] Erro ao verificar todos pipeline_leads:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /admin/data/find-pipeline-tables
+ * Encontrar tabelas que podem conter dados de pipeline
+ */
+router.get('/data/find-pipeline-tables', async (req, res) => {
+  try {
+    console.log('🔍 [DEBUG] Procurando tabelas de pipeline...');
+    
+    // Buscar todas as tabelas que podem conter dados de pipeline
+    const findTablesQuery = `
+      SELECT 
+        table_name, 
+        table_schema,
+        (SELECT COUNT(*) FROM information_schema.columns 
+         WHERE table_name = t.table_name 
+         AND table_schema = t.table_schema) as column_count
+      FROM information_schema.tables t
+      WHERE table_schema = 'public'
+        AND (table_name LIKE '%pipeline%' 
+             OR table_name LIKE '%lead%' 
+             OR table_name LIKE '%opportunity%'
+             OR table_name LIKE '%card%')
+      ORDER BY table_name;
+    `;
+    
+    const tablesResult = await supabaseManagementAPI.executeSQL(findTablesQuery);
+    const tables = tablesResult.data || [];
+    
+    // Para cada tabela encontrada, contar registros
+    const tableData = [];
+    for (const table of tables) {
+      try {
+        const countQuery = `SELECT COUNT(*) as total_records FROM ${table.table_name};`;
+        const countResult = await supabaseManagementAPI.executeSQL(countQuery);
+        const totalRecords = countResult.data?.[0]?.total_records || 0;
+        
+        tableData.push({
+          ...table,
+          totalRecords: parseInt(totalRecords)
+        });
+      } catch (err) {
+        console.log(`Erro ao contar registros da tabela ${table.table_name}:`, (err as Error).message);
+        tableData.push({
+          ...table,
+          totalRecords: 'ERROR'
+        });
+      }
+    }
+    
+    console.log('📊 [DEBUG] Tabelas de pipeline encontradas:', tableData.length);
+    
+    res.json({
+      success: true,
+      tables: tableData,
+      analysis: {
+        totalTables: tableData.length,
+        tablesWithData: tableData.filter(t => typeof t.totalRecords === 'number' && t.totalRecords > 0),
+        tableNames: tableData.map(t => t.table_name)
+      }
+    });
+    
+  } catch (error: any) {
+    console.error('❌ [DEBUG] Erro ao procurar tabelas de pipeline:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /admin/test/delete-simulation
+ * Simular DELETE operation via Service Role
+ */
+router.post('/test/delete-simulation', async (req, res) => {
+  try {
+    const { leadId, pipelineId } = req.body;
+    
+    if (!leadId || !pipelineId) {
+      return res.status(400).json({
+        success: false,
+        error: 'leadId e pipelineId são obrigatórios'
+      });
+    }
+    
+    console.log('🧪 [TEST] Simulando DELETE operation:', { leadId, pipelineId });
+    
+    // ✅ CORREÇÃO FINAL: leadId na aplicação = campo 'id' da tabela pipeline_leads
+    // O hook usa .eq('id', leadId), não .eq('lead_id', leadId)
+    const deleteSQL = `
+      DELETE FROM pipeline_leads 
+      WHERE id = '${leadId}' 
+        AND pipeline_id = '${pipelineId}'
+        AND tenant_id = 'c983a983-b1c6-451f-b528-64a5d1c831a0'
+      RETURNING id, lead_id, pipeline_id, tenant_id;
+    `;
+    
+    console.log('🔍 [TEST] SQL DELETE FINAL (usando campo id):', deleteSQL);
+    
+    // ✅ CORREÇÃO CRÍTICA: Usar Service Role ao invés de Management API
+    // Management API pode ter problemas de contexto - Service Role funciona perfeitamente
+    
+    // PRIMEIRA: Verificar se registro existe via Service Role
+    console.log('🔍 [TEST] Verificando registro via Service Role...');
+    const { data: existingData, error: checkError } = await supabaseManagementAPI.getClient()
+      .from('pipeline_leads')
+      .select('id, pipeline_id, tenant_id, lead_id')
+      .eq('id', leadId)
+      .eq('pipeline_id', pipelineId);
+      
+    console.log('📊 [TEST] Dados encontrados via Service Role:', { existingData, checkError });
+    
+    if (!existingData || existingData.length === 0) {
+      console.log('❌ [TEST] Registro não encontrado via Service Role');
+      return res.json({
+        success: false,
+        deletedRows: 0,
+        data: [],
+        message: 'Registro não encontrado no banco de dados',
+        testInfo: {
+          leadId,
+          pipelineId,
+          tenantId: 'c983a983-b1c6-451f-b528-64a5d1c831a0',
+          methodUsed: 'service-role-check',
+          recordFound: false
+        }
+      });
+    }
+    
+    // SEGUNDA: Executar DELETE via Service Role
+    console.log('🔄 [TEST] Executando DELETE via Service Role...');
+    const { data: deletedData, error: deleteError, count } = await supabaseManagementAPI.getClient()
+      .from('pipeline_leads')
+      .delete()
+      .eq('id', leadId)
+      .eq('pipeline_id', pipelineId)
+      .eq('tenant_id', 'c983a983-b1c6-451f-b528-64a5d1c831a0')
+      .select();
+      
+    console.log('📊 [TEST] Resultado DELETE via Service Role:', { deletedData, deleteError, count });
+    
+    if (deleteError) {
+      console.error('❌ [TEST] Erro no DELETE via Service Role:', deleteError);
+      return res.json({
+        success: false,
+        deletedRows: 0,
+        data: [],
+        message: `Erro ao executar DELETE: ${deleteError.message}`,
+        testInfo: {
+          leadId,
+          pipelineId,
+          tenantId: 'c983a983-b1c6-451f-b528-64a5d1c831a0',
+          methodUsed: 'service-role-delete',
+          error: deleteError.message
+        }
+      });
+    }
+    
+    const deletedRows = deletedData || [];
+    
+    console.log('📊 [TEST] Resultado final DELETE:', {
+      deletedRows: deletedRows.length,
+      data: deletedRows
+    });
+    
+    res.json({
+      success: deletedRows.length > 0,
+      deletedRows: deletedRows.length,
+      data: deletedRows,
+      message: deletedRows.length > 0 
+        ? `${deletedRows.length} oportunidade(s) excluída(s) com sucesso`
+        : 'Nenhuma oportunidade foi encontrada para exclusão',
+      testInfo: {
+        leadId,
+        pipelineId,
+        tenantId: 'c983a983-b1c6-451f-b528-64a5d1c831a0',
+        rlsPolicyApplied: true
+      }
+    });
+    
+  } catch (error: any) {
+    console.error('❌ [TEST] Erro no teste DELETE:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      testInfo: 'Erro durante simulação DELETE'
+    });
+  }
+});
+
+/**
+ * GET /admin/test/check-real-data
+ * Verificar dados usando cliente Supabase normal (mesmo que frontend)
+ */
+router.get('/test/check-real-data', async (req, res) => {
+  try {
+    console.log('🔍 [TEST] Verificando dados com cliente Supabase normal...');
+    
+    // Usar supabaseAdmin (Service Role) para verificar dados reais
+    const { data: pipelineLeads, error, count } = await supabaseAdmin.getClient()
+      .from('pipeline_leads')
+      .select('id, pipeline_id, tenant_id, created_at', { count: 'exact' })
+      .limit(10);
+    
+    if (error) {
+      console.error('❌ [TEST] Erro ao buscar pipeline_leads:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+        details: 'Erro ao acessar tabela pipeline_leads'
+      });
+    }
+    
+    console.log('📊 [TEST] Dados encontrados via Supabase Client:', {
+      count: pipelineLeads?.length || 0,
+      totalCount: count,
+      hasData: !!(pipelineLeads && pipelineLeads.length > 0)
+    });
+    
+    // Agrupar por tenant_id para análise
+    const tenantGroups = (pipelineLeads || []).reduce((acc: any, lead: any) => {
+      const tenantId = lead.tenant_id || 'null';
+      if (!acc[tenantId]) {
+        acc[tenantId] = [];
+      }
+      acc[tenantId].push(lead);
+      return acc;
+    }, {});
+    
+    res.json({
+      success: true,
+      method: 'supabase-client-service-role',
+      pipelineLeads: pipelineLeads || [],
+      totalCount: count,
+      tenantGroups,
+      analysis: {
+        hasData: !!(pipelineLeads && pipelineLeads.length > 0),
+        uniqueTenants: Object.keys(tenantGroups),
+        expectedTenant: 'd7caffc1-c923-47c8-9301-ca9eeff1a243',
+        hasExpectedTenant: tenantGroups.hasOwnProperty('d7caffc1-c923-47c8-9301-ca9eeff1a243')
+      }
+    });
+    
+  } catch (error: any) {
+    console.error('❌ [TEST] Erro crítico ao verificar dados reais:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      details: 'Erro crítico no cliente Supabase'
     });
   }
 });
@@ -932,6 +1534,313 @@ router.post('/create-opportunity', async (req, res) => {
       success: false,
       error: 'internal_error',
       message: 'Erro interno do servidor',
+      details: error?.message || 'Erro desconhecido'
+    });
+  }
+});
+
+// ==========================================
+// 8. MANAGEMENT API - MIGRATIONS AUTOMÁTICAS
+// ==========================================
+
+/**
+ * POST /admin/migrations/execute
+ * Executar migration específica via Management API
+ */
+router.post('/migrations/execute', async (req, res) => {
+  console.log('🚀 [ADMIN-API] Executando migration via Management API');
+  
+  try {
+    const { migrationName, sqlCommands, version } = req.body;
+
+    if (!migrationName) {
+      return res.status(400).json({
+        success: false,
+        error: 'validation_error',
+        message: 'Nome da migration é obrigatório'
+      });
+    }
+
+    console.log(`🔄 [ADMIN-API] Executando migration: ${migrationName}`);
+
+    let result;
+
+    // ✅ MIGRATIONS PREDEFINIDAS
+    if (migrationName === 'rls-pipeline-leads') {
+      // Migration específica para corrigir problema DELETE
+      result = await supabaseManagementAPI.applyRLSMigrationPipelineLeads();
+      
+    } else if (migrationName === 'custom' && sqlCommands) {
+      // Migration customizada
+      result = await supabaseManagementAPI.executeMultipleSQL(sqlCommands);
+      
+    } else if (migrationName === 'from-file' && version) {
+      // Migration de arquivo (futuro)
+      return res.status(501).json({
+        success: false,
+        error: 'not_implemented',
+        message: 'Migration de arquivo ainda não implementada'
+      });
+      
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: 'invalid_migration',
+        message: 'Migration não reconhecida ou parâmetros insuficientes'
+      });
+    }
+
+    console.log('✅ [ADMIN-API] Migration executada:', result);
+
+    return res.status(200).json({
+      success: true,
+      message: `Migration ${migrationName} executada via Management API`,
+      migration: migrationName,
+      result,
+      executedAt: new Date().toISOString(),
+      strategy: 'management-api'
+    });
+
+  } catch (error: any) {
+    console.error('❌ [ADMIN-API] Erro na execução da migration:', error);
+    
+    return res.status(500).json({
+      success: false,
+      error: 'migration_error',
+      message: 'Erro ao executar migration',
+      details: error?.message || 'Erro desconhecido'
+    });
+  }
+});
+
+/**
+ * GET /admin/migrations/status
+ * Verificar status das migrations
+ */
+router.get('/migrations/status', async (req, res) => {
+  try {
+    // Verificar status da migration RLS
+    const rlsStatus = await supabaseManagementAPI.checkRLSMigrationStatus();
+    
+    // Verificar conectividade geral
+    const connectivity = await supabaseManagementAPI.checkConnectivity();
+
+    return res.json({
+      success: true,
+      data: {
+        rls_migration: rlsStatus,
+        connectivity,
+        service_status: 'active',
+        last_checked: new Date().toISOString()
+      }
+    });
+
+  } catch (error: any) {
+    console.error('❌ [ADMIN-API] Erro ao verificar status das migrations:', error);
+    
+    return res.status(500).json({
+      success: false,
+      error: 'status_check_error',
+      message: 'Erro ao verificar status',
+      details: error?.message || 'Erro desconhecido'
+    });
+  }
+});
+
+/**
+ * POST /admin/management-api/execute-sql
+ * Executar SQL direto via Management API
+ */
+router.post('/management-api/execute-sql', async (req, res) => {
+  console.log('🔧 [ADMIN-API] Executando SQL via Management API');
+  
+  try {
+    const { sql, description } = req.body;
+
+    if (!sql) {
+      return res.status(400).json({
+        success: false,
+        error: 'validation_error',
+        message: 'SQL é obrigatório'
+      });
+    }
+
+    console.log(`🔄 [ADMIN-API] Executando SQL: ${description || 'SQL customizado'}`);
+    console.log(`📝 SQL: ${sql.substring(0, 100)}...`);
+
+    const result = await supabaseManagementAPI.executeSQL(sql);
+
+    return res.status(200).json({
+      success: true,
+      message: 'SQL executado via Management API',
+      description: description || 'SQL customizado',
+      result,
+      executedAt: new Date().toISOString(),
+      strategy: 'management-api-direct'
+    });
+
+  } catch (error: any) {
+    console.error('❌ [ADMIN-API] Erro na execução SQL via Management API:', error);
+    
+    return res.status(500).json({
+      success: false,
+      error: 'sql_execution_error',
+      message: 'Erro ao executar SQL',
+      details: error?.message || 'Erro desconhecido'
+    });
+  }
+});
+
+/**
+ * POST /admin/management-api/rls/create-policy
+ * Criar RLS Policy via Management API
+ */
+router.post('/management-api/rls/create-policy', async (req, res) => {
+  console.log('🔒 [ADMIN-API] Criando RLS Policy via Management API');
+  
+  try {
+    const { tableName, policyName, operation, using, withCheck } = req.body;
+
+    if (!tableName || !policyName || !operation) {
+      return res.status(400).json({
+        success: false,
+        error: 'validation_error',
+        message: 'tableName, policyName e operation são obrigatórios'
+      });
+    }
+
+    const result = await supabaseManagementAPI.createRLSPolicy({
+      tableName,
+      policyName,
+      operation,
+      using,
+      withCheck
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `RLS Policy '${policyName}' criada para tabela '${tableName}'`,
+      policy: { tableName, policyName, operation },
+      result,
+      executedAt: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    console.error('❌ [ADMIN-API] Erro ao criar RLS Policy:', error);
+    
+    return res.status(500).json({
+      success: false,
+      error: 'rls_policy_error',
+      message: 'Erro ao criar RLS Policy',
+      details: error?.message || 'Erro desconhecido'
+    });
+  }
+});
+
+/**
+ * DELETE /admin/management-api/rls/drop-policy
+ * Remover RLS Policy via Management API
+ */
+router.delete('/management-api/rls/drop-policy', async (req, res) => {
+  console.log('🗑️ [ADMIN-API] Removendo RLS Policy via Management API');
+  
+  try {
+    const { tableName, policyName } = req.body;
+
+    if (!tableName || !policyName) {
+      return res.status(400).json({
+        success: false,
+        error: 'validation_error',
+        message: 'tableName e policyName são obrigatórios'
+      });
+    }
+
+    const result = await supabaseManagementAPI.dropRLSPolicy(tableName, policyName);
+
+    return res.status(200).json({
+      success: true,
+      message: `RLS Policy '${policyName}' removida da tabela '${tableName}'`,
+      policy: { tableName, policyName },
+      result,
+      executedAt: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    console.error('❌ [ADMIN-API] Erro ao remover RLS Policy:', error);
+    
+    return res.status(500).json({
+      success: false,
+      error: 'rls_policy_error',
+      message: 'Erro ao remover RLS Policy',
+      details: error?.message || 'Erro desconhecido'
+    });
+  }
+});
+
+/**
+ * GET /admin/management-api/rls/list-policies/:table
+ * Listar RLS Policies de uma tabela
+ */
+router.get('/management-api/rls/list-policies/:table', async (req, res) => {
+  console.log('📋 [ADMIN-API] Listando RLS Policies via Management API');
+  
+  try {
+    const { table } = req.params;
+
+    if (!table) {
+      return res.status(400).json({
+        success: false,
+        error: 'validation_error',
+        message: 'Nome da tabela é obrigatório'
+      });
+    }
+
+    const policies = await supabaseManagementAPI.listRLSPolicies(table);
+
+    return res.json({
+      success: true,
+      data: policies,
+      table,
+      count: policies.length,
+      executedAt: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    console.error('❌ [ADMIN-API] Erro ao listar RLS Policies:', error);
+    
+    return res.status(500).json({
+      success: false,
+      error: 'rls_list_error',
+      message: 'Erro ao listar RLS Policies',
+      details: error?.message || 'Erro desconhecido'
+    });
+  }
+});
+
+/**
+ * GET /admin/management-api/connectivity
+ * Verificar conectividade do Management API
+ */
+router.get('/management-api/connectivity', async (req, res) => {
+  console.log('🔍 [ADMIN-API] Verificando conectividade Management API');
+  
+  try {
+    const connectivity = await supabaseManagementAPI.checkConnectivity();
+
+    return res.json({
+      success: true,
+      data: connectivity,
+      config: supabaseManagementAPI.getConfig(),
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    console.error('❌ [ADMIN-API] Erro ao verificar conectividade:', error);
+    
+    return res.status(500).json({
+      success: false,
+      error: 'connectivity_error',
+      message: 'Erro ao verificar conectividade',
       details: error?.message || 'Erro desconhecido'
     });
   }

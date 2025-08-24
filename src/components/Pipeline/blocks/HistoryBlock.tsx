@@ -73,8 +73,8 @@ const HistoryBlock: React.FC<HistoryBlockProps> = ({
           </button>
         </div>
 
-        {/* Timeline do histórico */}
-        <div className="flex-1 overflow-y-auto pr-1">
+        {/* Timeline do histórico - SEM scroll para evitar nested scroll com Kanban */}
+        <div className="flex-1 overflow-visible pr-1">
           {historyLoading ? (
             <div className="text-center py-8 text-gray-500">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>

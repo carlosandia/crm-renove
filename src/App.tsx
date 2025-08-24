@@ -1,6 +1,7 @@
 import React from 'react'
 import { Outlet } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import AuthProvider from './providers/AuthProvider'
 import { ModalProvider } from './contexts/ModalContext'
 import { Toaster } from './components/ui/toaster'
@@ -41,6 +42,13 @@ function App() {
             </div>
           </ModalProvider>
         </AuthProvider>
+        {/* ✅ TanStack Query Devtools - apenas em desenvolvimento */}
+        {import.meta.env.DEV && (
+          <ReactQueryDevtools 
+            initialIsOpen={false}
+            position="bottom-right"
+          />
+        )}
       </QueryClientProvider>
     </SafeErrorBoundary>
   )

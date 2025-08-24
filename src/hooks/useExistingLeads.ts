@@ -12,22 +12,11 @@ export const useExistingLeads = (pipelineId: string | undefined) => {
   return useQuery({
     queryKey: ['existing-leads', pipelineId, user?.role, user?.id], // ✅ Cache role-based
     queryFn: async () => {
-      console.log('🔍 [useExistingLeads] Iniciando carregamento:', {
-        pipeline_id: pipelineId?.substring(0, 8),
-        user_role: user?.role,
-        user_id: user?.id?.substring(0, 8)
-      });
+      // ✅ ETAPA 4: Log de carregamento removido (verboso durante refetch)
       
       const leads = await LeadOpportunityApiService.loadExistingLeads(pipelineId!);
       
-      console.log('📋 [useExistingLeads] Hook recebeu leads:', {
-        total: leads.length,
-        user_role: user?.role,
-        sample_leads: leads.slice(0, 2).map(l => ({
-          id: l.id.substring(0, 8),
-          nome: l.custom_data?.nome
-        }))
-      });
+      // ✅ ETAPA 4: Log de recebimento removido (verboso durante operações)
       
       return leads;
     },

@@ -43,6 +43,44 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
   const [fieldDisplaySettings, setFieldDisplaySettings] = useState<Record<string, boolean>>({});
   const [loading, setSaving] = useState(false);
 
+  // ✅ CORREÇÃO: Processar field_options para garantir que seja array
+  const processedCustomFields = useMemo(() => {
+    return customFields.map(field => {
+      let processedOptions = field.field_options;
+      
+      // ✅ CORREÇÃO: Se field_options é string, fazer parse para array
+      if (field.field_type === 'select' && field.field_options) {
+        if (typeof field.field_options === 'string') {
+          try {
+            processedOptions = JSON.parse(field.field_options);
+            console.log('🔍 [LeadEditModal] Parsed field_options:', {
+              field: field.field_name,
+              original: field.field_options,
+              parsed: processedOptions
+            });
+          } catch (error) {
+            console.warn('❌ [LeadEditModal] Erro ao fazer parse de field_options:', {
+              field: field.field_name,
+              value: field.field_options,
+              error
+            });
+            processedOptions = [];
+          }
+        }
+        
+        // ✅ GARANTIR: que é sempre um array válido
+        if (!Array.isArray(processedOptions)) {
+          processedOptions = [];
+        }
+      }
+      
+      return {
+        ...field,
+        field_options: processedOptions
+      };
+    });
+  }, [customFields]);
+
   // Inicializar dados do formulário
   useEffect(() => {
     if (isOpen && lead) {
@@ -50,13 +88,13 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
       
       // Inicializar configurações de exibição
       const displaySettings: Record<string, boolean> = {};
-      customFields.forEach(field => {
+      processedCustomFields.forEach(field => {
         displaySettings[field.field_name] = field.show_in_card || 
           ['nome', 'email', 'telefone', 'valor', 'empresa'].some(key => field.field_name.includes(key));
       });
       setFieldDisplaySettings(displaySettings);
     }
-  }, [isOpen, lead, customFields]);
+  }, [isOpen, lead, processedCustomFields]);
 
   const handleFieldChange = (fieldName: string, value: any) => {
     setFormData(prev => ({
@@ -184,7 +222,7 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Informações do Lead</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {customFields
+                  {processedCustomFields
                     .sort((a, b) => a.field_order - b.field_order)
                     .map((field) => (
                       <div key={field.id} className={field.field_type === 'textarea' ? 'md:col-span-2' : ''}>
@@ -245,7 +283,7 @@ const LeadEditModal: React.FC<LeadEditModalProps> = ({
                 </p>
                 
                 <div className="space-y-4">
-                  {customFields
+                  {processedCustomFields
                     .sort((a, b) => a.field_order - b.field_order)
                     .map((field) => (
                       <div key={field.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">

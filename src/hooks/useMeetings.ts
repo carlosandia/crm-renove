@@ -39,8 +39,10 @@ export function useLeadMeetings(
     queryKey: meetingsQueryKeys.leadWithFilters(leadId, query),
     queryFn: () => MeetingsAPI.getLeadMeetings(leadId, query),
     enabled: !!leadId,
-    staleTime: 5 * 60 * 1000, // 5 minutos
-    gcTime: 10 * 60 * 1000,   // 10 minutos
+    staleTime: 10 * 60 * 1000, // ✅ ETAPA 5: 10 minutos (reuniões mudam pouco)
+    gcTime: 15 * 60 * 1000,   // ✅ ETAPA 5: 15 minutos - cache longo
+    refetchOnWindowFocus: false, // ✅ ETAPA 5: Evitar refetch desnecessário
+    retry: 2, // ✅ ETAPA 5: Reduzir tentativas
   });
 }
 

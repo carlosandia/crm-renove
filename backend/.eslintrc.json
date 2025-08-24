@@ -2,15 +2,27 @@
   "root": true,
   "env": { 
     "node": true, 
-    "es2020": true 
+    "es2022": true,
+    "browser": true
+  },
+  "globals": {
+    "Response": "readonly",
+    "RequestInit": "readonly",
+    "Headers": "readonly",
+    "Request": "readonly",
+    "FormData": "readonly",
+    "Blob": "readonly",
+    "File": "readonly",
+    "URLSearchParams": "readonly"
   },
   "extends": [
-    "eslint:recommended"
+    "eslint:recommended",
+    "@typescript-eslint/recommended"
   ],
   "plugins": ["@typescript-eslint"],
   "parser": "@typescript-eslint/parser",
   "parserOptions": {
-    "ecmaVersion": 2020,
+    "ecmaVersion": 2022,
     "sourceType": "module"
   },
   "rules": {
@@ -18,7 +30,8 @@
     "@typescript-eslint/no-explicit-any": "warn",
     "@typescript-eslint/explicit-function-return-type": "off",
     "no-console": "off",
-    "prefer-const": "warn"
+    "prefer-const": "warn",
+    "no-control-regex": "warn"
   },
   "ignorePatterns": ["dist", "node_modules"]
 } 

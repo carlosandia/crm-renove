@@ -11,7 +11,9 @@ import { useAutoCleanupEventManager } from '../../services/EventManager';
 import { useArchivePipelineMutation } from '../../hooks/useArchivePipelineMutation';
 import { useQueryClient } from '@tanstack/react-query';
 import { QueryKeys } from '../../lib/queryKeys';
-import { api } from '../../lib/api';
+import { api, getBatchingStats, clearBatchingCache } from '../../lib/api';
+import { logger } from '../../utils/logger';
+import { formatLeadIdForLog, formatLeadLogContext } from '../../utils/logFormatters';
 
 // Lazy loading dos componentes principais
 // ModernAdminPipelineManagerRefactored removido - usando PipelineKanbanView como substituto
@@ -57,6 +59,31 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
     getAdminCreatedPipelines,
     getMemberLinkedPipelines 
   } = usePipelineData();
+
+  // 🔍 LOG CRÍTICO: Verificar dados recebidos do hook usePipelineData
+  useEffect(() => {
+    console.log('🔍 [UNIFIED-MANAGER-DEBUG] DADOS DO HOOK usePipelineData:', {
+      timestamp: new Date().toISOString(),
+      allPipelines: {
+        count: allPipelines?.length || 0,
+        hasVendas: allPipelines?.some(p => p.name === 'Vendas') || false,
+        names: allPipelines?.map(p => p.name) || [],
+        firstPipeline: allPipelines?.[0] ? {
+          id: allPipelines[0].id,
+          name: allPipelines[0].name,
+          tenant_id: allPipelines[0].tenant_id,
+          is_active: allPipelines[0].is_active
+        } : null
+      },
+      loading,
+      user: user ? {
+        id: user.id,
+        email: user.email,
+        tenant_id: user.tenant_id,
+        role: user.role
+      } : null
+    });
+  }, [allPipelines, loading, user]);
   const { 
     members, 
     loading: membersLoading, 
@@ -66,33 +93,33 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
   // ✅ THROTTLING: Ref para controlar logs duplicados
   const lastMembersLogTime = useRef<number>(0);
   
-  // ✅ DEBUG: Log detalhado do resultado do hook useMembers com throttling
+  // ✅ BATCHING STATS: Monitoramento de performance do sistema de batching
   useEffect(() => {
-    // ✅ OTIMIZAÇÃO: Log com throttling para evitar spam (apenas uma vez por 5 segundos)
+    if (process.env.NODE_ENV === 'development') {
+      const interval = setInterval(() => {
+        // ✅ PRIORIDADE 3: Obter estatísticas sem log duplicado (log feito pelo próprio componente)
+        const stats = getBatchingStats(false);
+        if (stats.pendingBatches > 0 || stats.dedupCacheSize > 0) {
+          console.log('📊 [UnifiedPipelineManager] Batching Stats:', {
+            pendingBatches: stats.pendingBatches,
+            dedupCacheSize: stats.dedupCacheSize,
+            totalRequests: stats.totalRequests,
+            dedupHits: stats.dedupHits
+          });
+        }
+      }, 20000); // A cada 20 segundos
+
+      return () => clearInterval(interval);
+    }
+  }, []);
+  
+  // Monitorar mudanças no hook useMembers
+  useEffect(() => {
+    // Throttling para evitar logs excessivos
     const now = Date.now();
     if (process.env.NODE_ENV === 'development' && (now - lastMembersLogTime.current >= 5000)) {
       lastMembersLogTime.current = now;
-      console.log('🔍 [UnifiedPipelineManager] Hook useMembers resultado ATUALIZADO:', {
-        membersLength: members?.length || 0,
-        membersLoading,
-        userTenant: user?.tenant_id,
-        userRole: user?.role,
-        membersData: members?.map(m => ({ 
-          id: m.id, 
-          name: `${m.first_name} ${m.last_name}`, 
-          email: m.email,
-          role: m.role,
-          is_active: m.is_active,
-          tenant_id: m.tenant_id,
-          auth_user_id: m.auth_user_id,
-          isRafael: m.email === 'rafael@renovedigital.com.br' || m.first_name.toLowerCase().includes('rafael')
-        })) || [],
-        salesMembers: members?.filter(m => m.role === 'member' && m.is_active !== false) || [],
-        rafaelFound: members?.find(m => 
-          m.email === 'rafael@renovedigital.com.br' || 
-          m.first_name.toLowerCase().includes('rafael')
-        ) || null
-      });
+      // Hook useMembers resultado atualizado com throttling
     }
   }, [members, membersLoading, user?.tenant_id, user?.role]);
 
@@ -100,7 +127,7 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
   useEffect(() => {
     // Executar apenas uma vez quando componente monta e tem tenant_id
     if (user?.tenant_id && forceRefreshWithAuthIds) {
-      console.log('🔄 [ETAPA-2] UnifiedPipelineManager forçando refresh inicial com IDs de auth.users');
+      // ✅ ETAPA 4: Log de refresh inicial removido (verboso durante startup)
       forceRefreshWithAuthIds().catch(error => {
         console.error('❌ [ETAPA-2] Erro ao forçar refresh inicial:', error);
       });
@@ -156,28 +183,23 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
       showErrorToast('Acesso negado', 'Apenas administradores podem criar pipelines');
       return;
     }
-    console.log('➕ [UnifiedPipelineManager] Abrindo modal de criação');
+    // ✅ ETAPA 4: Log de modal creation removido (verboso)
     setEditingPipeline(null);
     setShowCreateModal(true);
   }, [isAdmin]);
 
   const handleEditPipeline = useCallback((pipeline: Pipeline) => {
-    // ✅ DEBUG CRÍTICO: Log detalhado da pipeline que está sendo editada
-    console.log('🔍 [PIPELINE-ID-DEBUG] handleEditPipeline chamado:', {
-      pipeline_id: pipeline?.id,
-      pipeline_name: pipeline?.name,
-      pipeline_full: pipeline
-    });
+    // Pipeline sendo editada
     
     // ✅ CONTROLE DE PERMISSÕES: Admin pode editar, member só pode visualizar
-    console.log(`✏️ [UnifiedPipelineManager] ${isAdmin ? 'Editando' : 'Visualizando'} pipeline:`, pipeline.name);
+    // ✅ ETAPA 4: Log de modal edit removido (verboso)
     setEditingPipeline(pipeline);
     setShowEditModal(true);
   }, [isAdmin]);
 
   const handleDuplicatePipeline = useCallback(async (pipeline: Pipeline) => {
     try {
-      console.log('🔄 [UnifiedPipelineManager] Duplicando pipeline:', pipeline.name);
+      // ✅ ETAPA 4: Log de duplicate inicio removido (verboso)
       
       // Validação de permissão
       if (!isAdmin) {
@@ -212,7 +234,7 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
       await refreshPipelines();
       
       // 🔄 CORREÇÃO PONTUAL: Notificar AppDashboard sobre nova pipeline via evento
-      console.log('🔄 [CORREÇÃO-DROPDOWN] Notificando AppDashboard sobre pipeline duplicada');
+      // ✅ ETAPA 4: Log de notificação dropdown removido (verboso)
       window.dispatchEvent(new CustomEvent('pipeline-duplicated', {
         detail: {
           pipeline: response.data.pipeline,
@@ -222,11 +244,11 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
       }));
       
       // 🚀 NAVEGAÇÃO AUTOMÁTICA: Abrir modal da pipeline duplicada
-      console.log('✅ [UnifiedPipelineManager] Abrindo modal da pipeline duplicada:', response.data.pipeline.name);
+      // ✅ ETAPA 4: Log de modal duplicated removido (verboso)
       setEditingPipeline(response.data.pipeline);
       setShowEditModal(true);
       
-      console.log('✅ [UnifiedPipelineManager] Pipeline duplicada com sucesso:', response.data.pipeline?.name);
+      // ✅ ETAPA 4: Log de duplicate success removido (verboso)
       
     } catch (error: any) {
       console.error('❌ [UnifiedPipelineManager] Erro ao duplicar pipeline:', error);
@@ -240,7 +262,7 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
   // ✅ FASE 2: ENTERPRISE-GRADE Archive Handler
   const handleArchivePipeline = useCallback(async (pipelineId: string, shouldArchive: boolean = true) => {
     console.log(`🚀 [ENTERPRISE] ${shouldArchive ? 'Arquivando' : 'Desarquivando'} pipeline com UX moderna:`, {
-      pipelineId: pipelineId.substring(0, 8),
+      pipelineId: formatLeadIdForLog(pipelineId),
       shouldArchive,
       hasPermission: isAdmin,
       optimisticEnabled: true
@@ -268,7 +290,7 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
       setEditingPipeline(optimisticUpdate);
       
       console.log(`⚡ [MODAL-OPTIMISTIC] Modal atualizado instantaneamente:`, {
-        pipelineId: pipelineId.substring(0, 8),
+        pipelineId: formatLeadIdForLog(pipelineId),
         newState: { is_archived: shouldArchive, is_active: !shouldArchive }
       });
     }
@@ -280,19 +302,15 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
       pipelineName
     });
     
-    console.log(`🎯 [ENTERPRISE] Mutation executada - UI já atualizada via optimistic update`);
+    // UI já atualizada via optimistic update
   }, [isAdmin, pipelines, editingPipeline, setEditingPipeline, archiveMutation]);
 
   const handleUnarchivePipeline = useCallback(async (pipelineId: string) => {
     return handleArchivePipeline(pipelineId, false);
   }, [handleArchivePipeline]);
 
-  // ✅ CORREÇÃO: Handler para abrir LeadDetailsModal
-  const handleViewDetails = useCallback((lead: Lead) => {
-    console.log('📋 [UnifiedPipelineManager] Abrindo LeadDetailsModal para:', lead.first_name + ' ' + lead.last_name);
-    setSelectedLead(lead);
-    setShowLeadModal(true);
-  }, []);
+  // AIDEV-NOTE: handleViewDetails será definido mais abaixo após selectedPipelineToRender
+  // para evitar Temporal Dead Zone Error
 
   // ✅ CORREÇÃO CRÍTICA: Memoizar funções onClose para evitar loops infinitos
   const handleCloseCreateModal = useCallback(() => {
@@ -439,7 +457,7 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
       console.debug('🔍 [UnifiedPipelineManager] Análise de autosave:', {
         correlationId: safeOptions.correlationId,
         isAutoSave,
-        targetPipelineId: targetPipelineId.substring(0, 8),
+        targetPipelineId: formatLeadIdForLog(targetPipelineId),
         onlyCustomFields: safeOptions.onlyCustomFields,
         isAutoSaveFlag: safeOptions.isAutoSave,
         isUpdate: safeOptions.isUpdate,
@@ -725,6 +743,190 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
     }
   }, [handleArchivePipeline]);
 
+  // ✅ CORREÇÃO: Handler para abrir LeadDetailsModal (definido após selectedPipelineToRender)
+  const handleViewDetails = useCallback((lead: Lead) => {
+    console.log('📋 [UnifiedPipelineManager] Abrindo LeadDetailsModal para:', {
+      lead_name: lead.custom_data?.nome_oportunidade || lead.first_name + ' ' + lead.last_name,
+      lead_id: lead.id,
+      lead_pipeline_id: lead.pipeline_id,
+      selectedPipelineToRender_id: selectedPipelineToRender?.id,
+      lead_custom_data: {
+        qtd_colaboradores: lead.custom_data?.qtd_colaboradores,
+        quantidade_de_funcionrios: lead.custom_data?.quantidade_de_funcionrios,
+        nome_oportunidade: lead.custom_data?.nome_oportunidade
+      }
+    });
+    
+    // ✅ CORREÇÃO CRÍTICA: Garantir que o lead tenha pipeline_id antes de abrir modal
+    if (!lead.pipeline_id && selectedPipelineToRender?.id) {
+      console.log('🔧 [UnifiedPipelineManager] CORREÇÃO: Lead sem pipeline_id, usando selectedPipelineToRender');
+      lead.pipeline_id = selectedPipelineToRender.id;
+    }
+    
+    setSelectedLead(lead);
+    setShowLeadModal(true);
+  }, [selectedPipelineToRender?.id]);
+
+  // ✅ FASE 2: OPTIMISTIC UPDATES - Handler para atualizar lead com feedback visual imediato
+  const handleLeadUpdate = useCallback(async (leadId: string, updatedData: any) => {
+    console.log('📥 [UnifiedPipelineManager] CALLBACK handleLeadUpdate RECEBIDO:', { 
+      leadId: formatLeadIdForLog(leadId, { includeEllipsis: true }), 
+      updatedData,
+      updatedDataKeys: Object.keys(updatedData || {}),
+      pipelineId: selectedPipelineToRender?.id,
+      timestamp: new Date().toISOString(),
+      source: 'MinimalHorizontalStageSelector onStageChange'
+    });
+    
+    try {
+      // ✅ FASE 2: OPTIMISTIC UPDATE - Atualizar cache imediatamente para feedback visual
+      const pipelineLeadsKey = ['pipeline-leads', selectedPipelineToRender?.id];
+      const queryKeysPattern = QueryKeys.pipelineLeads.byPipeline(selectedPipelineToRender?.id);
+      
+      console.log('⚡ [UnifiedPipelineManager] INICIANDO OPTIMISTIC UPDATE para feedback visual imediato:', {
+        leadId: formatLeadIdForLog(leadId),
+        newStageId: updatedData?.stage_id,
+        pipelineId: selectedPipelineToRender?.id
+      });
+
+      // ✅ OPTIMISTIC UPDATE: Atualizar múltiplas queries simultaneamente
+      const updateQueries = [pipelineLeadsKey, queryKeysPattern];
+      
+      updateQueries.forEach(queryKey => {
+        queryClient.setQueryData(queryKey, (oldData: any) => {
+          if (!oldData) {
+            console.log('⚠️ [OPTIMISTIC] Query sem dados para atualizar:', queryKey);
+            return oldData;
+          }
+
+          console.log('🎯 [OPTIMISTIC] Atualizando query:', {
+            queryKey,
+            hasData: !!oldData,
+            oldDataType: Array.isArray(oldData) ? 'array' : typeof oldData
+          });
+
+          // Se é array de leads direto
+          if (Array.isArray(oldData)) {
+            const updatedLeads = oldData.map(lead => {
+              if (lead.id === leadId) {
+                const optimisticLead = {
+                  ...lead,
+                  ...updatedData,
+                  // ✅ MARCA VISUAL: Adicionar flags para destacar lead movido
+                  _isOptimistic: true,
+                  _optimisticTimestamp: Date.now()
+                };
+                
+                console.log('✨ [OPTIMISTIC] Lead atualizado otimisticamente:', {
+                  leadId: formatLeadIdForLog(lead.id),
+                  oldStageId: lead.stage_id,
+                  newStageId: optimisticLead.stage_id,
+                  timestamp: optimisticLead._optimisticTimestamp
+                });
+                
+                return optimisticLead;
+              }
+              return lead;
+            });
+            
+            return updatedLeads;
+          }
+
+          // Se é objeto com propriedade data (formato comum do React Query)
+          if (oldData?.data && Array.isArray(oldData.data)) {
+            return {
+              ...oldData,
+              data: oldData.data.map(lead => {
+                if (lead.id === leadId) {
+                  const optimisticLead = {
+                    ...lead,
+                    ...updatedData,
+                    _isOptimistic: true,
+                    _optimisticTimestamp: Date.now()
+                  };
+                  
+                  console.log('✨ [OPTIMISTIC] Lead em data array atualizado:', {
+                    leadId: formatLeadIdForLog(lead.id),
+                    oldStageId: lead.stage_id,
+                    newStageId: optimisticLead.stage_id
+                  });
+                  
+                  return optimisticLead;
+                }
+                return lead;
+              })
+            };
+          }
+
+          // Outros formatos de dados
+          console.log('⚠️ [OPTIMISTIC] Formato de dados não reconhecido:', {
+            queryKey,
+            dataType: typeof oldData,
+            hasData: !!oldData.data,
+            keys: Object.keys(oldData || {})
+          });
+          
+          return oldData;
+        });
+      });
+
+      console.log('⚡ [UnifiedPipelineManager] OPTIMISTIC UPDATE APLICADO - INICIANDO CACHE INVALIDATION...');
+      
+      // ✅ INVALIDAÇÃO DE CACHE: Após optimistic update, invalidar para garantir consistência
+      console.log('🔄 [UnifiedPipelineManager] INVALIDANDO MÚLTIPLOS CACHES...');
+      
+      console.log('🎯 [UnifiedPipelineManager] Query Key 1:', pipelineLeadsKey);
+      queryClient.invalidateQueries({
+        queryKey: pipelineLeadsKey
+      });
+      
+      console.log('🎯 [UnifiedPipelineManager] Query Key 2:', queryKeysPattern);
+      queryClient.invalidateQueries({
+        queryKey: queryKeysPattern
+      });
+      
+      // Invalidar dados gerais da pipeline
+      const pipelineByIdKey = QueryKeys.pipelines.byId(selectedPipelineToRender?.id);
+      console.log('🎯 [UnifiedPipelineManager] Query Key 3:', pipelineByIdKey);
+      
+      queryClient.invalidateQueries({
+        queryKey: pipelineByIdKey
+      });
+      
+      // ✅ NOVO: Invalidar também a query específica da pipeline (usada no kanban)
+      const pipelineSpecificKey = ['pipeline', selectedPipelineToRender?.id, user?.tenant_id];
+      console.log('🎯 [UnifiedPipelineManager] Query Key 4:', pipelineSpecificKey);
+      
+      queryClient.invalidateQueries({
+        queryKey: pipelineSpecificKey
+      });
+      
+      console.log('🔄 [UnifiedPipelineManager] EXECUTANDO refreshPipelines...');
+      
+      // Refresh dos dados da pipeline para garantir sincronização
+      await refreshPipelines();
+      
+      console.log('✅ [UnifiedPipelineManager] OPTIMISTIC UPDATE + CACHE INVALIDATION COMPLETADOS');
+      
+      // ✅ ADICIONAL: Forçar refetch para garantir que os dados sejam atualizados imediatamente
+      setTimeout(() => {
+        console.log('🔄 [UnifiedPipelineManager] FORÇANDO REFETCH APÓS 150ms para sincronização final...');
+        queryClient.refetchQueries({
+          queryKey: pipelineLeadsKey,
+          exact: false
+        });
+      }, 150);
+      
+    } catch (error) {
+      console.error('❌ [UnifiedPipelineManager] ERRO CRÍTICO ao sincronizar mudanças:', {
+        error: error.message || error,
+        leadId: formatLeadIdForLog(leadId, { includeEllipsis: true }),
+        updatedData,
+        pipelineId: selectedPipelineToRender?.id
+      });
+    }
+  }, [queryClient, selectedPipelineToRender?.id, refreshPipelines, user?.tenant_id]);
+
   useEffect(() => {
     if (!isAdmin) return;
 
@@ -968,8 +1170,39 @@ const UnifiedPipelineManager: React.FC<UnifiedPipelineManagerProps> = ({
               setSelectedLead(null);
             }}
             lead={selectedLead}
-            customFields={selectedPipelineToRender?.pipeline_custom_fields || []}
-            pipelineId={selectedPipelineToRender?.id || ''}
+            customFields={(() => {
+              // 🔍 DIAGNÓSTICO: Log detalhado dos customFields
+              const customFields = selectedPipelineToRender?.pipeline_custom_fields || [];
+              // Campos customizados da pipeline carregados
+              return customFields;
+            })()}
+            pipelineId={(() => {
+              // ✅ CORREÇÃO CRÍTICA: Garantir pipeline_id sempre disponível com validação robusta
+              const leadPipelineId = selectedLead?.pipeline_id;
+              const currentPipelineId = selectedPipelineToRender?.id;
+              const finalPipelineId = leadPipelineId || currentPipelineId || '';
+              
+              // ✅ CORREÇÃO ETAPA 1: Guards para evitar logs com valores undefined
+              // Só loga se há dados significativos para mostrar
+              if (leadPipelineId || currentPipelineId || selectedLead?.custom_data?.nome_oportunidade) {
+                console.log('🔍 [RENDER-DEBUG] UnifiedPipelineManager - Pipeline ID para modal:', {
+                  ...(leadPipelineId && { propsData_leadPipelineId: leadPipelineId }),
+                  ...(currentPipelineId && { propsData_currentPipelineId: currentPipelineId }),
+                  ...(finalPipelineId && { localState_finalPipelineId: finalPipelineId }),
+                  componentWillRender: !!finalPipelineId,
+                  ...(selectedLead?.custom_data?.nome_oportunidade && { 
+                    leadName: selectedLead.custom_data.nome_oportunidade 
+                  }),
+                  selectedLead_exists: !!selectedLead,
+                  selectedPipeline_exists: !!selectedPipelineToRender
+                });
+              } else {
+                console.log('🔍 [RENDER-DEBUG] UnifiedPipelineManager - Dados incompletos, pulando log detalhado');
+              }
+              
+              return finalPipelineId;
+            })()}
+            onUpdate={handleLeadUpdate}
           />
         </PipelineErrorBoundary>
       </Suspense>

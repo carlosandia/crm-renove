@@ -24,7 +24,7 @@
 .crm-content {
   flex: 1;
   padding: 2rem;
-  overflow-y: auto;
+  /* overflow-y: auto; ✅ COMENTADO: Evitar nested scroll container que interfere com @hello-pangea/dnd */
 }
 
 /* ============================================ */

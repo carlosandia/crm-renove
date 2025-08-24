@@ -5,6 +5,7 @@ import {
   Target, Loader2, Users, AlertTriangle, CheckCircle
 } from 'lucide-react';
 import { useAuth } from '../../providers/AuthProvider';
+import { parseMoneyInput } from '../../utils/formatUtils';
 
 // ✅ NOVA ARQUITETURA: Hooks com TanStack Query + API Backend
 import { useExistingLeads } from '../../hooks/useExistingLeads';
@@ -12,6 +13,7 @@ import { usePipelineStages } from '../../hooks/usePipelineStages';
 import { usePipelineMembers } from '../../hooks/usePipelineMembers';
 import { useCreateOpportunity } from '../../hooks/useCreateOpportunity';
 import { useDebouncedLeadByEmail, isValidEmail } from '../../hooks/useLeadByEmail';
+import { useFieldOptionsParsing } from '../../hooks/useFieldOptionsParsing';
 import {
   Dialog,
   DialogContent,
@@ -120,10 +122,17 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
     // ✅ CORREÇÃO: Filtrar campos básicos para evitar duplicação
     const basicFields = ['email', 'telefone', 'phone', 'nome', 'name', 'first_name', 'last_name'];
     
-    return (pipeline?.pipeline_custom_fields || [])
+    const allFields = pipeline?.pipeline_custom_fields || [];
+    const filteredFields = allFields
       .filter(field => !basicFields.includes(field.field_name.toLowerCase()))
       .sort((a, b) => a.field_order - b.field_order);
+    
+    
+    return filteredFields;
   }, [pipeline?.pipeline_custom_fields]);
+
+  // ✅ CORREÇÃO: Processar field_options strings JSON para arrays
+  const processedCustomFields = useFieldOptionsParsing(customFields);
 
   // ============================================
   // MÁSCARAS DE INPUT
@@ -340,10 +349,23 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
   };
 
   const handleCustomFieldChange = (fieldName: string, value: any) => {
-    setCustomFieldsData(prev => ({
-      ...prev,
-      [fieldName]: value
-    }));
+    
+    setCustomFieldsData(prev => {
+      const updatedData = {
+        ...prev,
+        [fieldName]: value
+      };
+      
+      // 🔍 DIAGNÓSTICO: Log do estado atualizado
+      console.log('🔍 [CUSTOM-FIELDS-STATE-UPDATE]', {
+        previous: prev,
+        updated: updatedData,
+        fieldChanged: fieldName,
+        newValue: value
+      });
+      
+      return updatedData;
+    });
     
     // Limpar erro de validação
     if (validationErrors[fieldName]) {
@@ -400,7 +422,7 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
     });
     
     // Preencher campos customizados se existirem
-    customFields.forEach(field => {
+    processedCustomFields.forEach(field => {
       if (customData[field.field_name]) {
         setCustomFieldsData(prev => ({
           ...prev,
@@ -544,21 +566,23 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
     
     try {
       // ✅ NOVA ARQUITETURA: Preparar dados para API backend
-      // ✅ CORREÇÃO SIMPLES: Converter formato brasileiro para decimal (R$ 33,00 → 33.00)
-      const processedValue = opportunityData.valor ? 
-        opportunityData.valor.replace(/[R$\s]/g, '').replace(',', '.') : '';
+      // ✅ CORREÇÃO CRÍTICA: Usar parseMoneyInput para converter formato brasileiro corretamente
+      const valorNumerico = opportunityData.valor ? 
+        parseMoneyInput(opportunityData.valor) : 0;
       
-      console.log('💰 [StepLeadModal] Processamento de valor:', {
+      console.log('💰 [StepLeadModal] Processamento de valor corrigido:', {
         valor_original: opportunityData.valor,
-        valor_processado: processedValue,
-        valor_tipo: typeof processedValue
+        valor_numerico: valorNumerico,
+        valor_tipo: typeof valorNumerico,
+        conversao: `${opportunityData.valor} → ${valorNumerico}`
       });
+      
       
       const opportunityRequest = {
         pipeline_id: pipeline!.id,
         stage_id: firstStageId,
         nome_oportunidade: opportunityData.nome_oportunidade,
-        valor: processedValue,
+        valor: valorNumerico.toString(),
         responsavel: opportunityData.responsavel || user?.id,
         nome_lead: leadData.nome,
         nome_contato: leadData.nome,
@@ -568,8 +592,19 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
         telefone_contato: leadData.telefone || '',
         lead_source: leadMode === 'existing' ? 'existing_lead' as const : 'new_lead' as const,
         existing_lead_id: selectedLead?.id || null,
-        // Incluir campos customizados
-        ...customFieldsData
+        // ✅ CORREÇÃO: Aninhar campos customizados no objeto custom_data
+        custom_data: {
+          // Manter campos básicos no custom_data para compatibilidade
+          nome: leadData.nome,
+          nome_lead: leadData.nome,
+          nome_contato: leadData.nome,
+          email: leadData.email,
+          email_contato: leadData.email,
+          telefone: leadData.telefone || '',
+          telefone_contato: leadData.telefone || '',
+          // Incluir campos customizados definidos pelo usuário
+          ...customFieldsData
+        }
       };
 
       console.log('🚀 [StepLeadModal] Enviando para API backend:', {
@@ -577,8 +612,18 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
         stage: firstStageId,
         nome: opportunityRequest.nome_oportunidade,
         source: opportunityRequest.lead_source,
-        existing_lead: opportunityRequest.existing_lead_id || 'N/A'
+        existing_lead: opportunityRequest.existing_lead_id || 'N/A',
+        custom_data_structure: Object.keys(opportunityRequest.custom_data || {}),
+        customFieldsData_original: Object.keys(customFieldsData)
       });
+      
+      // 🔍 DIAGNÓSTICO: Log detalhado da nova estrutura custom_data
+      console.log('🔍 [CUSTOM-DATA-FIX] Nova estrutura do payload:', {
+        custom_data_keys: Object.keys(opportunityRequest.custom_data || {}),
+        custom_data_values: opportunityRequest.custom_data,
+        customFieldsData_original: customFieldsData
+      });
+
 
       // ✅ NOVA ARQUITETURA: Usar mutation hook em vez de onSubmit prop
       await createOpportunityMutation.mutateAsync(opportunityRequest);
@@ -629,6 +674,7 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
     const value = customFieldsData[field.field_name] || '';
     const hasError = validationErrors[field.field_name];
     
+    
     const baseProps = {
       id: field.field_name,
       value,
@@ -644,18 +690,33 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
         return <Textarea {...baseProps} rows={3} />;
       
       case 'select':
+        const hasValidOptions = Array.isArray(field.field_options) && field.field_options.length > 0;
+        
+        // 🔍 DEBUG: Log do estado das opções para diagnóstico
+        console.log('🔍 [StepLeadModal] Renderizando campo select:', {
+          fieldName: field.field_name,
+          fieldLabel: field.field_label,
+          fieldOptions: field.field_options,
+          fieldOptionsType: typeof field.field_options,
+          isArray: Array.isArray(field.field_options),
+          hasValidOptions,
+          optionsLength: field.field_options?.length || 0
+        });
+        
         return (
           <Select value={value} onValueChange={(val) => handleCustomFieldChange(field.field_name, val)}>
             <SelectTrigger className={hasError ? 'border-red-500' : ''}>
-              <SelectValue placeholder={`Selecione ${field.field_label.toLowerCase()}`} />
+              <SelectValue placeholder={hasValidOptions ? `Selecione ${field.field_label.toLowerCase()}` : 'Nenhuma opção disponível'} />
             </SelectTrigger>
-            <SelectContent>
-              {(field.field_options || []).map((option, index) => (
-                <SelectItem key={index} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
+            {hasValidOptions && (
+              <SelectContent>
+                {field.field_options.map((option, index) => (
+                  <SelectItem key={index} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            )}
           </Select>
         );
       
@@ -1006,7 +1067,7 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
                 <h3 className="text-lg font-medium text-gray-900">Campos Customizados</h3>
               </div>
               <div className="pl-11">
-                {customFields.length === 0 ? (
+                {processedCustomFields.length === 0 ? (
                   <div className="text-center py-12 text-gray-500">
                     <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-gray-100 flex items-center justify-center">
                       <Target className="w-5 h-5 text-gray-400" />
@@ -1015,7 +1076,7 @@ const StepLeadModal: React.FC<StepLeadModalProps> = ({
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {customFields.map(field => (
+                    {processedCustomFields.map(field => (
                       <div key={field.id} className={field.field_type === 'textarea' ? 'md:col-span-2' : ''}>
                         <Label htmlFor={field.field_name} className="block text-sm font-medium text-gray-700 mb-2">
                           {field.field_label}

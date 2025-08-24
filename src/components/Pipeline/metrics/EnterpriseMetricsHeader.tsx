@@ -360,6 +360,95 @@ export const EnterpriseMetricsHeader: React.FC<EnterpriseMetricsHeaderProps> = (
   }
   
   // ============================================================================
+  // RENDER ESTADO VAZIO
+  // ============================================================================
+  
+  // Verificar se existe dados para mostrar
+  const hasData = metrics && (
+    metrics.total_unique_leads > 0 || 
+    metrics.total_opportunities > 0 || 
+    metrics.sales_count > 0
+  );
+  
+  if (!isLoading && !error && !hasData) {
+    return (
+      <div className={cn("enterprise-metrics-header", className)}>
+        {/* Header com controles */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-3">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Métricas Enterprise
+            </h2>
+            <Badge variant="outline" className="text-xs text-gray-500">
+              Sem dados
+            </Badge>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            {/* Period selector */}
+            <select
+              value={selectedPeriod}
+              onChange={(e) => handlePeriodChange(e.target.value as PredefinedPeriod)}
+              className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="today">Hoje</option>
+              <option value="7days">7 dias</option>
+              <option value="30days">30 dias</option>
+              <option value="90days">90 dias</option>
+              <option value="current_month">Mês atual</option>
+            </select>
+            
+            {/* Refresh button */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRefresh}
+              className="flex items-center space-x-1"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span className="hidden sm:inline">Atualizar</span>
+            </Button>
+          </div>
+        </div>
+        
+        {/* Estado vazio */}
+        <div className="flex flex-col items-center justify-center py-12 px-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+          <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-4">
+            <BarChart3 className="w-8 h-8 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            Nenhum dado encontrado
+          </h3>
+          <p className="text-sm text-gray-600 text-center mb-6 max-w-md">
+            Não há leads, oportunidades ou vendas para o período selecionado. 
+            Verifique se existem dados no pipeline ou tente um período diferente.
+          </p>
+          <div className="flex items-center space-x-4">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRefresh}
+              className="flex items-center space-x-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Atualizar dados</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => handlePeriodChange('90days')}
+              className="flex items-center space-x-2"
+            >
+              <Calendar className="w-4 h-4" />
+              <span>Ampliar período</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // ============================================================================
   // RENDER PRINCIPAL
   // ============================================================================
   

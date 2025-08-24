@@ -1,4 +1,28 @@
 import { Request, Response, NextFunction } from 'express';
+
+// ✅ INTERFACE: Definição específica para Request autenticado
+interface AuthenticatedUser {
+  id: string;
+  email: string;
+  tenant_id: string;
+  role: string;
+  first_name?: string;
+  last_name?: string;
+}
+
+interface AuthenticatedRequest extends Request {
+  user?: AuthenticatedUser;
+}
+
+interface WebhookAuth {
+  tenantId: string;
+  apiKey: string;
+  authenticatedVia: string;
+}
+
+interface WebhookRequest extends Request {
+  webhookAuth?: WebhookAuth;
+}
 import { supabase } from '../config/supabase';
 
 // AIDEV-NOTE: Autenticação simplificada usando token Supabase diretamente
@@ -30,7 +54,7 @@ function shouldLogAuth(userId: string, type: 'success' | 'verify'): boolean {
  * Compatível com frontend que envia session.access_token
  */
 export async function simpleAuth(
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> {
@@ -73,14 +97,7 @@ export async function simpleAuth(
       tenant_id: user.user_metadata?.tenant_id || '',
       role: user.user_metadata?.role || 'member', // ✅ Preserva role real (admin, member, etc.)
       first_name: user.user_metadata?.first_name,
-      last_name: user.user_metadata?.last_name,
-      // ✅ COMPATIBILIDADE: Manter estrutura nested também para legacy
-      user_metadata: {
-        tenant_id: user.user_metadata?.tenant_id || '',
-        role: user.user_metadata?.role || 'member',
-        first_name: user.user_metadata?.first_name,
-        last_name: user.user_metadata?.last_name
-      }
+      last_name: user.user_metadata?.last_name
     };
 
     // ✅ THROTTLING: Log de sucesso com throttling inteligente
@@ -109,7 +126,7 @@ export async function simpleAuth(
  * Para rotas que podem funcionar com ou sem autenticação
  */
 export async function optionalSimpleAuth(
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> {
@@ -158,7 +175,7 @@ export async function optionalSimpleAuth(
  * Aceita API Keys via múltiplos métodos para suportar N8N, Zapier, Make.com, etc.
  */
 export async function webhookAuth(
-  req: Request,
+  req: WebhookRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> {
@@ -242,7 +259,7 @@ export async function webhookAuth(
  * Para rotas que podem aceitar tanto usuários quanto webhooks
  */
 export async function hybridAuth(
-  req: Request,
+  req: AuthenticatedRequest & WebhookRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> {

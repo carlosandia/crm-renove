@@ -5,7 +5,7 @@ import { Badge } from '../../ui/badge';
 interface LeadCardBodyProps {
   leadCreatedAt: string;
   daysInCard: number;
-  temperatureBadge: {
+  qualificationBadge: {
     icon: React.ReactNode;
     label: string;
     color: string;
@@ -16,7 +16,7 @@ interface LeadCardBodyProps {
 export const LeadCardBody: React.FC<LeadCardBodyProps> = ({
   leadCreatedAt,
   daysInCard,
-  temperatureBadge
+  qualificationBadge
 }) => {
   // Função para formatação de data
   const formatDate = (dateString: string): string => {
@@ -27,7 +27,7 @@ export const LeadCardBody: React.FC<LeadCardBodyProps> = ({
   };
 
   return (
-    <div className="flex items-center justify-between mb-2">
+    <div className="w-full flex items-center justify-between mb-1">
       <div className="flex items-center gap-1.5">
         <div className="flex items-center gap-1">
           <Calendar className="h-3 w-3 text-gray-400" />
@@ -45,11 +45,11 @@ export const LeadCardBody: React.FC<LeadCardBodyProps> = ({
       
       <Badge 
         variant="outline" 
-        className={`text-xs ${temperatureBadge.color} flex-shrink-0 flex items-center gap-1`}
-        title={temperatureBadge.tooltip}
+        className={`text-xs ${qualificationBadge.color} flex-shrink-0 flex items-center gap-1`}
+        title={qualificationBadge.tooltip}
       >
-        {temperatureBadge.icon}
-        <span className="text-xs font-medium">{temperatureBadge.label}</span>
+        {qualificationBadge.icon}
+        <span className="text-xs font-medium">{qualificationBadge.label}</span>
       </Badge>
     </div>
   );

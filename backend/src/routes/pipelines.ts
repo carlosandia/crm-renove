@@ -1,8 +1,8 @@
-import express, { Router, Request, Response } from 'express';
+import express, { Request, Response } from 'express';
 import { PipelineController } from '../controllers/PipelineController';
 import { CustomFieldController } from '../controllers/customFieldController';
 import { LeadController } from '../controllers/leadController';
-import { supabase, createUserSupabaseClient } from '../config/supabase';
+import { supabase } from '../config/supabase';
 // FASE 1: Cache Integration (simplified)
 import { cacheMiddlewares } from '../middleware/cacheMiddleware';
 import { authenticateToken } from '../middleware/auth';
@@ -2000,7 +2000,7 @@ router.post('/:pipelineId/qualification-rules', authenticateToken, async (req: R
 
     // Primeiro, remover regras existentes da pipeline
     const { error: deleteError } = await supabase
-      .from('pipeline_qualification_rules')
+      .from('qualification_rules')
       .delete()
       .eq('pipeline_id', pipelineId)
       .eq('tenant_id', pipeline.tenant_id);
@@ -2014,28 +2014,20 @@ router.post('/:pipelineId/qualification-rules', authenticateToken, async (req: R
       // Regras MQL
       ...(qualification_rules.mql || []).map((rule: any) => ({
         pipeline_id: pipelineId,
-        rule_type: 'mql',
-        rule_name: rule.description || `${rule.field} ${rule.operator}`,
-        conditions: {
-          field: rule.field,
-          operator: rule.operator,
-          value: rule.value,
-          description: rule.description
-        },
+        field_name: rule.field,
+        condition: rule.operator,
+        value: rule.value,
+        qualification_level: 'MQL',
         is_active: true,
         tenant_id: pipeline.tenant_id
       })),
       // Regras SQL
       ...(qualification_rules.sql || []).map((rule: any) => ({
         pipeline_id: pipelineId,
-        rule_type: 'sql',
-        rule_name: rule.description || `${rule.field} ${rule.operator}`,
-        conditions: {
-          field: rule.field,
-          operator: rule.operator,
-          value: rule.value,
-          description: rule.description
-        },
+        field_name: rule.field,
+        condition: rule.operator,
+        value: rule.value,
+        qualification_level: 'SQL',
         is_active: true,
         tenant_id: pipeline.tenant_id
       }))
@@ -2045,7 +2037,7 @@ router.post('/:pipelineId/qualification-rules', authenticateToken, async (req: R
     let insertedRules = [];
     if (rulesToInsert.length > 0) {
       const { data: inserted, error: insertError } = await supabase
-        .from('pipeline_qualification_rules')
+        .from('qualification_rules')
         .insert(rulesToInsert)
         .select();
 
@@ -2064,8 +2056,8 @@ router.post('/:pipelineId/qualification-rules', authenticateToken, async (req: R
     console.log('✅ [Qualification] Regras salvas com sucesso:', {
       pipelineId,
       totalInserted: insertedRules.length,
-      mqlCount: insertedRules.filter(r => r.rule_type === 'mql').length,
-      sqlCount: insertedRules.filter(r => r.rule_type === 'sql').length
+      mqlCount: insertedRules.filter(r => r.qualification_level === 'MQL').length,
+      sqlCount: insertedRules.filter(r => r.qualification_level === 'SQL').length
     });
 
     res.status(200).json({
@@ -2112,7 +2104,7 @@ router.get('/:pipelineId/qualification-rules', authenticateToken, async (req: Re
 
     // Buscar regras existentes
     const { data: rules, error: rulesError } = await supabase
-      .from('pipeline_qualification_rules')
+      .from('qualification_rules')
       .select('*')
       .eq('pipeline_id', pipelineId)
       .eq('tenant_id', pipeline.tenant_id)
@@ -2129,23 +2121,23 @@ router.get('/:pipelineId/qualification-rules', authenticateToken, async (req: Re
 
     // Organizar regras por tipo
     const mql = (rules || [])
-      .filter(r => r.rule_type === 'mql')
+      .filter(r => r.qualification_level === 'MQL')
       .map(rule => ({
         id: rule.id,
-        field: rule.conditions?.field || '',
-        operator: rule.conditions?.operator || 'equals',
-        value: rule.conditions?.value || '',
-        description: rule.conditions?.description || rule.rule_name || ''
+        field: rule.field_name || '',
+        operator: rule.condition || 'equals',
+        value: rule.value || '',
+        description: `${rule.field_name} ${rule.condition} ${rule.value}`
       }));
 
     const sql = (rules || [])
-      .filter(r => r.rule_type === 'sql')
+      .filter(r => r.qualification_level === 'SQL')
       .map(rule => ({
         id: rule.id,
-        field: rule.conditions?.field || '',
-        operator: rule.conditions?.operator || 'equals',
-        value: rule.conditions?.value || '',
-        description: rule.conditions?.description || rule.rule_name || ''
+        field: rule.field_name || '',
+        operator: rule.condition || 'equals',
+        value: rule.value || '',
+        description: `${rule.field_name} ${rule.condition} ${rule.value}`
       }));
 
     const qualificationRules = { mql, sql };

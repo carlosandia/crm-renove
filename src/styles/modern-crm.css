@@ -18,7 +18,8 @@
 
 /* Conteúdo principal */
 .crm-content {
-  @apply flex-1 p-6 overflow-y-auto bg-background;
+  @apply flex-1 p-6 bg-background;
+  /* overflow-y: auto; ✅ COMENTADO: Evitar nested scroll container que interfere com @hello-pangea/dnd */
 }
 
 /* Container de conteúdo moderno */
@@ -130,7 +131,8 @@
 
 /* Tabelas modernas */
 .modern-table-container {
-  @apply overflow-x-auto rounded-lg border border-border;
+  @apply rounded-lg border border-border;
+  /* overflow-x: auto; ✅ COMENTADO: Evitar nested scroll container que interfere com @hello-pangea/dnd */
 }
 
 .modern-table {

@@ -7,11 +7,17 @@ import { logger } from '../utils/logger';
 
 /**
  * ✅ URL UNIVERSAL: Detecção automática baseada no hostname atual
- * CORREÇÃO CRÍTICA: Retorna URL base SEM /api pois será adicionado na rota
+ * CORREÇÃO CRÍTICA: Retorna URL base SEM /api pois VITE_API_URL já inclui /api
  */
 const getCurrentBackendURL = () => {  
-  // Usar variável de ambiente configurada ou fallback para desenvolvimento
-  return import.meta.env.VITE_API_URL || (import.meta.env.VITE_ENVIRONMENT === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:3001');
+  // VITE_API_URL já inclui /api, então removemos /api da construção manual
+  const apiUrl = import.meta.env.VITE_API_URL;
+  if (apiUrl) {
+    // Se termina com /api, remove para evitar duplicação
+    return apiUrl.endsWith('/api') ? apiUrl.slice(0, -4) : apiUrl;
+  }
+  // Fallback para desenvolvimento
+  return import.meta.env.VITE_ENVIRONMENT === 'production' ? 'https://crm.renovedigital.com.br' : 'http://127.0.0.1:3001';
 };
 
 /**
@@ -89,7 +95,9 @@ export const useCreateOpportunity = () => {
         valor: data.valor,
         nome_contato: data.nome_contato,
         email_contato: data.email_contato,
-        telefone_contato: data.telefone_contato
+        telefone_contato: data.telefone_contato,
+        // ✅ CORREÇÃO CRÍTICA: Incluir custom_data no payload
+        custom_data: data.custom_data
       };
 
       // ✅ CORREÇÃO: URL com prefixo /api/ correto
@@ -98,7 +106,11 @@ export const useCreateOpportunity = () => {
       
       logger.debug('Backend API request', {
         operation: 'backend-api-request',
-        url: createOpportunityUrl
+        url: createOpportunityUrl,
+        // 🔍 DIAGNÓSTICO: Verificar se custom_data está sendo enviado
+        hasCustomData: !!requestPayload.custom_data,
+        customDataKeys: requestPayload.custom_data ? Object.keys(requestPayload.custom_data) : [],
+        customDataValues: requestPayload.custom_data
       });
 
       const response = await fetch(createOpportunityUrl, {

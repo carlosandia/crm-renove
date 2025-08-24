@@ -288,10 +288,10 @@ export const TasksDropdown: React.FC<TasksDropdownProps> = ({
   // TasksDropdown agora funciona sem logs de debug desnecessários
 
   return (
-    <div className="flex-shrink-0 relative overflow-hidden">
+    <div className="flex-shrink-0 relative overflow-visible">
       <div
         ref={badgeRef}
-        className={`px-1.5 py-0.5 rounded-full text-[10px] font-normal cursor-pointer transition-all overflow-hidden ${progressBadge.color}`}
+        className={`px-1.5 py-0.5 rounded-full text-[10px] font-normal cursor-pointer transition-all overflow-visible ${progressBadge.color}`}
         title={progressBadge.title}
         onClick={(e) => {
           e.stopPropagation();
@@ -315,13 +315,9 @@ export const TasksDropdown: React.FC<TasksDropdownProps> = ({
       {/* Dropdown de tarefas quando clicado - USANDO PORTAL */}
       {showTasksDropdown && createPortal(
         <>
-          <style>{`
-            .tasks-dropdown-content::-webkit-scrollbar {
-              display: none;
-            }
-          `}</style>
+          {/* ✅ CORREÇÃO: Removido CSS webkit scrollbar para eliminar scroll containers */}
           <div 
-            className="fixed w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[32rem] overflow-hidden flex flex-col"
+            className="fixed w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-visible flex flex-col"
             style={{
               top: `${dropdownPosition.top}px`,
               left: `${dropdownPosition.left}px`
@@ -360,11 +356,10 @@ export const TasksDropdown: React.FC<TasksDropdownProps> = ({
 
             {/* ✅ CORREÇÃO: Conteúdo principal scrollável, altura fixa */}
             <div 
-              className="flex-1 overflow-y-auto tasks-dropdown-content" 
+              className="flex-1 overflow-visible tasks-dropdown-content" 
               style={{
-                scrollbarWidth: 'none',
-                msOverflowStyle: 'none',
-                maxHeight: '24rem', // Reduzir altura para dar espaço ao footer
+                // ✅ CORREÇÃO: Removidas propriedades de scroll e altura máxima
+                position: 'relative'
               }}
             >
               {tasksLoading ? (
@@ -398,7 +393,7 @@ export const TasksDropdown: React.FC<TasksDropdownProps> = ({
                         stageIndex={group.stageIndex}
                       />
                       
-                      <Collapsible.Content className="overflow-hidden data-[state=closed]:animate-slide-up data-[state=open]:animate-slide-down">
+                      <Collapsible.Content className="overflow-visible data-[state=closed]:animate-slide-up data-[state=open]:animate-slide-down">
                         <div className="bg-gray-25">
                           {group.tasks.map((task, index) => (
                             <div
@@ -424,7 +419,7 @@ export const TasksDropdown: React.FC<TasksDropdownProps> = ({
                               </div>
 
                               {/* Conteúdo da tarefa */}
-                              <div className="flex-1 min-w-0">
+                              <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-1">
                                   <div className={`flex items-center gap-1 ${
                                     task.is_overdue ? 'text-red-600' :

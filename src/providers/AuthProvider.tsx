@@ -2,6 +2,7 @@ import React, { useState, useEffect, createContext, useContext, useCallback, use
 import { User } from '../types/User';
 import { supabase } from '../lib/supabase';
 import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
+import { migrateUserToAppMetadata, checkMigrationStatus } from '../utils/migrateToAppMetadata';
 
 // AIDEV-NOTE: AuthProvider ULTRA SIMPLIFICADO - sistema básico do Supabase
 // Eliminada complexidade desnecessária, foco em funcionalidade básica
@@ -27,15 +28,29 @@ export const useAuth = () => {
   return context;
 };
 
-// AIDEV-NOTE: Conversão simplificada - Basic Supabase Authentication apenas
+// AIDEV-NOTE: Conversão melhorada - prioriza app_metadata (seguro) sobre user_metadata
 const convertSupabaseUser = (supabaseUser: SupabaseUser, session?: Session | null): User => {
+  // ✅ CORREÇÃO SEGURANÇA: Priorizar app_metadata sobre user_metadata
+  const userMetadata = supabaseUser.user_metadata || {};
+  const appMetadata = supabaseUser.app_metadata || {};
+  
+  // Prioridade: app_metadata > user_metadata > fallback
+  const tenantIdFromAppMetadata = appMetadata.tenant_id;
+  const tenantIdFromUserMetadata = userMetadata.tenant_id;
+  const fallbackTenantId = 'c983a983-b1c6-451f-b528-64a5d1c831a0'; // ✅ tenant_id REAL do banco
+  
+  const finalTenantId = tenantIdFromAppMetadata || tenantIdFromUserMetadata || fallbackTenantId;
+  const tenantIdSource = tenantIdFromAppMetadata ? 'app_metadata (SECURE)' : 
+                        tenantIdFromUserMetadata ? 'user_metadata (NEEDS MIGRATION)' : 
+                        'fallback (NEEDS SETUP)';
+  
   const convertedUser = {
     id: supabaseUser.id,
     email: supabaseUser.email || '',
-    first_name: supabaseUser.user_metadata?.first_name || '',
-    last_name: supabaseUser.user_metadata?.last_name || '',
-    role: supabaseUser.user_metadata?.role || 'admin', // padrão simples
-    tenant_id: supabaseUser.user_metadata?.tenant_id || 'c983a983-b1c6-451f-b528-64a5d1c831a0', // padrão correto
+    first_name: userMetadata.first_name || '',
+    last_name: userMetadata.last_name || '',
+    role: userMetadata.role || appMetadata.role || 'admin', // priorizar app_metadata para role também
+    tenant_id: finalTenantId, // ✅ SEMPRE garantir tenant_id com prioridade segura
     is_active: true, // sempre ativo para login básico
     created_at: supabaseUser.created_at || new Date().toISOString(), // incluir created_at
     // ✅ JWT token removido - usando apenas Basic Supabase Authentication
@@ -45,16 +60,21 @@ const convertSupabaseUser = (supabaseUser: SupabaseUser, session?: Session | nul
   const cacheKey = `${supabaseUser.id}-${convertedUser.tenant_id}`;
   if (process.env.NODE_ENV === 'development' && !userConversionLogCache.has(cacheKey)) {
     userConversionLogCache.add(cacheKey);
-    console.log('🔍 [AUTH] Usuario convertido - DIAGNÓSTICO TENANT_ID:', {
+    console.log('🔍 [AUTH] Usuario convertido - MIGRAÇÃO app_metadata IMPLEMENTADA:', {
       email: convertedUser.email,
       role: convertedUser.role,
       tenant_id_final: convertedUser.tenant_id,
-      tenant_id_type: typeof convertedUser.tenant_id,
-      user_metadata_completo: supabaseUser.user_metadata,
-      metadata_tenant_id: supabaseUser.user_metadata?.tenant_id,
-      metadata_tenant_id_type: typeof supabaseUser.user_metadata?.tenant_id,
-      esta_usando_fallback: !supabaseUser.user_metadata?.tenant_id,
-      fallback_value: 'c983a983-b1c6-451f-b528-64a5d1c831a0',
+      tenant_id_source: tenantIdSource,
+      migration_status: {
+        has_app_metadata_tenant_id: !!tenantIdFromAppMetadata,
+        has_user_metadata_tenant_id: !!tenantIdFromUserMetadata,
+        needs_migration: !tenantIdFromAppMetadata && !!tenantIdFromUserMetadata,
+        secure: !!tenantIdFromAppMetadata
+      },
+      metadata_comparison: {
+        app_metadata: appMetadata,
+        user_metadata: userMetadata
+      },
       supabase_user_id: supabaseUser.id?.substring(0, 8)
     });
   }
@@ -68,6 +88,100 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   const [session, setSession] = useState<Session | null>(null);
 
   // AIDEV-NOTE: fetchUserData removida - usando sistema básico direto da sessão
+
+  // ✅ CORREÇÃO CRÍTICA: Função para garantir sincronização de sessão
+  const ensureSessionSynchronization = useCallback(async (session: Session): Promise<boolean> => {
+    try {
+      console.log('🔄 [AUTH] Garantindo sincronização de sessão...');
+      
+      // ETAPA 1: Definir sessão explicitamente no cliente
+      const { error: setSessionError } = await supabase.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token
+      });
+      
+      if (setSessionError) {
+        console.error('❌ [AUTH] Erro ao definir sessão:', setSessionError);
+        return false;
+      }
+      
+      // ETAPA 2: Aguardar propagação da sessão
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // ETAPA 3: Validar se auth.uid() funciona
+      const { data: validation, error: validationError } = await supabase.auth.getUser();
+      
+      if (validationError || !validation.user) {
+        console.error('❌ [AUTH] Validação falhou:', validationError);
+        return false;
+      }
+      
+      console.log('✅ [AUTH] Sessão sincronizada com sucesso - auth.uid() funciona');
+      return true;
+      
+    } catch (error) {
+      console.error('❌ [AUTH] Erro na sincronização de sessão:', error);
+      return false;
+    }
+  }, []);
+
+  // ✅ NOVA FUNÇÃO: Forçar re-autenticação quando auth.uid() falha
+  const forceReAuthentication = useCallback(async (): Promise<boolean> => {
+    try {
+      console.log('🔄 [AUTH] Forçando re-autenticação para corrigir auth.uid()...');
+      
+      // PASSO 1: Verificar se há sessão local armazenada
+      const { data: { session: localSession }, error: localError } = await supabase.auth.getSession();
+      
+      if (localError || !localSession) {
+        console.error('❌ [AUTH] Nenhuma sessão local encontrada para re-autenticação');
+        return false;
+      }
+      
+      // PASSO 2: Forçar refresh da sessão
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession({
+        refresh_token: localSession.refresh_token
+      });
+      
+      if (refreshError || !refreshData.session) {
+        console.error('❌ [AUTH] Falha no refresh da sessão:', refreshError);
+        return false;
+      }
+      
+      // PASSO 3: Definir sessão refreshed explicitamente
+      const { error: setError } = await supabase.auth.setSession({
+        access_token: refreshData.session.access_token,
+        refresh_token: refreshData.session.refresh_token
+      });
+      
+      if (setError) {
+        console.error('❌ [AUTH] Falha ao definir sessão refreshed:', setError);
+        return false;
+      }
+      
+      // PASSO 4: Aguardar propagação e validar
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const { data: validation, error: validationError } = await supabase.auth.getUser();
+      
+      if (validationError || !validation.user) {
+        console.error('❌ [AUTH] Re-autenticação falhou na validação:', validationError);
+        return false;
+      }
+      
+      console.log('✅ [AUTH] Re-autenticação forçada bem-sucedida - auth.uid() funcionando');
+      
+      // PASSO 5: Atualizar estado local com sessão corrigida
+      setSession(refreshData.session);
+      setUser(convertSupabaseUser(refreshData.session.user, refreshData.session));
+      
+      return true;
+      
+    } catch (error) {
+      console.error('❌ [AUTH] Erro crítico na re-autenticação forçada:', error);
+      return false;
+    }
+  }, []);
 
   // ✅ NOVA FUNÇÃO: Atualizar last_login após login bem-sucedido
   const updateLastLogin = useCallback(async (session: Session) => {
@@ -121,6 +235,47 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       }
 
       console.log('✅ [AUTH] Login realizado com sucesso');
+      
+      // ✅ CORREÇÃO CRÍTICA: Garantir sincronização de sessão antes de continuar
+      const sessionSynchronized = await ensureSessionSynchronization(data.session);
+      
+      if (!sessionSynchronized) {
+        console.error('❌ [AUTH] Falha na sincronização de sessão - login pode falhar');
+        return {
+          success: false,
+          message: 'Erro na sincronização de sessão'
+        };
+      }
+      
+      // ✅ Atualizar estado local apenas após sincronização confirmada
+      setSession(data.session);
+      setUser(convertSupabaseUser(data.user, data.session));
+      
+      // ✅ NOVO: Migração automática para app_metadata (segurança)
+      try {
+        console.log('🔄 [AUTH] Verificando necessidade de migração para app_metadata...');
+        const migrationStatus = await checkMigrationStatus();
+        
+        if (migrationStatus.needsMigration) {
+          console.log('🔄 [AUTH] Migração necessária, iniciando processo...');
+          const migrationResult = await migrateUserToAppMetadata();
+          
+          if (migrationResult.success) {
+            console.log('✅ [AUTH] Migração para app_metadata concluída com sucesso');
+            // Refresh do usuário para pegar app_metadata atualizado
+            const { data: refreshedUser } = await supabase.auth.getUser();
+            if (refreshedUser.user) {
+              setUser(convertSupabaseUser(refreshedUser.user, data.session));
+            }
+          } else {
+            console.warn('⚠️ [AUTH] Migração falhou, continuando com user_metadata:', migrationResult.message);
+          }
+        } else {
+          console.log('✅ [AUTH] Migração não necessária, usando app_metadata:', migrationStatus.tenantId);
+        }
+      } catch (migrationError) {
+        console.error('❌ [AUTH] Erro na migração, continuando normalmente:', migrationError);
+      }
       
       // ✅ NOVO: Atualizar last_login após login bem-sucedido
       await updateLastLogin(data.session);
@@ -218,10 +373,23 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     let isMounted = true; // Prevent state updates if component unmounts
     
     console.log('🔄 [AUTH] Inicializando AuthProvider SIMPLIFICADO...');
+    console.log('🔍 [AUTH] Cliente Supabase:', typeof supabase, !!supabase);
+    
+    // ✅ DIAGNÓSTICO SIMPLES: Verificar localStorage básico
+    if (import.meta.env.DEV) {
+      try {
+        const authTokenKey = 'sb-crm-auth-token';
+        const storedSession = localStorage.getItem(authTokenKey);
+        console.log('🔍 [AUTH] Sessão localStorage:', storedSession ? 'encontrada' : 'não encontrada');
+      } catch (error) {
+        console.warn('⚠️ [AUTH] Erro ao verificar localStorage:', error);
+      }
+    }
 
-    // PASSO 1: Inicialização básica - sem queries extras
+    // PASSO 1: Inicialização básica com sincronização garantida
     const initializeAuth = async () => {
       try {
+        console.log('🔍 [AUTH] Buscando sessão do Supabase...');
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
@@ -232,19 +400,65 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
           return;
         }
 
-        console.log('🔍 [AUTH] Sessão inicial:', session ? `${session.user.email}` : 'nenhuma');
+        if (import.meta.env.DEV) {
+          console.log('🔍 [AUTH] Sessão:', session ? session.user?.email : 'nenhuma');
+        }
         
         if (isMounted) {
-          setSession(session);
-          setUser(session?.user ? convertSupabaseUser(session.user, session) : null);
+          // ✅ CORREÇÃO CRÍTICA: Se há sessão, garantir sincronização ANTES de definir estado
+          if (session) {
+            console.log('🔄 [AUTH] Sessão encontrada - garantindo sincronização...');
+            
+            // OBRIGATÓRIO: Sincronizar sessão com cliente Supabase antes de continuar
+            const sessionSyncResult = await ensureSessionSynchronization(session);
+            
+            if (sessionSyncResult) {
+              console.log('✅ [AUTH] Sessão sincronizada com sucesso na inicialização');
+              
+              // ✅ VALIDAÇÃO ADICIONAL: Testar se auth.uid() funciona após sincronização
+              const { data: uidTest, error: uidError } = await supabase.auth.getUser();
+              if (uidTest?.user?.id) {
+                console.log('✅ [AUTH] auth.uid() confirmado funcionando:', uidTest.user.id.substring(0, 8));
+                
+                // Definir estado apenas após sincronização confirmada
+                setSession(session);
+                setUser(convertSupabaseUser(session.user, session));
+              } else {
+                console.error('❌ [AUTH] auth.uid() ainda não funciona após sincronização básica:', uidError);
+                console.log('🔄 [AUTH] Tentando re-autenticação forçada...');
+                
+                // ✅ FALLBACK: Tentar re-autenticação forçada
+                const reAuthResult = await forceReAuthentication();
+                
+                if (!reAuthResult) {
+                  console.error('❌ [AUTH] Re-autenticação forçada falhou - removendo sessão inválida');
+                  
+                  // Se tudo falhou, remover sessão inválida
+                  await supabase.auth.signOut({ scope: 'local' });
+                  setSession(null);
+                  setUser(null);
+                }
+                // Se re-autenticação funcionou, estado já foi definido na função forceReAuthentication
+              }
+            } else {
+              console.error('❌ [AUTH] Falha crítica na sincronização - removendo sessão inválida');
+              
+              // Se sincronização falhou, remover sessão inválida
+              await supabase.auth.signOut({ scope: 'local' });
+              setSession(null);
+              setUser(null);
+            }
+          } else {
+            // Sem sessão - estado normal de não autenticado
+            setSession(null);
+            setUser(null);
+          }
+          
           setLoading(false); // CRÍTICO: sempre vira false aqui
         }
         
-        if (session?.user) {
-          console.log('✅ [AUTH] Login básico realizado:', session.user.email, {
-            tenantId: session.user.user_metadata?.tenant_id,
-            role: session.user.user_metadata?.role
-          });
+        if (session?.user && import.meta.env.DEV) {
+          console.log('✅ [AUTH] Usuário autenticado:', session.user.email);
         }
       } catch (error) {
         console.error('❌ [AUTH] Erro crítico na inicialização:', error);
@@ -256,28 +470,20 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
     initializeAuth();
 
-    // PASSO 2: Listener simples - sem queries extras
+    // PASSO 2: Listener simples e direto
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!isMounted) return; // Prevent updates after unmount
       
-      // ✅ THROTTLING: Log apenas mudanças significativas para reduzir spam
-      if (event === 'SIGNED_IN' && session?.user) {
-        console.log('✅ [AUTH] Usuário logado (simples):', session.user.email, {
-          tenantId: session.user.user_metadata?.tenant_id,
-          role: session.user.user_metadata?.role
-        });
-      } else if (event === 'SIGNED_OUT') {
-        console.log('👋 [AUTH] Usuário deslogado - limpando estado');
-        // Garantir limpeza completa do estado
-        setSession(null);
-        setUser(null);
-      } else if (event !== 'INITIAL_SESSION') {
-        // Só logar outros eventos se não for INITIAL_SESSION
-        console.log('🔄 [AUTH] Auth state changed:', event, session ? session.user.email : 'no session');
-      }
-      
+      // ✅ CORREÇÃO CRÍTICA: Sempre sincronizar estado local com sessão Supabase
       setSession(session);
       setUser(session?.user ? convertSupabaseUser(session.user, session) : null);
+      
+      // Log simples apenas em desenvolvimento
+      if (import.meta.env.DEV && event === 'SIGNED_IN' && session?.user) {
+        console.log('✅ [AUTH] Login realizado:', session.user.email);
+      } else if (import.meta.env.DEV && event === 'SIGNED_OUT') {
+        console.log('👋 [AUTH] Logout realizado');
+      }
     });
 
     return () => {

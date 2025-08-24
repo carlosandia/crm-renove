@@ -133,7 +133,7 @@ const OutcomeHistoryList: React.FC<OutcomeHistoryProps> = ({
         </div>
       )}
 
-      <div className="space-y-3 max-h-64 overflow-y-auto">
+      <div className="space-y-3 max-h-64 overflow-visible">{/* ✅ CORREÇÃO CRÍTICA: Eliminar nested scroll para @hello-pangea/dnd */}
         {displayHistory.map((item) => (
           <div
             key={item.id}

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { Lead } from '../../../types/Pipeline';
 import { logLeadCard } from '../../../utils/optimizedLogger';
+import { formatCurrency } from '../../../utils/formatUtils';
 
 interface LeadCardFooterProps {
   lead: Lead;
@@ -58,16 +59,13 @@ export const LeadCardFooter: React.FC<LeadCardFooterProps> = ({
     }
   }
   return (
-    <div className="flex items-center justify-between">
+    <div className="w-full flex items-center justify-between">
       {/* Valor à esquerda */}
       <div className="flex-1">
         {/* ✅ CORREÇÃO: Mostrar valor ou "sem valor" de forma consistente */}
         {Number(leadValue) > 0 ? (
           <span className="text-xs font-medium text-gray-900">
-            {new Intl.NumberFormat('pt-BR', {
-              style: 'currency',
-              currency: 'BRL',
-            }).format(Number(leadValue))}
+            {formatCurrency(leadValue)}
           </span>
         ) : (
           <span className="text-xs font-light text-gray-500">

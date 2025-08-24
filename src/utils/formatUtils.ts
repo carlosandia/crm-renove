@@ -9,13 +9,21 @@
 
 /**
  * Formata valor para moeda brasileira (R$)
+ * ✅ CORREÇÃO: Preservar decimais para valores pequenos
  * Elimina duplicação em 15+ arquivos
  */
 export const formatCurrency = (value?: number | string): string => {
   const numValue = Number(value) || 0;
+  
+  // Para valores menores que R$ 10, mostrar sempre 2 decimais
+  // Para valores maiores, mostrar sem decimais se for valor inteiro
+  const shouldShowDecimals = numValue < 10 || (numValue % 1 !== 0);
+  
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
+    minimumFractionDigits: shouldShowDecimals ? 2 : 0,
+    maximumFractionDigits: 2
   }).format(numValue);
 };
 
@@ -50,14 +58,39 @@ export const formatCurrencyInput = (value: string): string => {
 
 /**
  * Remove formatação de moeda para obter número
+ * Trata corretamente formato brasileiro: R$ 1.200,50 → 1200.50
+ * ✅ CORREÇÃO: Lógica brasileira onde ponto é milhares e vírgula é decimal
  */
 export const parseCurrency = (formattedValue: string): number => {
-  const cleaned = formattedValue
-    .replace(/[R$\s]/g, '')
-    .replace(/\./g, '')
-    .replace(',', '.');
+  if (!formattedValue || typeof formattedValue !== 'string') return 0;
+  
+  // Remove símbolos monetários e espaços
+  let cleaned = formattedValue.replace(/[R$\s]/g, '');
+  
+  // Se tem vírgula, é o separador decimal brasileiro
+  if (cleaned.includes(',')) {
+    // Separar parte inteira da decimal
+    const parts = cleaned.split(',');
+    if (parts.length === 2) {
+      // Remove pontos da parte inteira (separadores de milhares)
+      const integerPart = parts[0].replace(/\./g, '');
+      const decimalPart = parts[1];
+      cleaned = `${integerPart}.${decimalPart}`;
+    }
+  } else {
+    // Se não tem vírgula, pontos são separadores de milhares
+    cleaned = cleaned.replace(/\./g, '');
+  }
     
   return Number(cleaned) || 0;
+};
+
+/**
+ * NOVO: Função específica para parsing de input monetário
+ * Alias para parseCurrency com nome mais descritivo
+ */
+export const parseMoneyInput = (value: string): number => {
+  return parseCurrency(value);
 };
 
 // ============================================

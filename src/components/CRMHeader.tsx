@@ -636,7 +636,7 @@ const CRMHeader: React.FC<CRMHeaderProps> = ({
             </div>
 
             {/* Menu items mobile */}
-            <nav className="p-4 space-y-2 max-h-96 overflow-y-auto">
+            <nav className="p-4 space-y-2 max-h-96 overflow-visible">{/* ✅ CORREÇÃO: Eliminar nested scroll para @hello-pangea/dnd */}
               {menuItems.map((item, index) => {
                 const IconComponent = item.icon;
                 const isActive = activeModule === item.id;

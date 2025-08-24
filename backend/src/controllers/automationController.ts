@@ -3,9 +3,8 @@
  */
 
 import { Request, Response } from 'express';
-import { rulesEngine, BusinessRule } from '../services/rulesEngine';
+import { rulesEngine } from '../services/rulesEngine';
 import { eventService } from '../services/eventService';
-import { performanceService } from '../services/performanceService';
 
 export class AutomationController {
   // Business Rules Management

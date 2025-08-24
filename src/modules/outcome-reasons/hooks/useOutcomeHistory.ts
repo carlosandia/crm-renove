@@ -85,7 +85,42 @@ export const useApplyOutcome = (params: UseApplyOutcomeParams = {}) => {
       params.onSuccess?.();
     },
     onError: (error: any, variables) => {
-      const message = error?.response?.data?.message || 'Erro ao aplicar motivo';
+      // ✅ HANDLING ESPECÍFICO PARA ERRO 400 (validação Zod)
+      console.error('❌ [useApplyOutcome] Erro ao aplicar motivo:', {
+        error: error?.response?.data || error.message,
+        status: error?.response?.status,
+        variables,
+        errorType: error?.response?.status === 400 ? 'VALIDATION_ERROR' : 'GENERAL_ERROR'
+      });
+
+      let message = 'Erro ao aplicar motivo';
+      
+      if (error?.response?.status === 400) {
+        // Erro de validação Zod - mensagem mais específica
+        const zodErrors = error?.response?.data?.zodErrors;
+        const errorDetails = error?.response?.data?.errorDetails;
+        
+        if (zodErrors && Array.isArray(zodErrors)) {
+          console.error('🔍 [useApplyOutcome] Detalhes dos erros Zod:', zodErrors);
+          
+          // Encontrar erro mais específico para mostrar ao usuário
+          const specificError = zodErrors.find(err => 
+            err.path?.length > 0 && err.message
+          );
+          
+          if (specificError) {
+            const fieldName = specificError.path[0];
+            message = `Campo "${fieldName}": ${specificError.message}`;
+          } else {
+            message = 'Dados inválidos. Verifique os campos obrigatórios.';
+          }
+        } else {
+          message = error?.response?.data?.message || 'Erro de validação dos dados';
+        }
+      } else {
+        message = error?.response?.data?.message || 'Erro interno do servidor';
+      }
+      
       toast.error(message);
       params.onError?.(error);
     }

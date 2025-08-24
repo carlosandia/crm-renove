@@ -7,7 +7,7 @@
 // =====================================================================================
 
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { supabase } from '../integrations/supabase/client';
+import { supabase } from '../lib/supabase';
 
 interface ChannelInfo {
   channel: RealtimeChannel;

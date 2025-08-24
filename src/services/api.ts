@@ -39,9 +39,12 @@ class ApiService {
   private defaultHeaders: Record<string, string>;
 
   constructor() {
-    this.baseURL = environmentConfig.urls.api;
+    // ✅ CORREÇÃO: Usar proxy Vite em desenvolvimento, URL completa em produção
+    // PROBLEMA IDENTIFICADO: audioApiService.ts chamava URL sem /api prefix
+    this.baseURL = import.meta.env.DEV ? '/api' : environmentConfig.urls.api;
+    // ✅ CORREÇÃO FORMDATA: Não definir Content-Type fixo (permite FormData com boundary automático)
     this.defaultHeaders = {
-      'Content-Type': 'application/json',
+      // Removido 'Content-Type': 'application/json' para compatibilidade com FormData
     };
   }
 
@@ -68,6 +71,16 @@ class ApiService {
       ...(options.headers as Record<string, string>),
     };
     
+    // ✅ CORREÇÃO FORMDATA: Detectar FormData e configurar Content-Type adequadamente
+    const isFormData = options.body instanceof FormData;
+    if (!isFormData) {
+      // ✅ Apenas adicionar Content-Type para requisições JSON
+      headers['Content-Type'] = 'application/json';
+    } else {
+      console.log('🎵 [API-FormData] FormData detectado - permitindo Content-Type automático do browser');
+    }
+    // ✅ FormData define Content-Type automaticamente com boundary correto
+    
     // ✅ BÁSICO: Buscar user autenticado (Basic Supabase Authentication)
     try {
       const { supabase } = await import('../lib/supabase');
@@ -78,7 +91,7 @@ class ApiService {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.access_token) {
           headers['Authorization'] = `Bearer ${session.access_token}`;
-          console.log('🔑 [API] Basic Auth Supabase - Token incluído para:', user.email);
+          console.log('🔑 [API] Basic Auth Supabase - Token incluído para:', user?.email || 'N/A');
         }
       } else {
         console.warn('⚠️ [API] Usuário não autenticado - requisição sem autorização');
@@ -184,11 +197,17 @@ class ApiService {
 
   /**
    * POST request simplificado - timeout padrão para todas operações
+   * ✅ CORREÇÃO FORMDATA: Detectar FormData e não converter para JSON
    */
   async post<T>(endpoint: string, data?: unknown): Promise<ApiResponse<T>> {
+    const isFormData = data instanceof FormData;
+    if (isFormData) {
+      console.log('🎵 [API-POST] FormData detectado - enviando sem JSON.stringify');
+    }
+    
     const config: RequestInit = {
       method: 'POST',
-      body: data ? JSON.stringify(data) : undefined,
+      body: isFormData ? data : (data ? JSON.stringify(data) : undefined),
     };
     
     return this.request<T>(endpoint, config);
@@ -243,7 +262,24 @@ class ApiService {
       tenant_id: string;
       is_active: boolean;
       created_at: string;
-    }>('/admin/create-user', adminData);
+    }>('/api/admin/create-user', adminData);
+  }
+
+  /**
+   * DELETE Opportunity - Nova implementação usando backend API
+   * ✅ CORREÇÃO RLS: Usa service role via backend para bypass controlado
+   */
+  async deleteOpportunity(leadId: string): Promise<ApiResponse<{
+    deleted_id: string;
+    pipeline_id: string;
+    lead_master_id: string;
+  }>> {
+    console.log('🗑️ [API] DELETE opportunity via backend:', leadId?.substring(0, 8) || 'N/A');
+    return this.delete<{
+      deleted_id: string;
+      pipeline_id: string;
+      lead_master_id: string;
+    }>(`/api/opportunities/${leadId}`);
   }
 
   /**

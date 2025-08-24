@@ -15,6 +15,9 @@ export type { PipelineErrorBoundaryProps } from './PipelineErrorBoundary';
 export { LeadCardErrorBoundary } from './LeadCardErrorBoundary';
 export type { LeadCardErrorBoundaryProps } from './LeadCardErrorBoundary';
 
+export { default as MetricsErrorBoundary, MetricsErrorBoundaryWithQuery } from './MetricsErrorBoundary';
+export type { MetricsErrorBoundaryProps } from './MetricsErrorBoundary';
+
 // AIDEV-NOTE: Error Monitoring Boundary com integração ao sistema de monitoring
 export { 
   default as ErrorMonitoringBoundary,

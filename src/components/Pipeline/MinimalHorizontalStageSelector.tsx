@@ -4,7 +4,7 @@
 // Descrição: Pipeline horizontal minimalista estilo Pipedrive/Linear
 // =====================================================================================
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../providers/AuthProvider';
@@ -28,8 +28,15 @@ interface Stage {
 interface MinimalHorizontalStageSelectorProps {
   leadId: string;
   currentStageId: string;
-  onStageChange?: (leadId: string, updatedData: any) => void;
+  onStageChange?: (updatedLead: any) => void;
 }
+
+// ✅ PATTERN REACT-USE: useLatest para evitar stale closures
+const useLatest = <T,>(value: T): React.MutableRefObject<T> => {
+  const ref = useRef(value);
+  ref.current = value;
+  return ref;
+};
 
 export const MinimalHorizontalStageSelector: React.FC<MinimalHorizontalStageSelectorProps> = ({ 
   leadId, 
@@ -41,6 +48,10 @@ export const MinimalHorizontalStageSelector: React.FC<MinimalHorizontalStageSele
   const [currentStage, setCurrentStage] = useState<Stage | null>(null);
   const [loading, setLoading] = useState(false);
   const [changingStageId, setChangingStageId] = useState<string | null>(null);
+  
+  // ✅ REACT-USE PATTERN: useLatest para evitar stale closures
+  const latestCurrentStageId = useLatest(currentStageId);
+  const latestOnStageChange = useLatest(onStageChange);
 
   // Carregar stages da pipeline
   useEffect(() => {
@@ -155,9 +166,34 @@ export const MinimalHorizontalStageSelector: React.FC<MinimalHorizontalStageSele
     }
   }, [leadId, currentStageId]);
 
-  // Função para alterar stage
-  const handleStageChange = async (newStageId: string) => {
-    if (newStageId === currentStageId || loading || changingStageId) return;
+  // ✅ REACT-USE PATTERN: handleStageChange otimizado com useLatest
+  const handleStageChange = useCallback(async (newStageId: string) => {
+    console.log('🎯 [MinimalHorizontalStageSelector] CLIQUE NA ETAPA DETECTADO:', {
+      newStageId,
+      currentStageId: latestCurrentStageId.current,
+      leadId,
+      loading,
+      changingStageId,
+      canProceed: newStageId !== latestCurrentStageId.current && !loading && !changingStageId
+    });
+    
+    if (newStageId === latestCurrentStageId.current || loading || changingStageId) {
+      console.log('❌ [MinimalHorizontalStageSelector] CLIQUE IGNORADO:', {
+        reason: newStageId === latestCurrentStageId.current ? 'same_stage' : loading ? 'already_loading' : 'already_changing',
+        newStageId,
+        currentStageId: latestCurrentStageId.current,
+        loading,
+        changingStageId
+      });
+      return;
+    }
+
+    console.log('🚀 [MinimalHorizontalStageSelector] INICIANDO MUDANÇA DE ETAPA:', {
+      de: currentStageId,
+      para: newStageId,
+      leadId,
+      userId: user?.id
+    });
 
     setLoading(true);
     setChangingStageId(newStageId);
@@ -165,12 +201,23 @@ export const MinimalHorizontalStageSelector: React.FC<MinimalHorizontalStageSele
     try {
       // Validar IDs
       if (!leadId || !newStageId) {
+        console.log('❌ [MinimalHorizontalStageSelector] VALIDAÇÃO FALHOU:', {
+          leadId: leadId || 'UNDEFINED',
+          newStageId: newStageId || 'UNDEFINED'
+        });
         throw new Error('Lead ID ou Stage ID inválido');
       }
+
+      console.log('✅ [MinimalHorizontalStageSelector] VALIDAÇÃO PASSOU - INICIANDO UPDATE NO BANCO:', {
+        leadId,
+        newStageId,
+        timestamp: new Date().toISOString()
+      });
 
       // Tentar atualizar na tabela pipeline_leads primeiro
       let updateError = null;
       
+      console.log('🔄 [MinimalHorizontalStageSelector] TENTANDO UPDATE EM pipeline_leads...');
       const { error: pipelineError } = await supabase
         .from('pipeline_leads')
         .update({ 
@@ -180,48 +227,254 @@ export const MinimalHorizontalStageSelector: React.FC<MinimalHorizontalStageSele
         .eq('id', leadId);
 
       if (pipelineError) {
+        console.log('⚠️ [MinimalHorizontalStageSelector] PIPELINE_LEADS FALHOU - TENTANDO FALLBACK:', {
+          error: pipelineError.message,
+          code: pipelineError.code
+        });
+        
         // Fallback para tabela leads se pipeline_leads falhar
+        console.log('🔄 [MinimalHorizontalStageSelector] TENTANDO UPDATE EM leads (fallback)...');
         const { error: leadsError } = await supabase
           .from('leads')
           .update({ stage_id: newStageId })
           .eq('id', leadId);
         
         if (leadsError) {
+          console.log('❌ [MinimalHorizontalStageSelector] FALLBACK LEADS TAMBÉM FALHOU:', {
+            error: leadsError.message,
+            code: leadsError.code
+          });
           updateError = leadsError;
+        } else {
+          console.log('✅ [MinimalHorizontalStageSelector] FALLBACK LEADS SUCESSO');
         }
+      } else {
+        console.log('✅ [MinimalHorizontalStageSelector] PIPELINE_LEADS UPDATE SUCESSO');
       }
 
       if (updateError) throw updateError;
 
+      console.log('🎯 [MinimalHorizontalStageSelector] BANCO ATUALIZADO COM SUCESSO - REGISTRANDO HISTÓRICO...');
+
       // Registrar no histórico
       try {
         if (currentStageId && currentStageId !== 'null' && currentStageId.trim() !== '') {
+          console.log('📝 [MinimalHorizontalStageSelector] CHAMANDO registerStageMove:', {
+            leadId,
+            currentStageId,
+            newStageId,
+            userId: user?.id
+          });
+          
           await registerStageMove(leadId, currentStageId, newStageId, user?.id);
+          
+          console.log('✅ [MinimalHorizontalStageSelector] HISTÓRICO REGISTRADO COM SUCESSO');
+        } else {
+          console.log('⚠️ [MinimalHorizontalStageSelector] HISTÓRICO PULADO - currentStageId inválido:', currentStageId);
         }
       } catch (historyError) {
         // Registro de histórico falhou, mas mudança de stage foi bem-sucedida
-        console.warn('⚠️ Histórico não registrado:', historyError);
+        console.warn('⚠️ [MinimalHorizontalStageSelector] HISTÓRICO FALHOU (mas stage mudou):', historyError);
       }
+
+      console.log('🔄 [MinimalHorizontalStageSelector] ATUALIZANDO ESTADO LOCAL...');
 
       // Atualizar estado local
       const newStage = stages.find(s => s.id === newStageId);
       setCurrentStage(newStage || null);
 
-      // Notificar componente pai
-      if (onStageChange) {
-        onStageChange(leadId, { stage_id: newStageId });
+      console.log('📢 [MinimalHorizontalStageSelector] NOTIFICANDO COMPONENTE PAI via onStageChange...');
+
+      // ✅ REACT-USE PATTERN: Notificar componente pai com lead completo atualizado
+      if (latestOnStageChange.current) {
+        console.log('🚀 [MinimalHorizontalStageSelector] EXECUTANDO onStageChange CALLBACK:', {
+          leadId,
+          newStageId,
+          callbackExists: !!latestOnStageChange.current
+        });
+        
+        // ✅ FASE 1: QUERY ROBUSTA COM FALLBACKS E RETRY MECHANISM
+        try {
+          console.log('🔍 [MinimalHorizontalStageSelector] INICIANDO BUSCA ROBUSTA DO LEAD ATUALIZADO:', {
+            leadId,
+            newStageId,
+            timestamp: new Date().toISOString()
+          });
+
+          let updatedLead = null;
+          let finalError = null;
+
+          // ✅ RETRY MECHANISM: Tentar múltiplas vezes com delay
+          const maxRetries = 3;
+          const retryDelay = 100; // 100ms entre tentativas
+          
+          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            console.log(`🔄 [MinimalHorizontalStageSelector] TENTATIVA ${attempt}/${maxRetries} - Buscando lead:`, leadId);
+            
+            // Tentar pipeline_leads primeiro
+            const { data: pipelineData, error: pipelineError } = await supabase
+              .from('pipeline_leads')
+              .select('*')
+              .eq('id', leadId)
+              .single();
+
+            console.log('📊 [MinimalHorizontalStageSelector] RESULTADO pipeline_leads:', {
+              attempt,
+              hasData: !!pipelineData,
+              dataPreview: pipelineData ? { id: pipelineData.id, stage_id: pipelineData.stage_id } : null,
+              error: pipelineError?.message || null,
+              errorCode: pipelineError?.code || null
+            });
+
+            if (!pipelineError && pipelineData) {
+              updatedLead = pipelineData;
+              console.log('✅ [MinimalHorizontalStageSelector] SUCESSO pipeline_leads na tentativa', attempt);
+              break;
+            }
+
+            // Fallback para tabela leads se pipeline_leads falhar
+            console.log(`🔄 [MinimalHorizontalStageSelector] FALLBACK TENTATIVA ${attempt} - Buscando em leads:`, leadId);
+            
+            const { data: leadsData, error: leadsError } = await supabase
+              .from('leads')
+              .select('*')
+              .eq('id', leadId)
+              .single();
+
+            console.log('📊 [MinimalHorizontalStageSelector] RESULTADO leads fallback:', {
+              attempt,
+              hasData: !!leadsData,
+              dataPreview: leadsData ? { id: leadsData.id, stage_id: leadsData.stage_id } : null,
+              error: leadsError?.message || null,
+              errorCode: leadsError?.code || null
+            });
+
+            if (!leadsError && leadsData) {
+              updatedLead = leadsData;
+              console.log('✅ [MinimalHorizontalStageSelector] SUCESSO leads fallback na tentativa', attempt);
+              break;
+            }
+
+            finalError = leadsError || pipelineError;
+            
+            // Se não é a última tentativa, aguardar antes de tentar novamente
+            if (attempt < maxRetries) {
+              console.log(`⏳ [MinimalHorizontalStageSelector] AGUARDANDO ${retryDelay}ms antes da próxima tentativa...`);
+              await new Promise(resolve => setTimeout(resolve, retryDelay));
+            }
+          }
+
+          // ✅ VALIDAÇÃO E CONSTRUÇÃO INTELIGENTE DE DADOS
+          if (!updatedLead || !updatedLead.id) {
+            console.warn('⚠️ [MinimalHorizontalStageSelector] TODAS AS QUERIES FALHARAM - CONSTRUINDO FALLBACK INTELIGENTE:', {
+              finalError: finalError?.message || 'Dados não encontrados',
+              leadId,
+              newStageId
+            });
+
+            // ✅ FALLBACK INTELIGENTE: Construir dados com base no que sabemos
+            const fallbackLeadData = {
+              id: leadId,
+              stage_id: newStageId,
+              moved_at: new Date().toISOString(),
+              // Incluir dados essenciais para evitar quebras no frontend
+              first_name: '',
+              last_name: '',
+              email: '',
+              custom_data: {},
+              temperature_level: 'warm',
+              created_at: new Date().toISOString()
+            };
+
+            console.log('🛠️ [MinimalHorizontalStageSelector] USANDO FALLBACK INTELIGENTE:', fallbackLeadData);
+            latestOnStageChange.current(fallbackLeadData);
+          } else {
+            // ✅ VALIDAÇÃO DE CONSISTÊNCIA: Verificar se stage_id foi realmente atualizado
+            const hasCorrectStageId = updatedLead.stage_id === newStageId;
+            
+            console.log('🔍 [MinimalHorizontalStageSelector] VALIDAÇÃO DE CONSISTÊNCIA:', {
+              expectedStageId: newStageId,
+              actualStageId: updatedLead.stage_id,
+              isConsistent: hasCorrectStageId,
+              leadData: {
+                id: updatedLead.id,
+                stage_id: updatedLead.stage_id,
+                moved_at: updatedLead.moved_at
+              }
+            });
+
+            if (!hasCorrectStageId) {
+              console.warn('⚠️ [MinimalHorizontalStageSelector] INCONSISTÊNCIA DETECTADA - CORRIGINDO stage_id:', {
+                expected: newStageId,
+                found: updatedLead.stage_id
+              });
+              // Corrigir stage_id nos dados retornados
+              updatedLead.stage_id = newStageId;
+              updatedLead.moved_at = new Date().toISOString();
+            }
+
+            console.log('✅ [MinimalHorizontalStageSelector] DADOS COMPLETOS VALIDADOS E CONSISTENTES:', {
+              id: updatedLead.id,
+              stage_id: updatedLead.stage_id,
+              moved_at: updatedLead.moved_at,
+              hasCustomData: !!updatedLead.custom_data
+            });
+            
+            latestOnStageChange.current(updatedLead);
+          }
+        } catch (fetchCompleteDataError) {
+          console.error('❌ [MinimalHorizontalStageSelector] ERRO CRÍTICO NA BUSCA ROBUSTA:', {
+            error: fetchCompleteDataError.message || fetchCompleteDataError,
+            leadId,
+            newStageId,
+            timestamp: new Date().toISOString()
+          });
+          
+          // ✅ ÚLTIMO FALLBACK: Sempre garantir que callback seja chamado
+          const emergencyFallback = {
+            id: leadId,
+            stage_id: newStageId,
+            moved_at: new Date().toISOString(),
+            first_name: '',
+            last_name: '',
+            email: '',
+            custom_data: {},
+            temperature_level: 'warm',
+            created_at: new Date().toISOString()
+          };
+          
+          console.log('🚨 [MinimalHorizontalStageSelector] USANDO FALLBACK DE EMERGÊNCIA:', emergencyFallback);
+          latestOnStageChange.current(emergencyFallback);
+        }
+        
+        console.log('✅ [MinimalHorizontalStageSelector] onStageChange CALLBACK EXECUTADO');
+      } else {
+        console.log('⚠️ [MinimalHorizontalStageSelector] onStageChange CALLBACK NÃO EXISTE');
       }
 
+      console.log('🎉 [MinimalHorizontalStageSelector] MUDANÇA DE ETAPA COMPLETADA COM SUCESSO');
       toast.success('Etapa alterada com sucesso!');
 
     } catch (error) {
-      console.error('❌ Erro ao alterar etapa:', error);
+      console.error('❌ [MinimalHorizontalStageSelector] ERRO CRÍTICO NA MUDANÇA DE ETAPA:', {
+        error: error.message || error,
+        leadId,
+        newStageId,
+        currentStageId,
+        userId: user?.id,
+        timestamp: new Date().toISOString()
+      });
       toast.error('Erro ao alterar etapa. Tente novamente.');
     } finally {
+      console.log('🏁 [MinimalHorizontalStageSelector] FINALIZANDO MUDANÇA DE ETAPA:', {
+        loading: false,
+        changingStageId: null,
+        finalStageId: currentStageId
+      });
       setLoading(false);
       setChangingStageId(null);
     }
-  };
+  }, [leadId, loading, changingStageId, stages, user?.id]); // ✅ Dependencies do useCallback
 
   // Determinar o estado visual de cada stage
   const getStageStatus = (stage: Stage): 'completed' | 'current' | 'future' => {

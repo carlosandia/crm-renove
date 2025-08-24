@@ -215,16 +215,16 @@ export function useMetricsPreferences() {
         throw error;
       }
     },
-    staleTime: Infinity,  // ✅ CRÍTICO: Cache nunca fica stale
-    gcTime: Infinity,     // ✅ CRÍTICO: Cache nunca é limpo
-    retry: false, // ✅ CRÍTICO: ZERO retry para eliminar requests duplicados
+    staleTime: 15 * 60 * 1000, // ✅ CORREÇÃO: 15 minutos - cache balanceado
+    gcTime: 30 * 60 * 1000,    // ✅ CORREÇÃO: 30 minutos - limpeza adequada  
+    retry: 1, // ✅ CORREÇÃO: 1 retry para recuperação de erros temporários
     refetchOnWindowFocus: false,
-    refetchOnMount: false, // ✅ OTIMIZAÇÃO: NUNCA refetch no mount
-    refetchOnReconnect: false, // ✅ OTIMIZAÇÃO: NUNCA refetch na reconexão
-    refetchInterval: false, // ✅ CRÍTICO: Desabilitar polling automático
-    refetchIntervalInBackground: false, // ✅ CRÍTICO: Nunca fazer requests em background
-    networkMode: 'offlineFirst', // ✅ CRÍTICO: Sempre priorizar cache
-    enabled: false, // ✅ CRÍTICO: DESABILITAR query automática - só usar cache local
+    refetchOnMount: true, // ✅ CORREÇÃO: Permitir refetch no mount quando necessário
+    refetchOnReconnect: false, // ✅ MANTIDO: Evitar refetch na reconexão
+    refetchInterval: false, // ✅ MANTIDO: Desabilitar polling automático
+    refetchIntervalInBackground: false, // ✅ MANTIDO: Nunca fazer requests em background
+    networkMode: 'online', // ✅ CORREÇÃO: Modo online padrão para permitir queries quando necessário
+    enabled: !!user?.id, // ✅ CORREÇÃO: Habilitar query quando usuário autenticado
     throwOnError: false
   });
 

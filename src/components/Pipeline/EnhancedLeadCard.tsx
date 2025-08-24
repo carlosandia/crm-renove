@@ -47,39 +47,35 @@ export const EnhancedLeadCard: React.FC<EnhancedLeadCardProps> = ({
   });
 
   // Usar apenas as classes básicas sem bordas e sombras
-  const cardClasses = `relative rounded-lg overflow-hidden ${className}`;
+  const cardClasses = `relative rounded-lg overflow-visible scrollbar-hidden ${className}`;
 
   return (
-    <div className={cardClasses} {...props}>
+    <div 
+      className={cardClasses} 
+      style={{
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none',
+        overflowX: 'visible',
+        overflowY: 'visible'
+      }}
+      {...props}
+    >
 
       {/* Conteúdo principal do card */}
-      <div className="relative z-0">
+      <div 
+        className="relative z-0 overflow-visible scrollbar-hidden"
+        style={{
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+          overflowX: 'visible',
+          overflowY: 'visible'
+        }}
+      >
         {children}
       </div>
 
-      {/* Seção de tarefas na parte inferior - só renderizar se necessário */}
-      {(showProgressBadge && visualState.badgeData.show) || showTasksDropdown ? (
-        <div className="mt-1 flex items-center justify-between">
-          {/* Badge de progresso */}
-          {showProgressBadge && visualState.badgeData.show && (
-            <TaskProgressBadge
-              leadId={leadId}
-              variant="compact"
-              className="flex-shrink-0"
-            />
-          )}
-
-          {/* Dropdown de tarefas */}
-          {showTasksDropdown && (
-            <div className="flex-shrink-0 ml-auto">
-              <TasksDropdown
-                leadId={leadId}
-                onTaskCompleted={onTaskCompleted}
-              />
-            </div>
-          )}
-        </div>
-      ) : null}
+      {/* ✅ REMOVIDO: Seção de tarefas - causava overflow no card de 120px */}
+      {/* TasksDropdown e ProgressBadge agora integrados no LeadCardHeader */}
 
       {/* Overlay de estado (quando necessário) */}
       {visualState.variant === 'danger' && visualState.urgencyLevel === 'critical' && (

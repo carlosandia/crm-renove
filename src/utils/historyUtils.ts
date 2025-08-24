@@ -10,6 +10,7 @@ export interface HistoryEntry {
   old_values?: any;
   new_values?: any;
   created_at?: string;
+  tenant_id?: string; // ✅ NOVO: Adicionar tenant_id opcional
 }
 
 // Função principal para registrar histórico de leads
@@ -19,6 +20,25 @@ export const registerLeadHistory = async (entry: HistoryEntry): Promise<string |
       action: entry.action,
       description: entry.description.substring(0, 50) + '...'
     });
+
+    // ✅ CORREÇÃO CRÍTICA: Obter tenant_id do usuário autenticado
+    let tenantId = entry.tenant_id;
+    
+    if (!tenantId) {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        console.error('❌ Erro ao obter usuário autenticado:', userError);
+        throw new Error('Usuário não autenticado para registrar histórico');
+      }
+      
+      tenantId = user.user_metadata?.tenant_id;
+      if (!tenantId) {
+        console.error('❌ tenant_id não encontrado no user_metadata:', user.user_metadata);
+        throw new Error('tenant_id não encontrado no usuário autenticado');
+      }
+      
+      console.log('✅ tenant_id obtido do usuário:', tenantId);
+    }
 
     // Criar timestamp no horário do Brasil se não fornecido
     const brasilTime = entry.created_at || new Date().toLocaleString('en-CA', { 
@@ -39,7 +59,8 @@ export const registerLeadHistory = async (entry: HistoryEntry): Promise<string |
       user_id: entry.user_id || null,
       old_values: entry.old_values || null,
       new_values: entry.new_values || null,
-      created_at: brasilTime
+      created_at: brasilTime,
+      tenant_id: tenantId // ✅ CORREÇÃO: Incluir tenant_id obrigatório
     };
 
     console.log('⏰ Salvando com timestamp Brasil:', brasilTime);

@@ -209,7 +209,7 @@ export const TaskProgressBadge: React.FC<TaskProgressBadgeProps> = memo(({
       {badgeData.showProgress && badgeData.total > 0 && (
         <>
           {/* Barra de progresso */}
-          <div className="w-16 h-1.5 bg-white/50 rounded-full overflow-hidden">
+          <div className="w-16 h-1.5 bg-white/50 rounded-full overflow-visible">
             <div 
               className={`h-full transition-all duration-300 ${
                 badgeData.variant === 'success' ? 'bg-green-600' :

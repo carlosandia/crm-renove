@@ -34,20 +34,12 @@
   box-sizing: border-box;
 }
 
+/* ✅ REMOVIDO: Regras de scrollbar movidas para pipeline-kanban.css */
 /* Conteúdo da stage com scroll */
 .kanban-stage .stage-content {
   position: relative;
   overflow: visible;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
   scroll-behavior: smooth;
-}
-
-/* Webkit scrollbar invisível */
-.kanban-stage .stage-content::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
 }
 
 /* Cards dentro das stages */
